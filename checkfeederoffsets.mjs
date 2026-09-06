@@ -17,6 +17,7 @@
 
    The shapes below are that drawing's: a long run heading south-east,
    and a second sharing its corridor before turning away south-west. */
+import { readFileSync } from "node:fs";
 import { feederRenderPlan, offsetPolyline, alignSign }
   from "./src/features/gis/feederColour.js";
 
@@ -88,6 +89,62 @@ if (!a || !b) {
   const back = [...runA].reverse();
   if (alignSign(runA, back) !== -1) {
     fail("a run drawn back to front is no longer recognised as reversed");
+  }
+}
+
+/* ── Two groups can hand out the same lane ──
+
+   A group spreads its own members evenly and knows nothing of any
+   other. `isParallel` needs the overlap to be half a run's WHOLE
+   length, so a long HV route sharing ONE trench with a short main is
+   not grouped with it \u2014 they are genuinely not parallel over most of
+   their lengths. Both groups then start at zero, and where they DO
+   share a trench two cables get the same offset and draw on top of each
+   other.
+
+   Reported as four cables in a trench reading as three, which is what
+   somebody counts against the drawing when the dig is open. */
+{
+  const raw = JSON.parse(
+    readFileSync("./fixtures/drawing-2607-002-two-pocs.json", "utf8"));
+  const f = raw.features;
+  const plan = feederRenderPlan(f, {});
+  const runs = f.filter((x) => ["elec_hv", "elec_main"].includes(x.Attributes?.Line_Type)
+    && x.Feature_Type === "line");
+  const trenches = f.filter((x) => /trench/.test(String(x.Attributes?.Line_Type)));
+
+  const segd = (p, a, b) => {
+    const vx = b[0] - a[0]; const vy = b[1] - a[1];
+    const l2 = vx * vx + vy * vy;
+    let t = l2 ? ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / l2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p[0] - (a[0] + vx * t), p[1] - (a[1] + vy * t));
+  };
+  const runsOn = (t) => {
+    const g = t.Geometry;
+    const mids = g.slice(1).map((_, i) => [(g[i][0] + g[i + 1][0]) / 2,
+      (g[i][1] + g[i + 1][1]) / 2]);
+    return runs.filter((r) => mids.some((m) => r.Geometry.slice(1)
+      .some((_, j) => segd(m, r.Geometry[j], r.Geometry[j + 1]) <= 1.0)));
+  };
+
+  for (const t of trenches) {
+    const on = runsOn(t);
+    if (on.length < 2) continue;
+    const offs = on.map((r) => plan.get(r.Feature_ID)?.offsetPx);
+    if (new Set(offs).size < on.length) {
+      fail(`trench ${t.Feature_ID} carries ${on.length} cables drawn in `
+        + `${new Set(offs).size} lanes [${offs.join(", ")}] \u2014 two are on top `
+        + "of each other");
+      break;
+    }
+  }
+
+  /* And the fixture exercises it: a trench with three or more cables in
+     it, from more than one group. */
+  if (!trenches.some((t) => runsOn(t).length >= 3)) {
+    fail("the fixture has no trench with three cables in it, so the case "
+      + "this was written for is untested");
   }
 }
 

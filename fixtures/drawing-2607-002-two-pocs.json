@@ -1,0 +1,7186 @@
+{
+  "features": [
+    {
+      "Feature_ID": 46854,
+      "Project_ID": 6,
+      "Layer_Key": "boundary",
+      "Feature_Type": "polygon",
+      "Geometry": [
+        [
+          101.3253879190594,
+          39.060235738124746
+        ],
+        [
+          155.7742311479653,
+          23.5477776929035
+        ],
+        [
+          170.0116701502421,
+          50.502206030256616
+        ],
+        [
+          198.53168074669017,
+          66.09426647453435
+        ],
+        [
+          222.84585245821827,
+          45.09831978815513
+        ],
+        [
+          247.04593330598672,
+          69.5040347250367
+        ],
+        [
+          208.12016426318175,
+          104.56761813224117
+        ],
+        [
+          196.6105323982904,
+          121.78496496709886
+        ],
+        [
+          139.04645819128464,
+          115.35018427843279
+        ],
+        [
+          116.2646863020246,
+          108.04504795550301
+        ],
+        [
+          108.6252068427788,
+          92.01250162365358
+        ],
+        [
+          98.94916348595626,
+          63.98870699001025
+        ],
+        [
+          101.3253879190594,
+          39.060235738124746
+        ]
+      ],
+      "Label": "Site boundary",
+      "Attributes": {
+        "Length_m": 413.49
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46855,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          113.6677850276785,
+          69.72329720971399
+        ]
+      ],
+      "Label": "1",
+      "Attributes": {
+        "Config": "3BS",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          112.32134722350612,
+          66.03837592869226
+        ],
+        "Trench_End_At": [
+          113.3594169269319,
+          68.61336741165648
+        ]
+      },
+      "Plot_ID": 56,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46856,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          115.54236489391948,
+          69.09031580760907
+        ]
+      ],
+      "Label": "Electric Meter 1",
+      "Attributes": {
+        "Circuit_ID": 1,
+        "Circuit_Name": "Circuit 1",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "A",
+        "Circuit_Origin_ID": 46911
+      },
+      "Plot_ID": 56,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46859,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          135.12162552078598,
+          63.445294696492994
+        ]
+      ],
+      "Label": "2",
+      "Attributes": {
+        "Config": "3BS",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          138.89785051728765,
+          61.874938490862725
+        ],
+        "Trench_End_At": [
+          136.86681547258573,
+          62.96371699214726
+        ]
+      },
+      "Plot_ID": 57,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46860,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          139.07021460584374,
+          64.83025593299293
+        ]
+      ],
+      "Label": "Electric Meter 2",
+      "Attributes": {
+        "Circuit_ID": 1,
+        "Circuit_Name": "Circuit 1",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "A",
+        "Circuit_Origin_ID": 46911
+      },
+      "Plot_ID": 57,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46861,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          113.32473395969221,
+          46.75924817098414
+        ]
+      ],
+      "Label": "3",
+      "Attributes": {
+        "Config": "3BS",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          116.78679891483887,
+          57.120721179086324
+        ],
+        "Trench_End_At": [
+          115.88993240304704,
+          54.813502411589056
+        ]
+      },
+      "Plot_ID": 58,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46862,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          113.3550714044631,
+          54.85687468712231
+        ]
+      ],
+      "Label": "Electric Meter 3",
+      "Attributes": {
+        "Circuit_ID": 1,
+        "Circuit_Name": "Circuit 1",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "A",
+        "Circuit_Origin_ID": 46911
+      },
+      "Plot_ID": 58,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46863,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          120.92212761306344,
+          43.81561696539172
+        ]
+      ],
+      "Label": "4",
+      "Attributes": {
+        "Config": "3BS",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          122.78394923925475,
+          49.771193929944744
+        ],
+        "Trench_End_At": [
+          121.11134478421985,
+          45.32215314169811
+        ]
+      },
+      "Plot_ID": 59,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46864,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          119.52885202060598,
+          48.5026399971511
+        ]
+      ],
+      "Label": "Electric Meter 4",
+      "Attributes": {
+        "Circuit_ID": 1,
+        "Circuit_Name": "Circuit 1",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "A",
+        "Circuit_Origin_ID": 46911
+      },
+      "Plot_ID": 59,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46865,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          131.3112456177131,
+          40.82973770780534
+        ]
+      ],
+      "Label": "5",
+      "Attributes": {
+        "Config": "3BS",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          134.8528578811694,
+          50.93929931904178
+        ],
+        "Trench_End_At": [
+          132.59350828336258,
+          44.349556783396956
+        ]
+      },
+      "Plot_ID": 60,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46866,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          130.30089494142467,
+          45.035182245181375
+        ]
+      ],
+      "Label": "Electric Meter 5",
+      "Attributes": {
+        "Circuit_ID": 1,
+        "Circuit_Name": "Circuit 1",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "A",
+        "Circuit_Origin_ID": 46911
+      },
+      "Plot_ID": 60,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46867,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          142.0185623360529,
+          36.23777200299474
+        ]
+      ],
+      "Label": "6",
+      "Attributes": {
+        "Config": "3BS",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          146.02377815786582,
+          47.06756667414551
+        ],
+        "Trench_End_At": [
+          143.41722914525818,
+          40.36119246410911
+        ]
+      },
+      "Plot_ID": 61,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46868,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          141.53248694751235,
+          41.121651869736965
+        ]
+      ],
+      "Label": "Electric Meter 6",
+      "Attributes": {
+        "Circuit_ID": 1,
+        "Circuit_Name": "Circuit 1",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "A",
+        "Circuit_Origin_ID": 46911
+      },
+      "Plot_ID": 61,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46869,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          150.1883085585812,
+          35.960839267498315
+        ]
+      ],
+      "Label": "7",
+      "Attributes": {
+        "Config": "3BS",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          153.31710273468653,
+          44.53579222143989
+        ],
+        "Trench_End_At": [
+          152.2887321284615,
+          42.071091701213504
+        ]
+      },
+      "Plot_ID": 62,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46870,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          149.47106467365006,
+          42.53166889862358
+        ]
+      ],
+      "Label": "Electric Meter 7",
+      "Attributes": {
+        "Circuit_ID": 1,
+        "Circuit_Name": "Circuit 1",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "A",
+        "Circuit_Origin_ID": 46911
+      },
+      "Plot_ID": 62,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46871,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          159.66970823540566,
+          61.77713474022782
+        ]
+      ],
+      "Label": "8",
+      "Attributes": {
+        "Config": "3BS",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          155.1745270213747,
+          68.97161573823162
+        ],
+        "Trench_End_At": [
+          155.98255176724416,
+          67.47119358185061
+        ]
+      },
+      "Plot_ID": 63,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46872,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          154.96472398479142,
+          66.61250508899403
+        ]
+      ],
+      "Label": "Electric Meter 8",
+      "Attributes": {
+        "Circuit_ID": 1,
+        "Circuit_Name": "Circuit 1",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "A",
+        "Circuit_Origin_ID": 46911
+      },
+      "Plot_ID": 63,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46873,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          164.17797459324098,
+          64.0052516750871
+        ]
+      ],
+      "Label": "9",
+      "Attributes": {
+        "Config": "3BS",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          160.11883076441347,
+          71.41562149965972
+        ],
+        "Trench_End_At": [
+          161.20740518685625,
+          69.83304278309436
+        ]
+      },
+      "Plot_ID": 64,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46874,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          162.84079955446535,
+          70.69401304604044
+        ]
+      ],
+      "Label": "Electric Meter 9",
+      "Attributes": {
+        "Circuit_ID": 1,
+        "Circuit_Name": "Circuit 1",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "A",
+        "Circuit_Origin_ID": 46911
+      },
+      "Plot_ID": 64,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46875,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          174.39401116512346,
+          69.75335139449082
+        ]
+      ],
+      "Label": "10",
+      "Attributes": {
+        "Config": "3BS",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          170.57388496778705,
+          76.79033626415121
+        ],
+        "Trench_End_At": [
+          171.53887598074604,
+          75.24293478538213
+        ]
+      },
+      "Plot_ID": 65,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46876,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          170.3355020052903,
+          74.54370937119589
+        ]
+      ],
+      "Label": "Electric Meter 10",
+      "Attributes": {
+        "Circuit_ID": 1,
+        "Circuit_Name": "Circuit 1",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "A",
+        "Circuit_Origin_ID": 46911
+      },
+      "Plot_ID": 65,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46877,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          179.43299776817852,
+          71.71218874230993
+        ]
+      ],
+      "Label": "11",
+      "Attributes": {
+        "Config": "3BF",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          175.40739018771157,
+          78.94737674007837
+        ],
+        "Trench_End_At": [
+          176.2893816905408,
+          77.43961759353996
+        ]
+      },
+      "Plot_ID": 46,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46878,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          174.87016681873675,
+          76.73488746890817
+        ]
+      ],
+      "Label": "Electric Meter 11",
+      "Attributes": {
+        "Circuit_ID": 1,
+        "Circuit_Name": "Circuit 1",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "A",
+        "Circuit_Origin_ID": 46911
+      },
+      "Plot_ID": 46,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46879,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          189.97328590443436,
+          76.78270293623896
+        ]
+      ],
+      "Label": "12",
+      "Attributes": {
+        "Config": "3BF",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          186.39746022769378,
+          84.49737824178533
+        ],
+        "Trench_End_At": [
+          187.11886710176543,
+          82.67915276478872
+        ]
+      },
+      "Plot_ID": 47,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46880,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          185.67569518385784,
+          82.06572335478434
+        ]
+      ],
+      "Label": "Electric Meter 12",
+      "Attributes": {
+        "Circuit_ID": 2,
+        "Circuit_Name": "Circuit 2",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "B",
+        "Circuit_Origin_ID": 46907
+      },
+      "Plot_ID": 47,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46881,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          194.71838956692764,
+          79.14619710816442
+        ]
+      ],
+      "Label": "13",
+      "Attributes": {
+        "Config": "3BF",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          190.87692551886707,
+          86.75612289158623
+        ],
+        "Trench_End_At": [
+          191.795275316859,
+          85.0449800848267
+        ]
+      },
+      "Plot_ID": 48,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46882,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          190.5122784309405,
+          84.50437264147835
+        ]
+      ],
+      "Label": "Electric Meter 13",
+      "Attributes": {
+        "Circuit_ID": 2,
+        "Circuit_Name": "Circuit 2",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "B",
+        "Circuit_Origin_ID": 46907
+      },
+      "Plot_ID": 48,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46883,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          200.72192017397276,
+          84.40554300975391
+        ]
+      ],
+      "Label": "14",
+      "Attributes": {
+        "Config": "3BF",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          197.62303032858964,
+          90.56978590343459
+        ],
+        "Trench_End_At": [
+          198.772220539674,
+          88.75281654293532
+        ]
+      },
+      "Plot_ID": 49,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46884,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          197.78678958054402,
+          88.28270044045274
+        ]
+      ],
+      "Label": "Electric Meter 14",
+      "Attributes": {
+        "Circuit_ID": 2,
+        "Circuit_Name": "Circuit 2",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "B",
+        "Circuit_Origin_ID": 46907
+      },
+      "Plot_ID": 49,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46885,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          204.60069189093323,
+          85.76818096062271
+        ]
+      ],
+      "Label": "15",
+      "Attributes": {
+        "Config": "3BF",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          201.4662852254717,
+          92.03286651112833
+        ],
+        "Trench_End_At": [
+          202.47019219533064,
+          90.56117532573822
+        ]
+      },
+      "Plot_ID": 50,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46886,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          201.52117095836752,
+          89.93537140260945
+        ]
+      ],
+      "Label": "Electric Meter 15",
+      "Attributes": {
+        "Circuit_ID": 2,
+        "Circuit_Name": "Circuit 2",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "B",
+        "Circuit_Origin_ID": 46907
+      },
+      "Plot_ID": 50,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46887,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          208.70169533503153,
+          88.2247652199158
+        ]
+      ],
+      "Label": "16",
+      "Attributes": {
+        "Config": "3BF",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          205.96745509989722,
+          94.07978149088989
+        ],
+        "Trench_End_At": [
+          206.89297838246432,
+          92.78871128192148
+        ]
+      },
+      "Plot_ID": 51,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46888,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          206.14018372989287,
+          92.22604360787888
+        ]
+      ],
+      "Label": "Electric Meter 16",
+      "Attributes": {
+        "Circuit_ID": 2,
+        "Circuit_Name": "Circuit 2",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "B",
+        "Circuit_Origin_ID": 46907
+      },
+      "Plot_ID": 51,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46889,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          211.88435150346015,
+          85.26488181675484
+        ]
+      ],
+      "Label": "17",
+      "Attributes": {
+        "Config": "3BF",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          216.10732436391459,
+          89.6178942637125
+        ],
+        "Trench_End_At": [
+          215.5206221114101,
+          88.88805841914892
+        ]
+      },
+      "Plot_ID": 52,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46890,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          214.76962082998244,
+          89.7221065311906
+        ]
+      ],
+      "Label": "Electric Meter 17",
+      "Attributes": {
+        "Circuit_ID": 2,
+        "Circuit_Name": "Circuit 2",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "B",
+        "Circuit_Origin_ID": 46907
+      },
+      "Plot_ID": 52,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46891,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          229.008773585731,
+          73.16128624500826
+        ]
+      ],
+      "Label": "18",
+      "Attributes": {
+        "Config": "3BF",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          235.06825064341973,
+          67.84290551471128
+        ],
+        "Trench_End_At": [
+          233.23397024340971,
+          69.11311918231273
+        ]
+      },
+      "Plot_ID": 53,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46892,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          234.15984692222074,
+          70.44300353329533
+        ]
+      ],
+      "Label": "Electric Meter 18",
+      "Attributes": {
+        "Circuit_ID": 2,
+        "Circuit_Name": "Circuit 2",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "B",
+        "Circuit_Origin_ID": 46907
+      },
+      "Plot_ID": 53,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46893,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          224.02830149722294,
+          67.79213704593731
+        ]
+      ],
+      "Label": "19",
+      "Attributes": {
+        "Config": "3BF",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          229.10767265835952,
+          63.213861705199875
+        ],
+        "Trench_End_At": [
+          227.2321877883958,
+          65.05423898060907
+        ]
+      },
+      "Plot_ID": 54,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46894,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          228.9613012891147,
+          66.57961508353162
+        ]
+      ],
+      "Label": "Electric Meter 19",
+      "Attributes": {
+        "Circuit_ID": 2,
+        "Circuit_Name": "Circuit 2",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "B",
+        "Circuit_Origin_ID": 46907
+      },
+      "Plot_ID": 54,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46895,
+      "Project_ID": 6,
+      "Layer_Key": "plot",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          217.82954146301654,
+          61.92765916875148
+        ]
+      ],
+      "Label": "20",
+      "Attributes": {
+        "Config": "3BF",
+        "Bedrooms": 3,
+        "Boundary_At": [
+          223.6130834786397,
+          57.01575997823172
+        ],
+        "Trench_End_At": [
+          222.80539612892403,
+          60.4176118889502
+        ]
+      },
+      "Plot_ID": 55,
+      "Feature_Role": "plot"
+    },
+    {
+      "Feature_ID": 46896,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          223.06204323250603,
+          60.56414957349201
+        ]
+      ],
+      "Label": "Electric Meter 20",
+      "Attributes": {
+        "Circuit_ID": 2,
+        "Circuit_Name": "Circuit 2",
+        "Meter_Utility": "Electric",
+        "Circuit_Letter": "B",
+        "Circuit_Origin_ID": 46907
+      },
+      "Plot_ID": 55,
+      "Feature_Role": "meter"
+    },
+    {
+      "Feature_ID": 46899,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          144.43280154126913,
+          55.1590431666863
+        ],
+        [
+          145.80442685282011,
+          54.0161197511656
+        ],
+        [
+          149.33758056841032,
+          52.258469683915536
+        ],
+        [
+          161.080982198047,
+          48.22468797663161
+        ],
+        [
+          162.14626048358434,
+          50.681480777691
+        ]
+      ],
+      "Label": "Mains Trench",
+      "Attributes": {
+        "Site": "On-site",
+        "Size": null,
+        "Connects": [
+          46911,
+          46926,
+          46927,
+          46946,
+          46953,
+          46977,
+          46978,
+          46979,
+          46982,
+          46983
+        ],
+        "Length_m": 20.31,
+        "Line_Type": "trench_main",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade"
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46900,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          245.51129862926697,
+          59.88467934317827
+        ]
+      ],
+      "Label": "Electric POC",
+      "Attributes": {
+        "Output": null
+      },
+      "Plot_ID": null,
+      "Feature_Role": "poc"
+    },
+    {
+      "Feature_ID": 46902,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          250.572401110109,
+          63.33812137786157
+        ],
+        [
+          245.51129862926697,
+          59.88467934317827
+        ],
+        [
+          241.81259750505288,
+          64.22622997182052
+        ]
+      ],
+      "Label": "Mains Trench",
+      "Attributes": {
+        "Site": "Off-site",
+        "Size": null,
+        "Connects": [
+          46903,
+          47046
+        ],
+        "Length_m": 5.7,
+        "Line_Type": "trench_main",
+        "Build_Status": "planned",
+        "Surface_Type": null
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46903,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          241.81259750505288,
+          64.22622997182052
+        ],
+        [
+          238.7995948497677,
+          67.76290491062993
+        ]
+      ],
+      "Label": "Mains Trench",
+      "Attributes": {
+        "Site": "On-site",
+        "Size": null,
+        "Connects": [
+          46902,
+          46929,
+          46930,
+          46948,
+          46991
+        ],
+        "Length_m": 4.65,
+        "Line_Type": "trench_main",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade"
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46907,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          218.46109980513444,
+          77.33584156218375
+        ]
+      ],
+      "Label": "Substation 1",
+      "Attributes": {
+        "Way_Fuse_A": "200",
+        "Way_Circuits": {
+          "1": 2
+        },
+        "VD_Transformer_Size_ID": 2
+      },
+      "Plot_ID": null,
+      "Feature_Role": "substation"
+    },
+    {
+      "Feature_ID": 46908,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          218.46109980513444,
+          77.33584156218375
+        ],
+        [
+          223.9804114881292,
+          83.64211398377176
+        ]
+      ],
+      "Label": "Mains Trench",
+      "Attributes": {
+        "Site": "On-site",
+        "Size": null,
+        "Connects": [
+          46907,
+          46928,
+          46929,
+          46945,
+          46947,
+          46989,
+          46990,
+          46991,
+          46992,
+          46993
+        ],
+        "Length_m": 8.38,
+        "Line_Type": "trench_main",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade"
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46909,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          175.989498749044,
+          80.132377426202
+        ],
+        [
+          180.8796044200816,
+          82.68549328177983
+        ],
+        [
+          182.33441518094486,
+          83.50961577442921
+        ]
+      ],
+      "Label": "Mains Trench",
+      "Attributes": {
+        "Site": "On-site",
+        "Size": null,
+        "Connects": [
+          46927,
+          46928,
+          46951,
+          46952,
+          46978,
+          46990
+        ],
+        "Length_m": 6.93,
+        "Line_Type": "trench_main",
+        "Carries_HV": true,
+        "Carries_LV": false,
+        "Carries_Gas": true,
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Carries_Water": true
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46911,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          162.14626048358434,
+          50.681480777691
+        ]
+      ],
+      "Label": "Substation 2",
+      "Attributes": {
+        "Connects": [
+          46899
+        ],
+        "Output_V": "400",
+        "Way_Fuse_A": "200",
+        "Way_Circuits": {
+          "1": 1
+        },
+        "Circuit_Colours": {
+          "1": "#23dee1"
+        },
+        "VD_Transformer_Size_ID": 2
+      },
+      "Plot_ID": null,
+      "Feature_Role": "substation"
+    },
+    {
+      "Feature_ID": 46924,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          109.44009078967277,
+          60.1166530661315
+        ],
+        [
+          110.21858559030704,
+          59.852039429509105
+        ],
+        [
+          116.93876990786165,
+          57.567820691513546
+        ],
+        [
+          124.55420688391077,
+          54.97930183299427
+        ],
+        [
+          135.01722802869057,
+          51.42287721343166
+        ],
+        [
+          142.320773297282,
+          48.940371649895866
+        ]
+      ],
+      "Label": "Mains Trench",
+      "Attributes": {
+        "Site": "On-site",
+        "Size": null,
+        "Connects": [
+          46925,
+          46926,
+          46954,
+          46956,
+          46977,
+          46980,
+          46981,
+          46984
+        ],
+        "Length_m": 34.73,
+        "Line_Type": "trench_main",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade"
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46925,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          142.320773297282,
+          48.940371649895866
+        ],
+        [
+          146.2109064421439,
+          47.618099134307386
+        ],
+        [
+          153.5203018279055,
+          45.13360509149361
+        ],
+        [
+          155.758889398673,
+          44.37269981953051
+        ]
+      ],
+      "Label": "Mains Trench",
+      "Attributes": {
+        "Site": "On-site",
+        "Size": null,
+        "Connects": [
+          46924,
+          46926,
+          46954,
+          46955,
+          46977,
+          46980,
+          46981,
+          46984,
+          46988
+        ],
+        "Length_m": 14.19,
+        "Line_Type": "trench_main",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade"
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46926,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          142.320773297282,
+          48.940371649895866
+        ],
+        [
+          144.43280154126913,
+          55.1590431666863
+        ],
+        [
+          144.43280154126913,
+          55.1590431666863
+        ]
+      ],
+      "Label": "Mains Trench",
+      "Attributes": {
+        "Site": "On-site",
+        "Size": null,
+        "Connects": [
+          46899,
+          46924,
+          46925,
+          46927,
+          46953,
+          46954,
+          46977,
+          46978,
+          46979,
+          46980,
+          46981,
+          46983,
+          46984
+        ],
+        "Length_m": 6.57,
+        "Line_Type": "trench_main",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade"
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46927,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          144.43280154126913,
+          55.1590431666863
+        ],
+        [
+          144.6664595847534,
+          55.84702763082467
+        ],
+        [
+          145.93979497390754,
+          59.2032844617599
+        ],
+        [
+          146.22504315749939,
+          59.955141492394965
+        ],
+        [
+          147.66171184957332,
+          62.4749770089017
+        ],
+        [
+          150.01612704301428,
+          65.88728953017464
+        ],
+        [
+          153.2781267222278,
+          68.51523292058506
+        ],
+        [
+          154.9079336479783,
+          69.44096790896548
+        ],
+        [
+          159.4916167923277,
+          72.04451302546435
+        ],
+        [
+          159.7487321534022,
+          72.1705603678549
+        ],
+        [
+          170.30230752394377,
+          77.34430853527688
+        ],
+        [
+          175.05181486976713,
+          79.67269053510617
+        ],
+        [
+          175.989498749044,
+          80.132377426202
+        ]
+      ],
+      "Label": "Mains Trench",
+      "Attributes": {
+        "Site": "On-site",
+        "Size": null,
+        "Connects": [
+          46899,
+          46909,
+          46926,
+          46952,
+          46953,
+          46977,
+          46978,
+          46979,
+          46983
+        ],
+        "Length_m": 41.88,
+        "Line_Type": "trench_main",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade"
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46928,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          182.33441518094486,
+          83.50961577442921
+        ],
+        [
+          185.97906297981106,
+          85.33347042194939
+        ],
+        [
+          190.46538397586153,
+          87.57851516988346
+        ],
+        [
+          197.38668788702807,
+          91.04207406553523
+        ],
+        [
+          201.0457856713932,
+          92.87315977478298
+        ],
+        [
+          205.46468995291693,
+          95.08446785050734
+        ],
+        [
+          206.97824676195825,
+          95.84188194723147
+        ],
+        [
+          209.28942027116085,
+          96.87685795870632
+        ],
+        [
+          213.1164558585662,
+          93.7547416844947
+        ],
+        [
+          216.78200155774277,
+          90.34269728375283
+        ],
+        [
+          221.0779512731048,
+          86.34384625988957
+        ],
+        [
+          223.9804114881292,
+          83.64211398377176
+        ]
+      ],
+      "Label": "Mains Trench",
+      "Attributes": {
+        "Site": "On-site",
+        "Size": null,
+        "Connects": [
+          46908,
+          46909,
+          46929,
+          46947,
+          46951,
+          46989,
+          46990,
+          46991,
+          46993
+        ],
+        "Length_m": 49.87,
+        "Line_Type": "trench_main",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade"
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46929,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          223.9804114881292,
+          83.64211398377176
+        ],
+        [
+          232.08594238775663,
+          76.09714426007494
+        ],
+        [
+          234.803501274738,
+          73.57313989939138
+        ],
+        [
+          237.67526469703242,
+          69.85821747920778
+        ],
+        [
+          238.48829795028232,
+          68.80647504199831
+        ],
+        [
+          238.7995948497677,
+          67.76290491062993
+        ]
+      ],
+      "Label": "Mains Trench",
+      "Attributes": {
+        "Site": "On-site",
+        "Size": null,
+        "Connects": [
+          46903,
+          46908,
+          46928,
+          46930,
+          46947,
+          46948,
+          46989,
+          46990,
+          46991,
+          46993
+        ],
+        "Length_m": 21.9,
+        "Line_Type": "trench_main",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade"
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46930,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          238.7995948497677,
+          67.76290491062993
+        ],
+        [
+          239.11089174925303,
+          66.71933477926154
+        ],
+        [
+          238.7891727393256,
+          65.15319746601236
+        ],
+        [
+          237.99594939372196,
+          63.53235414703851
+        ],
+        [
+          233.9684222506479,
+          58.945675230131066
+        ],
+        [
+          233.12117116746364,
+          57.98079813743388
+        ],
+        [
+          228.11693858782021,
+          52.72636506724855
+        ],
+        [
+          227.52532943092257,
+          52.10517676931197
+        ]
+      ],
+      "Label": "Mains Trench",
+      "Attributes": {
+        "Site": "On-site",
+        "Size": null,
+        "Connects": [
+          46903,
+          46929,
+          46948,
+          46950,
+          46991,
+          46996
+        ],
+        "Length_m": 19.99,
+        "Line_Type": "trench_main",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade"
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46945,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          218.46109980513444,
+          77.33584156218375
+        ]
+      ],
+      "Label": "Point E0",
+      "Attributes": {
+        "Connects": [
+          46907,
+          46908,
+          46989,
+          46992
+        ],
+        "Span_Seq": 0,
+        "Span_Kind": "origin",
+        "Span_Label": "E0",
+        "Span_Anchor": [
+          218.46109980513444,
+          77.33584156218375
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 46946,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          162.14626048358434,
+          50.681480777691
+        ]
+      ],
+      "Label": "Point E0b",
+      "Attributes": {
+        "Connects": [
+          46899,
+          46911,
+          46979,
+          46982
+        ],
+        "Span_Seq": 0,
+        "Span_Kind": "origin",
+        "Span_Label": "E0b",
+        "Span_Anchor": [
+          162.14626048358434,
+          50.681480777691
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 46947,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          223.9804114881292,
+          83.64211398377176
+        ]
+      ],
+      "Label": "Point 1",
+      "Attributes": {
+        "Connects": [
+          46908,
+          46928,
+          46929,
+          46989,
+          46990,
+          46991,
+          46993
+        ],
+        "Span_Seq": 1,
+        "Span_Kind": "junction",
+        "Span_Label": "1",
+        "Span_Anchor": [
+          223.9804114881292,
+          83.64211398377176
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 46948,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          238.7995948497677,
+          67.76290491062993
+        ]
+      ],
+      "Label": "Point 2",
+      "Attributes": {
+        "Connects": [
+          46903,
+          46929,
+          46930,
+          46991
+        ],
+        "Span_Seq": 2,
+        "Span_Kind": "junction",
+        "Span_Label": "2",
+        "Span_Anchor": [
+          238.7995948497677,
+          67.76290491062993
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 46949,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          252.17678343432777,
+          64.58844715300805
+        ]
+      ],
+      "Label": "Point 3",
+      "Attributes": {
+        "Connects": [],
+        "Span_Seq": 3,
+        "Span_Kind": "end",
+        "Span_Label": "3",
+        "Span_Anchor": [
+          250.572401110109,
+          63.33812137786157
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 46950,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          227.52532943092257,
+          52.10517676931197
+        ]
+      ],
+      "Label": "Point 4",
+      "Attributes": {
+        "Connects": [
+          46930,
+          46991,
+          46996
+        ],
+        "Span_Seq": 4,
+        "Span_Kind": "end",
+        "Span_Label": "4",
+        "Span_Anchor": [
+          227.52532943092257,
+          52.10517676931197
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 46951,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          182.33441518094486,
+          83.50961577442921
+        ]
+      ],
+      "Label": "Point 5",
+      "Attributes": {
+        "Connects": [
+          46909,
+          46928,
+          46990
+        ],
+        "Span_Seq": 5,
+        "Span_Kind": "junction",
+        "Span_Label": "5",
+        "Span_Anchor": [
+          182.33441518094486,
+          83.50961577442921
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 46952,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          175.989498749044,
+          80.132377426202
+        ]
+      ],
+      "Label": "Point 6",
+      "Attributes": {
+        "Connects": [
+          46909,
+          46927,
+          46978
+        ],
+        "Span_Seq": 6,
+        "Span_Kind": "junction",
+        "Span_Label": "6",
+        "Span_Anchor": [
+          175.989498749044,
+          80.132377426202
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 46953,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          144.43280154126913,
+          55.1590431666863
+        ]
+      ],
+      "Label": "Point 7",
+      "Attributes": {
+        "Connects": [
+          46899,
+          46926,
+          46927,
+          46977,
+          46978,
+          46979,
+          46983
+        ],
+        "Span_Seq": 7,
+        "Span_Kind": "junction",
+        "Span_Label": "7",
+        "Span_Anchor": [
+          144.43280154126913,
+          55.1590431666863
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 46954,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          142.320773297282,
+          48.940371649895866
+        ]
+      ],
+      "Label": "Point 8",
+      "Attributes": {
+        "Connects": [
+          46924,
+          46925,
+          46926,
+          46977,
+          46980,
+          46981,
+          46984
+        ],
+        "Span_Seq": 8,
+        "Span_Kind": "junction",
+        "Span_Label": "8",
+        "Span_Anchor": [
+          142.320773297282,
+          48.940371649895866
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 46955,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          155.758889398673,
+          44.37269981953051
+        ]
+      ],
+      "Label": "Point 9",
+      "Attributes": {
+        "Connects": [
+          46925,
+          46981,
+          46988
+        ],
+        "Span_Seq": 9,
+        "Span_Kind": "end",
+        "Span_Label": "9",
+        "Span_Anchor": [
+          155.758889398673,
+          44.37269981953051
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 46956,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          109.29707778918448,
+          61.34636192843619
+        ]
+      ],
+      "Label": "Point 10",
+      "Attributes": {
+        "Connects": [
+          46924,
+          46980
+        ],
+        "Span_Seq": 10,
+        "Span_Kind": "end",
+        "Span_Label": "10",
+        "Span_Anchor": [
+          109.44009078967277,
+          60.1166530661315
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 46957,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          110.21858559030704,
+          59.852039429509105
+        ],
+        [
+          112.32134722350612,
+          66.03837592869226
+        ],
+        [
+          113.3594169269319,
+          68.61336741165648
+        ]
+      ],
+      "Label": "Service trench 1",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46924,
+          46980,
+          46986
+        ],
+        "Length_m": 9.31,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46855
+      },
+      "Plot_ID": 56,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46958,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          145.93979497390754,
+          59.2032844617599
+        ],
+        [
+          138.89785051728765,
+          61.874938490862725
+        ],
+        [
+          136.86681547258573,
+          62.96371699214726
+        ]
+      ],
+      "Label": "Service trench 2",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46927,
+          46978
+        ],
+        "Length_m": 9.84,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46859
+      },
+      "Plot_ID": 57,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46959,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          116.93876990786165,
+          57.567820691513546
+        ],
+        [
+          116.78679891483887,
+          57.120721179086324
+        ],
+        [
+          115.88993240304704,
+          54.813502411589056
+        ]
+      ],
+      "Label": "Service trench 3",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46924,
+          46980
+        ],
+        "Length_m": 2.95,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46861
+      },
+      "Plot_ID": 58,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46960,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          124.55420688391077,
+          54.97930183299427
+        ],
+        [
+          122.78394923925475,
+          49.771193929944744
+        ],
+        [
+          121.11134478421985,
+          45.32215314169811
+        ]
+      ],
+      "Label": "Service trench 4",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46924,
+          46980
+        ],
+        "Length_m": 10.25,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46863
+      },
+      "Plot_ID": 59,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46961,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          135.01722802869057,
+          51.42287721343166
+        ],
+        [
+          134.8528578811694,
+          50.93929931904178
+        ],
+        [
+          132.59350828336258,
+          44.349556783396956
+        ]
+      ],
+      "Label": "Service trench 5",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46924,
+          46980
+        ],
+        "Length_m": 7.48,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46865
+      },
+      "Plot_ID": 60,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46962,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          146.2109064421439,
+          47.618099134307386
+        ],
+        [
+          146.02377815786582,
+          47.06756667414551
+        ],
+        [
+          143.41722914525818,
+          40.36119246410911
+        ]
+      ],
+      "Label": "Service trench 6",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46925,
+          46981
+        ],
+        "Length_m": 7.78,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46867
+      },
+      "Plot_ID": 61,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46963,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          153.5203018279055,
+          45.13360509149361
+        ],
+        [
+          153.31710273468653,
+          44.53579222143989
+        ],
+        [
+          152.2887321284615,
+          42.071091701213504
+        ]
+      ],
+      "Label": "Service trench 7",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46925,
+          46981,
+          46985
+        ],
+        "Length_m": 3.3,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46869
+      },
+      "Plot_ID": 62,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46964,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          154.9079336479783,
+          69.44096790896548
+        ],
+        [
+          155.1745270213747,
+          68.97161573823162
+        ],
+        [
+          155.98255176724416,
+          67.47119358185061
+        ]
+      ],
+      "Label": "Service trench 8",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46927,
+          46978
+        ],
+        "Length_m": 2.24,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46871
+      },
+      "Plot_ID": 63,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46965,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          159.7487321534022,
+          72.1705603678549
+        ],
+        [
+          160.11883076441347,
+          71.41562149965972
+        ],
+        [
+          161.20740518685625,
+          69.83304278309436
+        ]
+      ],
+      "Label": "Service trench 9",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46927
+        ],
+        "Length_m": 2.76,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46873
+      },
+      "Plot_ID": 64,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46966,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          170.30230752394377,
+          77.34430853527688
+        ],
+        [
+          170.57388496778705,
+          76.79033626415121
+        ],
+        [
+          171.53887598074604,
+          75.24293478538213
+        ]
+      ],
+      "Label": "Service trench 10",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46927,
+          46978
+        ],
+        "Length_m": 2.44,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46875
+      },
+      "Plot_ID": 65,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46967,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          175.05181486976713,
+          79.67269053510617
+        ],
+        [
+          175.40739018771157,
+          78.94737674007837
+        ],
+        [
+          176.2893816905408,
+          77.43961759353996
+        ]
+      ],
+      "Label": "Service trench 11",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46927,
+          46978,
+          46987
+        ],
+        "Length_m": 2.55,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46877
+      },
+      "Plot_ID": 46,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46968,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          185.97906297981106,
+          85.33347042194939
+        ],
+        [
+          186.39746022769378,
+          84.49737824178533
+        ],
+        [
+          187.11886710176543,
+          82.67915276478872
+        ]
+      ],
+      "Label": "Service trench 12",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46928,
+          46990,
+          46995
+        ],
+        "Length_m": 2.89,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46879
+      },
+      "Plot_ID": 47,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46969,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          190.46538397586153,
+          87.57851516988346
+        ],
+        [
+          190.87692551886707,
+          86.75612289158623
+        ],
+        [
+          191.795275316859,
+          85.0449800848267
+        ]
+      ],
+      "Label": "Service trench 13",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46928,
+          46990
+        ],
+        "Length_m": 2.86,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46881
+      },
+      "Plot_ID": 48,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46970,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          197.38668788702807,
+          91.04207406553523
+        ],
+        [
+          197.62303032858964,
+          90.56978590343459
+        ],
+        [
+          198.772220539674,
+          88.75281654293532
+        ]
+      ],
+      "Label": "Service trench 14",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46928,
+          46990
+        ],
+        "Length_m": 2.68,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46883
+      },
+      "Plot_ID": 49,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46971,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          201.0457856713932,
+          92.87315977478298
+        ],
+        [
+          201.4662852254717,
+          92.03286651112833
+        ],
+        [
+          202.47019219533064,
+          90.56117532573822
+        ]
+      ],
+      "Label": "Service trench 15",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46928,
+          46990
+        ],
+        "Length_m": 2.72,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46885
+      },
+      "Plot_ID": 50,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46972,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          205.46468995291693,
+          95.08446785050734
+        ],
+        [
+          205.96745509989722,
+          94.07978149088989
+        ],
+        [
+          206.89297838246432,
+          92.78871128192148
+        ]
+      ],
+      "Label": "Service trench 16",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46928,
+          46990
+        ],
+        "Length_m": 2.71,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46887
+      },
+      "Plot_ID": 51,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46973,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          216.78200155774277,
+          90.34269728375283
+        ],
+        [
+          216.10732436391459,
+          89.6178942637125
+        ],
+        [
+          215.5206221114101,
+          88.88805841914892
+        ]
+      ],
+      "Label": "Service trench 17",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46928,
+          46990
+        ],
+        "Length_m": 1.93,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46889
+      },
+      "Plot_ID": 52,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46974,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          237.67526469703242,
+          69.85821747920778
+        ],
+        [
+          235.06825064341973,
+          67.84290551471128
+        ],
+        [
+          233.23397024340971,
+          69.11311918231273
+        ]
+      ],
+      "Label": "Service trench 18",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46929,
+          46991
+        ],
+        "Length_m": 5.53,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46891
+      },
+      "Plot_ID": 53,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46975,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          233.9684222506479,
+          58.945675230131066
+        ],
+        [
+          229.10767265835952,
+          63.213861705199875
+        ],
+        [
+          227.2321877883958,
+          65.05423898060907
+        ]
+      ],
+      "Label": "Service trench 19",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46930,
+          46991
+        ],
+        "Length_m": 9.1,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46893
+      },
+      "Plot_ID": 54,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46976,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          228.11693858782021,
+          52.72636506724855
+        ],
+        [
+          223.6130834786397,
+          57.01575997823172
+        ],
+        [
+          222.80539612892403,
+          60.4176118889502
+        ]
+      ],
+      "Label": "Service trench 20",
+      "Attributes": {
+        "Site": "On-site",
+        "Connects": [
+          46930,
+          46991,
+          46994
+        ],
+        "Length_m": 9.72,
+        "Line_Type": "trench_service",
+        "Build_Status": "planned",
+        "Surface_Type": "unmade",
+        "Seed_Feature_ID": 46895
+      },
+      "Plot_ID": 55,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46977,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          144.43280154126913,
+          55.1590431666863
+        ],
+        [
+          142.320773297282,
+          48.940371649895866
+        ]
+      ],
+      "Label": "A1",
+      "Attributes": {
+        "KVA": 9,
+        "Cables": 1,
+        "Meters": 6,
+        "Connects": [
+          46899,
+          46924,
+          46925,
+          46926,
+          46927,
+          46953,
+          46954,
+          46978,
+          46979,
+          46980,
+          46981,
+          46983,
+          46984
+        ],
+        "Length_m": 6.57,
+        "Generated": true,
+        "Line_Type": "elec_main",
+        "Circuit_ID": 1,
+        "Build_Status": "planned",
+        "Circuit_Name": "Circuit 1",
+        "Circuit_Letter": "A",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46978,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          144.43280154126913,
+          55.1590431666863
+        ],
+        [
+          144.6664595847534,
+          55.84702763082467
+        ],
+        [
+          145.93979497390754,
+          59.2032844617599
+        ],
+        [
+          146.22504315749939,
+          59.955141492394965
+        ],
+        [
+          147.66171184957332,
+          62.4749770089017
+        ],
+        [
+          150.01612704301428,
+          65.88728953017464
+        ],
+        [
+          153.2781267222278,
+          68.51523292058506
+        ],
+        [
+          154.9079336479783,
+          69.44096790896548
+        ],
+        [
+          159.4916167923277,
+          72.04451302546435
+        ],
+        [
+          159.7487321534022,
+          72.1705603678549
+        ],
+        [
+          170.30230752394377,
+          77.34430853527688
+        ],
+        [
+          175.05181486976713,
+          79.67269053510617
+        ],
+        [
+          175.989498749044,
+          80.132377426202
+        ]
+      ],
+      "Label": "A2",
+      "Attributes": {
+        "KVA": 7.5,
+        "Cables": 1,
+        "Meters": 5,
+        "Tail_M": 1,
+        "Connects": [
+          46899,
+          46909,
+          46926,
+          46927,
+          46952,
+          46953,
+          46977,
+          46979,
+          46983
+        ],
+        "Length_m": 41.88,
+        "Generated": true,
+        "Line_Type": "elec_main",
+        "Circuit_ID": 1,
+        "Build_Status": "planned",
+        "Circuit_Name": "Circuit 1",
+        "Circuit_Letter": "A",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46979,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          162.14626048358434,
+          50.681480777691
+        ],
+        [
+          161.080982198047,
+          48.22468797663161
+        ],
+        [
+          149.33758056841032,
+          52.258469683915536
+        ],
+        [
+          145.80442685282011,
+          54.0161197511656
+        ],
+        [
+          144.43280154126913,
+          55.1590431666863
+        ]
+      ],
+      "Label": "A3",
+      "Attributes": {
+        "KVA": 16.5,
+        "Cables": 1,
+        "Meters": 11,
+        "Connects": [
+          46899,
+          46911,
+          46926,
+          46927,
+          46946,
+          46953,
+          46977,
+          46978,
+          46982,
+          46983
+        ],
+        "Length_m": 20.83,
+        "Generated": true,
+        "Line_Type": "elec_main",
+        "Circuit_ID": 1,
+        "Build_Status": "planned",
+        "Circuit_Name": "Circuit 1",
+        "Circuit_Letter": "A",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46980,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          142.320773297282,
+          48.940371649895866
+        ],
+        [
+          135.01722802869057,
+          51.42287721343166
+        ],
+        [
+          124.55420688391077,
+          54.97930183299427
+        ],
+        [
+          116.93876990786165,
+          57.567820691513546
+        ],
+        [
+          110.21858559030704,
+          59.852039429509105
+        ],
+        [
+          109.44009078967277,
+          60.1166530661315
+        ]
+      ],
+      "Label": "A4",
+      "Attributes": {
+        "KVA": 6,
+        "Cables": 1,
+        "Meters": 4,
+        "Tail_M": 0.8,
+        "Connects": [
+          46924,
+          46925,
+          46926,
+          46954,
+          46956,
+          46977,
+          46981,
+          46984
+        ],
+        "Length_m": 34.73,
+        "Generated": true,
+        "Line_Type": "elec_main",
+        "Circuit_ID": 1,
+        "Build_Status": "planned",
+        "Circuit_Name": "Circuit 1",
+        "Circuit_Letter": "A",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46981,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          142.320773297282,
+          48.940371649895866
+        ],
+        [
+          146.2109064421439,
+          47.618099134307386
+        ],
+        [
+          153.5203018279055,
+          45.13360509149361
+        ],
+        [
+          155.758889398673,
+          44.37269981953051
+        ]
+      ],
+      "Label": "A5",
+      "Attributes": {
+        "KVA": 3,
+        "Cables": 1,
+        "Meters": 2,
+        "Tail_M": 2.4,
+        "Connects": [
+          46924,
+          46925,
+          46926,
+          46954,
+          46955,
+          46977,
+          46980,
+          46984,
+          46988
+        ],
+        "Length_m": 14.19,
+        "Generated": true,
+        "Line_Type": "elec_main",
+        "Circuit_ID": 1,
+        "Build_Status": "planned",
+        "Circuit_Name": "Circuit 1",
+        "Circuit_Letter": "A",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46982,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          162.14626048358434,
+          50.681480777691
+        ]
+      ],
+      "Label": "Point A0",
+      "Attributes": {
+        "Connects": [
+          46899,
+          46911,
+          46946,
+          46979
+        ],
+        "Span_Seq": 0,
+        "Generated": true,
+        "Span_Kind": "origin",
+        "Circuit_ID": 1,
+        "Span_Label": "A0",
+        "Span_Anchor": [
+          162.14626048358434,
+          50.681480777691
+        ],
+        "Circuit_Name": "Circuit 1",
+        "Circuit_Letter": "A"
+      },
+      "Plot_ID": null,
+      "Feature_Role": "feederpoint"
+    },
+    {
+      "Feature_ID": 46983,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          144.43280154126913,
+          55.1590431666863
+        ]
+      ],
+      "Label": "Point A1",
+      "Attributes": {
+        "Connects": [
+          46899,
+          46926,
+          46927,
+          46953,
+          46977,
+          46978,
+          46979
+        ],
+        "Span_Seq": 1,
+        "Generated": true,
+        "Span_Kind": "junction",
+        "Circuit_ID": 1,
+        "Span_Label": "A1",
+        "Span_Anchor": [
+          144.43280154126913,
+          55.1590431666863
+        ],
+        "Circuit_Name": "Circuit 1",
+        "Circuit_Letter": "A",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "feederpoint"
+    },
+    {
+      "Feature_ID": 46984,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          142.320773297282,
+          48.940371649895866
+        ]
+      ],
+      "Label": "Point A2",
+      "Attributes": {
+        "Connects": [
+          46924,
+          46925,
+          46926,
+          46954,
+          46977,
+          46980,
+          46981
+        ],
+        "Span_Seq": 2,
+        "Generated": true,
+        "Span_Kind": "junction",
+        "Circuit_ID": 1,
+        "Span_Label": "A2",
+        "Span_Anchor": [
+          142.320773297282,
+          48.940371649895866
+        ],
+        "Circuit_Name": "Circuit 1",
+        "Levels_Offset": [
+          1.1130479887669427,
+          0.3969440950993569
+        ],
+        "Circuit_Letter": "A",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "feederpoint"
+    },
+    {
+      "Feature_ID": 46985,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          153.5203018279055,
+          45.13360509149361
+        ]
+      ],
+      "Label": "Point A3",
+      "Attributes": {
+        "Connects": [
+          46925,
+          46963,
+          46981
+        ],
+        "Span_Seq": 3,
+        "Generated": true,
+        "Span_Kind": "end",
+        "Circuit_ID": 1,
+        "Span_Label": "A3",
+        "Span_Anchor": [
+          153.5203018279055,
+          45.13360509149361
+        ],
+        "Circuit_Name": "Circuit 1",
+        "Levels_Offset": [
+          0.6578698318995786,
+          0.9480337078651685
+        ],
+        "Circuit_Letter": "A",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "feederpoint"
+    },
+    {
+      "Feature_ID": 46986,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          111.36257362741642,
+          60.39077615436262
+        ]
+      ],
+      "Label": "Point A4",
+      "Attributes": {
+        "Connects": [
+          46924,
+          46957,
+          46980
+        ],
+        "Span_Seq": 4,
+        "Generated": true,
+        "Span_Kind": "end",
+        "Circuit_ID": 1,
+        "Span_Label": "A4",
+        "Span_Anchor": [
+          110.21858559030704,
+          59.852039429509105
+        ],
+        "Circuit_Name": "Circuit 1",
+        "Levels_Offset": [
+          0.6230468749999998,
+          0.3911674499511719
+        ],
+        "Circuit_Letter": "A",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "feederpoint"
+    },
+    {
+      "Feature_ID": 46987,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          174.52360289466947,
+          80.86474757245969
+        ]
+      ],
+      "Label": "Point A5",
+      "Attributes": {
+        "Connects": [
+          46927,
+          46967,
+          46978
+        ],
+        "Span_Seq": 5,
+        "Generated": true,
+        "Span_Kind": "end",
+        "Circuit_ID": 1,
+        "Span_Label": "A5",
+        "Span_Anchor": [
+          175.05181486976713,
+          79.67269053510617
+        ],
+        "Circuit_Name": "Circuit 1",
+        "Levels_Offset": [
+          -1.7746322631835938,
+          1.130426025390625
+        ],
+        "Circuit_Letter": "A",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "feederpoint"
+    },
+    {
+      "Feature_ID": 46989,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          218.46109980513444,
+          77.33584156218375
+        ],
+        [
+          223.9804114881292,
+          83.64211398377176
+        ]
+      ],
+      "Label": "B1",
+      "Attributes": {
+        "KVA": 13.5,
+        "Cables": 1,
+        "Meters": 9,
+        "Connects": [
+          46907,
+          46908,
+          46928,
+          46929,
+          46945,
+          46947,
+          46990,
+          46991,
+          46992,
+          46993
+        ],
+        "Length_m": 8.38,
+        "Generated": true,
+        "Line_Type": "elec_main",
+        "Circuit_ID": 2,
+        "Build_Status": "planned",
+        "Circuit_Name": "Circuit 2",
+        "Circuit_Letter": "B",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46990,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          223.9804114881292,
+          83.64211398377176
+        ],
+        [
+          221.0779512731048,
+          86.34384625988957
+        ],
+        [
+          216.78200155774277,
+          90.34269728375283
+        ],
+        [
+          213.1164558585662,
+          93.7547416844947
+        ],
+        [
+          209.28942027116085,
+          96.87685795870632
+        ],
+        [
+          206.97824676195825,
+          95.84188194723147
+        ],
+        [
+          205.46468995291693,
+          95.08446785050734
+        ],
+        [
+          201.0457856713932,
+          92.87315977478298
+        ],
+        [
+          197.38668788702807,
+          91.04207406553523
+        ],
+        [
+          190.46538397586153,
+          87.57851516988346
+        ],
+        [
+          185.97906297981106,
+          85.33347042194939
+        ],
+        [
+          182.33441518094486,
+          83.50961577442921
+        ]
+      ],
+      "Label": "B2",
+      "Attributes": {
+        "KVA": 9,
+        "Cables": 1,
+        "Meters": 6,
+        "Tail_M": 4.1,
+        "Connects": [
+          46908,
+          46909,
+          46928,
+          46929,
+          46947,
+          46951,
+          46989,
+          46991,
+          46993
+        ],
+        "Length_m": 49.87,
+        "Generated": true,
+        "Line_Type": "elec_main",
+        "Circuit_ID": 2,
+        "Build_Status": "planned",
+        "Circuit_Name": "Circuit 2",
+        "Circuit_Letter": "B",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46991,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          223.9804114881292,
+          83.64211398377176
+        ],
+        [
+          232.08594238775663,
+          76.09714426007494
+        ],
+        [
+          234.803501274738,
+          73.57313989939138
+        ],
+        [
+          237.67526469703242,
+          69.85821747920778
+        ],
+        [
+          238.48829795028232,
+          68.80647504199831
+        ],
+        [
+          238.7995948497677,
+          67.76290491062993
+        ],
+        [
+          239.11089174925303,
+          66.71933477926154
+        ],
+        [
+          238.7891727393256,
+          65.15319746601236
+        ],
+        [
+          237.99594939372196,
+          63.53235414703851
+        ],
+        [
+          233.9684222506479,
+          58.945675230131066
+        ],
+        [
+          233.12117116746364,
+          57.98079813743388
+        ],
+        [
+          228.11693858782021,
+          52.72636506724855
+        ],
+        [
+          227.52532943092257,
+          52.10517676931197
+        ]
+      ],
+      "Label": "B3",
+      "Attributes": {
+        "KVA": 4.5,
+        "Cables": 1,
+        "Meters": 3,
+        "Tail_M": 0.9,
+        "Connects": [
+          46908,
+          46928,
+          46929,
+          46930,
+          46947,
+          46950,
+          46989,
+          46990,
+          46993,
+          46996
+        ],
+        "Length_m": 41.89,
+        "Generated": true,
+        "Line_Type": "elec_main",
+        "Circuit_ID": 2,
+        "Build_Status": "planned",
+        "Circuit_Name": "Circuit 2",
+        "Circuit_Letter": "B",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 46992,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          218.46109980513444,
+          77.33584156218375
+        ]
+      ],
+      "Label": "Point B0",
+      "Attributes": {
+        "Connects": [
+          46907,
+          46908,
+          46945,
+          46989
+        ],
+        "Span_Seq": 0,
+        "Generated": true,
+        "Span_Kind": "origin",
+        "Circuit_ID": 2,
+        "Span_Label": "B0",
+        "Span_Anchor": [
+          218.46109980513444,
+          77.33584156218375
+        ],
+        "Circuit_Name": "Circuit 2",
+        "Circuit_Letter": "B"
+      },
+      "Plot_ID": null,
+      "Feature_Role": "feederpoint"
+    },
+    {
+      "Feature_ID": 46993,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          223.9804114881292,
+          83.64211398377176
+        ]
+      ],
+      "Label": "Point B1",
+      "Attributes": {
+        "Connects": [
+          46908,
+          46928,
+          46929,
+          46947,
+          46989,
+          46990,
+          46991
+        ],
+        "Span_Seq": 1,
+        "Generated": true,
+        "Span_Kind": "junction",
+        "Circuit_ID": 2,
+        "Span_Label": "B1",
+        "Span_Anchor": [
+          223.9804114881292,
+          83.64211398377176
+        ],
+        "Circuit_Name": "Circuit 2",
+        "Circuit_Letter": "B",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "feederpoint"
+    },
+    {
+      "Feature_ID": 46994,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          228.11693858782021,
+          52.72636506724855
+        ]
+      ],
+      "Label": "Point B2",
+      "Attributes": {
+        "Connects": [
+          46930,
+          46976,
+          46991
+        ],
+        "Span_Seq": 2,
+        "Generated": true,
+        "Span_Kind": "end",
+        "Circuit_ID": 2,
+        "Span_Label": "B2",
+        "Span_Anchor": [
+          228.11693858782021,
+          52.72636506724855
+        ],
+        "Circuit_Name": "Circuit 2",
+        "Circuit_Letter": "B",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "feederpoint"
+    },
+    {
+      "Feature_ID": 46995,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          185.4869838172134,
+          86.78062770954705
+        ]
+      ],
+      "Label": "Point B3",
+      "Attributes": {
+        "Connects": [
+          46928,
+          46968,
+          46990
+        ],
+        "Span_Seq": 3,
+        "Generated": true,
+        "Span_Kind": "end",
+        "Circuit_ID": 2,
+        "Span_Label": "B3",
+        "Span_Anchor": [
+          185.97906297981106,
+          85.33347042194939
+        ],
+        "Circuit_Name": "Circuit 2",
+        "Levels_Offset": [
+          -1.8506942749023438,
+          1.05859375
+        ],
+        "Circuit_Letter": "B",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "feederpoint"
+    },
+    {
+      "Feature_ID": 46997,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          144.43280154126913,
+          55.1590431666863
+        ]
+      ],
+      "Label": "Breech Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "BRE",
+        "Joint_Type": "breech",
+        "Joint_Cables": [
+          46977,
+          46978,
+          46979
+        ],
+        "Joint_Reasons": [
+          "breech"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 46998,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          110.21858559030704,
+          59.852039429509105
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 1,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46980,
+          47025
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 46999,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          109.44009078967277,
+          60.1166530661315
+        ]
+      ],
+      "Label": "Bottle End",
+      "Attributes": {
+        "Ways_In": 1,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "BTL",
+        "Joint_Type": "bottleend",
+        "Joint_Cables": [
+          46980
+        ],
+        "Joint_Reasons": [
+          "bottleend"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47000,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          116.93876990786165,
+          57.567820691513546
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46980,
+          47027
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47001,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          124.55420688391077,
+          54.97930183299427
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46980,
+          47028
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47002,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          135.01722802869057,
+          51.42287721343166
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46980,
+          47029
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47003,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          142.320773297282,
+          48.940371649895866
+        ]
+      ],
+      "Label": "Breech Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "BRE",
+        "Joint_Type": "breech",
+        "Joint_Cables": [
+          46977,
+          46980,
+          46981
+        ],
+        "Joint_Reasons": [
+          "breech"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47004,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          146.2109064421439,
+          47.618099134307386
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46981,
+          47030
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47005,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          153.5203018279055,
+          45.13360509149361
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 1,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46981,
+          47031
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47006,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          155.758889398673,
+          44.37269981953051
+        ]
+      ],
+      "Label": "Bottle End",
+      "Attributes": {
+        "Ways_In": 1,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "BTL",
+        "Joint_Type": "bottleend",
+        "Joint_Cables": [
+          46981
+        ],
+        "Joint_Reasons": [
+          "bottleend"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47007,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          145.93979497390754,
+          59.2032844617599
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46978,
+          47026
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47008,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          154.9079336479783,
+          69.44096790896548
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46978,
+          47032
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47009,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          159.4916167923277,
+          72.04451302546435
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46978,
+          47033
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47010,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          170.30230752394377,
+          77.34430853527688
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46978,
+          47034
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47011,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          175.05181486976713,
+          79.67269053510617
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 1,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46978,
+          47035
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47012,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          175.989498749044,
+          80.132377426202
+        ]
+      ],
+      "Label": "Bottle End",
+      "Attributes": {
+        "Ways_In": 1,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "BTL",
+        "Joint_Type": "bottleend",
+        "Joint_Cables": [
+          46978
+        ],
+        "Joint_Reasons": [
+          "bottleend"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47013,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          223.9804114881292,
+          83.64211398377176
+        ]
+      ],
+      "Label": "Breech Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "BRE",
+        "Joint_Type": "breech",
+        "Joint_Cables": [
+          46989,
+          46990,
+          46991
+        ],
+        "Joint_Reasons": [
+          "breech"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47014,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          185.97906297981106,
+          85.33347042194939
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 1,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46990,
+          47036
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47015,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          182.33441518094486,
+          83.50961577442921
+        ]
+      ],
+      "Label": "Bottle End",
+      "Attributes": {
+        "Ways_In": 1,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "BTL",
+        "Joint_Type": "bottleend",
+        "Joint_Cables": [
+          46990
+        ],
+        "Joint_Reasons": [
+          "bottleend"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47016,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          190.46538397586153,
+          87.57851516988346
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46990,
+          47037
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47017,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          197.38668788702807,
+          91.04207406553523
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46990,
+          47038
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47018,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          201.0457856713932,
+          92.87315977478298
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46990,
+          47039
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47019,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          205.46468995291693,
+          95.08446785050734
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46990,
+          47040
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47020,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          216.78200155774277,
+          90.34269728375283
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46990,
+          47041
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47021,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          237.67526469703242,
+          69.85821747920778
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46991,
+          47042
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47022,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          233.9684222506479,
+          58.945675230131066
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46991,
+          47043
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47023,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          228.11693858782021,
+          52.72636506724855
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 1,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46991,
+          47044
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47024,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          227.52532943092257,
+          52.10517676931197
+        ]
+      ],
+      "Label": "Bottle End",
+      "Attributes": {
+        "Ways_In": 1,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "BTL",
+        "Joint_Type": "bottleend",
+        "Joint_Cables": [
+          46991
+        ],
+        "Joint_Reasons": [
+          "bottleend"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47025,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          110.21858559030704,
+          59.852039429509105
+        ],
+        [
+          112.32134722350612,
+          66.03837592869226
+        ],
+        [
+          113.3594169269319,
+          68.61336741165648
+        ],
+        [
+          115.54236489391948,
+          69.09031580760907
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46856,
+          46924,
+          46957,
+          46980,
+          46986,
+          46998
+        ],
+        "Length_m": 11.54,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47026,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          145.93979497390754,
+          59.2032844617599
+        ],
+        [
+          138.89785051728765,
+          61.874938490862725
+        ],
+        [
+          136.86681547258573,
+          62.96371699214726
+        ],
+        [
+          139.07021460584374,
+          64.83025593299293
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46860,
+          46927,
+          46958,
+          46978,
+          47007
+        ],
+        "Length_m": 12.72,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47027,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          116.93876990786165,
+          57.567820691513546
+        ],
+        [
+          116.78679891483887,
+          57.120721179086324
+        ],
+        [
+          115.88993240304704,
+          54.813502411589056
+        ],
+        [
+          113.3550714044631,
+          54.85687468712231
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46862,
+          46924,
+          46959,
+          46980,
+          47000
+        ],
+        "Length_m": 5.48,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47028,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          124.55420688391077,
+          54.97930183299427
+        ],
+        [
+          122.78394923925475,
+          49.771193929944744
+        ],
+        [
+          121.11134478421985,
+          45.32215314169811
+        ],
+        [
+          119.52885202060598,
+          48.5026399971511
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46864,
+          46924,
+          46960,
+          46980,
+          47001
+        ],
+        "Length_m": 13.81,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47029,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          135.01722802869057,
+          51.42287721343166
+        ],
+        [
+          134.8528578811694,
+          50.93929931904178
+        ],
+        [
+          132.59350828336258,
+          44.349556783396956
+        ],
+        [
+          130.30089494142467,
+          45.035182245181375
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46866,
+          46924,
+          46961,
+          46980,
+          47002
+        ],
+        "Length_m": 9.87,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47030,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          146.2109064421439,
+          47.618099134307386
+        ],
+        [
+          146.02377815786582,
+          47.06756667414551
+        ],
+        [
+          143.41722914525818,
+          40.36119246410911
+        ],
+        [
+          141.53248694751235,
+          41.121651869736965
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46868,
+          46925,
+          46962,
+          46981,
+          47004
+        ],
+        "Length_m": 9.81,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47031,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          153.5203018279055,
+          45.13360509149361
+        ],
+        [
+          153.31710273468653,
+          44.53579222143989
+        ],
+        [
+          152.2887321284615,
+          42.071091701213504
+        ],
+        [
+          149.47106467365006,
+          42.53166889862358
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46870,
+          46925,
+          46963,
+          46981,
+          46985,
+          47005
+        ],
+        "Length_m": 6.16,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47032,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          154.9079336479783,
+          69.44096790896548
+        ],
+        [
+          155.1745270213747,
+          68.97161573823162
+        ],
+        [
+          155.98255176724416,
+          67.47119358185061
+        ],
+        [
+          154.96472398479142,
+          66.61250508899403
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46872,
+          46927,
+          46964,
+          46978,
+          47008
+        ],
+        "Length_m": 3.58,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47033,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          159.7487321534022,
+          72.1705603678549
+        ],
+        [
+          160.11883076441347,
+          71.41562149965972
+        ],
+        [
+          161.20740518685625,
+          69.83304278309436
+        ],
+        [
+          162.84079955446535,
+          70.69401304604044
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46874,
+          46927,
+          46965
+        ],
+        "Length_m": 4.61,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47034,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          170.30230752394377,
+          77.34430853527688
+        ],
+        [
+          170.57388496778705,
+          76.79033626415121
+        ],
+        [
+          171.53887598074604,
+          75.24293478538213
+        ],
+        [
+          170.3355020052903,
+          74.54370937119589
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46876,
+          46927,
+          46966,
+          46978,
+          47010
+        ],
+        "Length_m": 3.83,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47035,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          175.05181486976713,
+          79.67269053510617
+        ],
+        [
+          175.40739018771157,
+          78.94737674007837
+        ],
+        [
+          176.2893816905408,
+          77.43961759353996
+        ],
+        [
+          174.87016681873675,
+          76.73488746890817
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46878,
+          46927,
+          46967,
+          46978,
+          46987,
+          47011
+        ],
+        "Length_m": 4.14,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47036,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          185.97906297981106,
+          85.33347042194939
+        ],
+        [
+          186.39746022769378,
+          84.49737824178533
+        ],
+        [
+          187.11886710176543,
+          82.67915276478872
+        ],
+        [
+          185.67569518385784,
+          82.06572335478434
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46880,
+          46928,
+          46968,
+          46990,
+          46995,
+          47014
+        ],
+        "Length_m": 4.46,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47037,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          190.46538397586153,
+          87.57851516988346
+        ],
+        [
+          190.87692551886707,
+          86.75612289158623
+        ],
+        [
+          191.795275316859,
+          85.0449800848267
+        ],
+        [
+          190.5122784309405,
+          84.50437264147835
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46882,
+          46928,
+          46969,
+          46990,
+          47016
+        ],
+        "Length_m": 4.25,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47038,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          197.38668788702807,
+          91.04207406553523
+        ],
+        [
+          197.62303032858964,
+          90.56978590343459
+        ],
+        [
+          198.772220539674,
+          88.75281654293532
+        ],
+        [
+          197.78678958054402,
+          88.28270044045274
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46884,
+          46928,
+          46970,
+          46990,
+          47017
+        ],
+        "Length_m": 3.77,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47039,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          201.0457856713932,
+          92.87315977478298
+        ],
+        [
+          201.4662852254717,
+          92.03286651112833
+        ],
+        [
+          202.47019219533064,
+          90.56117532573822
+        ],
+        [
+          201.52117095836752,
+          89.93537140260945
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46886,
+          46928,
+          46971,
+          46990,
+          47018
+        ],
+        "Length_m": 3.86,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47040,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          205.46468995291693,
+          95.08446785050734
+        ],
+        [
+          205.96745509989722,
+          94.07978149088989
+        ],
+        [
+          206.89297838246432,
+          92.78871128192148
+        ],
+        [
+          206.14018372989287,
+          92.22604360787888
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46888,
+          46928,
+          46972,
+          46990,
+          47019
+        ],
+        "Length_m": 3.65,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47041,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          216.78200155774277,
+          90.34269728375283
+        ],
+        [
+          216.10732436391459,
+          89.6178942637125
+        ],
+        [
+          215.5206221114101,
+          88.88805841914892
+        ],
+        [
+          214.76962082998244,
+          89.7221065311906
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46890,
+          46928,
+          46973,
+          46990,
+          47020
+        ],
+        "Length_m": 3.05,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47042,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          237.67526469703242,
+          69.85821747920778
+        ],
+        [
+          235.06825064341973,
+          67.84290551471128
+        ],
+        [
+          233.23397024340971,
+          69.11311918231273
+        ],
+        [
+          234.15984692222074,
+          70.44300353329533
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46892,
+          46929,
+          46974,
+          46991,
+          47021
+        ],
+        "Length_m": 7.15,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47043,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          233.9684222506479,
+          58.945675230131066
+        ],
+        [
+          229.10767265835952,
+          63.213861705199875
+        ],
+        [
+          227.2321877883958,
+          65.05423898060907
+        ],
+        [
+          228.9613012891147,
+          66.57961508353162
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46894,
+          46930,
+          46975,
+          46991,
+          47022
+        ],
+        "Length_m": 11.4,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47044,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          228.11693858782021,
+          52.72636506724855
+        ],
+        [
+          223.6130834786397,
+          57.01575997823172
+        ],
+        [
+          222.80539612892403,
+          60.4176118889502
+        ],
+        [
+          223.06204323250603,
+          60.56414957349201
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46896,
+          46930,
+          46976,
+          46991,
+          46994,
+          47023
+        ],
+        "Length_m": 10.01,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 51
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47045,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          159.7487321534022,
+          72.1705603678549
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Plot_ID": null,
+        "Generated": true,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          46978,
+          47033
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47046,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          250.572401110109,
+          63.33812137786157
+        ]
+      ],
+      "Label": "Electric POC 2",
+      "Attributes": {
+        "Output": null,
+        "Connects": [
+          46902
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "poc"
+    },
+    {
+      "Feature_ID": 47048,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          245.51129862926697,
+          59.88467934317827
+        ],
+        [
+          241.81259750505288,
+          64.22622997182052
+        ],
+        [
+          238.7995948497677,
+          67.76290491062993
+        ],
+        [
+          238.48829795028232,
+          68.80647504199831
+        ],
+        [
+          237.67526469703242,
+          69.85821747920778
+        ],
+        [
+          234.803501274738,
+          73.57313989939138
+        ],
+        [
+          232.08594238775663,
+          76.09714426007494
+        ],
+        [
+          223.9804114881292,
+          83.64211398377176
+        ],
+        [
+          218.46109980513444,
+          77.33584156218375
+        ]
+      ],
+      "Label": "Supply from POC",
+      "Attributes": {
+        "Connects": [
+          46900,
+          46902,
+          46907,
+          46908,
+          46945,
+          46989,
+          46992
+        ],
+        "Length_m": 40.63,
+        "Generated": true,
+        "Line_Type": "elec_hv",
+        "Poc_Route": true,
+        "Poc_Route_Poc_ID": 46900,
+        "Poc_Route_Sub_ID": 46907
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47049,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          250.572401110109,
+          63.33812137786157
+        ],
+        [
+          245.51129862926697,
+          59.88467934317827
+        ],
+        [
+          241.81259750505288,
+          64.22622997182052
+        ],
+        [
+          238.7995948497677,
+          67.76290491062993
+        ],
+        [
+          238.48829795028232,
+          68.80647504199831
+        ],
+        [
+          237.67526469703242,
+          69.85821747920778
+        ],
+        [
+          234.803501274738,
+          73.57313989939138
+        ],
+        [
+          232.08594238775663,
+          76.09714426007494
+        ],
+        [
+          223.9804114881292,
+          83.64211398377176
+        ],
+        [
+          221.0779512731048,
+          86.34384625988957
+        ],
+        [
+          216.78200155774277,
+          90.34269728375283
+        ],
+        [
+          213.1164558585662,
+          93.7547416844947
+        ],
+        [
+          209.28942027116085,
+          96.87685795870632
+        ],
+        [
+          206.97824676195825,
+          95.84188194723147
+        ],
+        [
+          205.46468995291693,
+          95.08446785050734
+        ],
+        [
+          201.0457856713932,
+          92.87315977478298
+        ],
+        [
+          197.38668788702807,
+          91.04207406553523
+        ],
+        [
+          190.46538397586153,
+          87.57851516988346
+        ],
+        [
+          185.97906297981106,
+          85.33347042194939
+        ],
+        [
+          182.33441518094486,
+          83.50961577442921
+        ],
+        [
+          180.8796044200816,
+          82.68549328177983
+        ],
+        [
+          175.989498749044,
+          80.132377426202
+        ],
+        [
+          175.05181486976713,
+          79.67269053510617
+        ],
+        [
+          170.30230752394377,
+          77.34430853527688
+        ],
+        [
+          159.4916167923277,
+          72.04451302546435
+        ],
+        [
+          154.9079336479783,
+          69.44096790896548
+        ],
+        [
+          153.2781267222278,
+          68.51523292058506
+        ],
+        [
+          150.01612704301428,
+          65.88728953017464
+        ],
+        [
+          147.66171184957332,
+          62.4749770089017
+        ],
+        [
+          146.22504315749939,
+          59.955141492394965
+        ],
+        [
+          145.93979497390754,
+          59.2032844617599
+        ],
+        [
+          144.6664595847534,
+          55.84702763082467
+        ],
+        [
+          144.43280154126913,
+          55.1590431666863
+        ],
+        [
+          145.80442685282011,
+          54.0161197511656
+        ],
+        [
+          149.33758056841032,
+          52.258469683915536
+        ],
+        [
+          161.080982198047,
+          48.22468797663161
+        ],
+        [
+          162.14626048358434,
+          50.681480777691
+        ]
+      ],
+      "Label": "Supply from POC",
+      "Attributes": {
+        "Connects": [
+          46899,
+          46902,
+          46911,
+          46946,
+          46979,
+          46982,
+          47046
+        ],
+        "Length_m": 158.13,
+        "Generated": true,
+        "Line_Type": "elec_hv",
+        "Poc_Route": true,
+        "Poc_Route_Poc_ID": 47046,
+        "Poc_Route_Sub_ID": 46911
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    }
+  ],
+  "layers": [
+    {
+      "Layer_ID": 1,
+      "Layer_Key": "boundary",
+      "Label": "Site Boundary",
+      "Colour": "#0f172a",
+      "Sort_Order": 10,
+      "Is_Active": true,
+      "Utility_ID": null
+    },
+    {
+      "Layer_ID": 2,
+      "Layer_Key": "plot",
+      "Label": "Plots",
+      "Colour": "#2563eb",
+      "Sort_Order": 20,
+      "Is_Active": true,
+      "Utility_ID": null
+    },
+    {
+      "Layer_ID": 3,
+      "Layer_Key": "electric",
+      "Label": "Electric",
+      "Colour": "#ffbb00",
+      "Sort_Order": 30,
+      "Is_Active": true,
+      "Utility_ID": 1
+    },
+    {
+      "Layer_ID": 4,
+      "Layer_Key": "gas",
+      "Label": "Gas",
+      "Colour": "#ff0000",
+      "Sort_Order": 40,
+      "Is_Active": true,
+      "Utility_ID": 2
+    },
+    {
+      "Layer_ID": 5,
+      "Layer_Key": "water",
+      "Label": "Water",
+      "Colour": "#2ccc00",
+      "Sort_Order": 50,
+      "Is_Active": true,
+      "Utility_ID": 3
+    },
+    {
+      "Layer_ID": 8,
+      "Layer_Key": "lighting",
+      "Label": "Street Lighting",
+      "Colour": "#ffbb00",
+      "Sort_Order": 55,
+      "Is_Active": true,
+      "Utility_ID": 6
+    },
+    {
+      "Layer_ID": 6,
+      "Layer_Key": "trench",
+      "Label": "Trenches",
+      "Colour": "#8b5e34",
+      "Sort_Order": 60,
+      "Is_Active": true,
+      "Utility_ID": null
+    },
+    {
+      "Layer_ID": 7,
+      "Layer_Key": "note",
+      "Label": "Notes",
+      "Colour": "#64748b",
+      "Sort_Order": 70,
+      "Is_Active": true,
+      "Utility_ID": null
+    }
+  ],
+  "lineTypes": [
+    {
+      "Line_Type_ID": 1,
+      "Type_Key": "elec_main",
+      "Label": "Electric Main",
+      "Layer_Key": "electric",
+      "Colour": "#ffbb00",
+      "Width_px": 3.5,
+      "Dashed": false,
+      "Sort_Order": 10,
+      "Is_Active": true
+    },
+    {
+      "Line_Type_ID": 11,
+      "Type_Key": "elec_hv",
+      "Label": "HV Cable",
+      "Layer_Key": "electric",
+      "Colour": "#b91c1c",
+      "Width_px": 4.5,
+      "Dashed": false,
+      "Sort_Order": 12,
+      "Is_Active": true
+    },
+    {
+      "Line_Type_ID": 21,
+      "Type_Key": "elec_main_existing",
+      "Label": "Existing LV main (incumbent)",
+      "Layer_Key": "electric",
+      "Colour": "#a1887f",
+      "Width_px": 3.5,
+      "Dashed": true,
+      "Sort_Order": 20,
+      "Is_Active": true
+    },
+    {
+      "Line_Type_ID": 2,
+      "Type_Key": "elec_service",
+      "Label": "Electric Service",
+      "Layer_Key": "electric",
+      "Colour": "#ffbb00",
+      "Width_px": 1.8,
+      "Dashed": false,
+      "Sort_Order": 20,
+      "Is_Active": true
+    },
+    {
+      "Line_Type_ID": 3,
+      "Type_Key": "gas_main",
+      "Label": "Gas Main",
+      "Layer_Key": "gas",
+      "Colour": "#ff0000",
+      "Width_px": 3.5,
+      "Dashed": false,
+      "Sort_Order": 30,
+      "Is_Active": true
+    },
+    {
+      "Line_Type_ID": 22,
+      "Type_Key": "gas_main_existing",
+      "Label": "Existing gas main (incumbent)",
+      "Layer_Key": "gas",
+      "Colour": "#86a693",
+      "Width_px": 3.5,
+      "Dashed": true,
+      "Sort_Order": 34,
+      "Is_Active": true
+    },
+    {
+      "Line_Type_ID": 4,
+      "Type_Key": "gas_service",
+      "Label": "Gas Service",
+      "Layer_Key": "gas",
+      "Colour": "#ff0000",
+      "Width_px": 1.8,
+      "Dashed": false,
+      "Sort_Order": 40,
+      "Is_Active": true
+    },
+    {
+      "Line_Type_ID": 23,
+      "Type_Key": "water_main_existing",
+      "Label": "Existing water main (incumbent)",
+      "Layer_Key": "water",
+      "Colour": "#8fa8bf",
+      "Width_px": 3.5,
+      "Dashed": true,
+      "Sort_Order": 46,
+      "Is_Active": true
+    },
+    {
+      "Line_Type_ID": 5,
+      "Type_Key": "water_main",
+      "Label": "Water Main",
+      "Layer_Key": "water",
+      "Colour": "#2ccc00",
+      "Width_px": 3.5,
+      "Dashed": false,
+      "Sort_Order": 50,
+      "Is_Active": true
+    },
+    {
+      "Line_Type_ID": 13,
+      "Type_Key": "light_main",
+      "Label": "Lighting Cable",
+      "Layer_Key": "lighting",
+      "Colour": "#ffbb00",
+      "Width_px": 2.2,
+      "Dashed": false,
+      "Sort_Order": 56,
+      "Is_Active": true
+    },
+    {
+      "Line_Type_ID": 14,
+      "Type_Key": "light_service",
+      "Label": "Lighting Service",
+      "Layer_Key": "lighting",
+      "Colour": "#ffbb00",
+      "Width_px": 1.4,
+      "Dashed": false,
+      "Sort_Order": 58,
+      "Is_Active": true
+    },
+    {
+      "Line_Type_ID": 6,
+      "Type_Key": "water_service",
+      "Label": "Water Service",
+      "Layer_Key": "water",
+      "Colour": "#2ccc00",
+      "Width_px": 1.8,
+      "Dashed": false,
+      "Sort_Order": 60,
+      "Is_Active": true
+    },
+    {
+      "Line_Type_ID": 9,
+      "Type_Key": "trench_main",
+      "Label": "Mains Trench",
+      "Layer_Key": "trench",
+      "Colour": "#8b5e34",
+      "Width_px": 6,
+      "Dashed": false,
+      "Sort_Order": 64,
+      "Is_Active": true
+    },
+    {
+      "Line_Type_ID": 10,
+      "Type_Key": "trench_service",
+      "Label": "Service Trench",
+      "Layer_Key": "trench",
+      "Colour": "#8b5e34",
+      "Width_px": 3.5,
+      "Dashed": false,
+      "Sort_Order": 66,
+      "Is_Active": true
+    },
+    {
+      "Line_Type_ID": 20,
+      "Type_Key": "trench_main_existing",
+      "Label": "Existing trench (incumbent)",
+      "Layer_Key": "trench",
+      "Colour": "#9ca3af",
+      "Width_px": 5,
+      "Dashed": true,
+      "Sort_Order": 68,
+      "Is_Active": true
+    }
+  ],
+  "styles": [
+    {
+      "GIS_Style_ID": 19,
+      "Style_Name": "Off site",
+      "Layer_Key": null,
+      "Line_Type": null,
+      "Feature_Role": null,
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#9333ea",
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": null,
+      "Width_Px": null,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 5,
+      "Is_Active": true,
+      "Notes": "Anything outside the site boundary. Sets colour only, so each run keeps the width, dash and zoom band of whatever it is.",
+      "Site": "Off-site",
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": null,
+      "Scale_Symbol": false,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 10,
+      "Style_Name": "Site boundary (layer default)",
+      "Layer_Key": "boundary",
+      "Line_Type": null,
+      "Feature_Role": null,
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#00faf6",
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": null,
+      "Width_Px": 2,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 10,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": null,
+      "Scale_Symbol": false,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 1,
+      "Style_Name": "Electric main",
+      "Layer_Key": "electric",
+      "Line_Type": "elec_main",
+      "Feature_Role": null,
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": null,
+      "Dashed": true,
+      "Dash_Pattern": "9,6",
+      "Symbol": null,
+      "Width_Px": 3.5,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 10,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": null,
+      "Scale_Symbol": false,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 2,
+      "Style_Name": "Electric service",
+      "Layer_Key": "electric",
+      "Line_Type": "elec_service",
+      "Feature_Role": null,
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": null,
+      "Dashed": true,
+      "Dash_Pattern": "9,6",
+      "Symbol": null,
+      "Width_Px": 1.8,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": 2,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 20,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": null,
+      "Scale_Symbol": false,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 11,
+      "Style_Name": "Plots (layer default)",
+      "Layer_Key": "plot",
+      "Line_Type": null,
+      "Feature_Role": null,
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#2563eb",
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": null,
+      "Width_Px": 2,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 20,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": null,
+      "Scale_Symbol": false,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 14,
+      "Style_Name": "Electric (layer default)",
+      "Layer_Key": "electric",
+      "Line_Type": null,
+      "Feature_Role": null,
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#ffbb00",
+      "Dashed": true,
+      "Dash_Pattern": "9,6",
+      "Symbol": null,
+      "Width_Px": 2,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 30,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": null,
+      "Scale_Symbol": false,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 3,
+      "Style_Name": "Gas main",
+      "Layer_Key": "gas",
+      "Line_Type": "gas_main",
+      "Feature_Role": null,
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": null,
+      "Dashed": true,
+      "Dash_Pattern": "9,6",
+      "Symbol": null,
+      "Width_Px": 3.5,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 30,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": null,
+      "Scale_Symbol": false,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 15,
+      "Style_Name": "Gas (layer default)",
+      "Layer_Key": "gas",
+      "Line_Type": null,
+      "Feature_Role": null,
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#ff0000",
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": null,
+      "Width_Px": 2,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 40,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": null,
+      "Scale_Symbol": false,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 4,
+      "Style_Name": "Gas service",
+      "Layer_Key": "gas",
+      "Line_Type": "gas_service",
+      "Feature_Role": null,
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": null,
+      "Dashed": true,
+      "Dash_Pattern": "9,6",
+      "Symbol": null,
+      "Width_Px": 1.8,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": 2,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 40,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": null,
+      "Scale_Symbol": false,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 5,
+      "Style_Name": "Water main",
+      "Layer_Key": "water",
+      "Line_Type": "water_main",
+      "Feature_Role": null,
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": null,
+      "Dashed": true,
+      "Dash_Pattern": "9,6",
+      "Symbol": null,
+      "Width_Px": 3.5,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 50,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": null,
+      "Scale_Symbol": false,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 16,
+      "Style_Name": "Water (layer default)",
+      "Layer_Key": "water",
+      "Line_Type": null,
+      "Feature_Role": null,
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#2ccc00",
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": null,
+      "Width_Px": 2,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 50,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": null,
+      "Scale_Symbol": false,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 6,
+      "Style_Name": "Water service",
+      "Layer_Key": "water",
+      "Line_Type": "water_service",
+      "Feature_Role": null,
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": null,
+      "Dashed": true,
+      "Dash_Pattern": "9,6",
+      "Symbol": null,
+      "Width_Px": 1.8,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": 2,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 60,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": null,
+      "Scale_Symbol": false,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 13,
+      "Style_Name": "Trenches (layer default)",
+      "Layer_Key": "trench",
+      "Line_Type": null,
+      "Feature_Role": null,
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#8b5e34",
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": null,
+      "Width_Px": 2,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 60,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": null,
+      "Scale_Symbol": false,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 8,
+      "Style_Name": "Mains trench",
+      "Layer_Key": "trench",
+      "Line_Type": "trench_main",
+      "Feature_Role": null,
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#8b5e34",
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": null,
+      "Width_Px": 6,
+      "Width_M": 0.6,
+      "Scale_Width": true,
+      "Min_Width_Px": 2,
+      "Max_Width_Px": 40,
+      "Symbol_Size_Px": null,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 64,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": null,
+      "Scale_Symbol": false,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 9,
+      "Style_Name": "Service trench",
+      "Layer_Key": "trench",
+      "Line_Type": "trench_service",
+      "Feature_Role": null,
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#a98666",
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": null,
+      "Width_Px": 3.5,
+      "Width_M": 0.45,
+      "Scale_Width": true,
+      "Min_Width_Px": 2,
+      "Max_Width_Px": 40,
+      "Symbol_Size_Px": null,
+      "Min_Scale": 2,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 66,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": null,
+      "Scale_Symbol": false,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 12,
+      "Style_Name": "Notes (layer default)",
+      "Layer_Key": "note",
+      "Line_Type": null,
+      "Feature_Role": null,
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#64748b",
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": null,
+      "Width_Px": 2,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 70,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": null,
+      "Scale_Symbol": false,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 7,
+      "Style_Name": "Separate trench",
+      "Layer_Key": "trench",
+      "Line_Type": "trench_sep",
+      "Feature_Role": null,
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#a855f7",
+      "Dashed": true,
+      "Dash_Pattern": null,
+      "Symbol": null,
+      "Width_Px": 6,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 80,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": null,
+      "Scale_Symbol": false,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 21,
+      "Style_Name": "Substation",
+      "Layer_Key": null,
+      "Line_Type": null,
+      "Feature_Role": "substation",
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": null,
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": "square",
+      "Width_Px": null,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": 11,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 180,
+      "Is_Active": true,
+      "Notes": "On-site substation. Circuits feed back to it and it connects on to the POC.",
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": 1.6,
+      "Scale_Symbol": true,
+      "Min_Symbol_Px": 6,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 22,
+      "Style_Name": "Point of connection",
+      "Layer_Key": null,
+      "Line_Type": null,
+      "Feature_Role": "poc",
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": null,
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": "hexagon",
+      "Width_Px": null,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": 9,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 185,
+      "Is_Active": true,
+      "Notes": "Where the network meets the DNO's. One per utility.",
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": 1.2,
+      "Scale_Symbol": true,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 24,
+      "Style_Name": "Link box",
+      "Layer_Key": null,
+      "Line_Type": null,
+      "Feature_Role": "linkbox",
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#b91c1c",
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": "square",
+      "Width_Px": null,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": 7,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 190,
+      "Is_Active": true,
+      "Notes": "LV link box. Sits on the network between substation and circuits.",
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": 0.7,
+      "Scale_Symbol": true,
+      "Min_Symbol_Px": 3,
+      "Max_Symbol_Px": 20,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 20,
+      "Style_Name": "Plot seed",
+      "Layer_Key": null,
+      "Line_Type": null,
+      "Feature_Role": "plot",
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": null,
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": "house",
+      "Width_Px": null,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": 16,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 190,
+      "Is_Active": true,
+      "Notes": "Size and shape only. Fill comes from the plot's bedroom count and is not overridden here.",
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": 1.5,
+      "Scale_Symbol": true,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": 20,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 23,
+      "Style_Name": "Span node",
+      "Layer_Key": null,
+      "Line_Type": null,
+      "Feature_Role": "spannode",
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#8b5e34",
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": "circle",
+      "Width_Px": null,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 195,
+      "Is_Active": true,
+      "Notes": "Numbered points along a circuit. Seq 0 sits on the substation.",
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": 0.7,
+      "Scale_Symbol": true,
+      "Min_Symbol_Px": 3,
+      "Max_Symbol_Px": 18,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 35,
+      "Style_Name": "Feeder end point",
+      "Layer_Key": null,
+      "Line_Type": null,
+      "Feature_Role": "feederpoint",
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#1d4ed8",
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": "circle",
+      "Width_Px": null,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": 7,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 196,
+      "Is_Active": true,
+      "Notes": "Where one circuit's cable ends or forks. Drawn in the circuit's own colour; this colour is the fallback.",
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": 0.7,
+      "Scale_Symbol": true,
+      "Min_Symbol_Px": 3,
+      "Max_Symbol_Px": 18,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 37,
+      "Style_Name": "MSDB",
+      "Layer_Key": null,
+      "Line_Type": null,
+      "Feature_Role": "msdb",
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#0f172a",
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": "square",
+      "Width_Px": null,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": 9,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 198,
+      "Is_Active": true,
+      "Notes": "Multi service distribution board. One cable in, one out; the flats it feeds are a table on the board rather than points on the drawing.",
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": 0.8,
+      "Scale_Symbol": true,
+      "Min_Symbol_Px": 4,
+      "Max_Symbol_Px": 20,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 25,
+      "Style_Name": "Lighting column",
+      "Layer_Key": null,
+      "Line_Type": null,
+      "Feature_Role": "column",
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#eab308",
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": "circle",
+      "Width_Px": null,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": 5,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 200,
+      "Is_Active": true,
+      "Notes": "Street lighting column.",
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": 0.75,
+      "Scale_Symbol": true,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 17,
+      "Style_Name": "Meter",
+      "Layer_Key": null,
+      "Line_Type": null,
+      "Feature_Role": "meter",
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": null,
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": "circle",
+      "Width_Px": null,
+      "Width_M": 1,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 200,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": 1.5,
+      "Scale_Symbol": true,
+      "Min_Symbol_Px": 8,
+      "Max_Symbol_Px": 25,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 33,
+      "Style_Name": "Non-residential supply",
+      "Layer_Key": null,
+      "Line_Type": null,
+      "Feature_Role": "nrs",
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#000000",
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": "triangle",
+      "Width_Px": null,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": 10,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 205,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": 1,
+      "Scale_Symbol": true,
+      "Min_Symbol_Px": 8,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 31,
+      "Style_Name": "Property boundary point",
+      "Layer_Key": "plot",
+      "Line_Type": null,
+      "Feature_Role": "boundary",
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": "#334155",
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": "circle",
+      "Width_Px": null,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": null,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 210,
+      "Is_Active": true,
+      "Notes": "Where a plot's supplies enter it. Drawn from Boundary_At on the plot seed rather than from a feature of its own. Symbol_Size_Px is the radius of the ring, Min_Scale the zoom it appears at.",
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": 0.7,
+      "Scale_Symbol": true,
+      "Min_Symbol_Px": 3,
+      "Max_Symbol_Px": 18,
+      "Label_Colour": null,
+      "Supply_Type": null
+    },
+    {
+      "GIS_Style_ID": 18,
+      "Style_Name": "Joint",
+      "Layer_Key": null,
+      "Line_Type": null,
+      "Feature_Role": "joint",
+      "Utility_ID": null,
+      "Organisation_ID": null,
+      "Colour": null,
+      "Dashed": false,
+      "Dash_Pattern": null,
+      "Symbol": "diamond",
+      "Width_Px": null,
+      "Width_M": null,
+      "Scale_Width": false,
+      "Min_Width_Px": null,
+      "Max_Width_Px": null,
+      "Symbol_Size_Px": 7,
+      "Min_Scale": null,
+      "Max_Scale": null,
+      "Label_Min_Scale": null,
+      "Sort_Order": 210,
+      "Is_Active": true,
+      "Notes": null,
+      "Site": null,
+      "Marker_Text": null,
+      "Marker_Symbol": null,
+      "Marker_Interval_M": null,
+      "Marker_Size_Px": null,
+      "Marker_Colour": null,
+      "Marker_Rotate": null,
+      "Marker_Offset_Px": null,
+      "Marker_Min_Gap_Px": null,
+      "Symbol_Size_M": 0.7,
+      "Scale_Symbol": true,
+      "Min_Symbol_Px": null,
+      "Max_Symbol_Px": null,
+      "Label_Colour": null,
+      "Supply_Type": null
+    }
+  ],
+  "surfaceTypes": [
+    {
+      "GIS_Surface_Type_ID": 1,
+      "Surface_Key": "footway",
+      "Label": "Footway",
+      "Reinstatement_Rate": null,
+      "Sort_Order": 10,
+      "Is_Active": true,
+      "Dig_Factor": 1.45,
+      "Reinstate_M2_Hr": null,
+      "Reinstate_Source": null,
+      "Reinstate_Sample_Size": null,
+      "Reinstate_Setup_Minutes": null
+    },
+    {
+      "GIS_Surface_Type_ID": 2,
+      "Surface_Key": "carriageway_12",
+      "Label": "Carriageway 1/2",
+      "Reinstatement_Rate": null,
+      "Sort_Order": 20,
+      "Is_Active": true,
+      "Dig_Factor": 1.75,
+      "Reinstate_M2_Hr": null,
+      "Reinstate_Source": null,
+      "Reinstate_Sample_Size": null,
+      "Reinstate_Setup_Minutes": null
+    },
+    {
+      "GIS_Surface_Type_ID": 3,
+      "Surface_Key": "carriageway_34",
+      "Label": "Carriageway 3/4",
+      "Reinstatement_Rate": null,
+      "Sort_Order": 30,
+      "Is_Active": true,
+      "Dig_Factor": 2.1,
+      "Reinstate_M2_Hr": null,
+      "Reinstate_Source": null,
+      "Reinstate_Sample_Size": null,
+      "Reinstate_Setup_Minutes": null
+    },
+    {
+      "GIS_Surface_Type_ID": 6,
+      "Surface_Key": "unmade",
+      "Label": "Unmade",
+      "Reinstatement_Rate": null,
+      "Sort_Order": 35,
+      "Is_Active": true,
+      "Dig_Factor": 1,
+      "Reinstate_M2_Hr": null,
+      "Reinstate_Source": null,
+      "Reinstate_Sample_Size": null,
+      "Reinstate_Setup_Minutes": null
+    },
+    {
+      "GIS_Surface_Type_ID": 4,
+      "Surface_Key": "verge",
+      "Label": "Verge",
+      "Reinstatement_Rate": null,
+      "Sort_Order": 40,
+      "Is_Active": true,
+      "Dig_Factor": 0.9,
+      "Reinstate_M2_Hr": null,
+      "Reinstate_Source": null,
+      "Reinstate_Sample_Size": null,
+      "Reinstate_Setup_Minutes": null
+    },
+    {
+      "GIS_Surface_Type_ID": 5,
+      "Surface_Key": "agricultural",
+      "Label": "Agricultural",
+      "Reinstatement_Rate": null,
+      "Sort_Order": 50,
+      "Is_Active": true,
+      "Dig_Factor": 0.85,
+      "Reinstate_M2_Hr": null,
+      "Reinstate_Source": null,
+      "Reinstate_Sample_Size": null,
+      "Reinstate_Setup_Minutes": null
+    }
+  ],
+  "digRates": [
+    {
+      "key": "micro_1_5t",
+      "label": "1.5t micro",
+      "baseRateM3Hr": 2.5,
+      "setupMinutes": 15,
+      "isDefault": false,
+      "source": "estimate",
+      "sampleSize": 0
+    },
+    {
+      "key": "mini_3t",
+      "label": "3t mini",
+      "baseRateM3Hr": 4.5,
+      "setupMinutes": 15,
+      "isDefault": true,
+      "source": "estimate",
+      "sampleSize": 0
+    },
+    {
+      "key": "midi_5t",
+      "label": "5t midi",
+      "baseRateM3Hr": 7,
+      "setupMinutes": 20,
+      "isDefault": false,
+      "source": "estimate",
+      "sampleSize": 0
+    },
+    {
+      "key": "excavator_8t",
+      "label": "8t excavator",
+      "baseRateM3Hr": 10,
+      "setupMinutes": 20,
+      "isDefault": false,
+      "source": "estimate",
+      "sampleSize": 0
+    },
+    {
+      "key": "excavator_13t",
+      "label": "13t excavator",
+      "baseRateM3Hr": 15,
+      "setupMinutes": 25,
+      "isDefault": false,
+      "source": "estimate",
+      "sampleSize": 0
+    }
+  ],
+  "digDepthFactors": [
+    {
+      "fromM": 0,
+      "toM": 0.6,
+      "factor": 1,
+      "note": "Straightforward dig"
+    },
+    {
+      "fromM": 0.6,
+      "toM": 1,
+      "factor": 1.15,
+      "note": "Spoil lift and accuracy"
+    },
+    {
+      "fromM": 1,
+      "toM": 1.2,
+      "factor": 1.3,
+      "note": "Battering starts"
+    },
+    {
+      "fromM": 1.2,
+      "toM": null,
+      "factor": 1.6,
+      "note": "Supported — box or full batter"
+    }
+  ],
+  "digLayRates": {
+    "electric": 30,
+    "telecoms": 40,
+    "water": 25,
+    "gas": 22,
+    "other": 25
+  }
+}

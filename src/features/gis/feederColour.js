@@ -575,5 +575,45 @@ export function feederRenderPlan(features = [], opts = {}) {
     });
   }
 
+  /* ── Two groups can hand out the same lane ──
+
+     A group spreads its own members evenly and knows nothing of any
+     other. `isParallel` needs the overlap to be half a run's WHOLE
+     length, so a long HV route that shares one trench with a short main
+     is not grouped with it \u2014 they are genuinely not parallel over most
+     of their lengths.
+
+     Both groups then start at zero, and where they do share a trench
+     two cables get the same offset and draw on top of each other. Four
+     cables in a trench read as three, which is what a jointer counts
+     when the dig is open.
+
+     So a second pass: any two runs that overlap AT ALL and have landed
+     on the same lane, the later one is stepped off until it is clear.
+     Grouping decides the tidy spread; this only settles collisions the
+     grouping could not see. */
+  const placed = [];
+  const OVERLAP_M = 3.0;
+  for (const r of runs) {
+    const cur = plan.get(r.id);
+    if (!cur) continue;
+    let off = cur.offsetPx ?? 0;
+    /* Runs already placed that share any real length with this one. */
+    const rivals = placed.filter((q) =>
+      Math.max(overlapLength(r.geometry, q.geometry, { minOverlapM: 0 }),
+        overlapLength(q.geometry, r.geometry, { minOverlapM: 0 })) >= OVERLAP_M);
+    if (rivals.length) {
+      const taken = new Set(rivals.map((q) => plan.get(q.id)?.offsetPx ?? 0));
+      /* Outward from where the grouping put it, so a run only moves as
+         far as it has to and the spread the group chose survives. */
+      for (let k = 1; taken.has(off) && k <= 24; k++) {
+        const step = Math.ceil(k / 2) * spacingPx * (k % 2 ? 1 : -1);
+        off = (cur.offsetPx ?? 0) + step;
+      }
+      if (off !== cur.offsetPx) plan.set(r.id, { ...cur, offsetPx: off });
+    }
+    placed.push(r);
+  }
+
   return plan;
 }

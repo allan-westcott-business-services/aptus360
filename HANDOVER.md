@@ -2877,6 +2877,30 @@ than no step.
     and is still replaced, because on those drawings there was only ever
     one.
 
+81. **Two lane groups handing out the same lane.** A group of parallel
+    runs spreads its own members evenly and knows nothing of any other
+    group. `isParallel` needs the overlap to be half a run's WHOLE
+    length, so a long HV route that shares ONE trench with a short main
+    is not grouped with it — correctly, they are not parallel over most
+    of their lengths.
+
+    Both groups then start at zero, and where they DO share a trench two
+    cables land on the same offset and draw on top of each other. **Four
+    cables in a trench read as three** — which is what somebody counts
+    against the drawing when the dig is open.
+
+    A second pass now steps any run off a lane already taken by
+    something it overlaps, moving outward from where the grouping put it
+    so the tidy spread survives. Grouping decides the arrangement; this
+    only settles collisions the grouping could not see.
+
+**A near miss worth recording.** Appending a block to a check by
+writing `block + file.slice(from_the_last_console_log)` **overwrote the
+whole file** — the check then passed, because the success line it
+printed was the one line that survived. `git checkout` had it back. A
+check that passes after an edit that destroyed it is the worst possible
+result: read what a rewrite leaves behind, not just what it prints.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

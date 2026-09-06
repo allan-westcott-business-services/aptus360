@@ -2912,6 +2912,22 @@ result: read what a rewrite leaves behind, not just what it prints.
     they described a cable that is not there. It now reads `2 × HV
     Cable` and `1 × 3c WAVE 185`.
 
+83. **Splitting a group is only half the job if one field shows it.**
+    The list had a single "Electric Cable Size" slot filled by a `find`
+    on utility. Splitting electric into HV and LV made a second group
+    that nothing ever rendered, so a trench with two HV and one LV
+    showed `2 × HV Cable` and **dropped the LV out of sight entirely** —
+    a worse answer than the wrong one it replaced, because nothing on
+    screen said a cable was missing.
+
+    HV and LV have a field each now. Two cables in a trench are two
+    things to know, and somebody opening the ground counts both.
+
+    The value no longer repeats the field's own name: `2` under **HV
+    Cable**, not `2 × HV Cable`, and at a count of one it read simply
+    "HV Cable", which looks like a label rather than an answer. An LV
+    main has a real size, so that one shows `3 × 3c WAVE 95`.
+
     **The WIDTH keeps the coarser grouping on purpose.** It takes the
     widest in each group and repeats it, so an LV counted as HV digs a
     little wide. Splitting them there would narrow the dig, and that

@@ -287,6 +287,9 @@ export default function FeatureEditor({
       const sizes = [...new Set(g.runs.map((r) => r.label))].filter(Boolean);
       return {
         ...g,
+        /* Which field this belongs in. `layerKey` stays what it was, so
+           anything else reading these rows by utility is unaffected. */
+        kind: kindOf(g),
         label: main.label ?? g.label,
         count: concurrentCount(g.runs, res.trenchM),
         /* The other sizes it is drawn in, for the tooltip. Not shown as
@@ -3279,19 +3282,45 @@ export default function FeatureEditor({
                     trench, and a field that let you type a different
                     one would only be a way to disagree with the
                     drawing. */}
+                {/* ── HV and LV get a field each ──
+
+                    One "Electric Cable Size" slot and a `find` that
+                    took the first electric group: splitting the list
+                    into HV and LV made a second group that nothing ever
+                    rendered, so a trench with two HV and one LV showed
+                    the HV and dropped the LV out of sight entirely.
+
+                    Two cables in a trench are two things to know, and a
+                    jointer opening the ground counts both. */}
                 {[
-                  ["electric", "Electric Cable Size"],
+                  ["electric:hv", "HV Cable"],
+                  ["electric:lv", "LV Cable"],
                   ["gas", "Gas Pipe Size"],
                   ["water", "Water Pipe Size"],
                 ].map(([key, label]) => {
-                  const c = trenchContents.find((x) => x.layerKey === key);
+                  const c = trenchContents.find((x) => (x.kind ?? x.layerKey) === key);
                   return (
                     <div className="fld" key={key}>
                       <label htmlFor={`fe-in-${key}`}>{label}</label>
                       <input id={`fe-in-${key}`} readOnly
-                        value={c
-                          ? (c.count > 1 ? `${c.count} \u00d7 ${c.label}` : c.label)
-                          : ""}
+                        /* ── Not the field's own name back again ──
+
+                           "2 x HV Cable" under a field headed HV Cable
+                           says the same words twice, and at a count of
+                           one it read just "HV Cable" \u2014 which looks
+                           like a label, not an answer.
+
+                           Where the size adds nothing to the heading,
+                           the count IS the answer. Where it does \u2014 an
+                           LV main has a real size \u2014 both are shown. */
+                        value={(() => {
+                          if (!c) return "";
+                          const same = String(c.label).trim().toLowerCase()
+                            === label.trim().toLowerCase();
+                          if (same) return String(c.count);
+                          return c.count > 1
+                            ? `${c.count} \u00d7 ${c.label}` : c.label;
+                        })()}
                         title={c?.alsoSizes?.length
                           ? `Also drawn as ${c.alsoSizes.join(", ")} along part of it`
                           : undefined} />

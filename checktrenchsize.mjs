@@ -260,6 +260,27 @@ if (separationFor("gas", "electric") !== separationFor("electric", "gas")) {
     fail("the split is worked out and not used for the grouping");
   }
 
+  /* ── A field each, or the second group is never seen ──
+
+     One "Electric Cable Size" slot and a `find` that took the first
+     electric group: splitting the list into HV and LV made a second
+     group that nothing rendered, so a trench with two HV and one LV
+     showed the HV and dropped the LV out of sight entirely. */
+  if (!/\["electric:hv", "HV Cable"\]/.test(editor)
+    || !/\["electric:lv", "LV Cable"\]/.test(editor)) {
+    fail("HV and LV share one field, so whichever is grouped second is "
+      + "never shown at all");
+  }
+  if (!/\(x\.kind \?\? x\.layerKey\) === key/.test(editor)) {
+    fail("the fields are matched on utility, so both electric fields show "
+      + "the same group");
+  }
+  /* `layerKey` stays what it was, so anything else reading these rows
+     by utility is unaffected. */
+  if (!/kind: kindOf\(g\),/.test(editor)) {
+    fail("the row does not say which field it belongs in");
+  }
+
   /* ── And the WIDTH keeps the coarser grouping ──
 
      It takes the widest in each group and repeats it, so an LV counted

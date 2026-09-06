@@ -3006,6 +3006,48 @@ service and LSZH cable to somebody sizing a run at eleven kilovolts.
     fault they were covering for.** An empty box is a fact; a full one
     that should be empty is a hazard.
 
+89. **And then a THIRD gate emptied it for a different reason.**
+    `requireRating` drops any size with no `Rating_Amps`, because for an
+    LV main the build sizes by what the cable can carry and a row
+    without one is a name somebody typed and never finished.
+
+    **No HV size carries an amp rating.** The catalogue holds Triplex
+    11KV, 3 Core HV and Triplex 20KV at `Voltage_Rating_ID = 2`, and
+    every one was dropped by that gate rather than by the voltage
+    filter — so the panel reported no HV cable in a catalogue with
+    three, in a message I had just written to be reassuring.
+
+    Lifted only where a voltage was asked for: the person is choosing
+    explicitly, not asking the build to size anything. The LV rule is
+    untouched, and `checkcablemenu` holds both halves now rather than
+    just `requireRating: true`.
+
+    **Three gates, one symptom, three rounds.** Each fix was right and
+    none was sufficient, because each time I confirmed the gate I had
+    just changed instead of listing every gate the list passes
+    through.
+
+89. **And then a THIRD gate emptied it for a different reason.**
+    `requireRating` drops any size with no `Rating_Amps`, because for an
+    LV main the build sizes by what the cable can carry and a row
+    without one is a name somebody typed and never finished.
+
+    **No HV size carries an amp rating.** The catalogue holds Triplex
+    11KV, 3 Core HV and Triplex 20KV at `Voltage_Rating_ID = 2`, and
+    every one was dropped by that gate rather than by the voltage
+    filter — so the panel reported no HV cable in a catalogue with
+    three, and did it in a message I had just written to be reassuring.
+
+    Lifted only where a voltage was asked for: the person is choosing
+    explicitly, not asking the build to size anything. The LV rule is
+    untouched, and `checkcablemenu` now holds both halves rather than
+    just "requireRating: true".
+
+    **Three separate gates, one symptom, fixed one at a time over three
+    rounds.** Each fix was right and none of them was sufficient,
+    because I confirmed the gate I had just changed rather than listing
+    every gate the list passes through.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

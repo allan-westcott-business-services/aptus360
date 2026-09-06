@@ -788,7 +788,24 @@ export default function FeatureEditor({
      differing everywhere they had been corrected once. */
   const cableChoices = useMemo(() => cableMenu(
     lookups?.cableSizes || [], lookups?.cableTypes || [],
-    { usage: cableUsage, requireRating: true, voltageIds: cableVoltageIds },
+    /* ── An HV cable is not rated in amps the way an LV main is ──
+
+       `requireRating` drops any size with no `Rating_Amps`, because for
+       an LV main the build sizes by what the cable can carry and a row
+       without one is a name somebody typed and never finished.
+
+       HV sizes carry no such rating: the catalogue holds Triplex 11KV,
+       3 Core HV and Triplex 20KV at Voltage_Rating_ID 2, and every one
+       of them was being dropped by this gate rather than by the voltage
+       filter \u2014 so the panel reported no HV cable in a catalogue that
+       has three.
+
+       The person is choosing explicitly here, not asking the build to
+       size anything, so the rating is not what decides whether a cable
+       may be offered. */
+    { usage: cableUsage,
+      requireRating: !cableVoltageIds,
+      voltageIds: cableVoltageIds },
   ), [lookups, cableUsage, cableVoltageIds]);
 
   /* The unit actually chosen, so its figures can be shown rather than

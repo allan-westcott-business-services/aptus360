@@ -155,8 +155,17 @@ const names = (r) => r.list.map((c) => cableMenuName(c, types));
   /* The rating rule differs between them on purpose — see the note in
      BulkEditor. Held so it stays a decision somebody made rather than
      drifting further apart. */
-  if (!/requireRating: true/.test(editor)) {
-    fail("the feature editor no longer requires a rating");
+  /* For an LV main it still applies: the build sizes by what the cable
+     can carry, and a row with no rating is a name somebody typed and
+     never finished. Lifted only where a VOLTAGE was asked for, because
+     no HV size carries an amp rating and requiring one emptied a
+     catalogue holding three HV types. */
+  if (!/requireRating: !cableVoltageIds/.test(editor)) {
+    fail("the feature editor no longer requires a rating for an LV main");
+  }
+  if (/requireRating: false,/.test(editor)) {
+    fail("the feature editor requires no rating at all, rather than lifting "
+      + "the rule only where a voltage was asked for");
   }
   /* The code, not the word: it appears in the note above the call that
      explains why the two differ. */
@@ -246,6 +255,37 @@ const names = (r) => r.list.map((c) => cableMenuName(c, types));
   if (!usageOnly.list.length) {
     fail("the whole-catalogue fallback was removed for usage as well, so an "
       + "empty box cannot be told from a broken one");
+  }
+
+  /* ── An HV cable is not rated in amps the way an LV main is ──
+
+     `requireRating` drops any size with no `Rating_Amps`, because for
+     an LV main the build sizes by what the cable can carry. HV sizes
+     carry no such rating: a catalogue holding Triplex 11KV, 3 Core HV
+     and Triplex 20KV at rating 2 had every one of them dropped by that
+     gate rather than by the voltage filter, and the panel reported no
+     HV cable in a catalogue with three. */
+  const unrated = [
+    { Cable_Type_ID: 16, Cable_Type: "Triplex 11KV", Usage_Type: "Mains",
+      Voltage_Rating_ID: 2, Is_Active: true },
+    { Cable_Type_ID: 17, Cable_Type: "3 Core HV", Usage_Type: "Mains",
+      Voltage_Rating_ID: 2, Is_Active: true },
+  ];
+  const unratedSizes = unrated.map((t, i) => ({ Cable_Size_ID: i + 1,
+    Cable_Type_ID: t.Cable_Type_ID, Size_Label: "95", Rating_Amps: null }));
+  const offered = cableMenu(unratedSizes, unrated,
+    { usage: "mains", requireRating: false, voltageIds: [2] }).list;
+  if (offered.length !== unrated.length) {
+    fail("HV cable with no amp rating is dropped, so a catalogue with three "
+      + "HV types offers none of them");
+  }
+
+  /* And the editor stops requiring one where a voltage was asked for. */
+  {
+    const src = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+    if (!/requireRating: !cableVoltageIds/.test(src)) {
+      fail("the HV editor requires an amp rating, which no HV size carries");
+    }
   }
 
   /* And the HV editor asks for rating 2 by id. */

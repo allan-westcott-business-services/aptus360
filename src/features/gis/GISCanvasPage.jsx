@@ -529,6 +529,9 @@ export default function GISCanvasPage() {
      open. Held here rather than in the dialogue because the canvas is
      what draws it. */
   const [printFrame, setPrintFrame] = useState(null);
+  /* The POC and substation to route between, where the drawing has more
+     than one of either. */
+  const [routePick, setRoutePick] = useState(null);
 
   /* ── What a hand-drawn cable inherits from what it touches ──
 
@@ -13112,14 +13115,36 @@ export default function GISCanvasPage() {
      almost always a mistake rather than a design with two incomers, so
      an existing one is replaced rather than added to — and it is said
      out loud before anything is written. */
-  async function routeSupply() {
-    const r = routePocToSubstation(features, { lineTypes });
+  async function routeSupply(choice = null) {
+    const r = routePocToSubstation(features, { lineTypes, ...(choice || {}) });
     if (r.error) { setError(r.error); return; }
+    /* ── Two of each is a question, not a default ──
 
-    const existing = features.filter((f) =>
-      f.Feature_Type === "line"
-      && f.Layer_Key === "electric"
-      && f.Attributes?.Poc_Route === true);
+       With one POC and one substation there is only one pair and this
+       never fires. With two of each, routing the first to the first is
+       a guess that is wrong half the time, so it asks instead. */
+    if (r.needsChoice) { setRoutePick(r); return; }
+
+    /* ── Replace THIS pair's route, not every route ──
+
+       A second route was almost always a mistake rather than a design
+       with two incomers, so an existing one was replaced. On a site with
+       two POCs and two substations it is the design: routing the second
+       pair would have deleted the first, and the drawing would have
+       looked as though the feature simply did not work twice.
+
+       Matched on the pair it was drawn for, which the route now records.
+       A route from before that existed carries neither and is still
+       replaced, because on those drawings there was only ever one. */
+    const existing = features.filter((f) => {
+      if (f.Feature_Type !== "line" || f.Layer_Key !== "electric") return false;
+      if (f.Attributes?.Poc_Route !== true) return false;
+      const p = f.Attributes?.Poc_Route_Poc_ID;
+      const sb = f.Attributes?.Poc_Route_Sub_ID;
+      if (p == null && sb == null) return true;
+      return Number(p) === Number(r.poc.Feature_ID)
+        && Number(sb) === Number(r.substation.Feature_ID);
+    });
 
     const type = lineTypes.find((t) => t.Type_Key === "elec_hv");
     if (!window.confirm(
@@ -13145,6 +13170,12 @@ export default function GISCanvasPage() {
           /* Marks this as the incomer so a rerun can find and replace it
              without touching an HV run drawn by hand. */
           Poc_Route: true,
+          /* Which pair this route is for, so a second one can be drawn
+             without deleting the first. Stated at the moment it is
+             known, rather than worked out later from whichever ends it
+             happens to sit near. */
+          Poc_Route_Poc_ID: r.poc.Feature_ID,
+          Poc_Route_Sub_ID: r.substation.Feature_ID,
           Generated: true,
           Connects: connectedTo(r.geometry, features, null),
         },
@@ -23931,6 +23962,75 @@ export default function GISCanvasPage() {
 
           Drawn from the whole check rather than the filtered table: a
           schematic with the middle of every run missing is not one. */}
+      {/* ── Which POC to which substation ──
+
+          Only where the drawing has more than one of either: with one
+          of each there is a single pair and asking would be a step that
+          answers itself. Both lists are shown even when only one side
+          is ambiguous, because the pair is what somebody is choosing
+          and half a pair reads as a trick question. */}
+      {routePick && (
+        <div className="fe-backdrop" onClick={() => setRoutePick(null)}>
+          <div className="fe" onClick={(e) => e.stopPropagation()}
+            role="dialog" aria-label="Route the supply">
+            <div className="fe-head">
+              <div>
+                <h3>Route the supply</h3>
+                <p className="hint">
+                  This drawing has more than one of these, so which pair is
+                  being connected has to be said.
+                </p>
+              </div>
+              <button className="fe-x" onClick={() => setRoutePick(null)}
+                aria-label="Close">&times;</button>
+            </div>
+            <div className="fe-body">
+              <div className="fld">
+                <label htmlFor="rp-poc">From</label>
+                <select id="rp-poc" value={routePick.pocId ?? routePick.pocs[0]?.id}
+                  onChange={(e) => setRoutePick((p) => ({ ...p,
+                    pocId: Number(e.target.value) }))}>
+                  {routePick.pocs.map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="fld">
+                <label htmlFor="rp-sub">To</label>
+                <select id="rp-sub"
+                  value={routePick.substationId ?? routePick.substations[0]?.id}
+                  onChange={(e) => setRoutePick((p) => ({ ...p,
+                    substationId: Number(e.target.value) }))}>
+                  {routePick.substations.map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <p className="hint">
+                The route follows the trenches between them. Run it again to
+                connect the other pair.
+              </p>
+            </div>
+            <div className="fe-foot">
+              <button className="btn ghost" onClick={() => setRoutePick(null)}>
+                Cancel
+              </button>
+              <button className="btn accent" onClick={() => {
+                const pick = {
+                  pocId: routePick.pocId ?? routePick.pocs[0]?.id,
+                  substationId: routePick.substationId
+                    ?? routePick.substations[0]?.id,
+                };
+                setRoutePick(null);
+                routeSupply(pick);
+              }}>
+                Route
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {printOpen && (
         <PrintModal features={features}
           onRender={printSheet}

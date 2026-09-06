@@ -155,6 +155,7 @@ caught a fault that had already shipped at least once.
 | `node checkmsdb.mjs` | Flats on a table; load and levels derived, never guessed |
 | `node checkinherit.mjs` | A drawn cable takes the circuit it was drawn from |
 | `node checktwostations.mjs` | Each meter says which substation and way feeds it |
+| `node checkroutepair.mjs` | Routing a supply asks which pair, and keeps the other |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
@@ -2851,6 +2852,30 @@ time: a comment placed BETWEEN `IS NULL` and `NOT IN` broke the pattern
 that guards them. **NULL NOT IN (...) is NULL, not true**, so without
 the null test every point with no role vanishes, which cost a whole
 class of joints once.
+
+**Route POC to Substation asks which pair.** It took the FIRST POC and
+the FIRST substation. On a site with one of each that is the only pair
+there is, so nothing ever showed; with two of each it silently routed
+POC 1 to Substation 1 and there was no way to ask for anything else.
+
+Where the drawing has more than one of either, it now asks. Both lists
+are offered even when only one side is ambiguous, because the PAIR is
+what somebody is choosing and half a pair reads as a trick question.
+With one of each it never fires — a step that answers itself is worse
+than no step.
+
+80. **"Replace the existing route" became "delete the other supply".**
+    A second route was almost always a mistake rather than a design with
+    two incomers, so an existing one was replaced — a reasonable rule
+    written when a drawing had one POC. On a site with two POCs and two
+    substations it IS the design: routing the second pair deleted the
+    first, and the feature would have looked as though it simply did not
+    work twice.
+
+    A route now records the pair it was drawn for, and only that pair's
+    route is replaced. A route from before this existed names neither
+    and is still replaced, because on those drawings there was only ever
+    one.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

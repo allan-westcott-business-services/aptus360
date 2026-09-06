@@ -122,14 +122,55 @@ export function shortestPath(graph, from, to) {
    each — which would leave a visible gap and, worse, a cable joined to
    neither. */
 export function routePocToSubstation(features = [], opts = {}) {
-  const { lineTypes = [], tol = SNAP_TOL, layerKey = "electric" } = opts;
+  const {
+    lineTypes = [], tol = SNAP_TOL, layerKey = "electric",
+    /* ── Which POC to which substation ──
 
-  const poc = features.find((f) => f.Feature_Role === "poc" && f.Layer_Key === layerKey
+       This took the FIRST of each. On a site with one of each that is
+       the only pair there is; with two of each it silently routed POC 1
+       to Substation 1 and there was no way to ask for anything else.
+
+       Named by Feature_ID where somebody has chosen. Absent, the old
+       behaviour: the first of each, which is still right for the
+       drawing that only has one. */
+    pocId = null, substationId = null,
+  } = opts;
+
+  const pocs = features.filter((f) => f.Feature_Role === "poc"
+    && f.Layer_Key === layerKey && (f.Geometry || []).length);
+  const subs = features.filter((f) => f.Feature_Role === "substation"
     && (f.Geometry || []).length);
-  if (!poc) return { error: "No point of connection placed on this layer yet." };
 
-  const sub = features.find((f) => f.Feature_Role === "substation" && (f.Geometry || []).length);
-  if (!sub) return { error: "Place a substation first — the supply routes to it." };
+  const poc = pocId != null
+    ? pocs.find((f) => Number(f.Feature_ID) === Number(pocId))
+    : pocs[0];
+  if (!poc) {
+    return { error: pocId != null
+      ? "That point of connection is no longer on the drawing."
+      : "No point of connection placed on this layer yet." };
+  }
+
+  const sub = substationId != null
+    ? subs.find((f) => Number(f.Feature_ID) === Number(substationId))
+    : subs[0];
+  if (!sub) {
+    return { error: substationId != null
+      ? "That substation is no longer on the drawing."
+      : "Place a substation first — the supply routes to it." };
+  }
+
+  /* ── Say when there was a choice and nobody made it ──
+
+     Routing the first to the first is a guess, and on a drawing with
+     two of each it is wrong half the time. The caller asks rather than
+     letting this pick. */
+  const ambiguous = (pocId == null && pocs.length > 1)
+    || (substationId == null && subs.length > 1);
+  if (ambiguous) {
+    return { needsChoice: true,
+      pocs: pocs.map((f) => ({ id: f.Feature_ID, label: f.Label || "POC" })),
+      substations: subs.map((f) => ({ id: f.Feature_ID, label: f.Label || "Substation" })) };
+  }
 
   const graph = trenchGraph(features, { lineTypes });
   if (!graph.nodes.length) return { error: "No trenches to route the supply along." };

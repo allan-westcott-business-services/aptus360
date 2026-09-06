@@ -83,10 +83,41 @@ export default function SchematicModal({ trace, voltageV = 400, onClose }) {
 
   const onLabelUp = () => { dragging.current = null; };
 
-  const { nodes, edges, width, height } = useMemo(() => {
-    const tree = treeFromLegs(trace?.legs || [], trace?.from);
-    return layoutTree(tree, { boxW: BOX_W, boxH: BOX_H, gapX: GAP_X, gapY: GAP_Y });
+  /* ── One circuit at a time ──
+
+     A check covering several circuits puts all their legs in one list,
+     and this drew the lot as one tree. `treeFromLegs` takes the first
+     root it finds, so ONE circuit came out as a hierarchy and every
+     other circuit's nodes \u2014 unreachable from that root \u2014 landed at a
+     single depth: a straight line of boxes across the page.
+
+     Reported as "circuit 2 looks fine and circuit 3 is a straight
+     line", which is exactly what it was: circuit 2 held the root.
+
+     A schematic is a drawing of ONE network. Where several were
+     checked, one is shown and the others are offered. */
+  const circuits = useMemo(() => {
+    const names = [];
+    for (const l of trace?.legs || []) {
+      const n = l.circuitName ?? null;
+      if (n != null && !names.includes(n)) names.push(n);
+    }
+    return names;
   }, [trace]);
+
+  const [shown, setShown] = useState(null);
+  const drawn = shown && circuits.includes(shown) ? shown : circuits[0] ?? null;
+
+  const { nodes, edges, width, height } = useMemo(() => {
+    const legs = (trace?.legs || [])
+      .filter((l) => drawn == null || (l.circuitName ?? null) === drawn);
+    /* The root has to belong to the circuit being drawn: `trace.from` is
+       the check's origin, which on a multi-circuit check is one
+       circuit's and not the others'. */
+    const from = legs.some((l) => l.from === trace?.from) ? trace.from : null;
+    const tree = treeFromLegs(legs, from);
+    return layoutTree(tree, { boxW: BOX_W, boxH: BOX_H, gapX: GAP_X, gapY: GAP_Y });
+  }, [trace, drawn]);
 
   /* Saved as SVG rather than an image: it is a drawing, and someone will
      want to put it in a report at a size nobody has anticipated. */
@@ -118,9 +149,26 @@ export default function SchematicModal({ trace, voltageV = 400, onClose }) {
           <div>
             <h3>Schematic</h3>
             <p className="sch-sub">
-              {trace?.circuitName} &middot; {nodes.length} node(s) &middot; from {trace?.from}
+              {drawn ?? trace?.circuitName} &middot; {nodes.length} node(s)
+              {nodes.length ? ` \u00b7 from ${nodes[nodes.length - 1]?.label ?? trace?.from}` : ""}
             </p>
           </div>
+          {/* Which circuit is drawn, where the check covered several.
+              Offered rather than hidden: the others were being drawn on
+              top of this one as a row of orphaned boxes, and silently
+              dropping them would trade one wrong drawing for a missing
+              one. */}
+          {circuits.length > 1 && (
+            <div className="sch-pick">
+              {circuits.map((name) => (
+                <button key={name}
+                  className={`btn sm${name === drawn ? " accent" : " ghost"}`}
+                  onClick={() => setShown(name)}>
+                  {name}
+                </button>
+              ))}
+            </div>
+          )}
           {Object.keys(moved).length > 0 && (
             <button className="btn ghost" onClick={() => setMoved({})}>
               Reset labels
@@ -231,6 +279,7 @@ const CSS = `
 .sch-head { display: flex; align-items: flex-start; gap: 12px; padding: 14px 18px 12px;
   border-bottom: 1px solid var(--border); }
 .sch-head h3 { margin: 0; font-size: 16px; }
+.sch-pick { display: flex; gap: 6px; flex-wrap: wrap; margin-right: 8px; }
 .sch-sub { margin: 3px 0 0; font-size: 11.5px; color: var(--muted); }
 .sch-head .btn { margin-left: auto; }
 .sch-body { overflow: auto; padding: 14px; flex: 1; background: var(--bg); }

@@ -148,6 +148,7 @@ caught a fault that had already shipped at least once.
 | `node checkmenuguards.mjs` | Nothing offered that can only report nothing |
 | `node checkjointhold.mjs` | Joints hold their cables; released only on purpose |
 | `node checkclickdrag.mjs` | Nothing moves until the pointer says it is a drag |
+| `node checkschematic.mjs` | The schematic draws one circuit, and says which |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
@@ -2182,6 +2183,26 @@ Keyed on the box's **id**, not its label: two boxes on a site can share
 a name, and a colour from the wrong box is worse than no colour. An
 unknown box or an output with no colour set gets no tint rather than a
 guess.
+
+67. **A schematic of two circuits at once.** A levels check covering
+    several circuits puts all their legs in one list, and the schematic
+    drew the lot as one tree. `treeFromLegs` takes the first root it
+    finds, so ONE circuit came out as a hierarchy and every other
+    circuit's nodes — unreachable from that root — landed at a single
+    depth: **a straight line of boxes across the page.**
+
+    Reported as *"circuit 2 looks fine and circuit 3 is a straight
+    line"*, which is exactly what it was. Circuit 2 held the root.
+
+    One circuit is drawn now, with the others offered as buttons rather
+    than dropped — **silently hiding them would trade a wrong drawing
+    for a missing one.** The root is taken from the circuit being drawn
+    rather than from the check, because `trace.from` belongs to one
+    circuit and not the others.
+
+    `checkschematic` holds it, and it asserts the FAULT as well as the
+    fix: if two circuits in one tree ever stop flattening, the fixture
+    has stopped reproducing the thing it was written for and says so.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

@@ -551,6 +551,27 @@ export default function GISCanvasPage() {
     const ends = [geometry?.[0], geometry?.[geometry.length - 1]].filter(Boolean);
     if (!ends.length) return {};
 
+    /* ── How near counts as "drawn from" ──
+
+       JOIN_REACH_M is a third of a metre: the distance at which two
+       things are CONNECTED. Drawing is not that precise. A joint's
+       symbol is drawn several metres wide on screen, and somebody
+       starting a cable at it clicks the symbol \u2014 which lands a metre or
+       two from the point the joint actually occupies unless the snap
+       happened to fire.
+
+       Two metres, fixed. A reach that varied with the zoom was tried
+       first and is worse in two ways: it reads the view during render,
+       which is a dependency this function cannot have where it sits,
+       and it makes the same drawing behave differently depending on how
+       far in somebody happened to be \u2014 invisibly.
+
+       Being generous is safe here in a way it is not elsewhere: two
+       fittings of different circuits within reach refuses outright
+       rather than picking one, so the cost of reaching too far is a
+       cable that inherits nothing, exactly as before. */
+    const reach = Math.max(JOIN_REACH_M, 2);
+
     const seen = new Map();
     for (const e of ends) {
       for (const f of features) {
@@ -588,7 +609,7 @@ export default function GISCanvasPage() {
           ? [(a.Span_Anchor ?? f.Geometry?.[0])]
           : (f.Geometry || []);
         if (!near.some((q) => Array.isArray(q)
-          && Math.hypot(q[0] - e[0], q[1] - e[1]) <= JOIN_REACH_M)) continue;
+          && Math.hypot(q[0] - e[0], q[1] - e[1]) <= reach)) continue;
         seen.set(Number(a.Circuit_ID), {
           Circuit_ID: Number(a.Circuit_ID),
           Circuit_Name: a.Circuit_Name ?? null,

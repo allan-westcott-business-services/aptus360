@@ -25,6 +25,11 @@ const inherited = (features, geometry, lineType) => {
   if (!/main/i.test(String(lineType ?? ""))) return {};
   const ends = [geometry[0], geometry[geometry.length - 1]].filter(Boolean);
   const seen = new Map();
+  /* Two metres, not the third of a metre at which two things are
+     CONNECTED. Drawing is not that precise: a joint's symbol is several
+     metres wide on screen, and somebody starting a cable at it clicks
+     the symbol rather than the point it occupies. */
+  const reach = Math.max(JOIN_REACH_M, 2);
   for (const e of ends) {
     for (const f of features) {
       if (f.Layer_Key !== "electric") continue;
@@ -39,7 +44,7 @@ const inherited = (features, geometry, lineType) => {
       const near = f.Feature_Type === "point"
         ? [(a.Span_Anchor ?? f.Geometry?.[0])] : (f.Geometry || []);
       if (!near.some((q) => Array.isArray(q)
-        && Math.hypot(q[0] - e[0], q[1] - e[1]) <= JOIN_REACH_M)) continue;
+        && Math.hypot(q[0] - e[0], q[1] - e[1]) <= reach)) continue;
       seen.set(Number(a.Circuit_ID), { Circuit_ID: Number(a.Circuit_ID) });
     }
   }
@@ -56,11 +61,23 @@ const lasso = (id, cid, pts) => ({ Feature_ID: id, Feature_Type: "line",
   Attributes: { Line_Type: "elec_main", Circuit_ID: cid } });
 
 // 1. From a fitting, the fitting's circuit.
+//
+//    Including from NEAR it. A joint's symbol is several metres wide on
+//    screen and somebody starting a cable at it clicks the symbol: at a
+//    third of a metre the reported case inherited nothing, because the
+//    drawn end landed a metre from the point the joint occupies.
 {
   const world = [joint(1, 2, [10, 10])];
-  const got = inherited(world, [[10, 10], [40, 20]], "elec_main");
-  if (got.Circuit_ID !== 2) {
-    fail("a cable drawn from a breech joint does not take its circuit");
+  for (const off of [0, 0.5, 1.5]) {
+    const got = inherited(world, [[10 + off, 10], [40, 20]], "elec_main");
+    if (got.Circuit_ID !== 2) {
+      fail(`a cable started ${off} m from a breech joint does not take its `
+        + "circuit");
+    }
+  }
+  /* But not from across the road. */
+  if (inherited(world, [[40, 10], [70, 20]], "elec_main").Circuit_ID != null) {
+    fail("a cable thirty metres from the joint took its circuit");
   }
 }
 
@@ -123,6 +140,13 @@ const lasso = (id, cid, pts) => ({ Feature_ID: id, Feature_Type: "line",
     if (!/isTrenchType\(lineType, lineTypes\)/.test(fn)) {
       fail("a mains trench matches the word main and would be given a "
         + "circuit, which puts a dig on a network");
+    }
+    /* The reach is a drawing tolerance, not a connection one, and it is
+       fixed: a reach that varied with the zoom made the same drawing
+       behave differently depending on how far in somebody was. */
+    if (!/const reach = Math\.max\(JOIN_REACH_M, 2\)/.test(fn)) {
+      fail("the reach is the connection tolerance, which is a third of a "
+        + "metre \u2014 too tight for a cable drawn at a symbol");
     }
     if (!/seen\.size !== 1/.test(fn)) {
       fail("a cable touching two circuits is given one of them");

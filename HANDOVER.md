@@ -2574,6 +2574,21 @@ either would be picking one at random.
     contains the word "main", so a mains TRENCH drawn from a joint would
     have been put on the circuit. A trench belongs to no network.
 
+    **And the reach was the wrong measure.** `JOIN_REACH_M` is a third
+    of a metre: the distance at which two things are CONNECTED. Drawing
+    is not that precise — a joint's symbol is several metres wide on
+    screen, and somebody starting a cable at it clicks the SYMBOL, which
+    lands a metre or two from the point the joint occupies unless the
+    snap happened to fire. Two metres, fixed.
+
+    A reach that varied with the zoom was tried first and is worse twice
+    over: it reads the view during render, which that function cannot
+    do where it sits, and it makes the same drawing behave differently
+    depending on how far in somebody was. Being generous is safe here in
+    a way it is not elsewhere — two circuits within reach refuses
+    outright, so reaching too far costs a cable that inherits nothing,
+    exactly as before.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

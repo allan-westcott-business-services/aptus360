@@ -25,8 +25,8 @@ import { lvOrigins } from "./electric.js";
 import { servedPlots, JOINT_KINDS, straightJointWarning,
   jointCables, cableEndsAt, servicesAt } from "./joints.js";
 import {
-  FLOORS, TYPICAL_MAX, apartmentRows, blankApartment, msdbLoad,
-  apartmentLevels, worstApartment,
+  FLOORS, msdbLoad, apartmentLevels, worstApartment, flatsFromPlots,
+  servedFlats,
 } from "./msdb.js";
 import {
   pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS, ampsFor,
@@ -604,16 +604,36 @@ export default function FeatureEditor({
      worst of them. `levelsAt` is the board's own figure from the levels
      check \u2014 absent until one has been run, and the rows say so rather
      than reporting a tail as though it were a whole level. */
+  /* Every flat on the Plots tab, which ones this board serves, and what
+     each of those sees. Read from the DRAFT, not the saved feature: the
+     panel edits `f`, and reading `feature` here made every change
+     invisible \u2014 Add flat appeared to do nothing at all. */
+  const msdbFlats = useMemo(() => flatsFromPlots({
+    plotList,
+    /* `propertyConfigs` is what the lookups call it \u2014 the same list the
+       Plots tab is given. A guess with a fallback would have worked and
+       hidden which one was real. */
+    configs: lookups?.propertyConfigs || [],
+    propertyTypes: lookups?.propertyTypes || [],
+  }), [plotList, lookups]);
+
+  const msdbPicked = useMemo(() => {
+    const raw = f.Attributes?.MSDB_Plot_IDs;
+    return Array.isArray(raw) ? raw.map(Number) : [];
+  }, [f]);
+
+  const msdbServed = useMemo(() => servedFlats(f, msdbFlats), [f, msdbFlats]);
+
   const msdbTotals = useMemo(
-    () => msdbLoad(feature, lookups?.consumption || []),
-    [feature, lookups],
+    () => msdbLoad(f, msdbServed, lookups?.consumption || []),
+    [f, msdbServed, lookups],
   );
-  const msdbLevels = useMemo(() => apartmentLevels(feature, {
+  const msdbLevels = useMemo(() => apartmentLevels(f, msdbServed, {
     at: levelsAt ?? null,
     cable: msdbTailCable ?? null,
     consumption: lookups?.consumption || [],
     voltageV: Number(lookups?.vdSettings?.[0]?.Nominal_Voltage_V) || 400,
-  }), [feature, levelsAt, msdbTailCable, lookups]);
+  }), [f, msdbServed, levelsAt, msdbTailCable, lookups]);
   const msdbWorst = useMemo(() => worstApartment(msdbLevels), [msdbLevels]);
   const served = useMemo(
     () => (isJoint
@@ -1288,7 +1308,7 @@ export default function FeatureEditor({
                 <label htmlFor="fe-msdb-loc">Location</label>
                 <input id="fe-msdb-loc" type="text"
                   placeholder="Riser cupboard, core B"
-                  value={feature.Attributes?.MSDB_Location ?? ""}
+                  value={f.Attributes?.MSDB_Location ?? ""}
                   onChange={(e) => setAttr("MSDB_Location")(e.target.value)} />
               </div>
 
@@ -1296,20 +1316,18 @@ export default function FeatureEditor({
                 <div className="fld">
                   <label htmlFor="fe-msdb-floor">Floor</label>
                   <select id="fe-msdb-floor"
-                    value={feature.Attributes?.MSDB_Floor ?? ""}
+                    value={f.Attributes?.MSDB_Floor ?? ""}
                     onChange={(e) => setAttr("MSDB_Floor")(e.target.value)}>
                     <option value="">Not set</option>
-                    {FLOORS.map((f) => <option key={f} value={f}>{f}</option>)}
+                    {FLOORS.map((x) => <option key={x} value={x}>{x}</option>)}
                   </select>
                 </div>
                 <div className="fld">
                   <label htmlFor="fe-msdb-heat">Heat source</label>
                   {/* One per board rather than one per flat: a block is
-                      built the same way throughout, and asking
-                      forty-five times for one answer is a form nobody
-                      fills in. */}
+                      built the same way throughout. */}
                   <select id="fe-msdb-heat"
-                    value={feature.Attributes?.MSDB_Heat_Source_ID ?? ""}
+                    value={f.Attributes?.MSDB_Heat_Source_ID ?? ""}
                     onChange={(e) => setAttr("MSDB_Heat_Source_ID")(
                       e.target.value === "" ? null : Number(e.target.value))}>
                     <option value="">Not set</option>
@@ -1324,22 +1342,13 @@ export default function FeatureEditor({
 
               <div className="fld">
                 <label htmlFor="fe-msdb-tail">Tail cable</label>
-                {/* What the flats are wired in. Its own field because
-                    a riser tail is not the service cable the scheme
-                    lays in the ground, and it goes on the bill as its
-                    own line for the same reason. */}
                 <select id="fe-msdb-tail"
-                  value={feature.Attributes?.MSDB_Tail_Cable_ID ?? ""}
+                  value={f.Attributes?.MSDB_Tail_Cable_ID ?? ""}
                   onChange={(e) => setAttr("MSDB_Tail_Cable_ID")(
                     e.target.value === "" ? null : Number(e.target.value))}>
-                  {/* "Not overridden" rather than "Scheme default":
-                      every other calculated-with-an-override field in
-                      this editor says that, and a field that words it
-                      differently reads as a different kind of thing. */}
                   <option value="">Not overridden</option>
                   {(lookups?.cableSizes || [])
-                    .filter((c) => /service/i.test(String(c.Usage ?? ""))
-                      || Number(c.Rating_Amps) > 0)
+                    .filter((c) => Number(c.Rating_Amps) > 0)
                     .map((c) => (
                       <option key={c.Cable_Size_ID} value={c.Cable_Size_ID}>
                         {[c.Cable_Type, c.Size_Label].filter(Boolean).join(" ")}
@@ -1348,100 +1357,97 @@ export default function FeatureEditor({
                 </select>
               </div>
 
+              {/* ── The flats come from the Plots tab ──
+
+                  A dwelling is a plot: it has a number, a house type and
+                  a bedroom count recorded against it already. Asking for
+                  those again here would be a second place to say one
+                  thing, with no way to tell which was right when they
+                  disagreed.
+
+                  So the board holds only what the Plots tab cannot know:
+                  which flats hang off THIS board, and how far each is
+                  from it. */}
               <div className="fe-msdb-h">
                 <strong>Flats</strong>
-                <span className="hint">{msdbLoad(feature,
-                  lookups?.consumption || []).count} of {TYPICAL_MAX}</span>
-                <button type="button" className="btn sm"
-                  onClick={() => {
-                    const rows = apartmentRows(feature);
-                    setAttr("MSDB_Apartments")([...rows,
-                      blankApartment(rows.length + 1)]);
-                  }}>
-                  Add flat
-                </button>
+                <span className="hint">
+                  {msdbServed.length} of {msdbFlats.length} on this board
+                </span>
               </div>
 
-              {apartmentRows(feature).length === 0 ? (
+              {msdbFlats.length === 0 ? (
                 <p className="hint">
-                  No flats yet. Each row is a dwelling: its bedrooms decide the
-                  load, its distance decides the drop along its tail.
+                  No flats on the Plots tab. A plot counts as a flat when its
+                  house type is one &mdash; flat, apartment or maisonette &mdash;
+                  so add them there and they appear here.
                 </p>
               ) : (
                 <table className="fe-msdb-t">
                   <thead>
                     <tr>
-                      <th>Flat</th><th>Beds</th><th>Distance</th>
-                      <th>Load</th><th>At the flat</th><th />
+                      <th>On</th><th>Plot</th><th>Type</th>
+                      <th>Distance</th><th>Load</th><th>At the flat</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {msdbLevels.map((r, i) => (
-                      <tr key={r.id}>
-                        <td>
-                          <input type="text" value={r.ref}
-                            aria-label={`Flat ${i + 1} reference`}
-                            onChange={(e) => {
-                              const rows = apartmentRows(feature);
-                              rows[i] = { ...rows[i], ref: e.target.value };
-                              setAttr("MSDB_Apartments")(rows);
-                            }} />
-                        </td>
-                        <td>
-                          <input type="number" min="0" max="9" value={r.bedrooms}
-                            aria-label={`Flat ${i + 1} bedrooms`}
-                            onChange={(e) => {
-                              const rows = apartmentRows(feature);
-                              rows[i] = { ...rows[i], bedrooms: Number(e.target.value) };
-                              setAttr("MSDB_Apartments")(rows);
-                            }} />
-                        </td>
-                        <td>
-                          <input type="number" min="0" step="0.1" value={r.distanceM}
-                            aria-label={`Flat ${i + 1} distance in metres`}
-                            onChange={(e) => {
-                              const rows = apartmentRows(feature);
-                              rows[i] = { ...rows[i], distanceM: Number(e.target.value) };
-                              setAttr("MSDB_Apartments")(rows);
-                            }} />
-                        </td>
-                        <td className="num">
-                          {r.missingLoad
-                            ? <span className="fe-msdb-none"
-                              title="No consumption figure for that many bedrooms with this heat source">
-                                no figure
-                            </span>
-                            : `${r.kva.toFixed(1)} kVA`}
-                        </td>
-                        <td className="num">
-                          {r.pct == null
-                            ? <span className="fe-msdb-none"
-                              title="Run the levels check, and give the board a heat source and its flats a bedroom count">
-                                &mdash;
-                            </span>
-                            : `${r.pct.toFixed(2)}%`}
-                        </td>
-                        <td>
-                          <button type="button" className="fe-x sm"
-                            aria-label={`Remove flat ${r.ref || i + 1}`}
-                            onClick={() => {
-                              const rows = apartmentRows(feature);
-                              rows.splice(i, 1);
-                              setAttr("MSDB_Apartments")(rows);
-                            }}>&times;</button>
-                        </td>
-                      </tr>
-                    ))}
+                    {msdbFlats.map((flat) => {
+                      const lv = msdbLevels.find((x) => x.plotId === flat.plotId);
+                      const on = msdbPicked.includes(Number(flat.plotId));
+                      return (
+                        <tr key={flat.plotId} className={on ? undefined : "fe-msdb-off"}>
+                          <td>
+                            <input type="checkbox" checked={on}
+                              aria-label={`Plot ${flat.ref} on this board`}
+                              onChange={() => {
+                                const next = on
+                                  ? msdbPicked.filter((x) => x !== Number(flat.plotId))
+                                  : [...msdbPicked, Number(flat.plotId)];
+                                setAttr("MSDB_Plot_IDs")(next);
+                              }} />
+                          </td>
+                          <td>{flat.ref}</td>
+                          <td className="fe-msdb-type">
+                            {flat.bedrooms} bed {flat.typeName}
+                          </td>
+                          <td>
+                            <input type="number" min="0" step="0.1" disabled={!on}
+                              aria-label={`Plot ${flat.ref} distance in metres`}
+                              value={(f.Attributes?.MSDB_Distances
+                                || {})[String(flat.plotId)] ?? ""}
+                              onChange={(e) => setAttr("MSDB_Distances")({
+                                ...(f.Attributes?.MSDB_Distances || {}),
+                                [String(flat.plotId)]: e.target.value === ""
+                                  ? null : Number(e.target.value),
+                              })} />
+                          </td>
+                          <td className="num">
+                            {!on ? "" : lv?.missingLoad
+                              ? <span className="fe-msdb-none"
+                                title="No consumption figure for that many bedrooms with this heat source">
+                                  no figure
+                              </span>
+                              : `${(lv?.kva ?? 0).toFixed(1)} kVA`}
+                          </td>
+                          <td className="num">
+                            {!on ? "" : lv?.pct == null
+                              ? <span className="fe-msdb-none"
+                                title="Run the levels check, and give the board a heat source and this flat a distance">
+                                  &mdash;
+                              </span>
+                              : `${lv.pct.toFixed(2)}%`}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                   <tfoot>
                     <tr>
-                      <td colSpan={3}><strong>{msdbTotals.count} flat
+                      <td colSpan={4}><strong>{msdbTotals.count} flat
                         {msdbTotals.count === 1 ? "" : "s"}</strong></td>
                       <td className="num"><strong>{msdbTotals.kva.toFixed(1)} kVA</strong></td>
                       <td className="num">
                         {msdbWorst ? `${msdbWorst.pct.toFixed(2)}% worst` : "\u2014"}
                       </td>
-                      <td />
                     </tr>
                   </tfoot>
                 </table>

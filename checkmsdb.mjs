@@ -10,8 +10,8 @@
    building. */
 import { readFileSync } from "node:fs";
 import {
-  FLOORS, TYPICAL_MAX, apartmentRows, blankApartment, apartmentLoad,
-  msdbLoad, apartmentLevels, worstApartment, msdbText,
+  FLOORS, apartmentLoad, msdbLoad, apartmentLevels, worstApartment, msdbText,
+  flatsFromPlots, servedFlats, isFlatType,
 } from "./src/features/gis/msdb.js";
 
 let bad = 0;
@@ -28,29 +28,56 @@ const consumption = [
 ];
 const cable = { Loop_Impedance_Ohm: 0.9785, Volt_Drop_Base: 3094 };
 
+/* ── The flats come from the Plots tab ──
+
+   A dwelling is a plot: it has a number, a house type and a bedroom
+   count recorded against it already. Asking for those again on the
+   board would be a second place to say one thing, with no way to tell
+   which was right when they disagreed. The board holds only what the
+   Plots tab cannot know: which flats hang off THIS board, and how far
+   each is from it. */
+const propertyTypes = [
+  { Property_Type_ID: 1, Property_Type: "Detached" },
+  { Property_Type_ID: 2, Property_Type: "Flat" },
+];
+const configs = [
+  { Property_Config_ID: 10, Bedrooms: 4, Property_Type_ID: 1 },
+  { Property_Config_ID: 20, Bedrooms: 1, Property_Type_ID: 2 },
+  { Property_Config_ID: 21, Bedrooms: 2, Property_Type_ID: 2 },
+  { Property_Config_ID: 22, Bedrooms: 3, Property_Type_ID: 2 },
+  { Property_Config_ID: 23, Bedrooms: 9, Property_Type_ID: 2 },
+];
+const plotList = [
+  { plot_id: 1, plot_number: "1", Property_Config_ID: 10 },
+  { plot_id: 2, plot_number: "201", Property_Config_ID: 20 },
+  { plot_id: 3, plot_number: "202", Property_Config_ID: 21 },
+  { plot_id: 4, plot_number: "203", Property_Config_ID: 22 },
+  { plot_id: 5, plot_number: "204", Property_Config_ID: 23 },
+];
+const flats = flatsFromPlots({ plotList, configs, propertyTypes });
+
 const board = (attrs = {}) => ({
   Feature_Role: "msdb", Feature_Type: "point", Layer_Key: "electric",
   Attributes: {
     MSDB_Location: "Core B riser", MSDB_Floor: "2nd", MSDB_Heat_Source_ID: 2,
-    MSDB_Apartments: [
-      { id: "a1", ref: "201", bedrooms: 1, distanceM: 4 },
-      { id: "a2", ref: "202", bedrooms: 2, distanceM: 9 },
-      { id: "a3", ref: "203", bedrooms: 3, distanceM: 18 },
-    ],
+    MSDB_Plot_IDs: [2, 3, 4],
+    MSDB_Distances: { 2: 4, 3: 9, 4: 18 },
     ...attrs,
   },
 });
+const served = (b) => servedFlats(b, flats);
 
 // 1. The load comes from the consumption table, on both keys.
 {
-  const l = msdbLoad(board(), consumption);
+  const l = msdbLoad(board(), served(board()), consumption);
   if (!near(l.kva, 6)) fail(`three flats came to ${l.kva} kVA, wanted 6`);
   if (l.count !== 3) fail(`counted ${l.count} flats, wanted 3`);
 
   /* Heat source is part of the key. A board that says gas and one that
      says a heat pump do not draw the same. */
-  const hp = msdbLoad(board({ MSDB_Heat_Source_ID: 5,
-    MSDB_Apartments: [{ id: "a1", ref: "1", bedrooms: 2, distanceM: 5 }] }), consumption);
+  const hpBoard = board({ MSDB_Heat_Source_ID: 5, MSDB_Plot_IDs: [3],
+    MSDB_Distances: { 3: 5 } });
+  const hp = msdbLoad(hpBoard, served(hpBoard), consumption);
   if (!near(hp.kva, 6)) {
     fail("the heat source is not part of the load lookup, so every board "
       + "draws the same whatever it is heated by");
@@ -62,9 +89,10 @@ const board = (attrs = {}) => ({
 //    A zero here reads as a flat that draws nothing, which is a flat
 //    nobody sizes a cable for.
 {
-  const l = msdbLoad(board({ MSDB_Apartments: [
-    { id: "a1", ref: "1", bedrooms: 9, distanceM: 5 },
-  ] }), consumption);
+  /* Plot 204 is a nine-bedroom flat: nothing in the consumption table
+     matches it, which is the case this is about. */
+  const odd = board({ MSDB_Plot_IDs: [5], MSDB_Distances: { 5: 5 } });
+  const l = msdbLoad(odd, served(odd), consumption);
   if (l.missing.length !== 1) {
     fail("a bedroom count with no row in the consumption table was not reported");
   }
@@ -78,7 +106,7 @@ const board = (attrs = {}) => ({
 //    exactly how a plot meter's cut-out figure is reached.
 {
   const at = { ohms: 0.2, pct: 4.9 };
-  const rows = apartmentLevels(board(), { at, cable, consumption });
+  const rows = apartmentLevels(board(), served(board()), { at, cable, consumption });
 
   if (rows.some((r) => r.pct == null)) fail("a flat with everything known has no level");
   /* Further along its tail is worse, all else equal. */
@@ -104,12 +132,12 @@ const board = (attrs = {}) => ({
   /* No levels check yet. The tail alone is not a level \u2014 a figure that
      leaves out everything before the board looks passable when it is
      not. */
-  const noCheck = apartmentLevels(board(), { cable, consumption });
+  const noCheck = apartmentLevels(board(), served(board()), { cable, consumption });
   if (noCheck.some((r) => r.pct != null)) {
     fail("a flat reports a level with no figure for the board it hangs off");
   }
   /* No cable named for the tails. */
-  const noCable = apartmentLevels(board(), { at: { ohms: 0, pct: 4 }, consumption });
+  const noCable = apartmentLevels(board(), served(board()), { at: { ohms: 0, pct: 4 }, consumption });
   if (noCable.some((r) => r.pct != null)) {
     fail("a flat reports a level with no cable specified for its tail");
   }
@@ -118,25 +146,37 @@ const board = (attrs = {}) => ({
   }
   /* A flat with no load figure gets no level either: a drop computed
      from a load nobody knows is a number with nothing behind it. */
-  const noLoad = apartmentLevels(board({ MSDB_Apartments: [
-    { id: "a1", ref: "1", bedrooms: 9, distanceM: 5 },
-  ] }), { at: { ohms: 0, pct: 4 }, cable, consumption });
+  const oddB = board({ MSDB_Plot_IDs: [5], MSDB_Distances: { 5: 5 } });
+  const noLoad = apartmentLevels(oddB, served(oddB),
+    { at: { ohms: 0, pct: 4 }, cable, consumption });
   if (noLoad[0].pct != null) fail("a flat with no load figure was given a level");
 }
 
 // 5. The shape of a row, and of the board.
 {
-  if (apartmentRows({}).length !== 0) fail("a board with no table reports rows");
-  if (apartmentRows({ Attributes: { MSDB_Apartments: "nonsense" } }).length !== 0) {
-    fail("a malformed table throws or reports rows");
+  /* A board naming no flats serves none. Every flat on every board
+     would double count on a scheme with two, and a board that quietly
+     claimed the lot would size its cable for the whole block. */
+  if (servedFlats({ Attributes: {} }, flats).length !== 0) {
+    fail("a board naming no flats serves some anyway");
   }
-  const b = blankApartment(4);
-  if (b.bedrooms == null || b.distanceM == null) {
-    fail("a new row is missing the two things a row is asked for");
+  if (servedFlats({ Attributes: { MSDB_Plot_IDs: "nonsense" } }, flats).length !== 0) {
+    fail("a malformed list of flats throws or serves some");
+  }
+  /* A house is not a flat, whatever else is on the Plots tab. */
+  if (flats.some((x) => x.ref === "1")) {
+    fail("a detached house was pulled in as a flat");
+  }
+  if (!isFlatType("Maisonette") || isFlatType("Detached")) {
+    fail("what counts as a flat is wrong");
+  }
+  /* The bedroom count comes from the plot, not from the board. */
+  if (flats.find((x) => x.ref === "202")?.bedrooms !== 2) {
+    fail("a flat's bedrooms are not read from its plot's house type");
   }
   if (!FLOORS.includes("Ground")) fail("there is no ground floor");
-  if (TYPICAL_MAX !== 45) fail(`the expected maximum is ${TYPICAL_MAX}, not 45`);
-  if (!/2nd floor/.test(msdbText(board(), consumption))) {
+
+  if (!/2nd floor/.test(msdbText(board(), served(board()), consumption))) {
     fail("the board does not say where it is");
   }
 }
@@ -159,10 +199,26 @@ const board = (attrs = {}) => ({
   if (!/isMsdb && \(/.test(editor)) fail("the board has no editor panel");
   /* The two things a row is asked for, and the two it is not. */
   for (const [what, re] of [
-    ["bedrooms", /bedrooms: Number\(e\.target\.value\)/],
-    ["distance", /distanceM: Number\(e\.target\.value\)/],
+    ["which flats are on it", /MSDB_Plot_IDs/],
+    ["how far each one is", /MSDB_Distances/],
   ]) {
-    if (!re.test(editor)) fail(`a row cannot record its ${what}`);
+    if (!re.test(editor)) fail(`the board cannot record ${what}`);
+  }
+  /* Read from the DRAFT. The panel edits `f`, and reading `feature`
+     made every change invisible \u2014 Add flat appeared to do nothing at
+     all, because it wrote to one object and the table read another. */
+  if (/feature\.Attributes\?\.MSDB_/.test(editor)) {
+    fail("the panel reads the saved feature rather than the draft, so every "
+      + "edit is written and immediately invisible");
+  }
+  /* And the flats are not typed in twice. */
+  /* Matched on CODE, not prose: the first version of this looked for
+     the words "Add flat" and found them in the comment explaining why
+     the button had gone. A check that reads a comment reports on the
+     documentation. */
+  if (/onClick=\{\(\) => \{\s*const rows = apartmentRows/.test(editor)
+    || /blankApartment\(/.test(editor)) {
+    fail("flats are still entered by hand here as well as on the Plots tab");
   }
   if (!/Location/.test(editor) || !/Floor/.test(editor)) {
     fail("the board's location and floor are not asked for");

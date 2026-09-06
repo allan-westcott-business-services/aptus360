@@ -2369,12 +2369,23 @@ hang off tails of a metre or two inside the building. Drawn as
 forty-five service points it is unreadable, unmovable, and wrong about
 what is in the ground.
 
-**The drawing carries what is buried; the table carries what is in the
-building.** A row is asked for two things — bedrooms and a distance —
-and everything else is derived: the load from `House_Type_Consumption`
-on bedrooms AND heat source, the level from the board's own figure plus
-that flat's tail, which is exactly how a plot meter's cut-out figure is
-reached.
+**The flats come from the Plots tab.** A dwelling is a plot: it has a
+number, a house type and a bedroom count recorded against it already.
+Asking for those again on the board would be a second place to say one
+thing, with no way to tell which was right when they disagreed.
+
+So the board holds only what the Plots tab cannot know: **which flats
+hang off THIS board, and how far each is from it.** A plot counts as a
+flat when its house type says so — matched on the type's NAME, because
+the ids are per-scheme and the names are what somebody typed into Admin.
+
+A board naming no flats serves none. Every flat on every board would
+double count on a scheme with two, and a board that quietly claimed the
+lot would size its cable for the whole block.
+
+The load comes from `House_Type_Consumption` on bedrooms AND heat
+source; the level is the board's own figure plus that flat's tail, which
+is exactly how a plot meter's cut-out figure is reached.
 
 Heat source is one field on the board rather than one per row: a block
 is built the same way throughout, and asking forty-five times for one
@@ -2455,6 +2466,15 @@ piece: `spanTrace` has to claim it the way it claims a feeder point.
 written. It reads the newest migration that states the constraint and
 compares it against the admin list, so this cannot be forgotten for any
 future role either.
+
+70. **A panel that edited one object and read another.** The MSDB's
+    fields wrote to the editor's draft through `setAttr` and the table
+    read `feature.Attributes`, the saved prop. Every edit landed and was
+    immediately invisible: **Add flat appeared to do nothing at all.**
+
+    Nothing failed. The write worked, the read worked, and they were
+    about different objects. `checkmsdb` now rejects any
+    `feature.Attributes?.MSDB_` in that panel.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

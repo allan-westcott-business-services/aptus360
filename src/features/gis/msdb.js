@@ -74,9 +74,8 @@ export function apartmentLoad(row, heatSourceId, consumption = []) {
    what a designer checks against the fuse and what the network model
    then diversifies along with everything else. Applying diversity here
    as well would apply it twice. */
-export function msdbLoad(feature, consumption = []) {
+export function msdbLoad(feature, rows = [], consumption = []) {
   const heatSourceId = feature?.Attributes?.MSDB_Heat_Source_ID ?? null;
-  const rows = apartmentRows(feature);
   let kva = 0;
   const missing = [];
   for (const r of rows) {
@@ -102,14 +101,14 @@ export function msdbLoad(feature, consumption = []) {
    produces for any stop. Absent, the rows still report their tails, and
    say that the rest is not known rather than reporting the tail as
    though it were the whole. */
-export function apartmentLevels(feature, {
+export function apartmentLevels(feature, rows = [], {
   at = null,
   cable = null,
   consumption = [],
   voltageV = 400,
 } = {}) {
   const heatSourceId = feature?.Attributes?.MSDB_Heat_Source_ID ?? null;
-  return apartmentRows(feature).map((r) => {
+  return (rows || []).map((r) => {
     const load = apartmentLoad(r, heatSourceId, consumption);
     const tail = serviceVoltDrop({
       cable,
@@ -145,8 +144,8 @@ export function worstApartment(levels = []) {
 }
 
 /* Said the way somebody would, for the drawing and a list. */
-export function msdbText(feature, consumption = []) {
-  const { count, kva } = msdbLoad(feature, consumption);
+export function msdbText(feature, rows = [], consumption = []) {
+  const { count, kva } = msdbLoad(feature, rows, consumption);
   const where = feature?.Attributes?.MSDB_Location;
   const floor = feature?.Attributes?.MSDB_Floor;
   const bits = [];
@@ -155,4 +154,66 @@ export function msdbText(feature, consumption = []) {
   bits.push(`${count} flat${count === 1 ? "" : "s"}`);
   if (kva > 0) bits.push(`${kva} kVA`);
   return bits.join(" \u00b7 ");
+}
+
+/* ── The flats come from the Plots tab ──
+
+   A dwelling is a plot. It has a number, a house type, and a bedroom
+   count already recorded against it, and asking for those again on the
+   board would be a second place to say one thing — with no way to tell
+   which was right when they disagreed.
+
+   So the board holds only what the Plots tab cannot know: which flats
+   hang off THIS board, and how far each is from it. Everything else is
+   read from the plot.
+
+   A property type is a flat when it says so. Matched on the type's NAME
+   rather than an id, because the ids are per-scheme and the names are
+   what somebody typed into Admin \u2014 and a scheme with no flat type at
+   all should show an empty list rather than every house on the site. */
+export function isFlatType(typeName) {
+  return /\b(flat|apartment|maisonette|duplex)\b/i.test(String(typeName ?? ""));
+}
+
+export function flatsFromPlots({
+  plotList = [], configs = [], propertyTypes = [],
+} = {}) {
+  const typeOf = (id) => (propertyTypes || [])
+    .find((t) => Number(t.Property_Type_ID) === Number(id))?.Property_Type ?? "";
+  const cfgOf = (id) => (configs || [])
+    .find((c) => Number(c.Property_Config_ID) === Number(id));
+
+  return (plotList || [])
+    .map((p) => {
+      const cfg = cfgOf(p.Property_Config_ID ?? p.property_config_id);
+      return {
+        plotId: p.plot_id ?? p.Plot_ID,
+        ref: String(p.plot_number ?? p.Plot_Number ?? p.plot_id ?? ""),
+        bedrooms: Number(cfg?.Bedrooms) || 0,
+        typeName: typeOf(cfg?.Property_Type_ID),
+        code: cfg?.Code ?? "",
+      };
+    })
+    .filter((p) => isFlatType(p.typeName));
+}
+
+/* What this board serves: the flats it has been given, in the order the
+   Plots tab lists them, with the distance the board records for each.
+
+   A board that names none serves none. Every flat on every board would
+   be double counting on a scheme with two boards, and a board that
+   quietly claimed the lot would size its cable for the whole block. */
+export function servedFlats(feature, flats = []) {
+  const picked = feature?.Attributes?.MSDB_Plot_IDs;
+  const chosen = new Set(
+    (Array.isArray(picked) ? picked : []).map(Number),
+  );
+  const dist = feature?.Attributes?.MSDB_Distances || {};
+  return (flats || [])
+    .filter((f) => chosen.has(Number(f.plotId)))
+    .map((f) => ({
+      ...f,
+      id: `p${f.plotId}`,
+      distanceM: Number(dist[String(f.plotId)]) || 0,
+    }));
 }

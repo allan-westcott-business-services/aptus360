@@ -11,7 +11,7 @@
 import { readFileSync } from "node:fs";
 import {
   FLOORS, apartmentLoad, msdbLoad, apartmentLevels, worstApartment, msdbText,
-  flatsFromPlots, servedFlats, isFlatType, shortType,
+  flatsFromPlots, servedFlats, isFlatType, shortType, riserDrop,
 } from "./src/features/gis/msdb.js";
 
 let bad = 0;
@@ -388,6 +388,72 @@ const served = (b) => servedFlats(b, flats);
   /* No heat source on the board: it is the plot's. */
   if (/MSDB_Heat_Source_ID/.test(editor)) {
     fail("the board still asks for a heat source, which is set on the plot");
+  }
+}
+
+// 11. The riser between the boundary and the board.
+//
+//     The drawing stops at the boundary. A board on the fourth floor is
+//     fifteen metres further on, up a riser nobody has drawn and nobody
+//     can, and that cable drops volts like any other.
+//
+//     Left out, every flat in the block reads better than it is \u2014 by
+//     the same amount, on every board, in the same direction. A figure
+//     wrong the same way every time is the hardest kind to notice.
+{
+  const at = { ohms: 0.20, pct: 4.90 };
+  const none = riserDrop(board({ MSDB_Riser_M: 0 }), { at, cable, kva: 24 });
+  const some = riserDrop(board({ MSDB_Riser_M: 15 }), { at, cable, kva: 24 });
+
+  if (!near(none.pct, at.pct)) {
+    fail("a board at the boundary reads differently from the boundary");
+  }
+  if (!(some.pct > at.pct)) {
+    fail("fifteen metres of riser costs nothing, so a fourth-floor board "
+      + "reads the same as one in the car park");
+  }
+  /* It carries the WHOLE board's load: every flat is fed through it. */
+  const light = riserDrop(board({ MSDB_Riser_M: 15 }), { at, cable, kva: 6 });
+  if (!(some.pct > light.pct)) {
+    fail("the riser drop does not depend on the load through it");
+  }
+
+  /* And the flats sit on top of the board's figure, not the
+     boundary's. */
+  const b = board({ MSDB_Riser_M: 15 });
+  const onBoundary = apartmentLevels(b, served(b), { at, cable, consumption });
+  const onBoard = apartmentLevels(b, served(b),
+    { at: riserDrop(b, { at, cable, kva: 6 }), cable, consumption });
+  if (!(onBoard[0].pct > onBoundary[0].pct)) {
+    fail("a flat is measured from the boundary rather than from the board "
+      + "it hangs off, so the riser is missing from every one of them");
+  }
+
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/MSDB_Riser_M/.test(editor)) {
+    fail("there is no way to record the distance from the boundary");
+  }
+  if (!/at: msdbAt\?\.pct == null \? null : msdbAt/.test(editor)) {
+    fail("the flats are measured from the boundary figure rather than from "
+      + "the board's");
+  }
+}
+
+// 12. The consumption table is the one the app actually has.
+//
+//     `lookups.consumption` does not exist \u2014 it is
+//     `houseTypeConsumption`, which is what the future-allowance panel
+//     three hundred lines below has always used. The guess returned an
+//     empty table, so every flat reported "no consumption figure" and
+//     the message blamed the specs.
+{
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (/lookups\?\.consumption\b/.test(editor)) {
+    fail("the MSDB reads lookups.consumption, which does not exist \u2014 every "
+      + "flat then reports no figure and the message blames the specs");
+  }
+  if (!/lookups\?\.houseTypeConsumption/.test(editor)) {
+    fail("the MSDB does not read the consumption table at all");
   }
 }
 

@@ -26558,6 +26558,7 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .fe-msdb-pill { display: inline-block; padding: 1px 7px; border-radius: 999px;
   font-size: 11.5px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
 .fe-msdb-off .fe-msdb-pill { opacity: .5; }
+.fe-msdb-at { padding: 7px 0 0; font-size: 13px; }
 .fe-msdb-none { color: var(--muted); font-style: italic; }
 .fe-msdb-warn { margin: 8px 0 0; font-size: 12px; color: #b91c1c; }
 .gt-way-sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px;

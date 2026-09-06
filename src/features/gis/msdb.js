@@ -90,6 +90,42 @@ export function msdbLoad(feature, rows = [], consumption = []) {
   };
 }
 
+/* ── The riser, from the boundary to the board ──
+
+   The drawing stops at the boundary. A board on the fourth floor is
+   fifteen metres further on, up a riser nobody has drawn and nobody
+   can, and that cable drops volts like any other.
+
+   Left out, every flat in the block reads better than it is \u2014 by the
+   same amount, on every board, in the same direction. A figure that is
+   wrong the same way every time is the hardest kind to notice.
+
+   Added to the board's own level BEFORE the tails, because that is
+   where it is: the levels check gives the figure at the boundary, this
+   carries it up to the board, and each flat's tail carries it on from
+   there.
+
+   The load it carries is the whole board's, since every flat is fed
+   through it. */
+export function riserDrop(feature, {
+  at = null,
+  cable = null,
+  kva = 0,
+  voltageV = 400,
+} = {}) {
+  const lengthM = Number(feature?.Attributes?.MSDB_Riser_M) || 0;
+  const tail = serviceVoltDrop({ cable, lengthM, kva, voltageV });
+  if (!at) return { ohms: null, pct: null, lengthM, missingSpec: tail.missingSpec };
+  return {
+    lengthM,
+    missingSpec: tail.missingSpec,
+    ohms: (Number(at.ohms) || 0) + tail.ohms,
+    pct: (Number(at.pct) || 0) + tail.pct,
+    riserOhms: tail.ohms,
+    riserPct: tail.pct,
+  };
+}
+
 /* ── The level at a dwelling ──
 
    The board's own figure plus that dwelling's tail, which is exactly

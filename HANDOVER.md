@@ -2484,6 +2484,31 @@ future role either.
     about different objects. `checkmsdb` now rejects any
     `feature.Attributes?.MSDB_` in that panel.
 
+71. **A lookup that does not exist returns nothing, and the message
+    blamed the data.** The MSDB read `lookups.consumption`. The table is
+    `lookups.houseTypeConsumption` — which the future-allowance panel
+    three hundred lines below has always used. The guess returned an
+    empty array, every flat reported *"no consumption figure for their
+    bedrooms and this heat source"*, and **the message pointed at the
+    specs**: a correctly-worded explanation of the wrong thing.
+
+    `?.` and `|| []` between a typo and an empty result mean no error
+    ever appears. `checkmsdb` now rejects `lookups.consumption` by name.
+
+    **A message that names a cause is a claim, and a wrong one sends
+    somebody to fix a table that was never broken.**
+
+**The riser is part of the level.** The drawing stops at the boundary; a
+board on the fourth floor is fifteen metres further on, up a riser
+nobody has drawn and nobody can. `MSDB_Riser_M` carries the boundary
+figure up to the board, with the whole block's load through it, and the
+flats hang off THAT rather than off the boundary.
+
+Measured: fifteen metres carrying 24 kVA costs **1.11%**. Left out,
+every flat in the block reads better than it is — by the same amount, in
+the same direction, on every board. A figure wrong the same way every
+time is the hardest kind to notice.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

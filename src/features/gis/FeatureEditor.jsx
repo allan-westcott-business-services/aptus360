@@ -26,7 +26,7 @@ import { servedPlots, JOINT_KINDS, straightJointWarning,
   jointCables, cableEndsAt, servicesAt } from "./joints.js";
 import {
   FLOORS, msdbLoad, apartmentLevels, worstApartment, flatsFromPlots,
-  servedFlats,
+  servedFlats, riserDrop,
 } from "./msdb.js";
 import { bedColour } from "../../lib/bedColours.js";
 import {
@@ -626,15 +626,25 @@ export default function FeatureEditor({
   const msdbServed = useMemo(() => servedFlats(f, msdbFlats), [f, msdbFlats]);
 
   const msdbTotals = useMemo(
-    () => msdbLoad(f, msdbServed, lookups?.consumption || []),
+    () => msdbLoad(f, msdbServed, lookups?.houseTypeConsumption || []),
     [f, msdbServed, lookups],
   );
-  const msdbLevels = useMemo(() => apartmentLevels(f, msdbServed, {
+  /* The board's own level: what the levels check gives at the boundary,
+     carried up the riser by the whole block's load. The flats hang off
+     THIS, not off the boundary figure. */
+  const msdbAt = useMemo(() => riserDrop(f, {
     at: levelsAt ?? null,
     cable: msdbTailCable ?? null,
-    consumption: lookups?.consumption || [],
+    kva: msdbTotals.kva,
     voltageV: Number(lookups?.vdSettings?.[0]?.Nominal_Voltage_V) || 400,
-  }), [f, msdbServed, levelsAt, msdbTailCable, lookups]);
+  }), [f, levelsAt, msdbTailCable, msdbTotals, lookups]);
+
+  const msdbLevels = useMemo(() => apartmentLevels(f, msdbServed, {
+    at: msdbAt?.pct == null ? null : msdbAt,
+    cable: msdbTailCable ?? null,
+    consumption: lookups?.houseTypeConsumption || [],
+    voltageV: Number(lookups?.vdSettings?.[0]?.Nominal_Voltage_V) || 400,
+  }), [f, msdbServed, msdbAt, msdbTailCable, lookups]);
   const msdbWorst = useMemo(() => worstApartment(msdbLevels), [msdbLevels]);
   const served = useMemo(
     () => (isJoint
@@ -1329,6 +1339,40 @@ export default function FeatureEditor({
                     second answer to a question already answered, and a
                     block where two flats are heated differently could
                     not be described by one field on the board at all. */}
+              </div>
+
+              <div className="fe-row">
+                <div className="fld">
+                  <label htmlFor="fe-msdb-riser">Boundary to MSDB (m)</label>
+                  {/* The drawing stops at the boundary. A board on the
+                      fourth floor is fifteen metres further on, up a
+                      riser nobody has drawn and nobody can \u2014 and that
+                      cable drops volts like any other. Left out, every
+                      flat in the block reads better than it is, by the
+                      same amount, in the same direction. */}
+                  <input id="fe-msdb-riser" type="number" min="0" step="0.1"
+                    placeholder="0"
+                    value={f.Attributes?.MSDB_Riser_M ?? ""}
+                    onChange={(e) => setAttr("MSDB_Riser_M")(
+                      e.target.value === "" ? null : Number(e.target.value))} />
+                </div>
+                <div className="fld">
+                  <span className="fe-lab">At the board</span>
+                  <div className="fe-msdb-at">
+                    {msdbAt?.pct == null
+                      ? <span className="fe-msdb-none">Run the levels check</span>
+                      : (
+                        <>
+                          <strong>{msdbAt.pct.toFixed(2)}%</strong>
+                          {msdbAt.riserPct > 0 && (
+                            <span className="hint">
+                              {" "}including {msdbAt.riserPct.toFixed(2)}% up the riser
+                            </span>
+                          )}
+                        </>
+                      )}
+                  </div>
+                </div>
               </div>
 
               <div className="fld">

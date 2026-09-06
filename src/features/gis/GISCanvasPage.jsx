@@ -22701,6 +22701,36 @@ export default function GISCanvasPage() {
               )}
             </MenuBar>
 
+            {/* ── Everything, in one press ──
+
+                On the bar rather than buried in a menu, and at the far
+                end where it is not among the drawing tools: it does
+                nothing TO the drawing, it changes where you are
+                standing. Somebody who has lost the plot wants one
+                obvious thing to press, not a menu to remember.
+
+                The same place the wheel stops at, so pressing it and
+                zooming out as far as it goes land together. */}
+            <button className="gis-fitall" onClick={zoomToExtent}
+              disabled={!features.length}
+              title="Zoom to extents — everything on the drawing"
+              aria-label="Zoom to extents">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                {/* Four arrowheads on two diagonals, drawn rather than
+                    imported: one glyph is not worth a dependency, and a
+                    stroke that follows currentColor sits right in a bar
+                    that changes colour with the theme. */}
+                <g fill="none" stroke="currentColor" strokeWidth="1.9"
+                  strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 5 L19 19 M19 5 L5 19" />
+                  <path d="M5 10 L5 5 L10 5" />
+                  <path d="M19 10 L19 5 L14 5" />
+                  <path d="M5 14 L5 19 L10 19" />
+                  <path d="M19 14 L19 19 L14 19" />
+                </g>
+              </svg>
+            </button>
+
             {selected.length > 1 && !selectionClass && (
               <span className="gis-mixed">
                 Mixed selection &mdash; shift-click to narrow it to one kind
@@ -26848,6 +26878,20 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 /* Sits with the menu buttons and reads as one of them, without being a
    menu: no chevron, and it opens on the way down rather than waiting to
    see whether a list is coming. */
+/* ── Zoom to extents ──
+
+   Pushed to the far end of the bar with its own margin rather than by
+   spacing the bar out: the menus keep their spacing whatever else is
+   beside them, and a rule that moves everything to place one button
+   moves it again the next time something is added.
+
+   Square, so the glyph sits in it whichever way the bar wraps. */
+.gis-fitall { margin-left: auto; display: inline-flex; align-items: center;
+  justify-content: center; width: 34px; height: 34px; padding: 0;
+  border: 1px solid var(--border); border-radius: 9px; cursor: pointer;
+  background: var(--white); color: var(--text); }
+.gis-fitall:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.gis-fitall:disabled { color: var(--muted); cursor: not-allowed; background: var(--bg); }
 .gis-mixed { font-size: 11px; color: var(--muted); font-style: italic; max-width: 22ch; }
 .gis-snap { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600;
   text-transform: none; letter-spacing: 0; color: var(--muted); background: var(--white);

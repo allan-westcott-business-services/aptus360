@@ -86,6 +86,39 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   }
 }
 
+/* And one obvious thing to press.
+
+   Somebody who has lost the drawing wants a button, not a menu to
+   remember. On the bar, at the far end, where it is not among the
+   drawing tools \u2014 it does nothing TO the drawing, it changes where you
+   are standing. */
+{
+  if (!/className="gis-fitall" onClick=\{zoomToExtent\}/.test(canvas)) {
+    fail("there is no button on the toolbar for it");
+  }
+  /* Pushed right by its own margin rather than by respacing the bar:
+     a rule that moves everything to place one button moves it again
+     the next time something is added. */
+  if (!/\.gis-fitall \{ margin-left: auto;/.test(canvas)) {
+    fail("the button is not pushed to the end of the bar");
+  }
+  /* Disabled on an empty drawing, where there are no extents to go to
+     and pressing it would appear to do nothing. */
+  if (!/disabled=\{!features\.length\}/.test(canvas)) {
+    fail("the button is offered on an empty drawing, where it can only "
+      + "appear to do nothing");
+  }
+  /* Named for a reader who cannot see the glyph. */
+  if (!/aria-label="Zoom to extents"/.test(canvas)) {
+    fail("the button is an unlabelled icon");
+  }
+  /* The glyph follows the bar's colour rather than being painted on. */
+  if (!/stroke="currentColor"/.test(canvas)) {
+    fail("the icon does not take the bar's colour, so it will not follow "
+      + "a theme or a disabled state");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The zoom stops at the drawing (and a drag says nothing).");
 process.exit(bad ? 1 : 0);

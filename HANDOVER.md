@@ -2300,6 +2300,18 @@ somebody at whatever zoom they happened to be at — so there is a hard
 0.05 underneath, and a window with no size yet is refused rather than
 giving a floor of infinity.
 
+**There is a button for it on the toolbar**, at the far end, with four
+arrows on two diagonals. Somebody who has lost the drawing wants one
+obvious thing to press, not a menu to remember — and it belongs away
+from the drawing tools because it does nothing TO the drawing, it
+changes where you are standing.
+
+Pushed right by its own `margin-left: auto` rather than by respacing the
+bar: a rule that moves everything to place one button moves it again the
+next time something is added. The glyph is drawn inline in
+`currentColor`, so it follows the bar's colour and its disabled state,
+and one icon is not worth a dependency.
+
 **Reset View is now Zoom to Extents**, and it lands on the same place
 the wheel stops at. It used to jump to a fixed corner at a fixed scale
 of 4, which is where a drawing STARTS rather than where it is: on a

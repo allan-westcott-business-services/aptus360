@@ -150,6 +150,7 @@ caught a fault that had already shipped at least once.
 | `node checkclickdrag.mjs` | Nothing moves until the pointer says it is a drag |
 | `node checkschematic.mjs` | The schematic draws one circuit, and says which |
 | `node checkprint.mjs` | A metre on the ground is 1000/N mm on the paper |
+| `node checkzoomfloor.mjs` | The zoom stops at the drawing's own extents |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
@@ -2255,6 +2256,30 @@ everything and makes the stated scale a lie; nothing in the app can
 prevent that. The bar is drawn in the same transform as the drawing, so
 a rescaled sheet has a bar that no longer matches its own label — two
 seconds with a rule settles it.
+
+**The zoom stops at the drawing.** The floor was a fixed 0.4 px per
+metre, which is a number and not an answer: on a 368 m site that is 147
+pixels — the whole scheme as a smudge in an empty window, and finding
+the way back is a hunt. The floor is the scale at which the work fills
+the window, because past that there is nothing further to see.
+
+**Never a trap.** A drawing with one point in it, or none, has extents
+that say nothing useful, and a floor derived from nothing would lock
+somebody at whatever zoom they happened to be at — so there is a hard
+0.05 underneath, and a window with no size yet is refused rather than
+giving a floor of infinity.
+
+**Reset View is now Zoom to Extents**, and it lands on the same place
+the wheel stops at. It used to jump to a fixed corner at a fixed scale
+of 4, which is where a drawing STARTS rather than where it is: on a
+large site it put somebody in an empty field beside their work.
+
+**And a manual drag says nothing.** *"3 connected line end(s) moved with
+it"* described something the reader had just watched happen, and the
+status line sits above the canvas — so every drag pushed the drawing
+down a line and let it spring back four seconds later. **A message worth
+that jump is one that says something the drawing does not**: a refusal,
+or a count of what could NOT be done.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

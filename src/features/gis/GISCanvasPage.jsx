@@ -108,7 +108,7 @@ import {
 } from "./joints.js";
 import { alpha } from "../../lib/colour.js";
 import PrintModal from "./PrintModal.jsx";
-import { printView } from "./printSheet.js";
+import { printView, drawnBounds } from "./printSheet.js";
 import { inLightingView } from "./lightingView.js";
 import { utilityMenuPress, utilityTint } from "./utilityMenu.js";
 import { routePocToSubstation } from "./route.js";
@@ -8378,13 +8378,62 @@ export default function GISCanvasPage() {
         beforeRows, afterRows,
       );
 
-      const dragged = (d.rubber || []).length;
-      if (dragged) {
-        setStatus(`${dragged} connected line end(s) moved with it`);
-        setTimeout(() => setStatus(""), 4000);
-      }
+      /* ── Not announced ──
+
+         The cables following a dragged fitting are visible ON the
+         drawing, moving under the pointer as it moves: saying so in
+         words tells somebody what they have just watched happen. And
+         the status line is above the canvas, so every drag pushed the
+         drawing down a line and let it spring back four seconds later.
+
+         A message worth the jump is one that says something the drawing
+         does not \u2014 a refusal, a count of things that could NOT be done.
+         This was neither. */
     } catch (e) { setError(e.message); await load(projectId); }
   }
+
+  /* ── How far out is far enough ──
+
+     The floor was a fixed 0.4, which is a number and not an answer: on
+     a small site it let somebody zoom until the drawing was a smudge in
+     the middle of an empty screen, and finding the way back was a
+     hunt.
+
+     The drawing's own extents are the answer. Zoomed out until the work
+     fills the window, there is nothing further to see, so that is as
+     far as it goes.
+
+     ── Never a trap ──
+
+     A little slack, so the outermost feature is not against the frame.
+     And a hard floor underneath everything: on a drawing with one point
+     in it, or none, the extents say nothing useful, and a limit derived
+     from nothing would lock somebody at whatever zoom they happened to
+     be at. */
+  const fitScale = useCallback(() => {
+    const wrap = wrapRef.current;
+    const b = drawnBounds(features);
+    if (!wrap || !b || b.w <= 0 || b.h <= 0) return 0.05;
+    const r = wrap.getBoundingClientRect();
+    if (!r.width || !r.height) return 0.05;
+    const fit = Math.min(r.width / (b.w * 1.08), r.height / (b.h * 1.08));
+    return Math.max(0.05, Math.min(40, fit));
+  }, [features]);
+
+  /* Everything on screen, at the closest zoom that shows all of it. The
+     one gesture that always gets somebody back. */
+  const zoomToExtent = useCallback(() => {
+    const wrap = wrapRef.current;
+    const b = drawnBounds(features);
+    if (!wrap || !b) return;
+    const r = wrap.getBoundingClientRect();
+    const s = fitScale();
+    setView({
+      scale: s,
+      x: r.width / 2 - b.centre[0] * s,
+      y: r.height / 2 - b.centre[1] * s,
+    });
+  }, [features, fitScale]);
 
   /* Registered natively with passive:false — React's onWheel is passive,
      so preventDefault there is ignored and a trackpad pinch zooms the
@@ -8414,7 +8463,10 @@ export default function GISCanvasPage() {
         : (e.deltaY < 0 ? 1.12 : 0.89);
 
       setView((v) => {
-        const next = Math.min(40, Math.max(0.4, v.scale * factor));
+        /* Out as far as the drawing, and no further: past that there is
+           nothing more to see, and a drawing lost in the middle of an
+           empty screen is a hunt to get back from. */
+        const next = Math.min(40, Math.max(fitScale(), v.scale * factor));
         return {
           scale: next,
           x: px - (px - v.x) * (next / v.scale),
@@ -8425,7 +8477,7 @@ export default function GISCanvasPage() {
 
     cv.addEventListener("wheel", onWheelNative, { passive: false });
     return () => cv.removeEventListener("wheel", onWheelNative);
-  }, [projectId]);
+  }, [projectId, fitScale]);
 
   /* ── actions ── */
   /* Create anything missing, then place the whole range. */
@@ -20948,8 +21000,22 @@ export default function GISCanvasPage() {
                       <MenuItem label="Grid" active={showGrid}
                         hint={`${GRID_M} m spacing`}
                         onClick={() => setShowGrid(!showGrid)} />
-                      <MenuItem label="Reset View"
-                        onClick={() => setView({ x: 60, y: 60, scale: 4 })} />
+                      {/* ── Everything, at the closest zoom that shows it ──
+
+                          This was a fixed corner and a fixed scale of 4,
+                          which is where a drawing STARTS rather than
+                          where it is. On a site three hundred metres
+                          across it put somebody in an empty field beside
+                          their work, which is the opposite of resetting
+                          the view.
+
+                          It is also the floor the wheel stops at, so
+                          this and "as far out as it goes" are the same
+                          place. */}
+                      <MenuItem label="Zoom to Extents"
+                        hint="Everything on the drawing, as far out as the zoom goes"
+                        disabled={!features.length}
+                        onClick={zoomToExtent} />
                       {/* Last, under its own divider: it is not a drawing
                           tool and not a view setting, it is taking a copy
                           of the drawing away with you. */}

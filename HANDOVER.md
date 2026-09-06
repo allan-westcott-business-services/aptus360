@@ -2834,6 +2834,24 @@ Each row now carries the station it is assigned to and its way.
     **The fix was already written twenty lines further down.** Two
     branches for one question, and only one of them had been revisited.
 
+**Plots and NRS off the bill — migration `0207_bom_no_plots_nrs.sql`,
+NOT YET RUN.** A bill lists what somebody buys and lays. A plot seed is
+a marker saying a dwelling exists; a non-residential supply is a record
+of a connection somebody asked for. Neither arrives on a lorry.
+
+Plots have been excluded since 0167. **NRS was not**: it fell through to
+`initcap('nrs')` and read "Nrs" — a line item named after an acronym,
+counting supplies as units of plant.
+
+0207 is 0205 verbatim plus one word in the exclusion list. `checkbomroles`
+already owned this rule and reads the NEWEST definition of `gis_bom`
+rather than a named file, so it caught the new migration without being
+told about it — and caught a real fault in my first draft at the same
+time: a comment placed BETWEEN `IS NULL` and `NOT IN` broke the pattern
+that guards them. **NULL NOT IN (...) is NULL, not true**, so without
+the null test every point with no role vanishes, which cost a whole
+class of joints once.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

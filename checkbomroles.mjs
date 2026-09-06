@@ -45,7 +45,11 @@ else {
   if (!m) fail(`${newest} defines gis_bom with no role exclusions at all`);
   else {
     const roles = m[1].split(",").map((x) => x.trim().replace(/'/g, ""));
-    for (const role of ["plot", "spannode", "feederpoint"]) {
+    /* `nrs` joined them: a non-residential supply is a record of a
+       connection somebody asked for, and it read "Nrs" on the sheet —
+       initcap on an acronym, naming a line item nobody would
+       recognise. */
+    for (const role of ["plot", "spannode", "feederpoint", "nrs"]) {
       if (!roles.includes(role)) {
         fail(`${newest} counts ${role}s on the bill \u2014 nobody orders one`);
       }

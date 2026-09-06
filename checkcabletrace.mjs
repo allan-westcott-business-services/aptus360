@@ -33,6 +33,7 @@
    worth recording as the trap: with A2 gone the walk still passes the
    shared stretch on the way to both ends, so the plots teeing off it
    would be counted on BOTH legs. One error traded for a worse one. */
+import { readFileSync } from "node:fs";
 import { circuitTraceParts, spanTrace } from "./src/features/gis/feeder.js";
 import { marksOnPart } from "./src/features/gis/feederPoints.js";
 
@@ -315,6 +316,39 @@ const of = (via) => parts.find((x) => x.via === via);
   if (circuitTraceParts(sideBySide, f0.Feature_ID, opts).some((x) => x.error
     && /in series/.test(x.error))) {
     fail("two boxes side by side were refused as though they were in series");
+  }
+}
+
+// A stop belongs to the output it was placed on.
+//
+//    A box's outputs share a trench for as long as the designer runs
+//    them together, so a stop standing on output 1 lies on output 2's
+//    run as well — and was claimed by both. The levels sheet then read
+//
+//        Link Box 1 output 2   C1 -> C2
+//        Link Box 1 output 2   C2 -> C6
+//
+//    for a cable that bypasses C2 entirely: output 2 was made to pass
+//    through output 1's stop, and its own first leg was reported as two
+//    legs meeting at a point it never touches.
+{
+  const src = readFileSync("./src/features/gis/feeder.js", "utf8");
+  /* Anchored on the guard itself. `const own = sn.Attributes?.Circuit_ID;`
+     appears more than once, so indexOf found an earlier one and a
+     1800-character window fell five thousand characters short \u2014
+     reporting the rule missing when it was there. */
+  const at = src.indexOf("if (linkWay != null) {");
+  const body = at < 0 ? "" : src.slice(Math.max(0, at - 200), at + 400);
+  if (!body) {
+    fail("a part on one output claims stops belonging to another, because "
+      + "they share a trench");
+  } else {
+    /* A stop naming NO output is still taken: a hand-placed point on an
+       older drawing names none, and refusing those empties the report. */
+    if (!/stopWay != null && Number\(stopWay\) !== Number\(linkWay\)/.test(body)) {
+      fail("a stop that names no output is refused, which empties the "
+        + "report on every drawing made before outputs were stamped");
+    }
   }
 }
 

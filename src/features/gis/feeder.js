@@ -2207,6 +2207,29 @@ export function spanTrace(features = [], nodeId, opts = {}) {
     if (stopRole === "feederpoint") {
       if (Number(own) !== Number(circuitId)) continue;
     } else if (own != null && Number(own) !== Number(circuitId)) continue;
+
+    /* ── And this OUTPUT's, where the part is one ──
+
+       A box's outputs share a trench for as long as the designer runs
+       them together, so a stop standing on output 1 lies on output 2's
+       run as well and was claimed by both. The report then read
+
+           Link Box 1 output 2   C1 -> C2
+           Link Box 1 output 2   C2 -> C6
+
+       for a cable that bypasses C2 entirely: output 2 was made to pass
+       through output 1's stop, and its own first leg was split in two
+       at a point it never touches.
+
+       The stops carry the output they were placed on and the part knows
+       which output it is. A stop naming none is still taken \u2014 a
+       hand-placed point on an older drawing names no way, and refusing
+       those would empty the report. */
+    if (linkWay != null) {
+      const stopWay = sn.Attributes?.Link_Way;
+      if (stopWay != null && Number(stopWay) !== Number(linkWay)) continue;
+    }
+
     /* From the anchor, so a marker dragged clear still resolves to the
        point on the dig it was placed at. */
     const a = sn.Attributes?.Span_Anchor;

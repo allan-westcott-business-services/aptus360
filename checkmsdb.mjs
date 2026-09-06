@@ -11,7 +11,7 @@
 import { readFileSync } from "node:fs";
 import {
   FLOORS, apartmentLoad, msdbLoad, apartmentLevels, worstApartment, msdbText,
-  flatsFromPlots, servedFlats, isFlatType,
+  flatsFromPlots, servedFlats, isFlatType, shortType,
 } from "./src/features/gis/msdb.js";
 
 let bad = 0;
@@ -47,19 +47,26 @@ const configs = [
   { Property_Config_ID: 22, Bedrooms: 3, Property_Type_ID: 2 },
   { Property_Config_ID: 23, Bedrooms: 9, Property_Type_ID: 2 },
 ];
+/* The heat source is the PLOT's, set on the Plots tab with everything
+   else about the dwelling. A block where one flat is heated differently
+   \u2014 a ground-floor commercial unit among them \u2014 could not be described
+   by one field on the board at all. */
 const plotList = [
-  { plot_id: 1, plot_number: "1", Property_Config_ID: 10 },
-  { plot_id: 2, plot_number: "201", Property_Config_ID: 20 },
-  { plot_id: 3, plot_number: "202", Property_Config_ID: 21 },
-  { plot_id: 4, plot_number: "203", Property_Config_ID: 22 },
-  { plot_id: 5, plot_number: "204", Property_Config_ID: 23 },
+  { plot_id: 1, plot_number: "1", Property_Config_ID: 10, Heat_Source_ID: 2 },
+  { plot_id: 2, plot_number: "201", Property_Config_ID: 20, Heat_Source_ID: 2 },
+  { plot_id: 3, plot_number: "202", Property_Config_ID: 21, Heat_Source_ID: 2 },
+  { plot_id: 4, plot_number: "203", Property_Config_ID: 22, Heat_Source_ID: 2 },
+  { plot_id: 5, plot_number: "204", Property_Config_ID: 23, Heat_Source_ID: 2 },
+  /* Same flat, different heat source: the one case a board-wide field
+     could never express. */
+  { plot_id: 6, plot_number: "205", Property_Config_ID: 21, Heat_Source_ID: 5 },
 ];
 const flats = flatsFromPlots({ plotList, configs, propertyTypes });
 
 const board = (attrs = {}) => ({
   Feature_Role: "msdb", Feature_Type: "point", Layer_Key: "electric",
   Attributes: {
-    MSDB_Location: "Core B riser", MSDB_Floor: "2nd", MSDB_Heat_Source_ID: 2,
+    MSDB_Location: "Core B riser", MSDB_Floor: "2nd",
     MSDB_Plot_IDs: [2, 3, 4],
     MSDB_Distances: { 2: 4, 3: 9, 4: 18 },
     ...attrs,
@@ -75,13 +82,17 @@ const served = (b) => servedFlats(b, flats);
 
   /* Heat source is part of the key. A board that says gas and one that
      says a heat pump do not draw the same. */
-  const hpBoard = board({ MSDB_Heat_Source_ID: 5, MSDB_Plot_IDs: [3],
-    MSDB_Distances: { 3: 5 } });
-  const hp = msdbLoad(hpBoard, served(hpBoard), consumption);
-  if (!near(hp.kva, 6)) {
-    fail("the heat source is not part of the load lookup, so every board "
-      + "draws the same whatever it is heated by");
+  /* Plots 202 and 205 are both two-bed flats; 205 is heated differently
+     and draws three times as much. Read from the plot, they differ. */
+  const a = board({ MSDB_Plot_IDs: [3], MSDB_Distances: { 3: 5 } });
+  const b = board({ MSDB_Plot_IDs: [6], MSDB_Distances: { 6: 5 } });
+  const la = msdbLoad(a, served(a), consumption);
+  const lb = msdbLoad(b, served(b), consumption);
+  if (near(la.kva, lb.kva)) {
+    fail("two identical flats on different heat sources draw the same, so "
+      + "the heat source is not being read from the plot");
   }
+  if (!near(lb.kva, 6)) fail(`the heat-pump flat came to ${lb.kva} kVA, wanted 6`);
 }
 
 // 2. A missing figure is reported, never zero.
@@ -339,6 +350,44 @@ const served = (b) => servedFlats(b, flats);
   if (invented.length) {
     fail(`0205 reads ${invented.join(", ")} on GIS_Feature, which 0204 never `
       + "does \u2014 a column this schema may not have");
+  }
+}
+
+// 10. Named the way a designer writes it.
+//
+//     "1 bed Flat" is four words for a thing that appears forty-five
+//     times in one table.
+{
+  for (const [beds, type, want] of [
+    [1, "Flat", "1BF"], [2, "Apartment", "2BA"], [3, "Maisonette", "3BM"],
+  ]) {
+    if (shortType(beds, type) !== want) {
+      fail(`${beds} bed ${type} reads "${shortType(beds, type)}", wanted ${want}`);
+    }
+  }
+  /* A type nobody anticipated reads as itself rather than being forced
+     into F, A or M. */
+  if (shortType(2, "Bungalow") !== "2BB") fail("an unexpected type loses its initial");
+  /* Missing pieces show as a question rather than a wrong letter. */
+  if (!/\?/.test(shortType(0, "Flat")) || !/\?/.test(shortType(2, ""))) {
+    fail("a flat with no bedrooms or no type reads as though it had them");
+  }
+
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/flat\.short/.test(editor)) fail("the table does not use the short label");
+  /* The same bedroom palette as the placement panel and the property
+     admin, so a one-bed is the same colour wherever somebody meets it. */
+  if (!/bedColour\(flat\.bedrooms\)/.test(editor)) {
+    fail("the pill has a colour of its own rather than the bedroom palette");
+  }
+  /* And the full description survives on hover: the pill is short, not
+     a replacement for knowing what it means. */
+  if (!/title=\{\s*`\$\{flat\.bedrooms\} bed \$\{flat\.typeName\}`\}/.test(editor)) {
+    fail("the pill does not say what it stands for on hover");
+  }
+  /* No heat source on the board: it is the plot's. */
+  if (/MSDB_Heat_Source_ID/.test(editor)) {
+    fail("the board still asks for a heat source, which is set on the plot");
   }
 }
 

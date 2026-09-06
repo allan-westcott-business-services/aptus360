@@ -2387,9 +2387,17 @@ The load comes from `House_Type_Consumption` on bedrooms AND heat
 source; the level is the board's own figure plus that flat's tail, which
 is exactly how a plot meter's cut-out figure is reached.
 
-Heat source is one field on the board rather than one per row: a block
-is built the same way throughout, and asking forty-five times for one
-answer is a form nobody fills in.
+**The heat source is the plot's too.** It is set against the plot on the
+Plots tab with everything else about the dwelling, and asking again on
+the board would be a second answer to a question already answered — as
+well as making a block where one flat is heated differently, a
+ground-floor commercial unit among them, impossible to describe.
+
+Each flat reads as a coloured pill: **1BF**, not "1 bed Flat", which is
+four words for a thing that appears forty-five times in one table. The
+colour is the bedroom palette the placement panel and the property admin
+use, so a one-bed is the same colour wherever somebody meets it, and the
+full description is on hover.
 
 **Nothing is guessed.** A bedroom count with no row in the consumption
 table contributes nothing and is REPORTED — a zero there reads as a flat

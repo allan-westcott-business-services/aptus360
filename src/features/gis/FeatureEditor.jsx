@@ -28,6 +28,7 @@ import {
   FLOORS, msdbLoad, apartmentLevels, worstApartment, flatsFromPlots,
   servedFlats,
 } from "./msdb.js";
+import { bedColour } from "../../lib/bedColours.js";
 import {
   pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS, ampsFor,
   moveCircuitToWay, compactWays,
@@ -1322,22 +1323,12 @@ export default function FeatureEditor({
                     {FLOORS.map((x) => <option key={x} value={x}>{x}</option>)}
                   </select>
                 </div>
-                <div className="fld">
-                  <label htmlFor="fe-msdb-heat">Heat source</label>
-                  {/* One per board rather than one per flat: a block is
-                      built the same way throughout. */}
-                  <select id="fe-msdb-heat"
-                    value={f.Attributes?.MSDB_Heat_Source_ID ?? ""}
-                    onChange={(e) => setAttr("MSDB_Heat_Source_ID")(
-                      e.target.value === "" ? null : Number(e.target.value))}>
-                    <option value="">Not set</option>
-                    {(lookups?.heatSources || []).map((h) => (
-                      <option key={h.Heat_Source_ID} value={h.Heat_Source_ID}>
-                        {h.Label ?? h.Name ?? `#${h.Heat_Source_ID}`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {/* No heat source here. It is set against the PLOT on
+                    the Plots tab, along with everything else about the
+                    dwelling \u2014 asking again on the board would be a
+                    second answer to a question already answered, and a
+                    block where two flats are heated differently could
+                    not be described by one field on the board at all. */}
               </div>
 
               <div className="fld">
@@ -1406,8 +1397,19 @@ export default function FeatureEditor({
                               }} />
                           </td>
                           <td>{flat.ref}</td>
-                          <td className="fe-msdb-type">
-                            {flat.bedrooms} bed {flat.typeName}
+                          <td>
+                            {/* The same bedroom palette the placement
+                                panel and the property admin use, so a
+                                one-bed is the same colour wherever
+                                somebody meets it. */}
+                            <span className="fe-msdb-pill" title={
+                              `${flat.bedrooms} bed ${flat.typeName}`}
+                            style={{
+                              background: bedColour(flat.bedrooms).bg,
+                              color: bedColour(flat.bedrooms).fg,
+                            }}>
+                              {flat.short}
+                            </span>
                           </td>
                           <td>
                             <input type="number" min="0" step="0.1" disabled={!on}

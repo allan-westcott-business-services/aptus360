@@ -75,11 +75,11 @@ export function apartmentLoad(row, heatSourceId, consumption = []) {
    then diversifies along with everything else. Applying diversity here
    as well would apply it twice. */
 export function msdbLoad(feature, rows = [], consumption = []) {
-  const heatSourceId = feature?.Attributes?.MSDB_Heat_Source_ID ?? null;
   let kva = 0;
   const missing = [];
   for (const r of rows) {
-    const l = apartmentLoad(r, heatSourceId, consumption);
+    /* Each flat's own, from its plot. */
+    const l = apartmentLoad(r, r.heatSourceId, consumption);
     if (l.missing) missing.push(r);
     else kva += l.kva;
   }
@@ -87,7 +87,6 @@ export function msdbLoad(feature, rows = [], consumption = []) {
     count: rows.length,
     kva: Math.round(kva * 100) / 100,
     missing,
-    heatSourceId,
   };
 }
 
@@ -107,9 +106,8 @@ export function apartmentLevels(feature, rows = [], {
   consumption = [],
   voltageV = 400,
 } = {}) {
-  const heatSourceId = feature?.Attributes?.MSDB_Heat_Source_ID ?? null;
   return (rows || []).map((r) => {
-    const load = apartmentLoad(r, heatSourceId, consumption);
+    const load = apartmentLoad(r, r.heatSourceId, consumption);
     const tail = serviceVoltDrop({
       cable,
       lengthM: r.distanceM,
@@ -171,6 +169,23 @@ export function msdbText(feature, rows = [], consumption = []) {
    rather than an id, because the ids are per-scheme and the names are
    what somebody typed into Admin \u2014 and a scheme with no flat type at
    all should show an empty list rather than every house on the site. */
+/* ── What a flat is called in a pill ──
+
+   "1 bed Flat" is four words for a thing that appears forty-five times
+   in one table. "1BF" is what a designer writes on a drawing, and the
+   colour does the rest of the work \u2014 the same bedroom palette the
+   placement panel and the property admin use, so a one-bed is the same
+   colour wherever somebody meets it.
+
+   The letter is the type's initial: F for a flat, A for an apartment, M
+   for a maisonette. Anything else keeps its own initial rather than
+   being forced into one of those, because a type nobody anticipated
+   should read as itself. */
+export function shortType(bedrooms, typeName) {
+  const initial = String(typeName ?? "").trim().charAt(0).toUpperCase();
+  return `${bedrooms || "?"}B${initial || "?"}`;
+}
+
 export function isFlatType(typeName) {
   return /\b(flat|apartment|maisonette|duplex)\b/i.test(String(typeName ?? ""));
 }
@@ -186,12 +201,24 @@ export function flatsFromPlots({
   return (plotList || [])
     .map((p) => {
       const cfg = cfgOf(p.Property_Config_ID ?? p.property_config_id);
+      const typeName = typeOf(cfg?.Property_Type_ID);
       return {
         plotId: p.plot_id ?? p.Plot_ID,
         ref: String(p.plot_number ?? p.Plot_Number ?? p.plot_id ?? ""),
         bedrooms: Number(cfg?.Bedrooms) || 0,
-        typeName: typeOf(cfg?.Property_Type_ID),
+        typeName,
         code: cfg?.Code ?? "",
+        /* ── The heat source is the plot's ──
+
+           It is set against the plot on the Plots tab, along with the
+           house type and everything else about the dwelling. Asking for
+           it again on the board would be a second answer to a question
+           already answered, and a block where two flats are heated
+           differently \u2014 which happens, a ground-floor commercial unit
+           among them \u2014 could not be described at all by one field on
+           the board. */
+        heatSourceId: p.Heat_Source_ID ?? p.heat_source_id ?? null,
+        short: shortType(Number(cfg?.Bedrooms) || 0, typeName),
       };
     })
     .filter((p) => isFlatType(p.typeName));
@@ -216,4 +243,6 @@ export function servedFlats(feature, flats = []) {
       id: `p${f.plotId}`,
       distanceM: Number(dist[String(f.plotId)]) || 0,
     }));
+  /* `...f` carries heatSourceId and short through: the row the levels
+     work on is the flat, not a copy of it with fields dropped. */
 }

@@ -26551,6 +26551,13 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .fe-msdb-t input { width: 100%; min-width: 44px; padding: 3px 5px; font: inherit;
   border: 1px solid var(--border); border-radius: 5px; background: var(--white); }
 .fe-msdb-t tfoot td { border-top: 2px solid var(--line); padding-top: 5px; }
+/* The bedroom pill: "1BF" rather than "1 bed Flat", which is four words
+   for a thing that appears forty-five times in one table. The colour is
+   the bedroom palette, so a one-bed reads the same here as on the
+   placement panel. */
+.fe-msdb-pill { display: inline-block; padding: 1px 7px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
+.fe-msdb-off .fe-msdb-pill { opacity: .5; }
 .fe-msdb-none { color: var(--muted); font-style: italic; }
 .fe-msdb-warn { margin: 8px 0 0; font-size: 12px; color: #b91c1c; }
 .gt-way-sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px;

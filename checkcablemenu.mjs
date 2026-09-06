@@ -169,75 +169,60 @@ const names = (r) => r.list.map((c) => cableMenuName(c, types));
 /* ── High voltage is not a usage ──
 
    `Usage_Type` says mains or service. Both HV and LV mains are "Mains",
-   so a menu filtered on usage alone offered 3c WAVE 95, 185 and 300 to
-   somebody sizing an HV cable — LV mains cable for a run at eleven
-   kilovolts, which is not a mistake the catalogue should make
-   possible.
+   so a menu filtered on usage alone offered 3c WAVE, earth, service and
+   LSZH cable to somebody sizing a run at eleven kilovolts.
 
-   The catalogue has carried the answer since the seed:
-   `Voltage_Rating_ID` on the cable type, LV / HV / HV+ / EHV. */
+   The distinction is `Voltage_Rating_ID` on the cable type, and it is
+   asked for by ID. An earlier attempt looked the rating's NAME up in a
+   second table, on the reasoning that ids are per-scheme; that table
+   does not reach the screen, the lookup found nothing, and the filter
+   quietly did nothing — the list came back LONGER than before. One
+   column, one comparison, no second table to be missing. */
 {
   const types = [
     { Cable_Type_ID: 1, Cable_Type: "3c WAVE", Usage_Type: "Mains", Voltage_Rating_ID: 1 },
-    { Cable_Type_ID: 16, Cable_Type: "Triplex 11KV", Usage_Type: "Mains", Voltage_Rating_ID: 2 },
-    { Cable_Type_ID: 18, Cable_Type: "Triplex 20KV", Usage_Type: "Mains", Voltage_Rating_ID: 3 },
+    { Cable_Type_ID: 12, Cable_Type: "3 Phase Service", Usage_Type: "Service", Voltage_Rating_ID: 1 },
     /* An earth cable has no voltage recorded at all. */
     { Cable_Type_ID: 13, Cable_Type: "Earth Cable", Usage_Type: "Mains", Voltage_Rating_ID: null },
-  ];
-  const ratings = [
-    { Voltage_Rating_ID: 1, Voltage_Rating: "LV" },
-    { Voltage_Rating_ID: 2, Voltage_Rating: "HV" },
-    { Voltage_Rating_ID: 3, Voltage_Rating: "HV+" },
+    { Cable_Type_ID: 16, Cable_Type: "Triplex 11KV", Usage_Type: "Mains", Voltage_Rating_ID: 2 },
+    { Cable_Type_ID: 17, Cable_Type: "3 Core HV", Usage_Type: "Mains", Voltage_Rating_ID: 2 },
+    /* 20 kV is rating 3, and is NOT on an 11 kV list. */
+    { Cable_Type_ID: 18, Cable_Type: "Triplex 20KV", Usage_Type: "Mains", Voltage_Rating_ID: 3 },
   ];
   const sizes = types.map((t, i) => ({ Cable_Size_ID: i + 1,
     Cable_Type_ID: t.Cable_Type_ID, Size_Label: "95", Rating_Amps: 200 }));
   const nameOf = (c) => types.find((t) => t.Cable_Type_ID === c.Cable_Type_ID).Cable_Type;
 
-  const hv = cableMenu(sizes, types, { usage: "mains", requireRating: true,
-    voltages: ["hv", "hv+", "ehv"], voltageRatings: ratings }).list.map(nameOf);
-  if (hv.includes("3c WAVE")) {
-    fail("an HV run is offered LV mains cable, which is what the catalogue "
-      + "exists to prevent");
+  const hv = cableMenu(sizes, types,
+    { usage: "mains", requireRating: true, voltageIds: [2] }).list.map(nameOf);
+
+  /* Exactly the rating asked for, and nothing else. */
+  const want = ["3 Core HV", "Triplex 11KV"];
+  const extra = hv.filter((n) => !want.includes(n));
+  if (extra.length) {
+    fail(`an HV run is offered ${extra.join(", ")} \u2014 the list is everything `
+      + "with a rating, not the rating that was asked for");
   }
-  if (!hv.includes("Triplex 11KV") || !hv.includes("Triplex 20KV")) {
-    fail("an HV run is not offered HV cable \u2014 a run at one voltage may be "
-      + "laid in cable rated for a higher one");
-  }
-  /* A type with no voltage recorded is not offered where a voltage was
-     asked for: putting an earth cable on an HV list because nobody
-     filled the column in is the same fault as offering LV. */
-  if (hv.includes("Earth Cable")) {
-    fail("a cable with no voltage recorded is offered on an HV list");
+  for (const n of want) {
+    if (!hv.includes(n)) fail(`an HV run is not offered ${n}`);
   }
 
-  const lv = cableMenu(sizes, types, { usage: "mains", requireRating: true,
-    voltages: ["lv"], voltageRatings: ratings }).list.map(nameOf);
-  if (!lv.includes("3c WAVE") || lv.includes("Triplex 11KV")) {
-    fail("an LV run is not offered LV cable, or is offered HV");
+  /* No voltage asked for, nothing filtered: an LV main's list is
+     unchanged by any of this. */
+  const all = cableMenu(sizes, types,
+    { usage: "mains", requireRating: true }).list.map(nameOf);
+  if (!all.includes("3c WAVE")) {
+    fail("filtering by voltage changed the list where no voltage was asked for");
   }
 
-  /* ── Filtered only where the ratings are known ──
-
-     The names reach the client with the rest of the lookups. Where that
-     list is absent, every type fails the test and the dropdown comes up
-     EMPTY — a worse answer than an unfiltered one, because an empty
-     list looks like a catalogue with nothing in it and gives no way to
-     carry on. */
-  const noRatings = cableMenu(sizes, types, { usage: "mains", requireRating: true,
-    voltages: ["hv"], voltageRatings: [] }).list;
-  if (!noRatings.length) {
-    fail("with no voltage ratings loaded the dropdown comes up empty rather "
-      + "than unfiltered");
-  }
-
-  /* And the HV editor asks for it. */
+  /* And the HV editor asks for rating 2 by id. */
   const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
-  if (!/Line_Type === "elec_hv"\s*\n?\s*\? \["hv", "hv\+", "ehv"\]/.test(editor)) {
-    fail("the HV cable editor does not ask for HV cable");
+  if (!/Line_Type === "elec_hv" \? \[2\] : null/.test(editor)) {
+    fail("the HV cable editor does not ask for Voltage_Rating_ID 2");
   }
-  if (!/voltageRatings: lookups\?\.voltageRatings/.test(editor)) {
-    fail("the editor asks for a voltage without supplying the ratings to "
-      + "match it against, so nothing is ever filtered");
+  if (/voltageRatings/.test(editor)) {
+    fail("the editor still looks the rating up by name in a table that does "
+      + "not reach it, so the filter does nothing");
   }
 }
 

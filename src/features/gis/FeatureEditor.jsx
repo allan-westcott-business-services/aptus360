@@ -617,9 +617,9 @@ export default function FeatureEditor({
      HV, HV+ and EHV together: a run at one voltage may legitimately be
      laid in cable rated for a higher one, and the catalogue is where
      that judgement belongs rather than here. */
-  const cableVoltages = f.Attributes?.Line_Type === "elec_hv"
-    ? ["hv", "hv+", "ehv"]
-    : ["lv"];
+  /* HV cable is Voltage_Rating_ID 2. Nothing else belongs on an HV
+     run's list \u2014 not LV mains, not services, not earth. */
+  const cableVoltageIds = f.Attributes?.Line_Type === "elec_hv" ? [2] : null;
 
   /* Which output of which box this feature is on, if any \u2014 read the
      way the drawing reads it, not by a second rule written here. */
@@ -788,11 +788,8 @@ export default function FeatureEditor({
      differing everywhere they had been corrected once. */
   const cableChoices = useMemo(() => cableMenu(
     lookups?.cableSizes || [], lookups?.cableTypes || [],
-    { usage: cableUsage,
-      requireRating: true,
-      voltages: cableVoltages,
-      voltageRatings: lookups?.voltageRatings || [] },
-  ), [lookups, cableUsage, cableVoltages]);
+    { usage: cableUsage, requireRating: true, voltageIds: cableVoltageIds },
+  ), [lookups, cableUsage, cableVoltageIds]);
 
   /* The unit actually chosen, so its figures can be shown rather than
      just its name. */

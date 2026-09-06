@@ -2964,29 +2964,30 @@ result: read what a rewrite leaves behind, not just what it prints.
     pipe that will not fit. The two still agree about how many things
     are in the trench, which is what the list's note requires.
 
-**An HV run is offered HV cable.** `Usage_Type` says mains or service,
-and both HV and LV mains are "Mains" — so a menu filtered on usage alone
-offered 3c WAVE 95, 185 and 300 to somebody sizing a cable for eleven
-kilovolts. Not a mistake the catalogue should make possible.
+**The HV editor lists `Voltage_Rating_ID = 2` and nothing else.**
+`Usage_Type` says mains or service, and both HV and LV mains are
+"Mains", so a menu filtered on usage alone offered 3c WAVE, earth,
+service and LSZH cable to somebody sizing a run at eleven kilovolts.
 
-The answer has been in the catalogue since the seed:
-`Voltage_Rating_ID` on the cable type, LV / HV / HV+ / EHV. Asked for by
-the rating's NAME rather than its id, because ids are per-scheme and the
-names are what somebody chose in Admin. HV, HV+ and EHV together, since
-a run at one voltage may legitimately be laid in cable rated for a
-higher one and that judgement belongs in the catalogue.
+87. **A filter that needed a table the screen does not have.** My first
+    attempt looked the rating's NAME up in `Voltage_Rating`, reasoning
+    that ids are per-scheme while names are what somebody chose in
+    Admin. That table does not reach this screen. The lookup found
+    nothing, and the fallback I had written for exactly that case — no
+    ratings, no filtering — meant the filter **quietly did nothing**.
 
-**Filtered only where the ratings are known.** They reach the client
-with the rest of the lookups; where that list is absent every type would
-fail the test and the dropdown would come up EMPTY — a worse answer than
-an unfiltered one, because an empty list looks like a catalogue with
-nothing in it and offers no way to carry on.
+    The list came back LONGER than before, because the earlier
+    usage-only behaviour had at least been filtering something.
 
-**NOT VERIFIED:** `lookups.voltageRatings` is not in the mock data and I
-could not confirm the `/lookups` endpoint returns it. If it does not,
-the dropdown falls back to the old unfiltered list rather than breaking
-— but the filter will do nothing until the endpoint carries
-`Voltage_Rating`.
+    One column, one comparison, no second table to be missing:
+    `Voltage_Rating_ID === 2`. A type with no rating recorded is not
+    offered either — an earth cable has none, and putting it on an HV
+    list because nobody filled the column in is the same fault as
+    offering LV.
+
+    **A fallback that hides a broken lookup is worse than the lookup
+    failing loudly**, and I wrote the fallback and the bug in the same
+    change.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

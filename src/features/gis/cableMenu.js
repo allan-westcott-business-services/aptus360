@@ -58,34 +58,21 @@ export function cableMenu(cableSizes = [], cableTypes = [], opts = {}) {
   /* ── High voltage is not a usage ──
 
      `Usage_Type` says mains or service. Both HV and LV mains are
-     "Mains", so a menu filtered on usage alone offered 3c WAVE 95, 185
-     and 300 to somebody sizing an HV cable \u2014 LV mains cable for a run
-     at eleven kilovolts, which is not a mistake the catalogue should
-     make possible.
+     "Mains", so a menu filtered on usage alone offered 3c WAVE, earth,
+     service and LSZH cable to somebody sizing a run at eleven
+     kilovolts.
 
-     The catalogue already carries the answer: `Voltage_Rating_ID` on
-     the cable type, LV, HV, HV+ and EHV since the seed. Asked for by
-     the NAME of the rating rather than its id, because ids are
-     per-scheme and the names are what somebody chose in Admin.
+     The distinction is `Voltage_Rating_ID` on the cable type, and it is
+     asked for by ID. An earlier version looked the rating's NAME up in
+     a second table on the reasoning that ids are per-scheme; that table
+     does not reach this screen, the lookup found nothing, and the
+     filter quietly did nothing at all \u2014 which is how the list came back
+     LONGER than before.
 
-     `voltages` is a list, so "not LV" can be asked for as one question:
-     an HV run may legitimately be offered HV, HV+ or EHV cable. */
-  const voltages = (opts.voltages ?? null)
-    && (opts.voltages || []).map((v) => String(v).trim().toLowerCase());
-
-  /* ── Filtered only where the ratings are actually known ──
-
-     The names live in `Voltage_Rating`, which reaches the client with
-     the rest of the lookups. Where that list is absent \u2014 an older
-     server, a screen that does not load it \u2014 every type would fail the
-     test and the dropdown would come up EMPTY, which is a worse answer
-     than an unfiltered one: an empty list looks like a catalogue with
-     nothing in it and gives no way to carry on.
-
-     So no ratings means no filtering, and `filtered` below still
-     reports honestly what happened. */
-  const ratings = opts.voltageRatings || [];
-  const ratingsKnown = ratings.length > 0;
+     One column, one comparison, no second table to be missing. */
+  const voltageIds = Array.isArray(opts.voltageIds) && opts.voltageIds.length
+    ? opts.voltageIds.map(Number)
+    : null;
 
   const fits = cableSizes.filter((c) => {
     const t = cableTypes.find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
@@ -94,15 +81,13 @@ export function cableMenu(cableSizes = [], cableTypes = [], opts = {}) {
     if (requireRating && (c.Rating_Amps == null || Number(c.Rating_Amps) <= 0)) {
       return false;
     }
-    if (voltages && ratingsKnown) {
-      const vr = ratings
-        .find((x) => Number(x.Voltage_Rating_ID) === Number(t?.Voltage_Rating_ID));
-      const name = String(vr?.Voltage_Rating ?? "").trim().toLowerCase();
-      /* A type with no voltage recorded is not offered where a voltage
-         was asked for. An earth cable has none, and putting it on an HV
-         list because nobody filled the column in is the same fault as
-         offering LV in the first place. */
-      if (!name || !voltages.includes(name)) return false;
+    /* A type with no voltage recorded is not offered where one was
+       asked for. An earth cable has none, and putting it on an HV list
+       because nobody filled the column in is the same fault as offering
+       LV in the first place. */
+    if (voltageIds) {
+      if (t?.Voltage_Rating_ID == null) return false;
+      if (!voltageIds.includes(Number(t.Voltage_Rating_ID))) return false;
     }
     if (!usage) return true;
     const u = String(t?.Usage_Type ?? "").trim().toLowerCase();

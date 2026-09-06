@@ -2725,6 +2725,17 @@ fail.
     leaves, and everything the block draws is taken off in between.
     Nothing about being mid-span makes a board less of a stop.
 
+**Dragging a board takes its cables and its stop with it.** One cable
+arrives and one leaves; dragging left both where they were, so the board
+came away from the cables it sits on. `isJoint` in the drag is the name
+for "a fitting the cable follows", and a board is one.
+
+**And the stop is now stated rather than guessed.** The anchor followed
+by PROXIMITY where a stop carried no link — a third of a metre out and
+it stayed behind. `jointMarks` carries the fitting's id and
+`planFeederPoints` writes it as `At_Joint_ID`, which is the name the
+drag already reads. One fact, one name, no second guess.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

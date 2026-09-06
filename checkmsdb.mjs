@@ -837,6 +837,39 @@ const served = (b) => servedFlats(b, flats);
   }
 }
 
+// 20. Dragging a board takes its cables and its stop with it.
+//
+//     One cable arrives at a board and one leaves. Dragging it left
+//     both where they were, so the board came away from the cables it
+//     sits on \u2014 the same fault a joint had, and the same rule fixes it.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  /* `isJoint` is the drag's name for "a fitting the cable follows". */
+  if (!/pt\.Feature_Role === "joint"\s*\n?\s*\|\| pt\.Feature_Role === "msdb"/.test(canvas)) {
+    fail("the cables do not follow a board when it is dragged");
+  }
+  /* And the stop standing on it. */
+  if (!/f\?\.Feature_Role === "joint" \|\| f\?\.Feature_Role === "msdb"/.test(canvas)) {
+    fail("the feeder point on a board does not follow it, so the leader is "
+      + "left pointing at nothing");
+  }
+
+  /* ── Stated, not guessed ──
+
+     The anchor followed by PROXIMITY where a stop carried no link: a
+     third of a metre out and it stayed behind. The build now stamps the
+     fitting a stop stands on, so the drag reads a record. */
+  const marks = readFileSync("./src/features/gis/feederPoints.js", "utf8");
+  if (!/atFeatureId: f\.Feature_ID \?\? null/.test(marks)) {
+    fail("a stop does not record which fitting asked for it");
+  }
+  if (!/At_Joint_ID: Number\(nd\.atFeatureId\)/.test(marks)) {
+    fail("the fitting's id is carried on the mark and dropped when the point "
+      + "is written, so the drag has nothing to read");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The MSDB behaves (flats on a table, load and levels derived).");
 process.exit(bad ? 1 : 0);

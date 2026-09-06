@@ -335,6 +335,17 @@ export function planFeederPoints({
         Circuit_ID: circuit?.id, Circuit_Name: circuit?.name, Circuit_Letter: letter,
         Span_Seq: num, Span_Label: label, Span_Kind: nd.kind,
         Span_Anchor: nd.point,
+        /* ── Which fitting this stop stands on ──
+
+           A stop asked for by a straight joint or a board stands ON
+           that fitting. Saying so outright is what lets it travel when
+           the fitting is dragged; the alternative is guessing from
+           proximity at drag time, which leaves a stop behind whenever
+           the guess is a few centimetres out.
+
+           `At_Joint_ID` is the name the drag already looks for. Kept,
+           rather than adding a second name for one fact. */
+        ...(nd.atFeatureId != null ? { At_Joint_ID: Number(nd.atFeatureId) } : {}),
         ...(nd.kind !== "origin" && startCableId != null
           ? { VD_Cable_Size_ID: startCableId } : {}),
         ...((() => {
@@ -553,7 +564,13 @@ export function jointMarks(features = [], model, sections = [], tol = 0.5) {
       if (!best || d < best.d) best = { d, i };
     }
     if (!best) continue;
-    out.push({ index: best.i, point: [at[0], at[1]], kind: "junction" });
+    /* Which fitting asked for this stop. The point the build makes here
+       stands ON that fitting, and saying so outright is what lets it
+       travel when the fitting is dragged \u2014 the alternative is guessing
+       from proximity later, which is how a stop came to be left behind
+       by every fitting it belonged to. */
+    out.push({ index: best.i, point: [at[0], at[1]], kind: "junction",
+      atFeatureId: f.Feature_ID ?? null });
   }
   return out;
 }

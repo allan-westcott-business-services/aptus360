@@ -7588,9 +7588,12 @@ export default function GISCanvasPage() {
          third of a metre of the fitting at the moment the drag begins:
          a bridge for drawings already made, narrow enough that two
          joints a metre apart cannot claim each other's. */
+      /* A board carries its stop the way a straight joint does: the
+         feeder point stands ON it, and moving the board without its
+         anchor leaves the leader pointing at nothing. */
       const jointIds = next
         .map((id) => features.find((x) => x.Feature_ID === id))
-        .filter((f) => f?.Feature_Role === "joint");
+        .filter((f) => f?.Feature_Role === "joint" || f?.Feature_Role === "msdb");
       if (jointIds.length) {
         const follow = new Map();
         for (const j of jointIds) {
@@ -7714,7 +7717,17 @@ export default function GISCanvasPage() {
              Every line passing through a point would mean dragging a
              joint pulled the trench under it out of shape, which is the
              fault span nodes were excluded from this for. */
-          const isJoint = pt.Feature_Role === "joint";
+          /* ── A board is a fitting on the cable too ──
+
+             One cable arrives at a board and one leaves. Dragging it
+             left both where they were, so the board came away from the
+             cables it sits on and had to be put back by hand \u2014 the same
+             fault a joint had, and the same rule fixes it.
+
+             `isJoint` is the name the rest of this block uses for "a
+             fitting the cable follows", which a board is. */
+          const isJoint = pt.Feature_Role === "joint"
+            || pt.Feature_Role === "msdb";
           const isFeeder = line.Layer_Key === "electric"
             && /main/i.test(String(line.Attributes?.Line_Type ?? ""));
 

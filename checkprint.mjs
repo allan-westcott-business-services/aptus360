@@ -190,6 +190,41 @@ for (const dpi of [96, 150, 300]) {
   }
 }
 
+// 9. The sheet opens the browser's print dialogue, and says so.
+//
+//    Which printer, which tray, how many copies belong to the browser
+//    and an app cannot reach into that \u2014 so the page has to OPEN the
+//    dialogue. Without it the sheet just appeared in a tab: correct, to
+//    scale, and with no visible way to get it onto paper.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const modal = readFileSync("./src/features/gis/PrintModal.jsx", "utf8");
+
+  if (!/onclick="window\.print\(\)"/.test(canvas)) {
+    fail("the sheet gives no way to reach the print dialogue, which is where "
+      + "the printer is chosen");
+  }
+  /* Screen only. A control bar printed across the top of a drawing
+     would be its own kind of wrong. */
+  if (!/@media print\{\.bar\{display:none\}/.test(canvas)) {
+    fail("the toolbar is printed onto the drawing");
+  }
+  /* The one thing that cannot be enforced from here, said where it is
+     acted on: in the print dialogue itself. */
+  if (!/not Fit to page/.test(canvas)) {
+    fail("the sheet does not warn that fit-to-page destroys the scale");
+  }
+  /* And the button says what it does. A button called Print that opens
+     a tab is not what the word promises. */
+  if (/\{busy \? "Drawing\\u2026" : "Print"\}/.test(modal)) {
+    fail("the dialogue's button says Print and does not print");
+  }
+  if (!/browser&rsquo;s print dialogue/.test(modal)) {
+    fail("the dialogue does not say where the printer is chosen, so somebody "
+      + "goes looking for a control it cannot have");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Printing behaves (A4 to A0, and a metre lands where a metre belongs).");
 process.exit(bad ? 1 : 0);

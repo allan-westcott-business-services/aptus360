@@ -10137,16 +10137,49 @@ export default function GISCanvasPage() {
     const url = cv.toDataURL("image/png");
     const win = window.open("", "_blank");
     if (!win) throw new Error("The print window was blocked. Allow pop-ups and try again.");
+    /* ── Where the printer is chosen ──
+
+       Not here. Which printer, which tray, how many copies belong to
+       the browser's own print dialogue, and an app cannot reach into
+       it \u2014 so this page has to OPEN it, and say so.
+
+       Without that the sheet just appeared in a tab: correct, to scale,
+       and with no visible way to get it onto paper. "I don't see where
+       I select the printer" is the right question to ask of it.
+
+       The bar is screen-only. A control bar printed across the top of a
+       drawing would be its own kind of wrong. */
     win.document.write(`<!doctype html><html><head><title>`
       + `Drawing 1:${opts.scaleDenom} ${opts.paper}</title>`
       + `<style>@page{size:${sheetW}mm ${sheetH}mm;margin:0}`
-      + `html,body{margin:0;padding:0}`
-      + `img{width:${sheetW}mm;height:${sheetH}mm;display:block}`
-      + `</style></head><body><img src="${url}" alt="Drawing"></body></html>`);
+      + `html,body{margin:0;padding:0;background:#f1f5f9}`
+      + `img{width:${sheetW}mm;height:${sheetH}mm;display:block;margin:0 auto;`
+      + `box-shadow:0 2px 18px rgba(15,23,42,.25);background:#fff}`
+      + `.bar{position:sticky;top:0;z-index:2;display:flex;gap:12px;`
+      + `align-items:center;padding:10px 14px;background:#1e293b;color:#fff;`
+      + `font:14px system-ui,sans-serif}`
+      + `.bar b{font-weight:600}`
+      + `.bar button{font:inherit;font-weight:600;padding:6px 14px;border:0;`
+      + `border-radius:6px;background:#f8fafc;color:#0f172a;cursor:pointer}`
+      + `.bar .note{margin-left:auto;opacity:.85;font-size:13px}`
+      + `@media print{.bar{display:none}body{background:#fff}`
+      + `img{box-shadow:none;margin:0}}`
+      + `</style></head><body>`
+      + `<div class="bar">`
+      + `<button onclick="window.print()">Print…</button>`
+      + `<b>${opts.paper}${opts.landscape ? " landscape" : " portrait"} `
+      + `· 1:${opts.scaleDenom}</b>`
+      + `<span class="note">Choose the printer in the dialogue. `
+      + `Set scale to 100% or Actual size — not Fit to page, which makes `
+      + `the drawing scale wrong. Paper: ${opts.paper}.</span>`
+      + `</div>`
+      + `<img src="${url}" alt="Drawing">`
+      + `</body></html>`);
     win.document.close();
-    /* Left for the person to print. Calling print() here races the
-       image decoding on a sheet this size, and a blank first page is
-       exactly the failure this feature exists to avoid. */
+    /* The dialogue is opened by the button rather than from here.
+       Calling print() as the page loads races the image decoding on a
+       sheet this size, and a blank first page is exactly the failure
+       this feature exists to avoid. */
   }, [draw]);
 
   /* Putting a suggested change on the drawing.

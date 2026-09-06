@@ -2268,6 +2268,20 @@ be a joke at the reader's expense. Cleared when the dialogue closes,
 including when it closes because the print succeeded — an outline left
 behind is a line somebody would try to select.
 
+**The sheet opens the browser's print dialogue, and says so.** Which
+printer, which tray, how many copies belong to the browser, and an app
+cannot reach into that — so the sheet carries a **Print…** button that
+opens it. Without one the sheet just appeared in a tab: correct, to
+scale, and with no visible way to get it onto paper. *"I don't see where
+I select the printer"* is the right question to ask of that.
+
+The bar is screen-only — a control bar printed across the top of a
+drawing would be its own kind of wrong — and it repeats the 100% warning
+where it is acted on rather than only where it was set.
+
+The dialogue's button says **Open the sheet**, because a button called
+Print that opens a tab is not what the word promises.
+
 **And the sheet carries a scale bar.** Printing "fit to page" rescales
 everything and makes the stated scale a lie; nothing in the app can
 prevent that. The bar is drawn in the same transform as the drawing, so

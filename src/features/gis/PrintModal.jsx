@@ -182,18 +182,30 @@ export default function PrintModal({ features, onRender, onFrame, onClose }) {
             {err && <div className="pr-warn">{err}</div>}
           </div>
 
-          {/* The one thing that cannot be enforced from here. */}
+          {/* ── What happens when this is pressed ──
+
+              A button called Print that opens a tab is not what the
+              word promises, and the printer is chosen in the browser's
+              own dialogue rather than here \u2014 which is a reasonable
+              thing to go looking for and not find. Said before, so
+              nobody hunts for a control this cannot have. */}
           <p className="hint">
-            Print at 100% &mdash; not &ldquo;fit to page&rdquo;, which rescales
-            the sheet and makes the scale wrong. Check the bar on the sheet
-            against a rule.
+            This opens the sheet in a new tab with a <strong>Print</strong>
+            {" "}button. The printer, tray and copies are chosen in your
+            browser&rsquo;s print dialogue.
+          </p>
+          <p className="hint">
+            Set scale to <strong>100%</strong> or <strong>Actual size</strong>
+            {" "}there &mdash; not &ldquo;fit to page&rdquo;, which rescales the
+            sheet and makes the drawing scale wrong. The bar on the sheet
+            checks it against a rule.
           </p>
         </div>
 
         <div className="fe-foot">
           <button className="btn ghost" onClick={onClose}>Cancel</button>
           <button className="btn accent" disabled={busy || !!refuse} onClick={go}>
-            {busy ? "Drawing\u2026" : "Print"}
+            {busy ? "Drawing\u2026" : "Open the sheet"}
           </button>
         </div>
       </div>

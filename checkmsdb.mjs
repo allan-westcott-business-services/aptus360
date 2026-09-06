@@ -670,6 +670,40 @@ const served = (b) => servedFlats(b, flats);
   }
 }
 
+// 17. Reached is not the same as served.
+//
+//     A leg can run to a board and carry nothing: the routing reaches
+//     it because its flats are members, and the flats then fail to
+//     ATTACH to the dig. The report showed B2 -> B3 at 0.0 A with a
+//     terminal count of zero, and it looked like the board had been
+//     served.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/attachedFlats/.test(canvas)) {
+    fail("the build counts boards reached but not flats attached, so a "
+      + "cable running to a board that carries nothing reads as a success");
+  }
+  if (!/none of its \$\{carried\} flat\(s\) `/.test(canvas)) {
+    fail("a board whose flats did not attach is not named");
+  }
+  /* Counted from what the MODEL attached: it is the only thing that
+     knows which meters landed on the dig. */
+  if (!/for \(const m of \(pt\.attached \|\| \[\]\)\)/.test(canvas)) {
+    fail("the tally is guessed rather than read from what was attached");
+  }
+
+  /* And the board's own level is read off the STOP standing on it. The
+     levels are keyed on stops; a board is not one, so looking it up by
+     the board's id found nothing and every flat showed a dash. */
+  if (!/const levelsAtBoard = useCallback/.test(canvas)) {
+    fail("the board's level is looked up by the board's own id, which the "
+      + "levels are not keyed on");
+  }
+  if (/elecLevelsAt\?\.get\?\.\(Number\(editing\.Feature_ID\)\)/.test(canvas)) {
+    fail("the editor still looks the level up by the board's id");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The MSDB behaves (flats on a table, load and levels derived).");
 process.exit(bad ? 1 : 0);

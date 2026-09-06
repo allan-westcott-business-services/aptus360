@@ -1788,6 +1788,30 @@ export default function GISCanvasPage() {
     [liveLevels, hidden],
   );
 
+  /* The figure at a board: read off the stop standing on it.
+
+     The levels are keyed on stops, and a board is not one \u2014 the build
+     places a feeder point AT the board and that is what the leg ends
+     at. So the nearest stop with a figure, within a couple of metres,
+     which is the same distance the build's own "did it reach" test
+     uses. */
+  const levelsAtBoard = useCallback((board) => {
+    if (!elecLevelsAt || !board) return null;
+    const at = board.Attributes?.Span_Anchor ?? board.Geometry?.[0];
+    if (!Array.isArray(at)) return null;
+    let best = null;
+    for (const f of features) {
+      if (!["feederpoint", "spannode", "linkbox"].includes(String(f.Feature_Role))) continue;
+      const vd = elecLevelsAt.get(Number(f.Feature_ID));
+      if (!vd) continue;
+      const p = f.Attributes?.Span_Anchor ?? f.Geometry?.[0];
+      if (!Array.isArray(p)) continue;
+      const d = Math.hypot(p[0] - at[0], p[1] - at[1]);
+      if (d <= 2 && (!best || d < best.d)) best = { d, vd };
+    }
+    return best?.vd ?? null;
+  }, [elecLevelsAt, features]);
+
   /* ── The figure at the cut-out, at the cut-out ──
 
      A stop's levels are the drop to that POINT on the main. What a
@@ -15364,6 +15388,12 @@ export default function GISCanvasPage() {
       const planned = [];
       const failed = [];
       const stranded = [];
+      /* How many of each board's flats the routing put on the dig, and
+         a lookup to resolve a model's meter back to the feature it came
+         from. A leg reaching a board and a board being served are two
+         different facts. */
+      const attachedFlats = new Map();
+      const allById = new Map(src.map((f) => [Number(f.Feature_ID), f]));
 
       for (const [i, c] of circuits.entries()) {
         setProgress({ done: i, total: circuits.length, label: `Routing ${c.name}` });
@@ -15439,6 +15469,20 @@ export default function GISCanvasPage() {
         }
         for (const pt of good) {
           if (pt.skipped?.length) stranded.push(...pt.skipped);
+          /* ── Which boards' flats actually landed on the dig ──
+
+             A leg can run to a board and carry nothing: the routing
+             reaches it because its flats are members, and the flats
+             then fail to ATTACH, so the leg arrives at 0.0 A. Counted
+             from what the model attached, which is the only place that
+             knows. */
+          for (const m of (pt.attached || [])) {
+            const src2 = allById.get(Number(m.id ?? m.Feature_ID));
+            const boardId = src2?.Attributes?.MSDB_ID;
+            if (boardId == null) continue;
+            attachedFlats.set(Number(boardId),
+              (attachedFlats.get(Number(boardId)) ?? 0) + 1);
+          }
         }
         /* The circuit's origin answers from the part that routed from
            it \u2014 the origin part where one exists, the trunk otherwise;
@@ -15975,11 +16019,34 @@ export default function GISCanvasPage() {
            build has already re-read: what was laid is what is there,
            and tracking it separately would be a second account of one
            thing. */
+        /* ── Reached is not the same as carrying ──
+
+           A leg can run to a board and carry nothing: the routing
+           reached it because its flats are members, and the flats then
+           failed to ATTACH to the dig, so the leg arrives with a
+           terminal count of zero and no load. The report showed
+           B2 -> B3 at 0.0 A and it looked like the board had been
+           served.
+
+           Two questions, and only the first was being answered. */
+        const carried = (b.Attributes?.MSDB_Plot_IDs || []).length;
         const reached = at && all.some((ln) => ln.Feature_Type === "line"
           && !ln.Feature_Role && /main/i.test(String(ln.Attributes?.Line_Type ?? ""))
           && (ln.Geometry || []).some((q) => Array.isArray(q)
             && Math.hypot(q[0] - at[0], q[1] - at[1]) <= 2));
-        return reached ? null : `${name}: not reached \u2014 is it on the trench?`;
+        if (!reached) return `${name}: not reached \u2014 is it on the trench?`;
+        /* And whether the load arrived with it. `attachedFlats` is what
+           the routing actually put on the dig for this board, so a zero
+           here is the difference between "a cable runs to it" and "it
+           is served". */
+        const got = attachedFlats.get(Number(b.Feature_ID)) ?? 0;
+        if (!got) {
+          return `${name}: cable reached it but none of its ${carried} flat(s) `
+            + "attached to the dig";
+        }
+        return got < carried
+          ? `${name}: ${got} of ${carried} flat(s) attached`
+          : null;
       }).filter(Boolean);
 
       setStatus(`LV network: ${runs} run(s), ${cables} cable(s) across ${planned.length} circuit(s)`
@@ -23609,8 +23676,18 @@ export default function GISCanvasPage() {
           /* The board's own figure from the last levels check, so the
              flats on it can be given a level the same way a plot meter
              is. Null until a check has run, which the panel says. */
+          /* ── The board's level is the STOP's, not the board's ──
+
+             `elecLevelsAt` is keyed on the stop a leg ends at \u2014 the
+             feeder point the build places at the board. The board is a
+             different feature at the same place, so looking it up by
+             the board's own id found nothing and every flat showed a
+             dash.
+
+             Two objects, one position, and the id of one is not the id
+             of the other. */
           levelsAt={editing?.Feature_Role === "msdb"
-            ? (elecLevelsAt?.get?.(Number(editing.Feature_ID)) ?? null)
+            ? levelsAtBoard(editing)
             : null}
           msdbTailCable={editing?.Feature_Role === "msdb"
             ? (lookups?.cableSizes || []).find((c) => Number(c.Cable_Size_ID)

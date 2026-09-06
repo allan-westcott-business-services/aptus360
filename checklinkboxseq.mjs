@@ -302,7 +302,12 @@ if (typeof planFeederPoints !== "function") {
   const at = canvas.indexOf("async function buildLvNetwork");
   if (at < 0) fail("buildLvNetwork has gone");
   else {
-    const body = canvas.slice(at, at + 30000);
+    /* To the end of the function, not a fixed 30,000 characters:
+       buildLvNetwork has grown past it and `planFeederPoints` fell
+       outside the window, reporting a call that was there as missing.
+       Fault 33, and the third time in this suite. */
+    const ends = canvas.indexOf("\n  async function ", at + 10);
+    const body = canvas.slice(at, ends > at ? ends : at + 60000);
     if (!/partEndMark\(pt\.model, pt\.sections\)/.test(body)) {
       fail("the build does not mark the far end of each part, so the link "
         + "box the trunk runs to is never numbered");

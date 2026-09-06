@@ -2630,6 +2630,26 @@ count answers "did it work"; the reason answers "what do I change",
 which is the question somebody has when it did not. Measured against the
 drawing as the build re-reads it, so what was laid is what is counted.
 
+74. **Two objects at one position, and the id of one is not the id of
+    the other.** `elecLevelsAt` is keyed on the STOP a leg ends at — the
+    feeder point the build places at a board. The board is a different
+    feature at the same place, so the editor looked its level up by the
+    board's own id, found nothing, and every flat showed a dash.
+
+    Read off the nearest stop with a figure now, within the same two
+    metres the build's own "did it reach" test uses.
+
+**Reached is not the same as served.** A leg can run to a board and
+carry nothing: the routing reaches it because its flats are members, and
+the flats then fail to ATTACH to the dig. The report showed
+`B2 → B3` at 0.0 A with a terminal count of zero, and it read as a board
+that had been served.
+
+The build counts both now — boards reached, and flats attached — from
+what the model actually put on the dig, and names any board whose cable
+arrived without its load. **A cable running to a board that carries
+nothing is the failure that looks most like success.**
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

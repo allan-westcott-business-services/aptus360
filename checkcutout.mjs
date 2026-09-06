@@ -112,7 +112,7 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
     if (!/cutoutAtMeter\.size/.test(draw)) {
       fail("it draws without figures to draw");
     }
-    if (!/view\.scale > 1\.2/.test(draw)) {
+    if (!/vs > 1\.2/.test(draw)) {
       fail("it draws at every zoom, so a whole estate is covered in "
         + "percentages when zoomed out");
     }

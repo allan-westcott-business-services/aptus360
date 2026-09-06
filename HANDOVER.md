@@ -149,6 +149,7 @@ caught a fault that had already shipped at least once.
 | `node checkjointhold.mjs` | Joints hold their cables; released only on purpose |
 | `node checkclickdrag.mjs` | Nothing moves until the pointer says it is a drag |
 | `node checkschematic.mjs` | The schematic draws one circuit, and says which |
+| `node checkprint.mjs` | A metre on the ground is 1000/N mm on the paper |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
@@ -2226,6 +2227,34 @@ From-origin switch is offered only where something upstream exists,
 because on a substation-fed scheme the two figures are identical and a
 switch between one number and the same number teaches somebody it does
 nothing. `checksourceimpedance` failed within a minute of the rewrite.
+
+**The drawing prints to scale, A4 to A0.** *Tools & Reporting → Print to
+Scale*. Paper, orientation, scale and resolution are chosen; the sheet
+decides how much ground fits, rather than the screen deciding the scale.
+
+**The arithmetic is the whole feature.** 1:N means a metre on the ground
+is 1000/N millimetres on paper, and `checkprint` verifies it the way a
+draughtsman would: 100 m at 1:500 must print as 200 mm, on every paper
+size and at every resolution. **The resolution must not touch the
+scale** — dpi decides sharpness and nothing else, and if it leaked in,
+the sheet would be wrong in a way nobody would think to check.
+
+**One renderer.** The sheet is drawn by the canvas's own `draw`, given a
+different canvas and a different transform — `draw({ canvas, view })`.
+A second renderer would be a second set of rules about what a joint
+looks like, and the two would drift apart on the first change to either.
+That is what the `toPx` → `at` and `view.scale` → `vs` rename inside the
+draw body is for.
+
+**A0 at 300 dpi is refused.** It is 139 megapixels, half a gigabyte of
+canvas, and a browser hands back a BLANK canvas rather than an error. A
+blank A0 at the printers is an expensive way to find that out.
+
+**And the sheet carries a scale bar.** Printing "fit to page" rescales
+everything and makes the stated scale a lie; nothing in the app can
+prevent that. The bar is drawn in the same transform as the drawing, so
+a rescaled sheet has a bar that no longer matches its own label — two
+seconds with a rule settles it.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

@@ -107,6 +107,8 @@ import {
   JOIN_REACH_M, cablesHeldAt,
 } from "./joints.js";
 import { alpha } from "../../lib/colour.js";
+import PrintModal from "./PrintModal.jsx";
+import { printView } from "./printSheet.js";
 import { inLightingView } from "./lightingView.js";
 import { utilityMenuPress, utilityTint } from "./utilityMenu.js";
 import { routePocToSubstation } from "./route.js";
@@ -518,6 +520,7 @@ export default function GISCanvasPage() {
      eighty intermediate rows stand between the reader and the answer. */
   const [traceEnds, setTraceEnds] = useState(false);
   const [schematic, setSchematic] = useState(false);
+  const [printOpen, setPrintOpen] = useState(false);
   /* Rings round the meters, coloured by circuit.
 
      After grouping — or after any circuit is made by hand — the only
@@ -3366,11 +3369,30 @@ export default function GISCanvasPage() {
   }, [isPdfMap, pdf.size, view.x, view.y, view.scale, basemap?.Metres_Per_Pixel, basemap?.Origin_X, basemap?.Origin_Y]);
 
   /* ── drawing ── */
-  const draw = useCallback(() => {
-    const cv = canvasRef.current;
+  /* ── Drawn to the screen, or to a sheet of paper ──
+
+     One drawing routine, given somewhere else to draw and a different
+     window onto the world. Printing reproduces the canvas rather than
+     re-implementing it: a second renderer is a second set of rules
+     about what a joint looks like, and the two would drift apart on the
+     first change to either.
+
+     `toPx` is an affine transform over `view`, so a print pass is the
+     same code with a different scale and offset. Everything below reads
+     `at` rather than the outer `toPx`; on screen they are the same
+     function. */
+  const draw = useCallback((over = null) => {
+    const cv = over?.canvas ?? canvasRef.current;
     if (!cv) return;
     const ctx = cv.getContext("2d");
     const { width: w, height: h } = cv;
+    const at = over?.view
+      ? (m) => ({ x: m[0] * over.view.scale + over.view.x,
+        y: m[1] * over.view.scale + over.view.y })
+      : toPx;
+    const vs = over?.view?.scale ?? view.scale;
+    const vx = over?.view?.x ?? view.x;
+    const vy = over?.view?.y ?? view.y;
     ctx.clearRect(0, 0, w, h);
 
     // Background plan, under everything, at its calibrated size
@@ -3378,7 +3400,7 @@ export default function GISCanvasPage() {
       const mpp = Number(basemap.Metres_Per_Pixel);
       const ox = Number(basemap.Origin_X) || 0;
       const oy = Number(basemap.Origin_Y) || 0;
-      const o = toPx([ox, oy]);
+      const o = at([ox, oy]);
 
       ctx.save();
       ctx.globalAlpha = Number(basemap.Opacity ?? 0.6);
@@ -3388,31 +3410,31 @@ export default function GISCanvasPage() {
       if (isPdfMap) {
         // page units -> metres -> screen
         const pageToScreen = (x, y) => {
-          const p = toPx([ox + x * mpp, oy + y * mpp]);
+          const p = at([ox + x * mpp, oy + y * mpp]);
           return [p.x, p.y];
         };
-        drawTile(ctx, pdf.tile, pageToScreen, mpp * view.scale);
+        drawTile(ctx, pdf.tile, pageToScreen, mpp * vs);
       } else if (bgImage) {
         ctx.drawImage(bgImage, o.x, o.y,
-          bgImage.naturalWidth * mpp * view.scale,
-          bgImage.naturalHeight * mpp * view.scale);
+          bgImage.naturalWidth * mpp * vs,
+          bgImage.naturalHeight * mpp * vs);
       }
       ctx.restore();
     }
 
     // grid, spaced so it never becomes noise at low zoom
-    const step = GRID_M * view.scale;
+    const step = GRID_M * vs;
     if (showGrid && step > 6) {
       ctx.strokeStyle = "#eef0f4";
       ctx.lineWidth = 1;
       ctx.beginPath();
-      for (let x = view.x % step; x < w; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
-      for (let y = view.y % step; y < h; y += step) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+      for (let x = vx % step; x < w; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+      for (let y = vy % step; y < h; y += step) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
       ctx.stroke();
     }
 
     // origin
-    const o = toPx([0, 0]);
+    const o = at([0, 0]);
     ctx.strokeStyle = "#cbd5e1";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -3455,8 +3477,8 @@ export default function GISCanvasPage() {
       if (!gapList?.length) return;
       ctx.save();
       for (const g of gapList) {
-        const a2 = toPx(g.at);
-        const b2 = toPx(g.to);
+        const a2 = at(g.at);
+        const b2 = at(g.to);
 
         ctx.beginPath();
         ctx.setLineDash([4, 3]);
@@ -3505,7 +3527,7 @@ export default function GISCanvasPage() {
     /* Where the length being marked starts. */
     const paintMark = () => {
       if (!markFrom) return;
-      const q = toPx(markFrom.point);
+      const q = at(markFrom.point);
       ctx.save();
       ctx.beginPath();
       ctx.arc(q.x, q.y, 8, 0, Math.PI * 2);
@@ -3534,7 +3556,7 @@ export default function GISCanvasPage() {
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
         g.forEach((pt, i) => {
-          const q = toPx(pt);
+          const q = at(pt);
           if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
         });
         ctx.stroke();
@@ -3564,7 +3586,7 @@ export default function GISCanvasPage() {
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
         g.forEach((pt, i) => {
-          const q = toPx(pt);
+          const q = at(pt);
           if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
         });
         ctx.stroke();
@@ -3601,7 +3623,7 @@ export default function GISCanvasPage() {
             ctx.lineJoin = "round";
             ctx.lineCap = "round";
             g.forEach((pt, i) => {
-              const q = toPx(pt);
+              const q = at(pt);
               if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
             });
             ctx.stroke();
@@ -3612,7 +3634,7 @@ export default function GISCanvasPage() {
       /* The node waiting for its pair, so a half-made range is obvious
          rather than looking like nothing happened. */
       if (pick) {
-        const q = toPx(pick.Geometry[0]);
+        const q = at(pick.Geometry[0]);
         ctx.beginPath();
         ctx.arc(q.x, q.y, 13, 0, Math.PI * 2);
         ctx.strokeStyle = "#d97706";
@@ -3661,7 +3683,7 @@ export default function GISCanvasPage() {
           ctx.lineJoin = "round";
           ctx.lineCap = "round";
           pts.forEach((pt, i) => {
-            const q = toPx(pt);
+            const q = at(pt);
             if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
           });
           ctx.stroke();
@@ -3681,7 +3703,7 @@ export default function GISCanvasPage() {
       /* The substation end, so it is clear the route got there. */
       const rootPt = routePlan.graph.nodes[routePlan.root];
       if (rootPt) {
-        const q = toPx(rootPt);
+        const q = at(rootPt);
         ctx.beginPath();
         ctx.arc(q.x, q.y, 9, 0, Math.PI * 2);
         ctx.fillStyle = "#7c3aed";
@@ -3693,7 +3715,7 @@ export default function GISCanvasPage() {
 
       /* The meter, ringed, so it is findable even where the route is
          short or hidden under other lines. */
-      const p2 = toPx((m.Geometry || [])[0] || [0, 0]);
+      const p2 = at((m.Geometry || [])[0] || [0, 0]);
       ctx.beginPath();
       ctx.arc(p2.x, p2.y, 11, 0, Math.PI * 2);
       ctx.strokeStyle = "#7c3aed";
@@ -3718,8 +3740,8 @@ export default function GISCanvasPage() {
         : new Set(routePlan.liveEdges);
       g.edges.forEach((e, i) => {
         if (liveSet.has(i)) return;
-        const a2 = toPx(g.nodes[e.u]);
-        const b2 = toPx(g.nodes[e.v]);
+        const a2 = at(g.nodes[e.u]);
+        const b2 = at(g.nodes[e.v]);
         ctx.beginPath();
         ctx.moveTo(a2.x, a2.y);
         ctx.lineTo(b2.x, b2.y);
@@ -3737,8 +3759,8 @@ export default function GISCanvasPage() {
       if (routePlan.traced) {
         const peak = Math.max(1, routePlan.peak);
         for (const e of routePlan.used) {
-          const a2 = toPx(routePlan.graph.nodes[e.u]);
-          const b2 = toPx(routePlan.graph.nodes[e.v]);
+          const a2 = at(routePlan.graph.nodes[e.u]);
+          const b2 = at(routePlan.graph.nodes[e.v]);
           const share = e.uses / peak;
           ctx.beginPath();
           ctx.setLineDash(e.generated ? [7, 5] : []);
@@ -3857,7 +3879,7 @@ export default function GISCanvasPage() {
            on the ground. */
         const placed = [];
         for (const g of groups) {
-          const p2 = toPx(g.at);
+          const p2 = at(g.at);
           const t = String(g.uses);
           const w = ctx.measureText(t).width + 8;
 
@@ -3881,8 +3903,8 @@ export default function GISCanvasPage() {
 
       /* The sections that must be dug. */
       for (const e of routePlan.live || []) {
-        const a2 = toPx(g.nodes[e.u]);
-        const b2 = toPx(g.nodes[e.v]);
+        const a2 = at(g.nodes[e.u]);
+        const b2 = at(g.nodes[e.v]);
         ctx.beginPath();
         /* A link the router invented is dashed — it is a proposal about
            where to dig, not a section of something already drawn. */
@@ -3897,7 +3919,7 @@ export default function GISCanvasPage() {
 
       /* Where each run stops. */
       for (const end of routePlan.ends) {
-        const p2 = toPx(end.point);
+        const p2 = at(end.point);
         ctx.beginPath();
         ctx.arc(p2.x, p2.y, 5, 0, Math.PI * 2);
         ctx.fillStyle = "#16a34a";
@@ -3917,7 +3939,7 @@ export default function GISCanvasPage() {
          a different problem — a long service wants a trench nearer, a
          meter with no route wants a junction joining. */
       for (const f of routePlan.flagged || []) {
-        const p2 = toPx((f.meter.Geometry || [])[0] || [0, 0]);
+        const p2 = at((f.meter.Geometry || [])[0] || [0, 0]);
         ctx.beginPath();
         ctx.arc(p2.x, p2.y, 8, 0, Math.PI * 2);
         ctx.strokeStyle = "#d97706";
@@ -3927,7 +3949,7 @@ export default function GISCanvasPage() {
 
       for (const u of routePlan.unreachable) {
         const m = u?.meter ?? u;
-        const p2 = toPx((m.Geometry || [])[0] || [0, 0]);
+        const p2 = at((m.Geometry || [])[0] || [0, 0]);
         ctx.beginPath();
         ctx.arc(p2.x, p2.y, 9, 0, Math.PI * 2);
         ctx.strokeStyle = "#dc2626";
@@ -3981,8 +4003,8 @@ export default function GISCanvasPage() {
        the ground, not the dig. */
     for (const f of features) {
       if (f.Feature_Type !== "line" || !isEasement(f)) continue;
-      const band = easementBand((f.Geometry || []).map(toPx),
-        EASEMENT_WIDTH_M * view.scale);
+      const band = easementBand((f.Geometry || []).map(at),
+        EASEMENT_WIDTH_M * vs);
       if (band.length < 3) continue;
       ctx.save();
       ctx.beginPath();
@@ -4051,11 +4073,11 @@ export default function GISCanvasPage() {
          that way; this now agrees with them. */
       const stage = statusOf(f);
 
-      const band = easementBand((f.Geometry || []).map(toPx),
+      const band = easementBand((f.Geometry || []).map(at),
         /* Narrower than an easement, which is a legal strip. This is
            marking a line, and at easement width two mains in one trench
            would each hatch over the other. */
-        Math.max(1.2, LIVE_BAND_M) * view.scale);
+        Math.max(1.2, LIVE_BAND_M) * vs);
       if (band.length < 3) continue;
 
       /* Three answers, not two. Grey says nobody has set a stage, which
@@ -4080,7 +4102,7 @@ export default function GISCanvasPage() {
     drawOrder.forEach((f) => {
       const colour = layerOf(f.Layer_Key).Colour;
       const on = selected.includes(f.Feature_ID);
-      const pts = (f.Geometry || []).map(toPx);
+      const pts = (f.Geometry || []).map(at);
       if (!pts.length) return;
       /* Outside its zoom band, unless it's selected — hiding the thing
          someone just clicked would look like it had been deleted. */
@@ -4213,9 +4235,9 @@ export default function GISCanvasPage() {
             const nx = -Math.sin(rad);
             const ny = Math.cos(rad);
 
-            const k = Math.max(1, REDUCER_MIN_PX / Math.max(1e-6, REDUCER_LEN_M * view.scale));
-            const len = REDUCER_LEN_M * view.scale * k;
-            const halfW = REDUCER_HALF_W_M * view.scale * k;
+            const k = Math.max(1, REDUCER_MIN_PX / Math.max(1e-6, REDUCER_LEN_M * vs));
+            const len = REDUCER_LEN_M * vs * k;
+            const halfW = REDUCER_HALF_W_M * vs * k;
 
             /* Drawn from its back, so the point lands where the next one
                begins and a chain of them meets exactly. */
@@ -4233,7 +4255,7 @@ export default function GISCanvasPage() {
             ctx.closePath();
             ctx.fill();
             ctx.strokeStyle = on ? "#1d4ed8" : styleFor(f, { labelColour: fill }).labelColour;
-            ctx.lineWidth = Math.max(0.75, Math.min(2, 0.03 * view.scale));
+            ctx.lineWidth = Math.max(0.75, Math.min(2, 0.03 * vs));
             ctx.stroke();
             ctx.restore();
             return;
@@ -4256,11 +4278,11 @@ export default function GISCanvasPage() {
                floor on each, so the shape is the same shape at every
                zoom \u2014 clamping them separately would give a stubby tee
                at site level and a long thin one up close. */
-            const k = Math.max(1, HVTT_MIN_PX / Math.max(1e-6, HVTT_ALONG_M * view.scale));
-            const half = (HVTT_ALONG_M / 2) * view.scale * k;
-            const body = (HVTT_BODY_M / 2) * view.scale * k;
-            const stem = HVTT_STEM_M * view.scale * k;
-            const stemW = (HVTT_STEM_W_M / 2) * view.scale * k;
+            const k = Math.max(1, HVTT_MIN_PX / Math.max(1e-6, HVTT_ALONG_M * vs));
+            const half = (HVTT_ALONG_M / 2) * vs * k;
+            const body = (HVTT_BODY_M / 2) * vs * k;
+            const stem = HVTT_STEM_M * vs * k;
+            const stemW = (HVTT_STEM_W_M / 2) * vs * k;
 
             const at = (a, b) => ({ x: p.x + ux * a + nx * b, y: p.y + uy * a + ny * b });
             const pts = [
@@ -4280,7 +4302,7 @@ export default function GISCanvasPage() {
                the main it sits on are the same colour \u2014 which on gas
                they always are. */
             ctx.strokeStyle = on ? "#1d4ed8" : styleFor(f, { labelColour: fill }).labelColour;
-            ctx.lineWidth = Math.max(0.75, Math.min(2, 0.03 * view.scale));
+            ctx.lineWidth = Math.max(0.75, Math.min(2, 0.03 * vs));
             ctx.stroke();
             ctx.restore();
             /* Nothing else to draw: the tee is the symbol. */
@@ -4290,20 +4312,20 @@ export default function GISCanvasPage() {
           if (f.Feature_Role === "servicevalve") {
             const deg = Number(f.Attributes?.Angle_Deg);
             const rad = Number.isFinite(deg) ? (deg * Math.PI) / 180 : 0;
-            const halfPx = (VALVE_WIDTH_M / 2) * view.scale;
+            const halfPx = (VALVE_WIDTH_M / 2) * vs;
             const nx = -Math.sin(rad) * halfPx;
             const ny = Math.cos(rad) * halfPx;
 
             ctx.save();
             ctx.strokeStyle = on ? "#1d4ed8" : fill;
-            ctx.lineWidth = Math.max(2, Math.min(6, 0.12 * view.scale));
+            ctx.lineWidth = Math.max(2, Math.min(6, 0.12 * vs));
             ctx.lineCap = "butt";
             ctx.beginPath();
             ctx.moveTo(p.x - nx, p.y - ny);
             ctx.lineTo(p.x + nx, p.y + ny);
             ctx.stroke();
 
-            if (view.scale > 2) {
+            if (vs > 2) {
               /* The letters take the style's label colour, and fall back
                  to the bar's own rather than to the near-black every
                  other label uses.
@@ -4377,7 +4399,7 @@ export default function GISCanvasPage() {
                inside it, dropped rather than drawn as a smudge below
                about seven pixels. */
             const boxCode = f.Attributes?.Span_Label ?? "";
-            if (boxCode && view.scale > 1.2) {
+            if (boxCode && vs > 1.2) {
               const codePx = Math.floor(
                 Math.min(half, (half * 2) / Math.max(1, boxCode.length) * 1.15),
               );
@@ -4392,7 +4414,7 @@ export default function GISCanvasPage() {
               }
             }
 
-            if (view.scale > 1.2) {
+            if (vs > 1.2) {
               const nodeR = Math.max(2, half * 0.28);
               const dot = (cx, cy, ink = null) => {
                 ctx.beginPath();
@@ -4457,7 +4479,7 @@ export default function GISCanvasPage() {
                  ARRIVING here, which is a fact about its ends. */
               const anchorPt = f.Attributes?.Span_Anchor || f.Geometry?.[0];
               if (!anchorPt) return;
-              const aPx = toPx(anchorPt);
+              const aPx = at(anchorPt);
               const reachPx = Math.max(6, half * 1.5);
               const claimOf = (line) => {
                 const lc = line.Attributes?.Link_Connections || {};
@@ -4478,7 +4500,7 @@ export default function GISCanvasPage() {
                 const g2 = line.Geometry || [];
                 if (g2.length < 2) continue;
                 /* An end of this cable, at this anchor. */
-                const ends = [g2[0], g2[g2.length - 1]].map((m2) => toPx(m2));
+                const ends = [g2[0], g2[g2.length - 1]].map((m2) => at(m2));
                 if (!ends.some((q2) => Math.hypot(q2.x - aPx.x, q2.y - aPx.y) <= reachPx)) {
                   continue;
                 }
@@ -4515,7 +4537,7 @@ export default function GISCanvasPage() {
                    the runs leaving it agree at a glance. An output with
                    no colour set keeps the default ink. */
                 dot(cx, cy, on ? null : (wayInk[i + 1] || null));
-                if (ways === 4 && view.scale > 2.2) {
+                if (ways === 4 && vs > 2.2) {
                   ctx.fillStyle = on ? "#1d4ed8"
                     : styleFor(f, { labelColour: "#0f172a" }).labelColour;
                   ctx.font = "700 9px ui-sans-serif, system-ui, sans-serif";
@@ -4585,7 +4607,7 @@ export default function GISCanvasPage() {
              to is `labelKinds.levels`. */
           if (isMeter && cutoutAtMeter.size
             && labelKinds.levels !== false
-            && view.scale > 1.2) {
+            && vs > 1.2) {
             const co = cutoutAtMeter.get(Number(f.Feature_ID));
             if (co) {
               const main = Number(lookups?.vdSettings?.[0]?.Max_Volt_Drop_Pct);
@@ -4622,7 +4644,7 @@ export default function GISCanvasPage() {
               const off = f.Attributes?.Cutout_Offset;
               const dragged = Array.isArray(off) && off.length === 2;
               const lp = dragged
-                ? toPx([f.Geometry[0][0] + off[0], f.Geometry[0][1] + off[1]])
+                ? at([f.Geometry[0][0] + off[0], f.Geometry[0][1] + off[1]])
                 : null;
               const tx = dragged ? lp.x : p.x + r + 5;
               const ty = dragged ? lp.y : p.y;
@@ -4865,7 +4887,7 @@ export default function GISCanvasPage() {
         /* Through the same rule the lines use, so a joint's name answers
            to the Joint labels switch while a plot number carries on
            following the master one. */
-        if (f.Label && labelShown(f, on) && view.scale > 2.5
+        if (f.Label && labelShown(f, on) && vs > 2.5
             && !isMeter && f.Feature_Role !== "spannode"
         && f.Feature_Role !== "feederpoint") {
           ctx.fillStyle = pointStyle.labelColour;
@@ -4955,16 +4977,16 @@ export default function GISCanvasPage() {
            line and not a symbol, so it waits until there is room. The
            size is real ground, like the valve bar, so this is a zoom
            threshold rather than a floor on the size. */
-        if (caps && (GAS_CAP_SPINE_M / 2) * view.scale >= 2) {
-          const halfPx = (GAS_CAP_SPINE_M / 2) * view.scale;
-          const armPx = GAS_CAP_ARM_M * view.scale;
+        if (caps && (GAS_CAP_SPINE_M / 2) * vs >= 2) {
+          const halfPx = (GAS_CAP_SPINE_M / 2) * vs;
+          const armPx = GAS_CAP_ARM_M * vs;
           ctx.save();
           ctx.strokeStyle = on ? "#1d4ed8" : st.colour;
           ctx.lineWidth = st.widthPx;
           ctx.lineCap = "butt";
           ctx.lineJoin = "miter";
           for (const cap of caps) {
-            const q = toPx(cap.at);
+            const q = at(cap.at);
             const nx = -cap.dir[1] * halfPx;
             const ny = cap.dir[0] * halfPx;
             const bx = -cap.dir[0] * armPx;
@@ -4988,7 +5010,7 @@ export default function GISCanvasPage() {
           const mk = st.marker;
           const colour = on ? "#1d4ed8" : (mk.colour ?? st.colour);
           for (const { point, angle } of markerPositions(f.Geometry, mk.stepM)) {
-            const q0 = toPx(point);
+            const q0 = at(point);
             /* Markers come from the real geometry, so on a run that has
                been nudged aside they would sit beside the cable they
                annotate. Shifted by the same amount, along the same left
@@ -5118,7 +5140,7 @@ export default function GISCanvasPage() {
            network without a hundred service tags over it. `labelShown`
            holds the master switch and the selection override too, so
            the test that was here is inside it rather than beside it. */
-        if (pts.length > 1 && st.showLabel && view.scale > 1.5
+        if (pts.length > 1 && st.showLabel && vs > 1.5
             && labelShown(f, on)
             && (on || drawnLenPx > 34)) {
           /* Half way along the run, not the middle vertex.
@@ -5191,7 +5213,7 @@ export default function GISCanvasPage() {
              which on a run that bends is not the midpoint's angle. */
           const anchorAt = (put) => {
             if (!Array.isArray(put) || put.length !== 2) return midAnchor;
-            const q = toPx([Number(put[0]), Number(put[1])]);
+            const q = at([Number(put[0]), Number(put[1])]);
             let best = null;
             for (let k = 1; k < pts.length; k++) {
               const a = pts[k - 1];
@@ -5352,7 +5374,7 @@ export default function GISCanvasPage() {
             const anchor = anchorAt(pl?.at);
             const off = pl?.off ?? (placed ? null : null);
             const mid = off
-              ? { x: anchor.x + off[0] * view.scale, y: anchor.y + off[1] * view.scale }
+              ? { x: anchor.x + off[0] * vs, y: anchor.y + off[1] * vs }
               : anchor;
 
             /* One tag per place.
@@ -5555,7 +5577,7 @@ export default function GISCanvasPage() {
         if (f.Feature_Role !== "plot") continue;
         const at = f.Attributes?.Boundary_At;
         if (!Array.isArray(at) || at.length !== 2) continue;
-        const b = toPx([Number(at[0]), Number(at[1])]);
+        const b = at([Number(at[0]), Number(at[1])]);
         if (!Number.isFinite(b.x) || !Number.isFinite(b.y)) continue;
         const on = selected.includes(f.Feature_ID);
 
@@ -5565,7 +5587,7 @@ export default function GISCanvasPage() {
         /* A leader back to the seed, only while the seed is there to
            lead to. With the plots hidden it would point at nothing. */
         if (!hidden.includes("plot") && (f.Geometry || []).length) {
-          const p0 = toPx(f.Geometry[0]);
+          const p0 = at(f.Geometry[0]);
           ctx.beginPath();
           ctx.moveTo(p0.x, p0.y);
           ctx.lineTo(b.x, b.y);
@@ -5589,7 +5611,7 @@ export default function GISCanvasPage() {
            field of identical rings, and the boundary point is a detail
            worth seeing only when the detail is what is being looked
            at. */
-        if (view.scale > boundaryStyle.minScale) {
+        if (vs > boundaryStyle.minScale) {
           const r = boundaryStyle.radiusPx;
           ctx.globalAlpha = 1;
           ctx.beginPath();
@@ -5635,7 +5657,7 @@ export default function GISCanvasPage() {
        near its middle, and the canvas should say which one you're
        about to do. */
     if (snapHit) {
-      const p = toPx(snapHit.point);
+      const p = at(snapHit.point);
       const isEnd = snapHit.kind === "end";
 
       /* Starting a run on the end of another run of the same class is
@@ -5652,7 +5674,7 @@ export default function GISCanvasPage() {
       // The line it belongs to, so there's no doubt which one was caught
       const target = visible.find((f) => f.Feature_ID === snapHit.featureId);
       if (target && target.Feature_Type !== "point" && (target.Geometry || []).length > 1) {
-        const tp = target.Geometry.map(toPx);
+        const tp = target.Geometry.map(at);
         ctx.beginPath();
         tp.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
         if (target.Feature_Type === "polygon") ctx.closePath();
@@ -5757,19 +5779,19 @@ export default function GISCanvasPage() {
            just a smaller number. */
         let run = 0;
         ctx.beginPath();
-        const p0 = toPx(path.pts[0]);
+        const p0 = at(path.pts[0]);
         ctx.moveTo(p0.x, p0.y);
         for (let i = 1; i < path.pts.length; i++) {
           const seg = Math.hypot(path.pts[i][0] - path.pts[i - 1][0],
             path.pts[i][1] - path.pts[i - 1][1]);
           if (run + seg <= tracedM) {
-            const q = toPx(path.pts[i]);
+            const q = at(path.pts[i]);
             ctx.lineTo(q.x, q.y);
             run += seg;
           } else {
             const here = pointAlong(path.pts, tracedM);
             if (here) {
-              const q = toPx(here);
+              const q = at(here);
               ctx.lineTo(q.x, q.y);
             }
             break;
@@ -5784,7 +5806,7 @@ export default function GISCanvasPage() {
       for (const path of traceRun.paths) {
         const here = pointAlong(path.pts, tracedM);
         if (!here) continue;
-        const q = toPx(here);
+        const q = at(here);
         ctx.beginPath();
         ctx.arc(q.x, q.y, 7, 0, Math.PI * 2);
         ctx.fillStyle = "#1d4ed8";
@@ -5797,7 +5819,7 @@ export default function GISCanvasPage() {
       /* Where it started, so a trace that has run off the top of the
          view still says where the question was asked. */
       if (traceRun.start) {
-        const q = toPx(traceRun.start);
+        const q = at(traceRun.start);
         ctx.beginPath();
         ctx.arc(q.x, q.y, 5, 0, Math.PI * 2);
         ctx.fillStyle = "#fff";
@@ -5817,7 +5839,7 @@ export default function GISCanvasPage() {
          thing rather than as some general "click somewhere" mode. The
          ON LINE badge from the snap does the rest. */
       if (jointFor) {
-        const c = toPx(cursor);
+        const c = at(cursor);
         ctx.globalAlpha = 0.85;
         ctx.beginPath();
         ctx.arc(c.x, c.y, 6, 0, Math.PI * 2);
@@ -5834,8 +5856,8 @@ export default function GISCanvasPage() {
            at the cursor. From the boundary rather than from the seed
            because that is where this leg of the dig starts: the route
            runs main, boundary, here. */
-        const c = toPx(cursor);
-        const origin = toPx(trenchEndFor.boundaryAt);
+        const c = at(cursor);
+        const origin = at(trenchEndFor.boundaryAt);
 
         ctx.globalAlpha = 0.6;
         ctx.beginPath();
@@ -5870,8 +5892,8 @@ export default function GISCanvasPage() {
         /* A dashed leader back to the seed, and a hollow diamond at the
            cursor: the same language as the meter prompt, in a shape
            that is not a meter. */
-        const c = toPx(cursor);
-        const origin = toPx(boundaryFor.seedPoint);
+        const c = at(cursor);
+        const origin = at(boundaryFor.seedPoint);
 
         ctx.globalAlpha = 0.6;
         ctx.beginPath();
@@ -5907,8 +5929,8 @@ export default function GISCanvasPage() {
         ctx.fillStyle = "#fff";
         ctx.fillText(label, c.x, c.y - 20);
       } else if (meterFor) {
-        const c = toPx(cursor);
-        const origin = toPx(meterFor.seedPoint);
+        const c = at(cursor);
+        const origin = at(meterFor.seedPoint);
 
         // A leader back to the plot, so it's clear which one this serves
         ctx.globalAlpha = 0.6;
@@ -5941,7 +5963,7 @@ export default function GISCanvasPage() {
         ctx.fillStyle = "#fff";
         ctx.fillText(label, c.x, c.y - 20);
       } else if (nextPlot) {
-        const c = toPx(cursor);
+        const c = at(cursor);
         ctx.globalAlpha = 0.75;
         symbolPath(ctx, "house", c.x, c.y,
           seedStyle({ Layer_Key: "plot", Feature_Role: "plot", Attributes: {} }, false).symbolPx);
@@ -5966,7 +5988,7 @@ export default function GISCanvasPage() {
 
     // line or boundary in progress
     if (draft.length) {
-      const pts = draft.map(toPx);
+      const pts = draft.map(at);
 
       /* A delete lasso is drawn in red and shaded, so it cannot be
          mistaken for a boundary being added. The two are the same
@@ -5978,7 +6000,7 @@ export default function GISCanvasPage() {
         ctx.save();
         ctx.beginPath();
         pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-        if (cursor) { const c = toPx(cursor); ctx.lineTo(c.x, c.y); }
+        if (cursor) { const c = at(cursor); ctx.lineTo(c.x, c.y); }
         ctx.closePath();
         ctx.fillStyle = "rgba(185,28,28,.10)";
         ctx.fill();
@@ -5987,7 +6009,7 @@ export default function GISCanvasPage() {
 
       ctx.beginPath();
       pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-      if (cursor) { const c = toPx(cursor); ctx.lineTo(c.x, c.y); }
+      if (cursor) { const c = at(cursor); ctx.lineTo(c.x, c.y); }
       ctx.strokeStyle = lasso ? "#b91c1c" : (typeOf(lineType)?.Colour ?? "#0f172a");
       ctx.setLineDash([5, 4]);
       ctx.lineWidth = 2;
@@ -6014,7 +6036,7 @@ export default function GISCanvasPage() {
       ctx.lineJoin = "round";
       ctx.beginPath();
       path.forEach((m, i) => {
-        const q = toPx(m);
+        const q = at(m);
         if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
       });
       ctx.stroke();
@@ -6113,8 +6135,8 @@ export default function GISCanvasPage() {
            already dragged \u2014 and the ones worth correcting are exactly
            the ones nobody has touched. */
         if (away > 0.4 || selected.includes(f.Feature_ID)) {
-          const a = toPx(anchor);
-          const b = toPx(g[0]);
+          const a = at(anchor);
+          const b = at(g[0]);
           ctx.save();
           ctx.setLineDash([2, 3]);
           ctx.strokeStyle = "rgba(15,23,42,.45)";
@@ -6166,7 +6188,7 @@ export default function GISCanvasPage() {
          clicked reads as a deletion. */
       if (!on && !ps.visible) continue;
 
-      const q = toPx(g[0]);
+      const q = at(g[0]);
       const code = f.Attributes?.Span_Label ?? "";
 
       /* ── A node that is carrying future load ──
@@ -6347,7 +6369,7 @@ export default function GISCanvasPage() {
       /* The box draws its own code on its square, so it is not drawn
          again here \u2014 in white, centred, over a symbol this pass did
          not paint. */
-      if (code && !isBox && fontPx >= 7 && view.scale > 1.2) {
+      if (code && !isBox && fontPx >= 7 && vs > 1.2) {
         ctx.font = `700 ${fontPx}px ui-monospace, Menlo, monospace`;
         ctx.fillStyle = "#fff";
         ctx.textAlign = "center";
@@ -6379,7 +6401,7 @@ export default function GISCanvasPage() {
          splitting them across two switches would mean learning which
          menu called it what. */
       if (gasPressureAt && labelKinds.levels !== false
-          && fontPx >= 7 && view.scale > 1.2) {
+          && fontPx >= 7 && vs > 1.2) {
         /* The same figure the ring used, not a second lookup: two ways
            of finding one number is two ways for them to disagree, and a
            node ringed red with no pressure beside it would be exactly
@@ -6400,8 +6422,8 @@ export default function GISCanvasPage() {
              point, and sharing an offset would drag both. */
           const off = f.Attributes?.Pressure_Offset;
           const dragged = Array.isArray(off) && off.length === 2;
-          const x = dragged ? toPx([g[0][0] + off[0], g[0][1] + off[1]]).x : q.x + r + 5;
-          const y = dragged ? toPx([g[0][0] + off[0], g[0][1] + off[1]]).y : q.y;
+          const x = dragged ? at([g[0][0] + off[0], g[0][1] + off[1]]).x : q.x + r + 5;
+          const y = dragged ? at([g[0][0] + off[0], g[0][1] + off[1]]).y : q.y;
 
           /* A leader back to the node once it has been moved, for the
              same reason the node has one back to the trench: a figure
@@ -6470,7 +6492,7 @@ export default function GISCanvasPage() {
          estate that is a plate over every junction. Off by a switch
          rather than by re-running the check. */
       if (elecLevelsAt && labelKinds.levels !== false
-          && fontPx >= 7 && view.scale > 1.2) {
+          && fontPx >= 7 && vs > 1.2) {
         const vd = elecLevelsAt.get(Number(f.Feature_ID));
         if (vd) {
           /* Whichever figure the levels check is showing.
@@ -6495,7 +6517,7 @@ export default function GISCanvasPage() {
 
           const off = f.Attributes?.Levels_Offset;
           const dragged = Array.isArray(off) && off.length === 2;
-          const lp = dragged ? toPx([g[0][0] + off[0], g[0][1] + off[1]]) : null;
+          const lp = dragged ? at([g[0][0] + off[0], g[0][1] + off[1]]) : null;
           /* Beside the node and centred on it, exactly as the gas
              pressure is.
 
@@ -9932,6 +9954,83 @@ export default function GISCanvasPage() {
       && runThrough(n, mains) === line);
     return [...(end ? [end] : []), ...through];
   }, [features, nodeFedBy, runThrough]);
+
+  /* ── The sheet ──
+
+     Rendered by the same `draw` the screen uses, given a canvas of the
+     paper's size in pixels and a transform at the chosen scale. Then
+     handed to the browser as a page of exactly that many millimetres,
+     so printing at 100% puts a metre where a metre belongs.
+
+     A window rather than a hidden iframe: the print dialogue belongs to
+     a document somebody can see, and a sheet that appears and vanishes
+     gives no chance to notice it is wrong before it is on paper. */
+  const printSheet = useCallback(async (opts) => {
+    const { widthPx, heightPx, sheetW, sheetH, marginMm, view: pv, pxPerMm } =
+      printView(opts);
+
+    const cv = document.createElement("canvas");
+    cv.width = widthPx;
+    cv.height = heightPx;
+    /* A canvas too large for the browser comes back blank rather than
+       throwing, so it is checked before anything is drawn on it. */
+    const probe = cv.getContext("2d");
+    if (!probe) throw new Error("The sheet is too large for this browser to draw.");
+    probe.fillStyle = "#fff";
+    probe.fillRect(0, 0, widthPx, heightPx);
+
+    draw({ canvas: cv, view: pv });
+
+    /* The scale bar, drawn on the sheet itself.
+
+       The one thing that cannot be enforced from here is somebody
+       printing "fit to page", which rescales everything and makes the
+       stated scale a lie. A bar is measured against a rule and settles
+       it in two seconds \u2014 and it is drawn in the same transform as the
+       drawing, so if the sheet is rescaled the bar is rescaled with it
+       and stops matching its own label. */
+    const barM = [1, 2, 5, 10, 20, 50, 100, 200]
+      .find((m) => m * pv.scale > widthPx * 0.08) ?? 100;
+    const barPx = barM * pv.scale;
+    const bx = marginMm * pxPerMm;
+    const by = heightPx - marginMm * pxPerMm;
+    const ctx = probe;
+    ctx.save();
+    ctx.lineWidth = Math.max(1, pxPerMm * 0.4);
+    ctx.strokeStyle = "#0f172a";
+    ctx.fillStyle = "#0f172a";
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx + barPx, by);
+    ctx.stroke();
+    for (const t of [0, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(bx + barPx * t, by - pxPerMm * 1.6);
+      ctx.lineTo(bx + barPx * t, by + pxPerMm * 1.6);
+      ctx.stroke();
+    }
+    ctx.font = `${Math.round(pxPerMm * 3)}px system-ui, sans-serif`;
+    ctx.textBaseline = "bottom";
+    ctx.fillText(`${barM} m`, bx, by - pxPerMm * 2.4);
+    ctx.fillText(`1:${opts.scaleDenom}  \u00b7  ${opts.paper}`
+      + `${opts.landscape ? " landscape" : " portrait"}`,
+    bx, by + pxPerMm * 6);
+    ctx.restore();
+
+    const url = cv.toDataURL("image/png");
+    const win = window.open("", "_blank");
+    if (!win) throw new Error("The print window was blocked. Allow pop-ups and try again.");
+    win.document.write(`<!doctype html><html><head><title>`
+      + `Drawing 1:${opts.scaleDenom} ${opts.paper}</title>`
+      + `<style>@page{size:${sheetW}mm ${sheetH}mm;margin:0}`
+      + `html,body{margin:0;padding:0}`
+      + `img{width:${sheetW}mm;height:${sheetH}mm;display:block}`
+      + `</style></head><body><img src="${url}" alt="Drawing"></body></html>`);
+    win.document.close();
+    /* Left for the person to print. Calling print() here races the
+       image decoding on a sheet this size, and a blank first page is
+       exactly the failure this feature exists to avoid. */
+  }, [draw]);
 
   /* Putting a suggested change on the drawing.
 
@@ -20855,6 +20954,13 @@ export default function GISCanvasPage() {
                           tool and not a view setting, it is taking a copy
                           of the drawing away with you. */}
                       <div className="gm-sep" />
+                      {/* Beside Download, because both are ways of taking
+                          the drawing off the screen \u2014 one as data, one
+                          as paper. */}
+                      <MenuItem label={"Print to Scale\u2026"}
+                        hint="A4 to A0, at a scale a rule can check"
+                        disabled={!projectId}
+                        onClick={() => setPrintOpen(true)} />
                       <MenuItem label={busy === "download" ? "Saving\u2026" : "Download Drawing"}
                         hint={"The drawing as JSON \u2014 for sending on when something needs looking at"}
                         disabled={!projectId || !!busy}
@@ -23066,6 +23172,12 @@ export default function GISCanvasPage() {
 
           Drawn from the whole check rather than the filtered table: a
           schematic with the middle of every run missing is not one. */}
+      {printOpen && (
+        <PrintModal features={features}
+          onRender={printSheet}
+          onClose={() => setPrintOpen(false)} />
+      )}
+
       {schematic && trace && (
         <SchematicModal trace={trace} onClose={() => setSchematic(false)}
           /* From the origin, like everything else. This one looked for a

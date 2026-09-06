@@ -134,7 +134,10 @@ const resolve = (styles, ctx = {}) => resolveStyle(SUBJECT, styles, ctx);
   if (!/const boundaryStyle = useMemo/.test(canvas)) {
     fail("the canvas does not resolve a style for the boundary point");
   }
-  if (!/view\.scale > boundaryStyle\.minScale/.test(canvas)) {
+  /* `vs` inside the draw body: the same number, named so the routine
+     can be given a different one when it draws a sheet of paper rather
+     than the screen. */
+  if (!/vs > boundaryStyle\.minScale/.test(canvas)) {
     fail("the zoom threshold is still written into the canvas");
   }
   if (!/const r = boundaryStyle\.radiusPx/.test(canvas)) {

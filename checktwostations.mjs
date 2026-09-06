@@ -8,6 +8,7 @@
    question nobody had asked. */
 import { readFileSync } from "node:fs";
 import { circuitReport } from "./src/features/gis/electric.js";
+import { originsOf } from "./src/features/gis/spanNodes.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -138,6 +139,53 @@ const rep = circuitReport(raw.features, { lineTypes: raw.lineTypes || [] });
      and a warning that fires on every row is noise. */
   if (/reached from \$\{m\.originLabel\}/.test(view)) {
     fail("the row still warns about a mismatch it can no longer have");
+  }
+}
+
+// 5. Every substation is an origin, not just the first.
+//
+//    `find` took one. A site fed from two substations gave the first an
+//    origin and left the second to be picked up as an ordinary
+//    junction: E0 at one and span node 10 at the other, so half the
+//    estate was numbered as though it hung off the other half's
+//    network.
+{
+  const sub = (id, label) => ({ Feature_ID: id, Feature_Role: "substation",
+    Layer_Key: "electric", Label: label, Geometry: [[id, 0]] });
+
+  const one = originsOf([sub(1, "Substation 1")]);
+  if (one.size !== 1 || one.get("electric")?.label !== "E0") {
+    fail("a single substation is no longer E0");
+  }
+
+  const two = originsOf([sub(1, "Substation 1"), sub(2, "Substation 2")]);
+  if (two.size !== 2) {
+    fail(`two substations give ${two.size} origin(s) \u2014 the second is placed `
+      + "as an ordinary span node");
+  }
+  /* Lettered after the first, the way a second POC is: the numbers
+     belong to the mains and the letters to the origins. */
+  const labels = [...two.values()].map((o) => o.label);
+  if (labels[0] !== "E0" || labels[1] !== "E0b") {
+    fail(`two substations are labelled ${labels.join(", ")}, not E0 and E0b`);
+  }
+  /* The first keeps the plain layer key, so everything that asks for
+     "the electric origin" and means the only one keeps working. */
+  if (!two.has("electric")) {
+    fail("the first substation is no longer under the plain layer key");
+  }
+  /* And each entry says its layer, which is what the placement reads
+     off a compound key. */
+  if ([...two.values()].some((o) => o.layer !== "electric")) {
+    fail("an origin does not name its layer, so the placement cannot tell "
+      + "which network it belongs to");
+  }
+
+  /* Plant still beats a POC where both are drawn. */
+  const mixed = originsOf([sub(1, "Substation 1"),
+    { Feature_ID: 9, Feature_Role: "poc", Layer_Key: "electric", Label: "POC" }]);
+  if (mixed.get("electric")?.feature?.Feature_Role !== "substation") {
+    fail("a POC outranks a substation as the electric origin");
   }
 }
 

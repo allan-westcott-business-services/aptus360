@@ -2818,6 +2818,22 @@ Each row now carries the station it is assigned to and its way.
     exactly why it was safe.** It was safe until two substations shared
     a trench, which is the normal way to draw them.
 
+79. **`find` where the drawing allows two.** `originsOf` took the FIRST
+    substation as the electric origin. A site fed from two — two groups
+    of plots, each on its own transformer — gave the first an E0 and
+    left the second to be picked up as an ordinary junction: **span node
+    10 where an origin belonged**, so half the estate was numbered as
+    though it hung off the other half's network.
+
+    The POC branch immediately below it has handled this from the start,
+    with a comment explaining why a site can be fed from more than one
+    side. Plant is the same question and had the older answer. Every
+    substation is an origin now, lettered after the first — E0, E0b —
+    exactly as a second POC is.
+
+    **The fix was already written twenty lines further down.** Two
+    branches for one question, and only one of them had been revisited.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

@@ -91,9 +91,26 @@ export function plantLabel(feature) {
    the governor. */
 export function originsOf(features = []) {
   const out = new Map();
+  /* ── Every substation, not the first ──
+
+     `find` took one. A site fed from two substations \u2014 two groups of
+     plots, each on its own transformer \u2014 gave the first an origin and
+     left the second to be picked up as an ordinary junction: E0 at one
+     and span node 10 at the other, so half the estate was numbered as
+     though it hung off the other half's network.
+
+     The POC branch below has done this from the start: every one is an
+     origin, lettered after the first. Plant is the same question and
+     now gets the same answer. */
   for (const p of Object.values(PLANT)) {
-    const plant = features.find((f) => f.Feature_Role === p.role);
-    if (plant) out.set(p.layer, { feature: plant, label: p.label });
+    const plants = features.filter((f) => f.Feature_Role === p.role);
+    plants.forEach((plant, i) => {
+      const label = i === 0 ? p.label : `${p.label}${String.fromCharCode(97 + i)}`;
+      /* First under the plain layer key, so everything that asks for
+         "the electric origin" and means the only one keeps working. */
+      out.set(i === 0 ? p.layer : `${p.layer}:${plant.Feature_ID}`,
+        { feature: plant, label, layer: p.layer });
+    });
   }
 
   /* Every POC, not the first.

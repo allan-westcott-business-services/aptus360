@@ -339,6 +339,12 @@ export function assumedMeters(feature, rows = []) {
          these does not have to go back to the consumption table. */
       Assumed_kVA: r.kva ?? null,
       Assumed_Tail_M: r.distanceM ?? 0,
+      /* The riser, boundary to board. It is on every flat's route and
+         on none of the network: the drawing stops at the boundary and
+         the board is fifteen metres up a shaft nobody has drawn. A
+         distance to a flat that leaves it out is short by the same
+         amount for every flat in the block. */
+      Assumed_Riser_M: Number(a.MSDB_Riser_M) || 0,
     },
   }));
 }

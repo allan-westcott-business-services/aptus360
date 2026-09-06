@@ -943,6 +943,37 @@ const served = (b) => servedFlats(b, flats);
       fail("a flat does not say where it hangs from, so a reader looks for "
         + "it on the drawing and cannot find it");
     }
+
+    /* ── Each flat's own distance ──
+
+       An ordinary meter joins the network at its own point, so the
+       distance column already covers that customer's run. Every flat on
+       a board stands AT the board, so without its own way in they all
+       reported one number and the tails the designer recorded \u2014 fifteen
+       to twenty-eight metres apart \u2014 counted for nothing. */
+    const spread = new Set(flats.map((m) => m.distM));
+    if (spread.size === 1 && flats.length > 1) {
+      fail("every flat on the board reports the same distance, so the tails "
+        + "recorded against them count for nothing");
+    }
+    /* The riser is on every flat's route and on none of the network:
+       the drawing stops at the boundary and the board is up a shaft
+       nobody has drawn. Left out, every flat is short by the same
+       amount. */
+    const riser = Number(bd.Attributes?.MSDB_Riser_M) || 0;
+    const tails = bd.Attributes?.MSDB_Distances || {};
+    const nearest = Math.min(...Object.values(tails).map(Number).filter(Number.isFinite));
+    const closest = Math.min(...flats.map((m) => m.distM));
+    const board = closest - riser - nearest;
+    if (riser > 0 && !(closest > board + riser - 0.01)) {
+      fail("the riser is missing from the flats' distances");
+    }
+    for (const m of flats) {
+      if (!(m.distM >= board + riser + nearest - 0.01)) {
+        fail(`a flat reports ${m.distM} m, nearer than the board plus the `
+          + "shortest tail on it");
+      }
+    }
   }
 
   /* And the report is given the same view the build works from: two

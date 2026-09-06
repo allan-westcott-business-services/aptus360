@@ -1467,7 +1467,23 @@ export function circuitReport(features = [], opts = {}) {
       : (supply
         ? supply.Requested_kVA
         : (plot?.kva_load ?? plot?.KVA_Load));
-    const d = dist.get(Number(m.Feature_ID));
+    /* ── A flat's distance is the board's, plus its own way in ──
+
+       An ordinary meter joins the network at its own point, so the
+       figure here already covers that customer's run. Every flat on a
+       board stands AT the board, so without this they all reported the
+       same number \u2014 the distance to the board \u2014 and the tails the
+       designer recorded, fifteen to twenty-six metres apart, counted
+       for nothing.
+
+       The riser as well: it is on every flat's route and on none of the
+       network, because the drawing stops at the boundary and the board
+       is up a shaft nobody has drawn. */
+    const base = dist.get(Number(m.Feature_ID));
+    const d = assumed && base != null
+      ? base + (Number(assumed.Assumed_Riser_M) || 0)
+        + (Number(assumed.Assumed_Tail_M) || 0)
+      : base;
     return {
       id: m.Feature_ID,
       meter: m.Label || `Meter ${m.Feature_ID}`,

@@ -2750,6 +2750,23 @@ zero**. It is read off the meter now, and the house-type column says
 "Flat on MSDB" — a reader looking for that plot on the drawing will not
 find one.
 
+77. **Every flat reported the same distance.** An ordinary meter joins
+    the network at its own point, so the report's distance column
+    already covers that customer's run — which is why no plot on a
+    circuit shares a figure with another. Every flat on a board stands
+    AT the board, so they all reported the distance to the board and
+    the tails the designer had recorded, fifteen to twenty-eight metres
+    apart, counted for nothing.
+
+    A flat's distance is the board's plus its own way in: the RISER,
+    which is on every flat's route and on none of the network because
+    the drawing stops at the boundary, and then its own tail.
+
+        board 470.9 m + riser 15 m + tail 15..28 m  ->  500.9 .. 513.9 m
+
+    **The figures were all there and nothing joined them up.** Ten rows
+    reading one number is the kind of wrong that looks deliberate.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

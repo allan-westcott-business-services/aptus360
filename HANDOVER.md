@@ -2659,6 +2659,31 @@ what the model actually put on the dig, and names any board whose cable
 arrived without its load. **A cable running to a board that carries
 nothing is the failure that looks most like success.**
 
+75. **Three rounds lost to reading a property that did not exist.**
+    `spanTrace` returns `attached` on its MODEL, not on the result. My
+    harness read `r.attached`, got `undefined`, and reported **zero
+    attached meters for a drawing with eighty-four of them** — which
+    looked like a total failure of the routing and was a typo in the
+    test.
+
+    Then `attached` turned out to be a list of plain IDS, not objects,
+    so `.filter(m => m.id < 0)` filtered everything out and the new
+    check failed against a fix that worked.
+
+    **A harness that reports nothing working is far more likely to be
+    broken than the thing it is testing.** Two rounds of "it must be the
+    membership, it must be the pruning" came out of believing it.
+
+**The MSDB chain is proved end to end**, on the drawing it failed on,
+now in `fixtures/drawing-2202-043-msdb.json`:
+
+    without the fix:  B2 -> B3 terminal  0, 43 meters on the circuit
+    with the fix:     B2 -> B3 terminal 10, 53 meters on the circuit
+
+`checkmsdb` runs the real model over that fixture and asserts the leg to
+the board carries its flats. Proved by removing `bySelf` and watching it
+fail.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

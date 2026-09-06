@@ -15,7 +15,7 @@ import {
   assumedMeters, msdbSupply, withAssumedMeters,
 } from "./src/features/gis/msdb.js";
 import { circuitsFrom } from "./src/features/gis/electric.js";
-import { circuitMembership } from "./src/features/gis/feeder.js";
+import { circuitMembership, spanTrace } from "./src/features/gis/feeder.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -701,6 +701,68 @@ const served = (b) => servedFlats(b, flats);
   }
   if (/elecLevelsAt\?\.get\?\.\(Number\(editing\.Feature_ID\)\)/.test(canvas)) {
     fail("the editor still looks the level up by the board's id");
+  }
+}
+
+// 18. The whole chain, on the drawing it failed on.
+//
+//     Everything above tests a piece. This runs the real model over the
+//     real site and asks the one question that matters: does the leg to
+//     the board carry its flats.
+//
+//     Three rounds were lost to a harness that read `attached` off the
+//     wrong object \u2014 spanTrace returns it inside `model`, and reading
+//     `r.attached` gave zero for every meter on the drawing, which
+//     looked like a total failure and was a typo in the test.
+{
+  const file = "./fixtures/drawing-2202-043-msdb.json";
+  let raw = null;
+  try { raw = JSON.parse(readFileSync(file, "utf8")); } catch { /* below */ }
+  if (!raw) fail(`${file} is missing \u2014 the MSDB drawing this was proved on`);
+  else {
+    const f = raw.features;
+    const b = f.find((x) => x.Feature_Role === "msdb");
+    if (!b) fail("the fixture has no board on it");
+    else {
+      const ids = b.Attributes.MSDB_Plot_IDs || [];
+      const src = withAssumedMeters(f, {
+        plotList: ids.map((id, i) => ({ plot_id: id, plot_number: `10${i + 1}`,
+          Property_Config_ID: 500, Heat_Source_ID: 2 })),
+        configs: [{ Property_Config_ID: 500, Bedrooms: 1, Property_Type_ID: 7 }],
+        propertyTypes: [{ Property_Type_ID: 7, Property_Type: "Flat" }],
+        consumption: [{ Bedrooms: 1, Heat_Source_ID: 2, Consumption_kVA: 2.2 }],
+      });
+      const { seedIds, meterIds } = circuitMembership(src, 2);
+      const origin = f.find((x) => x.Feature_Role === "feederpoint"
+        && Number(x.Attributes?.Circuit_ID) === 2
+        && Number(x.Attributes?.Span_Seq) === 0);
+      const r = spanTrace(src, origin.Feature_ID,
+        { lineTypes: raw.lineTypes || [], circuitId: 2, seedIds, meterIds });
+
+      /* `attached` lives on the MODEL, not on the result. */
+      const M = r.model || {};
+      if (!Array.isArray(M.attached)) {
+        fail("spanTrace no longer reports what it attached, on the model");
+      }
+      /* `attached` is a list of plain ids, not objects. Reading `.id`
+         off a number gives undefined and filters everything out \u2014 the
+         same shape of mistake that made this take three rounds. */
+      const flats = (M.attached || []).filter((id) => Number(id) < 0);
+      if (flats.length !== ids.length) {
+        fail(`${flats.length} of the board's ${ids.length} flats attached to `
+          + "the dig \u2014 the leg to the board arrives carrying nothing");
+      }
+      /* And the leg that ends at the board carries them. */
+      const at = b.Attributes?.Span_Anchor ?? b.Geometry[0];
+      const stop = f.find((x) => x.Feature_Role === "feederpoint"
+        && Math.hypot((x.Geometry[0][0]) - at[0], (x.Geometry[0][1]) - at[1]) <= 1);
+      const leg = (r.legs || []).find((l) => l.to === stop?.Attributes?.Span_Label);
+      if (!leg) fail("no leg ends at the board");
+      else if (leg.terminal !== ids.length) {
+        fail(`the leg to the board reports ${leg.terminal} terminal meters for `
+          + `${ids.length} flats \u2014 TERM reads 0 on the levels sheet`);
+      }
+    }
   }
 }
 

@@ -355,3 +355,54 @@ export function msdbSupply(feature) {
     named: a.Circuit_ID != null,
   };
 }
+
+/* ── The boards, as the build sees them ──
+
+   `buildLvNetwork` routes to METERS: it scans the features for them,
+   attaches each to the nearest node on the dig, and sizes the cable by
+   what it finds. A board's flats are not features, so the build did not
+   know they existed \u2014 no cable was routed to the board and no stop was
+   placed at it.
+
+   So the features handed to the build include the boards' assumed
+   meters. Everything downstream then works unchanged: the routing
+   reaches the board because there is load there, the cable is sized for
+   the flats it feeds, and a feeder end point lands at the board because
+   that is where a run carrying load ends.
+
+   ── Ids that cannot be mistaken for rows ──
+
+   The build keys meters by `Feature_ID`, so these need one. They are
+   NEGATIVE, derived from the board and the plot: no row has a negative
+   id, so anything that tries to save one, look one up, or compare one
+   against the drawing fails loudly rather than quietly writing a meter
+   nobody placed.
+
+   Never persisted. This is a view of the drawing for the length of one
+   build, not an edit to it. */
+export function assumedMeterId(msdbId, plotId) {
+  return -(Math.abs(Number(msdbId) || 0) * 100000 + (Math.abs(Number(plotId)) || 0));
+}
+
+export function withAssumedMeters(features = [], {
+  plotList = [], configs = [], propertyTypes = [], consumption = [],
+} = {}) {
+  const boards = (features || []).filter((f) => f.Feature_Role === "msdb");
+  if (!boards.length) return features;
+
+  const flats = flatsFromPlots({ plotList, configs, propertyTypes });
+  const extra = [];
+  for (const b of boards) {
+    /* A board with no circuit is a board nothing can route to. Left out
+       rather than routed to a circuit picked for it. */
+    if (b.Attributes?.Circuit_ID == null) continue;
+    const rows = servedFlats(b, flats).map((r) => ({
+      ...r,
+      kva: apartmentLoad(r, r.heatSourceId, consumption).kva,
+    }));
+    for (const m of assumedMeters(b, rows)) {
+      extra.push({ ...m, Feature_ID: assumedMeterId(b.Feature_ID, m.assumedFor) });
+    }
+  }
+  return extra.length ? [...features, ...extra] : features;
+}

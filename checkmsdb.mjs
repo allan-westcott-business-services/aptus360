@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs";
 import {
   FLOORS, apartmentLoad, msdbLoad, apartmentLevels, worstApartment, msdbText,
   flatsFromPlots, servedFlats, isFlatType, shortType, riserDrop,
-  assumedMeters, msdbSupply,
+  assumedMeters, msdbSupply, withAssumedMeters,
 } from "./src/features/gis/msdb.js";
 import { circuitsFrom } from "./src/features/gis/electric.js";
 
@@ -528,6 +528,73 @@ const served = (b) => servedFlats(b, flats);
      would put a board on the cable feeding the box. */
   if (!/length: n - 1/.test(editor)) {
     fail("the box's input is offered as an output");
+  }
+}
+
+// 14. Build LV Network routes to a board.
+//
+//     The build routes to METERS: it scans the features for them,
+//     attaches each to the nearest node on the dig, and sizes cable by
+//     what it finds. A board's flats are not features, so the build did
+//     not know they existed \u2014 no cable was routed to a board and no
+//     stop was placed at it.
+{
+  const b = board({ Circuit_ID: 3, Circuit_Name: "Circuit 3" });
+  const world = withAssumedMeters([b], {
+    plotList, configs, propertyTypes, consumption,
+  });
+  const added = world.filter((x) => x.Attributes?.Assumed);
+
+  if (added.length !== served(b).length) {
+    fail(`the build is given ${added.length} meters for a board serving `
+      + `${served(b).length} flats`);
+  }
+  /* Load, so the cable to the board is sized for what it feeds. */
+  if (added.some((m) => m.Attributes.Assumed_kVA == null)) {
+    fail("an assumed meter carries no load, so the cable to the board is "
+      + "sized for nothing");
+  }
+  /* At the board: that is where the run has to reach. */
+  const at = b.Geometry[0];
+  if (added.some((m) => m.Geometry[0][0] !== at[0] || m.Geometry[0][1] !== at[1])) {
+    fail("an assumed meter is somewhere other than its board, so the cable "
+      + "is routed to the wrong place");
+  }
+
+  /* ── Ids that cannot be mistaken for rows ──
+     The build keys meters by Feature_ID, so these need one. Negative,
+     because no row has a negative id: anything that tries to save one
+     or look one up fails loudly rather than quietly writing a meter
+     nobody placed. */
+  if (added.some((m) => !(m.Feature_ID < 0))) {
+    fail("an assumed meter carries an id a real row could have");
+  }
+  if (new Set(added.map((m) => m.Feature_ID)).size !== added.length) {
+    fail("two assumed meters share an id, so the build sees one of them");
+  }
+
+  /* A board with no circuit is a board nothing can route to. Left out
+     rather than routed to a circuit picked for it. */
+  const loose = withAssumedMeters([board({ Circuit_ID: null })], {
+    plotList, configs, propertyTypes, consumption,
+  });
+  if (loose.some((x) => x.Attributes?.Assumed)) {
+    fail("a board with no circuit was given meters anyway, which routes it "
+      + "to a circuit nobody chose");
+  }
+
+  /* A drawing with no boards comes back untouched: no copy, no cost. */
+  const plain = [{ Feature_Role: "meter", Layer_Key: "electric" }];
+  if (withAssumedMeters(plain, {}) !== plain) {
+    fail("a drawing with no boards is copied for nothing");
+  }
+
+  /* And the build asks for them at the one place its view of the
+     drawing is decided. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/const src = withAssumedMeters\(srcFeatures \|\| features, \{/.test(canvas)) {
+    fail("Build LV Network does not see the boards' flats, so no cable is "
+      + "routed to a board and no stop is placed at it");
   }
 }
 

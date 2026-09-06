@@ -2469,10 +2469,25 @@ and a copy in the features would be a third that went stale the moment
 either changed. They carry no `Feature_ID`, so nothing is tempted to
 save them.
 
-**Not done yet:** the board is a point on the drawing but the feeder
-model does not treat it as a stop, so it takes no level of its own from
-the levels check and the flats therefore show a dash. That is the next
-piece: `spanTrace` has to claim it the way it claims a feeder point.
+**Build LV Network routes to a board.** The build routes to METERS: it
+scans the features for them, attaches each to the nearest node on the
+dig, and sizes cable by what it finds. A board's flats are not features,
+so the build did not know they existed — no cable was routed to a board
+and no stop was placed at it.
+
+`withAssumedMeters` is applied at the one place the build's view of the
+drawing is decided, so everything downstream works unchanged: the
+routing reaches the board because there is load there, the cable is
+sized for the flats it feeds, and a feeder end point lands at the board
+because that is where a run carrying load ends. Measured on the live
+site: circuit 3 went from 41 meters to 43 with a two-flat board on it.
+
+**A view, not an edit.** Nothing writes those meters. Their ids are
+NEGATIVE, derived from the board and the plot — no row has a negative id,
+so anything that tries to save one or look one up fails loudly rather
+than quietly writing a meter nobody placed. A board with no circuit is
+left out rather than routed to one picked for it, and a drawing with no
+boards comes back as the same array.
 
 69. **A canvas colour set to a CSS variable.** The MSDB's selected
     state used `var(--accent)`. Assigning a CSS variable to `fillStyle`

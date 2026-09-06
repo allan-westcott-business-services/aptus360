@@ -108,6 +108,7 @@ import {
 } from "./joints.js";
 import { alpha } from "../../lib/colour.js";
 import PrintModal from "./PrintModal.jsx";
+import { withAssumedMeters } from "./msdb.js";
 import { printView, drawnBounds } from "./printSheet.js";
 import { inLightingView } from "./lightingView.js";
 import { utilityMenuPress, utilityTint } from "./utilityMenu.js";
@@ -15251,7 +15252,27 @@ export default function GISCanvasPage() {
        the move, and asking again about the consequence they were told
        about is a second question for one decision. */
     const { silent = false, srcFeatures = null } = (opts && opts.nativeEvent) ? {} : opts;
-    const src = srcFeatures || features;
+    /* ── The boards' flats, for the length of this build ──
+
+       The build routes to METERS: it scans for them, attaches each to
+       the nearest node on the dig, and sizes cable by what it finds. A
+       board's flats are not features, so the build did not know they
+       existed \u2014 no cable was routed to a board and no stop was placed
+       at it.
+
+       Added here, at the one place the build's view of the drawing is
+       decided, so everything downstream works unchanged: the routing
+       reaches the board because there is load there, the cable is sized
+       for the flats it feeds, and a feeder end point lands at the board
+       because that is where a run carrying load ends.
+
+       A view, not an edit. Nothing below writes a meter. */
+    const src = withAssumedMeters(srcFeatures || features, {
+      plotList,
+      configs: lookups?.propertyConfigs || [],
+      propertyTypes: lookups?.propertyTypes || [],
+      consumption: lookups?.houseTypeConsumption || [],
+    });
 
     const circuits = circuitsFrom(src);
     /* A substation, or an electric POC on the mains trench. On a

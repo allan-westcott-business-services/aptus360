@@ -2736,6 +2736,20 @@ it stayed behind. `jointMarks` carries the fitting's id and
 `planFeederPoints` writes it as `At_Joint_ID`, which is the name the
 drag already reads. One fact, one name, no second guess.
 
+**A board's flats are on the circuit report.** It lists a circuit's
+meters with their plot, house type, distance and load; left out, a block
+of dwellings was missing from the one sheet that says who is on which
+feeder. The report is given the same view the build works from, so the
+two agree about what is on a circuit — two counts of one circuit is
+fault 27.
+
+Each flat carries its own figures: the report resolves load through the
+plot record, and a flat has no plot FEATURE behind it, so a meter that
+knew its own load reported nothing and **read as a dwelling drawing
+zero**. It is read off the meter now, and the house-type column says
+"Flat on MSDB" — a reader looking for that plot on the drawing will not
+find one.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

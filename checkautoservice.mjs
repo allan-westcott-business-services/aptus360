@@ -660,8 +660,18 @@ const utils = () => ["electric"];
   const at = canvas.indexOf("── Which vertices follow the point ──");
   const body = at < 0 ? "" : canvas.slice(at, canvas.indexOf("drag.current.rubber.push", at) + 200);
 
-  if (!/if \(isJoint && line\.Layer_Key !== pt\.Layer_Key\) continue;/.test(body)) {
+  /* A JOINT follows nothing off its own layer: it sits on a cable
+     inside a trench, and pulling the dig about because a fitting moved
+     is wrong. A board is the exception \u2014 the trench runs TO a board \u2014
+     so the guard now names it, and this asserts a joint is still
+     excluded rather than matching the old spelling. */
+  if (!/if \(isJoint && !isBoard && line\.Layer_Key !== pt\.Layer_Key\) continue;/
+    .test(body)) {
     fail("dragging a service joint still drags the service trench with it");
+  }
+  if (!/const isBoard = pt\.Feature_Role === "msdb";/.test(body)) {
+    fail("the exception to the layer guard is not limited to boards, so any "
+      + "fitting could drag the dig");
   }
   /* Before the candidates are chosen, or the ends are collected and
      the test never reached. */

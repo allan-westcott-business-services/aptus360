@@ -14,7 +14,7 @@ import {
   flatsFromPlots, servedFlats, isFlatType, shortType, riserDrop,
   assumedMeters, msdbSupply, withAssumedMeters,
 } from "./src/features/gis/msdb.js";
-import { circuitsFrom } from "./src/features/gis/electric.js";
+import { circuitsFrom, circuitReport } from "./src/features/gis/electric.js";
 import { circuitMembership, spanTrace } from "./src/features/gis/feeder.js";
 import { jointMarks } from "./src/features/gis/feederPoints.js";
 
@@ -867,6 +867,90 @@ const served = (b) => servedFlats(b, flats);
   if (!/At_Joint_ID: Number\(nd\.atFeatureId\)/.test(marks)) {
     fail("the fitting's id is carried on the mark and dropped when the point "
       + "is written, so the drag has nothing to read");
+  }
+}
+
+// 21. The dig follows the board too.
+//
+//     A joint follows nothing off its own layer: it sits ON a cable
+//     inside a trench, so pulling the dig about because a fitting moved
+//     is wrong. A board is the other way round \u2014 the trench RUNS TO it,
+//     the way a plot's service ends at a meter \u2014 so moving one without
+//     the other leaves a dig stopping in open ground.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  if (!/if \(isJoint && !isBoard && line\.Layer_Key !== pt\.Layer_Key\) continue;/
+    .test(canvas)) {
+    fail("a board follows nothing off its own layer, so the trench running "
+      + "to it stays behind");
+  }
+  /* Ends only. A trench passing THROUGH a board is still not dragged
+     out of shape: that is what the joint rule protects and it is right. */
+  if (!/: \[0, g\.length - 1\];/.test(canvas)) {
+    fail("every vertex of a trench follows, so dragging a board pulls the "
+      + "dig out of shape");
+  }
+  /* ── And it keeps working after a cable is connected ──
+     `Joint_Cables` is what a fitting says it HOLDS, and holding is
+     about conductors. Without this exception the trench followed until
+     somebody connected a cable in the editor, which writes the record,
+     and then silently stopped. */
+  if (!/const isDig = isBoard && line\.Layer_Key !== pt\.Layer_Key;/.test(canvas)) {
+    fail("connecting a cable to a board stops its trench following it");
+  }
+}
+
+// 22. A board's flats appear on the circuit report.
+//
+//     The report lists a circuit's meters with their plot, house type,
+//     distance and load. Left out, a block of dwellings was missing
+//     from the one sheet that says who is on which feeder.
+{
+  const raw = JSON.parse(readFileSync("./fixtures/drawing-2202-043-msdb.json", "utf8"));
+  const f = raw.features;
+  const bd = f.find((x) => x.Feature_Role === "msdb");
+  const pids = bd?.Attributes?.MSDB_Plot_IDs || [];
+  const view = withAssumedMeters(f, {
+    plotList: pids.map((id, i) => ({ plot_id: id, plot_number: `10${i + 1}`,
+      Property_Config_ID: 500, Heat_Source_ID: 2 })),
+    configs: [{ Property_Config_ID: 500, Bedrooms: 1, Property_Type_ID: 7 }],
+    propertyTypes: [{ Property_Type_ID: 7, Property_Type: "Flat" }],
+    consumption: [{ Bedrooms: 1, Heat_Source_ID: 2, Consumption_kVA: 2.2 }],
+  });
+  const rep = circuitReport(view, { lineTypes: raw.lineTypes || [] });
+  const c2 = (rep.circuits || []).find((c) => Number(c.id) === 2);
+  if (!c2) fail("circuit 2 is not on the report");
+  else {
+    const flats = (c2.meters || []).filter((m) => Number(m.id) < 0);
+    if (flats.length !== pids.length) {
+      fail(`${flats.length} of the board's ${pids.length} flats are on the `
+        + "circuit report");
+    }
+    /* ── With their own figures ──
+       There is no plot FEATURE behind a flat and nothing in the plot
+       list keyed the way the report expects, so a meter that knew its
+       own load reported nothing and read as a dwelling drawing zero. */
+    if (flats.some((m) => !(Number(m.kva) > 0))) {
+      fail("a flat on the report shows no load, which reads as a dwelling "
+        + "drawing nothing");
+    }
+    if (flats.some((m) => !m.plot)) {
+      fail("a flat on the report has no plot number, so the column a reader "
+        + "scans first is blank");
+    }
+    if (flats.some((m) => m.houseType !== "Flat on MSDB")) {
+      fail("a flat does not say where it hangs from, so a reader looks for "
+        + "it on the drawing and cannot find it");
+    }
+  }
+
+  /* And the report is given the same view the build works from: two
+     counts of one circuit is fault 27. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/circuitReport\(withAssumedMeters\(features, \{/.test(canvas)) {
+    fail("the report reads the drawing without the boards' flats, so it and "
+      + "the routing disagree about what is on a circuit");
   }
 }
 

@@ -1453,20 +1453,40 @@ export function circuitReport(features = [], opts = {}) {
        levels check counted a supply that the report showed as blank. */
     const nrsId = m.Attributes?.NRS_ID;
     const supply = nrsId != null ? nrsById(nrsId) : null;
-    const kva = supply
-      ? supply.Requested_kVA
-      : (plot?.kva_load ?? plot?.KVA_Load);
+    /* ── A flat on a board carries its own figures ──
+
+       A board's flats are meters that are assumed rather than placed.
+       There is no plot FEATURE behind them and nothing in the plot list
+       keyed the way this expects, so a meter that knew its own load
+       reported nothing and read as a dwelling drawing zero.
+
+       Stated on the meter, so it is read off the meter. */
+    const assumed = m.Attributes?.Assumed ? m.Attributes : null;
+    const kva = assumed
+      ? assumed.Assumed_kVA
+      : (supply
+        ? supply.Requested_kVA
+        : (plot?.kva_load ?? plot?.KVA_Load));
     const d = dist.get(Number(m.Feature_ID));
     return {
       id: m.Feature_ID,
       meter: m.Label || `Meter ${m.Feature_ID}`,
-      plot: plot?.plot_number ?? plot?.Plot_Number ?? "",
+      plot: plot?.plot_number ?? plot?.Plot_Number
+        /* The label a flat was given when its meter was assumed:
+           "Flat 101". Without it the row is blank in the column a
+           reader scans first. */
+        ?? (assumed ? String(m.Label ?? "").replace(/^Flat\s*/i, "") : "")
+        ?? "",
       /* What it is, where there is no house type to give. A row reading
          "—" in every column but its name says nothing about why it has
          no plot; the supply type says it is not a dwelling. */
-      houseType: supply
-        ? (supply.Description || supply.Supply_Ref || "Non-residential")
-        : (plot?.config_code ?? plot?.Code ?? "\u2014"),
+      houseType: assumed
+        /* Says what it is and where it hangs from, because a reader
+           looking for a plot on the drawing will not find this one. */
+        ? "Flat on MSDB"
+        : (supply
+          ? (supply.Description || supply.Supply_Ref || "Non-residential")
+          : (plot?.config_code ?? plot?.Code ?? "\u2014")),
       kva: kva != null && kva !== "" ? Number(kva) : fallbackKva,
       /* Whether that figure was read off the plot or fallen back to.
          A plot with no load recorded and a plot genuinely drawing

@@ -7753,7 +7753,24 @@ export default function GISCanvasPage() {
              its cables, and no trench, no pipe on another utility, no
              boundary. Points that are not joints keep the rule they
              had: a meter dragged still takes its service end with it. */
-          if (isJoint && line.Layer_Key !== pt.Layer_Key) continue;
+          /* ── A board is where the dig ends, not something sat on a
+                 cable in it ──
+
+             A joint follows nothing off its own layer, and the note
+             above says why: it sits ON a cable inside a trench, so
+             pulling the dig about because a fitting moved is wrong.
+
+             A board is the other way round. The trench RUNS TO it \u2014 it
+             is the point the dig arrives at, the way a plot's service
+             ends at a meter \u2014 so the trench end belongs to the board and
+             moving one without the other leaves a dig stopping in open
+             ground.
+
+             Ends only, which is what the candidate rule below already
+             gives a non-feeder: a trench passing through a board is
+             still not dragged out of shape. */
+          const isBoard = pt.Feature_Role === "msdb";
+          if (isJoint && !isBoard && line.Layer_Key !== pt.Layer_Key) continue;
 
           /* Any joint, not only the ones that join ends: a cable
              snapped to a service joint is held by it too, and the
@@ -7785,7 +7802,19 @@ export default function GISCanvasPage() {
              joined to it, which is the fitting disagreeing with the
              person who placed it. */
           const namedHere = told.has(Number(line.Feature_ID));
-          if (told.size && !namedHere) continue;
+          /* ── A record of held CABLES says nothing about the dig ──
+
+             `Joint_Cables` is what a fitting says it holds, and holding
+             is about conductors. A board's trench is not a cable it
+             holds; it is the dig arriving at it.
+
+             Without this exception the trench followed a board until
+             somebody connected a cable in the editor \u2014 which writes the
+             record \u2014 and then silently stopped. A rule that works until
+             an unrelated action is taken is worse than one that never
+             works, because it is learnt and then wrong. */
+          const isDig = isBoard && line.Layer_Key !== pt.Layer_Key;
+          if (told.size && !namedHere && !isDig) continue;
 
           if (!namedHere) {
             const ptCid = pt.Attributes?.Circuit_ID;
@@ -23188,7 +23217,23 @@ export default function GISCanvasPage() {
            nrsById the report showed every one of them as having none,
            while the levels check counted them — the two answering
            differently about the same circuit. */
-        const r = circuitReport(features, {
+        /* ── A board's flats are meters on the circuit ──
+
+           The report lists a circuit's meters with their plot, house
+           type, distance along the network and load. A board's flats
+           are meters that are assumed rather than placed, and left out
+           they were a block of dwellings missing from the one sheet
+           that says who is on which feeder.
+
+           The same view the build works from, so the report and the
+           routing agree about what is on a circuit. They agreeing is
+           the point: two counts of one circuit is fault 27. */
+        const r = circuitReport(withAssumedMeters(features, {
+          plotList,
+          configs: lookups?.propertyConfigs || [],
+          propertyTypes: lookups?.propertyTypes || [],
+          consumption: lookups?.houseTypeConsumption || [],
+        }), {
           plotById: (id) => plotList.find((p) => p.plot_id === id),
           nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
           /* The same rule the crosses on the meters are drawn from, so

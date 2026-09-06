@@ -233,6 +233,59 @@ const board = (attrs = {}) => ({
   }
 }
 
+// 8. The database will accept one.
+//
+//    `Feature_Role` is a CHECK constraint listing every role by name,
+//    so a new one is refused until it is added \u2014 placing a board
+//    returned "violates check constraint GIS_Feature_Feature_Role_check"
+//    until 0206. The constraint is doing its job: an unknown role is a
+//    typo far more often than it is a new feature.
+{
+  const role = readFileSync("./supabase/migrations/0206_msdb_role.sql", "utf8");
+  const prev = readFileSync("./supabase/migrations/0201_feeder_end_points.sql", "utf8");
+  const listed = (src) => {
+    const m = src.match(/CHECK \("Feature_Role" IN\s*\(([^)]+)\)\)/);
+    return m ? m[1].split(",").map((x) => x.trim().replace(/'/g, "")) : [];
+  };
+  const before = listed(prev);
+  const after = listed(role);
+
+  if (!after.includes("msdb")) fail("the database still refuses an MSDB");
+  /* ── Carried whole ──
+     Postgres has no ADD VALUE for a CHECK, so the list is dropped and
+     rewritten. A role left out here makes every existing feature of
+     that role unwritable, and the rows sit there looking fine until
+     somebody edits one. */
+  const lost = before.filter((r) => !after.includes(r));
+  if (lost.length) {
+    fail(`rewriting the role list dropped ${lost.join(", ")} \u2014 every existing `
+      + "feature of those roles becomes unwritable");
+  }
+  if (!/GIS_Style/.test(role) || !/'msdb'/.test(role)) {
+    fail("the role has no style row, so anything reading the style table "
+      + "rather than the canvas draws a default");
+  }
+}
+
+// 9. The bill migration uses columns the table has.
+//
+//    The first version filtered on a "Deleted" column, which is a habit
+//    from other schemas rather than a fact about this one. The error
+//    only appears when the function is created, so it cost a round
+//    trip to find.
+{
+  const sql = readFileSync("./supabase/migrations/0205_bom_msdb.sql", "utf8");
+  const prev = readFileSync(
+    "./supabase/migrations/0204_bom_exclude_feederpoints.sql", "utf8");
+  const cols = (src) => [...src.matchAll(/f\."(\w+)"/g)].map((m) => m[1]);
+  const known = new Set([...cols(prev), "Feature_ID"]);
+  const invented = [...new Set(cols(sql))].filter((c) => !known.has(c));
+  if (invented.length) {
+    fail(`0205 reads ${invented.join(", ")} on GIS_Feature, which 0204 never `
+      + "does \u2014 a column this schema may not have");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The MSDB behaves (flats on a table, load and levels derived).");
 process.exit(bad ? 1 : 0);

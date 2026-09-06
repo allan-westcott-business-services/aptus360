@@ -27,6 +27,15 @@
 -- A board naming no tail cable still contributes its metres, under a
 -- name that says so. A length nobody has specified is still a length
 -- somebody has to buy, and hiding it makes the take-off quietly short.
+--
+-- \u2500\u2500 A note on what this CTE does NOT filter \u2500\u2500
+--
+-- There is no "Deleted" column on GIS_Feature. The first version of
+-- this filtered on one, which is a habit from other schemas rather than
+-- a fact about this one \u2014 the other CTEs here filter on Project_ID,
+-- Feature_Type and role and nothing else, and this one matches them.
+-- The error only appears when the function is created, so it cost a
+-- round trip to find.
 
 CREATE OR REPLACE FUNCTION gis_bom(p_project bigint)
 RETURNS TABLE (
@@ -274,7 +283,6 @@ RETURNS TABLE (
     LEFT JOIN devs d ON d.id::text = f."Attributes" ->> 'Project_Developer_ID'
     WHERE f."Project_ID" = p_project
       AND f."Feature_Role" = 'msdb'
-      AND COALESCE(f."Deleted", false) = false
     GROUP BY 1, 2, 3, 4, 8, 9
     HAVING SUM(COALESCE((a ->> 'distanceM')::numeric, 0)) > 0
   )

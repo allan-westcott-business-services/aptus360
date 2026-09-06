@@ -2403,6 +2403,22 @@ naming no tail cable still contributes its metres under a name that says
 so, because a length nobody has specified is still a length somebody has
 to buy.
 
+**And `0206_msdb_role.sql`, also NOT YET RUN, before either of them.**
+`Feature_Role` is a CHECK constraint listing every role by name, so
+placing a board was refused outright until the role was added. The list
+is dropped and rewritten whole — Postgres has no ADD VALUE for a CHECK —
+and a role left out would make every existing feature of that role
+unwritable, sitting there looking fine until somebody edited one.
+`checkmsdb` compares the new list against 0201's and fails if any role
+went missing.
+
+**Two things 0205 got wrong on the first run, both mine.** It filtered
+on a `Deleted` column that this schema does not have — a habit from
+other schemas rather than a fact about this one — and the error only
+appears when the function is CREATED, so it cost a round trip. The check
+now compares every column 0205 reads on `GIS_Feature` against the ones
+0204 reads, and fails on anything invented.
+
 **0205 is 0204 verbatim plus fifty lines.** The first attempt at it
 rewrote `gis_bom` from memory and lost the site, utility and developer
 columns, the surface handling and most of the water pipe cases — it

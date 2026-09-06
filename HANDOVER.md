@@ -2482,6 +2482,19 @@ sized for the flats it feeds, and a feeder end point lands at the board
 because that is where a run carrying load ends. Measured on the live
 site: circuit 3 went from 41 meters to 43 with a two-flat board on it.
 
+**And a flat is a member of its circuit.** A meter joins a circuit
+through its plot SEED — `circuitMembership` looks for `Seed_Feature_ID`,
+then for a plot feature sharing the meter's `Plot_ID`. A board's flats
+have neither: nobody places forty-five seeds in a riser cupboard, which
+is what the board exists to avoid. They missed both routes and joined
+neither set, so the circuit did not know they existed and **nothing was
+routed to the board however much trench ran to it.**
+
+Members by their own id now, the way a non-residential supply is:
+whatever a meter belongs to, it belongs to it whether or not somebody
+drew a seed for it. A drawn meter still joins through its seed — this
+adds a route rather than replacing one.
+
 **A view, not an edit.** Nothing writes those meters. Their ids are
 NEGATIVE, derived from the board and the plot — no row has a negative id,
 so anything that tries to save one or look one up fails loudly rather

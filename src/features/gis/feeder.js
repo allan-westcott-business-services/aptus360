@@ -225,6 +225,19 @@ export function circuitMembership(features = [], circuitId) {
     if (m.Feature_Role !== "meter" || m.Layer_Key !== "electric") continue;
     if (Number(m.Attributes?.Circuit_ID) !== Number(circuitId)) continue;
     if (m.Attributes?.NRS_ID != null) { meterIds.add(Number(m.Feature_ID)); continue; }
+    /* ── A flat has no seed to join through ──
+
+       A board's flats are meters with no plot drawn on the drawing:
+       nobody places forty-five seeds in a riser cupboard, which is what
+       the board exists to avoid. They carry a Plot_ID, but there is no
+       plot FEATURE to find, so both routes below missed them and they
+       joined neither set \u2014 the circuit did not know they existed and
+       nothing was ever routed to the board.
+
+       Members by their own id, the way a non-residential supply is:
+       whatever a meter belongs to, it belongs to it whether or not
+       somebody drew a seed for it. */
+    if (m.Attributes?.Assumed) { meterIds.add(Number(m.Feature_ID)); continue; }
     const sid = m.Attributes?.Seed_Feature_ID;
     if (sid != null) { seedIds.add(Number(sid)); continue; }
     const seed = features.find((f) => f.Feature_Role === "plot"

@@ -15,6 +15,7 @@ import {
   assumedMeters, msdbSupply, withAssumedMeters,
 } from "./src/features/gis/msdb.js";
 import { circuitsFrom } from "./src/features/gis/electric.js";
+import { circuitMembership } from "./src/features/gis/feeder.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -595,6 +596,44 @@ const served = (b) => servedFlats(b, flats);
   if (!/const src = withAssumedMeters\(srcFeatures \|\| features, \{/.test(canvas)) {
     fail("Build LV Network does not see the boards' flats, so no cable is "
       + "routed to a board and no stop is placed at it");
+  }
+}
+
+// 15. A flat is a member of its circuit.
+//
+//     A meter joins a circuit through its plot SEED. A board's flats
+//     have no seed on the drawing \u2014 nobody places forty-five of them in
+//     a riser cupboard, which is what the board exists to avoid \u2014 so
+//     they carry a Plot_ID with no plot feature to find, missed both
+//     routes, and joined neither set.
+//
+//     The circuit then did not know they existed and nothing was ever
+//     routed to the board, however much trench ran to it.
+{
+  const b = board({ Circuit_ID: 3 });
+  const world = withAssumedMeters([b], {
+    plotList, configs, propertyTypes, consumption,
+  });
+  const m = circuitMembership(world, 3);
+
+  if (m.seedIds.size + m.meterIds.size === 0) {
+    fail("the board's flats belong to no circuit, so Build LV Network never "
+      + "routes a cable to it");
+  }
+  if (m.meterIds.size !== served(b).length) {
+    fail(`${m.meterIds.size} of ${served(b).length} flats are members`);
+  }
+
+  /* A drawn meter still joins through its seed: this adds a route, it
+     does not replace one. */
+  const drawn = [
+    { Feature_ID: 1, Feature_Role: "meter", Layer_Key: "electric",
+      Plot_ID: 7, Attributes: { Circuit_ID: 3 } },
+    { Feature_ID: 2, Feature_Role: "plot", Plot_ID: 7 },
+  ];
+  const d = circuitMembership(drawn, 3);
+  if (d.seedIds.size !== 1 || d.meterIds.size !== 0) {
+    fail("a drawn meter no longer joins its circuit through its plot seed");
   }
 }
 

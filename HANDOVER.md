@@ -2597,10 +2597,19 @@ either would be picking one at random.
     A reach that varied with the zoom was tried first and is worse twice
     over: it reads the view during render, which that function cannot
     do where it sits, and it makes the same drawing behave differently
-    depending on how far in somebody was. Being generous is safe here in
-    a way it is not elsewhere — two circuits within reach refuses
-    outright, so reaching too far costs a cable that inherits nothing,
-    exactly as before.
+    depending on how far in somebody was.
+
+    **And refusing on ambiguity refused EVERYWHERE.** Where circuits
+    share a trench almost any point has two within two metres, so the
+    rule meant to be careful never fired once on a real drawing. The
+    nearest thing wins now, and a FITTING outranks a cable at the same
+    distance: on a shared trench another circuit's cable passes exactly
+    through a joint, and the joint is a stated thing at that point while
+    the cable is merely passing. A genuine tie — two of the same kind,
+    equally close — still refuses.
+
+    Verified on the live drawing: every joint type, and the MSDB,
+    inherit correctly; open ground inherits nothing.
 
 73. **Two readers, one question, and only one was told.** A meter joins
     a circuit through its plot SEED. A board's flats have no seed —

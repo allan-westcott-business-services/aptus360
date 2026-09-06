@@ -589,27 +589,67 @@ export default function GISCanvasPage() {
         const role = String(f.Feature_Role ?? "");
         const isFitting = ["joint", "feederpoint", "linkbox", "spannode",
           "poc", "substation", "msdb"].includes(role);
-        /* ── A lasso is not a cable ──
+        /* ── "shape" is what a line IS, not what it is for ──
 
-           A circuit's outline is stored as a LINE with Line_Type
-           `elec_main`, exactly like the cable it encloses: only its
-           role says otherwise. Matching on the type alone found three
-           overlapping outlines round the breech joint, called them
-           three circuits meeting, and inherited nothing.
+           Every line on these drawings carries `Feature_Role: "shape"`
+           \u2014 trenches, services, cables, and the circuit outlines alike.
+           An earlier version of this required NO role, on the reading
+           that a lasso was the odd one out; on a real drawing that
+           matched nothing at all, and only fittings ever contributed.
 
-           So the role has to be absent, which is what a drawn cable
-           has \u2014 anything with a role is a shape, a seed or a fitting. */
-        const isMain = f.Feature_Type === "line" && !role
-          && /main/i.test(String(f.Attributes?.Line_Type ?? ""));
+           A cable is told from an outline by what it carries: the build
+           stamps a cable with the size it laid. An outline has no
+           conductor. */
+        const isMain = f.Feature_Type === "line"
+          && /main/i.test(String(f.Attributes?.Line_Type ?? ""))
+          && (f.Attributes?.VD_Cable_Size_ID != null
+            || f.Attributes?.Manual_VD_Cable_Size_ID != null);
         if (!isFitting && !isMain) continue;
 
         const a = f.Attributes || {};
         if (a.Circuit_ID == null) continue;
-        const near = f.Feature_Type === "point"
-          ? [(a.Span_Anchor ?? f.Geometry?.[0])]
-          : (f.Geometry || []);
-        if (!near.some((q) => Array.isArray(q)
-          && Math.hypot(q[0] - e[0], q[1] - e[1]) <= reach)) continue;
+        /* ── Anywhere along a cable, not just at its corners ──
+
+           Teeing off mid-span is how a cable is usually drawn from
+           another one, and a run can have fifty metres between
+           vertices. Matching corners alone meant a cable drawn from the
+           middle of a main inherited nothing.
+
+           A fitting is a point and has no span, so it keeps the simple
+           test. */
+        let hit = false;
+        let hitD = Infinity;
+        if (f.Feature_Type === "point") {
+          const q = a.Span_Anchor ?? f.Geometry?.[0];
+          if (Array.isArray(q)) hitD = Math.hypot(q[0] - e[0], q[1] - e[1]);
+          hit = hitD <= reach;
+        } else {
+          const g = f.Geometry || [];
+          for (let i = 1; i < g.length && !hit; i++) {
+            const p0 = g[i - 1];
+            const p1 = g[i];
+            if (!Array.isArray(p0) || !Array.isArray(p1)) continue;
+            const vx = p1[0] - p0[0];
+            const vy = p1[1] - p0[1];
+            const l2 = vx * vx + vy * vy;
+            let t = l2 ? ((e[0] - p0[0]) * vx + (e[1] - p0[1]) * vy) / l2 : 0;
+            t = Math.max(0, Math.min(1, t));
+            const d = Math.hypot(e[0] - (p0[0] + vx * t), e[1] - (p0[1] + vy * t));
+            if (d < hitD) hitD = d;
+            hit = hitD <= reach;
+          }
+        }
+        if (!hit) continue;
+        /* ── The nearest thing, not the only thing ──
+
+           Refusing whenever two circuits were within reach refused
+           everywhere: on a drawing where circuits share a trench,
+           almost any point has two. What somebody drew FROM is the
+           thing closest to where they started, and the tie below is the
+           only genuinely ambiguous case.
+
+           `hitD` is how far that candidate actually was, so the closest
+           can be picked rather than the first found. */
         seen.set(Number(a.Circuit_ID), {
           Circuit_ID: Number(a.Circuit_ID),
           Circuit_Name: a.Circuit_Name ?? null,
@@ -619,11 +659,33 @@ export default function GISCanvasPage() {
              the run is on the circuit but on no particular way. */
           Link_Box_ID: a.Link_Box_ID ?? null,
           Link_Way: a.Link_Way ?? null,
+          d: hitD,
+          /* ── A fitting beats a cable at the same distance ──
+
+             On a shared trench another circuit's cable passes exactly
+             through a joint, so both are nought metres away and the
+             nearest test ties. But a joint is a STATED thing at that
+             point, placed on one circuit and naming it; a cable is
+             merely passing.
+
+             Somebody drawing from a joint drew from the joint. */
+          rank: isFitting ? 0 : 1,
         });
       }
     }
-    if (seen.size !== 1) return {};
-    return [...seen.values()][0];
+    if (!seen.size) return {};
+    /* Nearest wins. A tie between two circuits is the one case nobody
+       can resolve from the drawing \u2014 the cable was started exactly
+       between them \u2014 and it refuses rather than picking. */
+    const ranked = [...seen.values()]
+      .sort((x, y) => (x.rank - y.rank) || (x.d - y.d));
+    /* A tie is two of the SAME kind at the same distance: a cable
+       started exactly between two fittings, or between two cables. That
+       nobody can resolve from the drawing, so it refuses. */
+    if (ranked.length > 1 && ranked[0].rank === ranked[1].rank
+      && Math.abs(ranked[0].d - ranked[1].d) < 0.05) return {};
+    const { d, rank, ...winner } = ranked[0];
+    return winner;
   }, [features, lineTypes]);
 
   /* The service cable this scheme uses, for a board's tails where it
@@ -16031,7 +16093,8 @@ export default function GISCanvasPage() {
            Two questions, and only the first was being answered. */
         const carried = (b.Attributes?.MSDB_Plot_IDs || []).length;
         const reached = at && all.some((ln) => ln.Feature_Type === "line"
-          && !ln.Feature_Role && /main/i.test(String(ln.Attributes?.Line_Type ?? ""))
+          && /main/i.test(String(ln.Attributes?.Line_Type ?? ""))
+          && ln.Attributes?.VD_Cable_Size_ID != null
           && (ln.Geometry || []).some((q) => Array.isArray(q)
             && Math.hypot(q[0] - at[0], q[1] - at[1]) <= 2));
         if (!reached) return `${name}: not reached \u2014 is it on the trench?`;

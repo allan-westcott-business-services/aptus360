@@ -252,9 +252,26 @@ if (separationFor("gas", "electric") !== separationFor("electric", "gas")) {
    thing named, and together they read as a cable that is not there. */
 {
   const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
-  if (!/const kindOf = \(r\) => \(r\.utility === "electric"/.test(editor)) {
-    fail("the trench list folds HV and LV into one line, so a trench with "
-      + "two HV and one LV is named as three of whichever covers most of it");
+  /* ── Decided where the feature is still in hand ──
+
+     The row is rebuilt from the content with a fixed set of fields.
+     Working the split out LATER from `r.feature.Attributes.Line_Type`
+     found nothing on every row and called them all LV, so the HV field
+     came up empty on a trench with two HV cables in it.
+
+     And `utility` on the row is the DISPLAY name — "Electric", which
+     somebody can rename — so the test has to use the layer key. Two
+     ways for one line to be wrong, and it was wrong both ways. */
+  if (!/kind: c\.utility === "electric"/.test(editor)) {
+    fail("the HV/LV split is worked out after the feature has been dropped "
+      + "from the row, so every cable reads as LV");
+  }
+  if (/r\.utility === "electric"/.test(editor)) {
+    fail("the split tests the display name rather than the layer key, so "
+      + "renaming the Electric layer breaks it");
+  }
+  if (!/const kindOf = \(r\) => r\.kind \?\? r\.layerKey;/.test(editor)) {
+    fail("the grouping does not use the kind decided on the row");
   }
   if (!/grouped\.find\(\(g\) => kindOf\(g\) === kindOf\(r\)\)/.test(editor)) {
     fail("the split is worked out and not used for the grouping");

@@ -2923,6 +2923,21 @@ result: read what a rewrite leaves behind, not just what it prints.
     HV and LV have a field each now. Two cables in a trench are two
     things to know, and somebody opening the ground counts both.
 
+84. **And the split was worked out after the evidence was thrown away.**
+    The row is rebuilt from the content with a fixed set of fields, and
+    the FEATURE is not among them. Testing
+    `r.feature.Attributes.Line_Type` on that row found nothing every
+    time and called every cable LV — so the HV field came up empty on a
+    trench with two HV cables in it.
+
+    The same line was wrong a second way: `utility` on the row is the
+    DISPLAY name, "Electric", which somebody can rename in Admin. The
+    layer key is what `layerKey` exists for.
+
+    Decided on the row now, while the feature is still in hand. **Three
+    goes at one panel, each fixing the previous fix**, because I checked
+    the shape of the data I expected rather than the shape it had.
+
     The value no longer repeats the field's own name: `2` under **HV
     Cable**, not `2 × HV Cable`, and at a count of one it read simply
     "HV Cable", which looks like a label rather than an answer. An LV

@@ -233,6 +233,22 @@ export default function FeatureEditor({
         icon: known?.icon ?? "\u25CF",
         utility: known?.name ?? name,
         withinM: c.withinM,
+        /* ── What kind of cable this is, decided here ──
+
+           The row is rebuilt from the content with a fixed set of
+           fields, and the feature was not among them. Working the HV/LV
+           split out later from `r.feature.Attributes.Line_Type` found
+           nothing on every row and called them all LV, so the HV field
+           came up empty on a trench with two HV cables in it.
+
+           Read off the feature while it is still in hand. `utility`
+           above is the DISPLAY name \u2014 "Electric", which somebody can
+           rename \u2014 so the test uses the layer key, for the same reason
+           `layerKey` exists at all. */
+        kind: c.utility === "electric"
+          ? `electric:${/hv/i.test(String(c.feature?.Attributes?.Line_Type ?? ""))
+            ? "hv" : "lv"}`
+          : c.utility,
       };
     });
 
@@ -264,9 +280,8 @@ export default function FeatureEditor({
 
        So electric splits on the one distinction that is a different
        cable rather than a different size. */
-    const kindOf = (r) => (r.utility === "electric"
-      ? `electric:${/hv/i.test(String(r.feature?.Attributes?.Line_Type ?? "")) ? "hv" : "lv"}`
-      : r.utility);
+    /* Decided on the row, where the feature was still in hand. */
+    const kindOf = (r) => r.kind ?? r.layerKey;
 
     const grouped = [];
     for (const r of rows) {

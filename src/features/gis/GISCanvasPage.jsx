@@ -4389,13 +4389,24 @@ export default function GISCanvasPage() {
             ctx.save();
             ctx.lineWidth = on ? 2.4 : 1.6;
             ctx.fillStyle = "#fff";
-            ctx.strokeStyle = on ? "var(--accent)" : "#0f172a";
+            /* ── A colour the canvas understands ──
+
+               `var(--accent)` is a CSS variable. Assigning one to
+               fillStyle or strokeStyle is silently IGNORED \u2014 no error,
+               no warning \u2014 and the context keeps whatever colour it had.
+               Here that left a white square drawn in white on a white
+               page with white letters: the board vanished when it was
+               selected and came back when it was not.
+
+               #1d4ed8 is what everything else in this routine uses for
+               a selected feature. */
+            ctx.strokeStyle = on ? "#1d4ed8" : "#0f172a";
             ctx.beginPath();
             ctx.rect(p.x - half, p.y - half, half * 2, half * 2);
             ctx.fill();
             ctx.stroke();
             if (half >= 9) {
-              ctx.fillStyle = on ? "var(--accent)" : "#0f172a";
+              ctx.fillStyle = on ? "#1d4ed8" : "#0f172a";
               ctx.font = `700 ${Math.round(half * 1.05)}px system-ui, sans-serif`;
               ctx.textAlign = "center";
               ctx.textBaseline = "middle";

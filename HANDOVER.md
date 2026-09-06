@@ -2432,6 +2432,30 @@ model does not treat it as a stop, so it takes no level of its own from
 the levels check and the flats therefore show a dash. That is the next
 piece: `spanTrace` has to claim it the way it claims a feeder point.
 
+69. **A canvas colour set to a CSS variable.** The MSDB's selected
+    state used `var(--accent)`. Assigning a CSS variable to `fillStyle`
+    or `strokeStyle` is silently **ignored** — no error, no warning — and
+    the context keeps whatever colour it had from the last thing drawn.
+    Here that left a white square drawn in white with white letters: the
+    board vanished when it was clicked and came back when it was not.
+
+    The stylesheet in that file is full of `var(--...)` and it belongs
+    there, which is exactly why it looked right. `#1d4ed8` is what
+    everything else in the draw routine uses for a selected feature.
+    `checkshadow` now rejects any canvas colour or gradient stop set to
+    a variable, proved by putting one back.
+
+    **The same class as fault 68**: something legal in the file at large
+    and meaningless in this one routine, failing without a word.
+
+**A role the canvas draws must be in the GIS Styles list.** Adding
+`msdb` to the role constraint without adding it to
+`GisStylesAdmin.jsx` made a thing nobody could restyle —
+`checkboundarystyle` caught it within a minute of the migration being
+written. It reads the newest migration that states the constraint and
+compares it against the admin list, so this cannot be forgotten for any
+future role either.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

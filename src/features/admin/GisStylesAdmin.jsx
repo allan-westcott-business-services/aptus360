@@ -101,6 +101,11 @@ const ROLES = [
   ["spannode", "Span node"],
   ["feederpoint", "Feeder end point"],
   ["linkbox", "Link box"],
+  /* A board carries its own symbol \u2014 a square with DB in it, drawn by
+     the canvas \u2014 but its size and its fallback colour are set here like
+     everything else. A role the canvas draws and this list omits is a
+     thing nobody can restyle, which is what checkboundarystyle catches. */
+  ["msdb", "MSDB"],
   ["column", "Lighting column"],
   ["shape", "Shape"],
 ];

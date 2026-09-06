@@ -2989,6 +2989,23 @@ service and LSZH cable to somebody sizing a run at eleven kilovolts.
     failing loudly**, and I wrote the fallback and the bug in the same
     change.
 
+88. **And a SECOND fallback, older than me, did the same thing again.**
+    `cableMenu` has always offered the WHOLE catalogue when a filter
+    leaves nothing, so an empty dropdown can never be mistaken for a
+    broken one. Right for usage. Wrong for voltage: where the catalogue
+    holds no cable at `Voltage_Rating_ID = 2`, it fell back to every LV
+    main, service and earth cable **on an eleven kilovolt run** — which
+    is why the list came back showing everything after being asked twice
+    to show only HV.
+
+    An empty list now says the catalogue has none of what was asked for,
+    which is a thing to fix in Admin. The fallback said the opposite and
+    looked helpful doing it.
+
+    **Two fallbacks, both written to avoid an empty box, both hiding the
+    fault they were covering for.** An empty box is a fact; a full one
+    that should be empty is a hazard.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

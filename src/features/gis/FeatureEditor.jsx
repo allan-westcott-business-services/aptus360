@@ -2210,6 +2210,11 @@ export default function FeatureEditor({
                   onChange={(e) => setAttr("Manual_VD_Cable_Size_ID")(
                     e.target.value ? Number(e.target.value) : null)}>
                   <option value="">Not overridden</option>
+                  {cableChoices.noneAtVoltage && (
+                    <option value="" disabled>
+                      No HV cable in the catalogue &mdash; add one in Admin
+                    </option>
+                  )}
                   {/* The same list the service editor offers, rather
                       than the raw catalogue: this one showed every row
                       in it \u2014 HV cores, earth, pilot, 20 kV triplex \u2014
@@ -2787,6 +2792,15 @@ export default function FeatureEditor({
                         setCableChanged(true);
                       }}>
                       <option value="">Not overridden</option>
+                      {/* An empty list is the catalogue having none of
+                          what was asked for, not a broken screen. Said
+                          here, because the alternative was offering LV
+                          cable for an HV run. */}
+                      {cableChoices.noneAtVoltage && (
+                        <option value="" disabled>
+                          No HV cable in the catalogue &mdash; add one in Admin
+                        </option>
+                      )}
                       {/* The cable and nothing else. The material and
                           the missing-figures warning were on every
                           option and turned a list of sizes into a list

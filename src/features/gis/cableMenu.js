@@ -100,7 +100,20 @@ export function cableMenu(cableSizes = [], cableTypes = [], opts = {}) {
      catalogue is offered, sorted, and `filtered` says which happened —
      somebody facing an empty dropdown cannot tell a filtered list from
      a broken one. */
-  return sorted.length
-    ? { list: sorted, filtered: true }
-    : { list: sortCablesByName(cableSizes, cableTypes), filtered: false };
+  /* ── Except where the narrowing is a safety rule ──
+
+     Falling back is right for usage: offering a service cable to
+     somebody sizing a main is untidy, and an empty box helps nobody.
+
+     It is wrong for VOLTAGE. Where the catalogue holds no HV cable,
+     falling back offered every LV main, service and earth cable on an
+     eleven kilovolt run — which is how this came back showing ALL
+     cable types after being asked twice to show only HV.
+
+     An empty list says the catalogue has none of what was asked for,
+     which is a thing to go and fix in Admin. The fallback said the
+     opposite, and looked helpful doing it. */
+  if (sorted.length) return { list: sorted, filtered: true };
+  if (voltageIds) return { list: [], filtered: true, noneAtVoltage: true };
+  return { list: sortCablesByName(cableSizes, cableTypes), filtered: false };
 }

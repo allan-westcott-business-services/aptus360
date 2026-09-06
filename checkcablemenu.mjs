@@ -215,6 +215,39 @@ const names = (r) => r.list.map((c) => cableMenuName(c, types));
     fail("filtering by voltage changed the list where no voltage was asked for");
   }
 
+  /* ── No silent fallback where the narrowing is a safety rule ──
+
+     `cableMenu` offers the WHOLE catalogue when a filter leaves
+     nothing, so an empty dropdown can never be mistaken for a broken
+     one. That is right for usage. It is wrong for voltage: where the
+     catalogue holds no HV cable it offered every LV main, service and
+     earth cable on an eleven kilovolt run \u2014 which is why this came
+     back showing ALL cable types after being asked twice to show only
+     HV. */
+  const noneHere = [
+    { Cable_Type_ID: 1, Cable_Type: "3c WAVE", Usage_Type: "Mains", Voltage_Rating_ID: 1 },
+    { Cable_Type_ID: 13, Cable_Type: "Earth Cable", Usage_Type: "Mains", Voltage_Rating_ID: null },
+  ];
+  const noneSizes = noneHere.map((t, i) => ({ Cable_Size_ID: i + 1,
+    Cable_Type_ID: t.Cable_Type_ID, Size_Label: "95", Rating_Amps: 200 }));
+  const empty = cableMenu(noneSizes, noneHere,
+    { usage: "mains", requireRating: true, voltageIds: [2] });
+  if (empty.list.length) {
+    fail("a catalogue with no HV cable falls back to every LV main, service "
+      + "and earth cable on an HV run");
+  }
+  if (!empty.noneAtVoltage) {
+    fail("an empty voltage-filtered list does not say WHY it is empty, so it "
+      + "reads as a broken screen");
+  }
+  /* And the fallback survives where it belongs. */
+  const usageOnly = cableMenu(noneSizes, noneHere,
+    { usage: "service", requireRating: true });
+  if (!usageOnly.list.length) {
+    fail("the whole-catalogue fallback was removed for usage as well, so an "
+      + "empty box cannot be told from a broken one");
+  }
+
   /* And the HV editor asks for rating 2 by id. */
   const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
   if (!/Line_Type === "elec_hv" \? \[2\] : null/.test(editor)) {
@@ -223,6 +256,10 @@ const names = (r) => r.list.map((c) => cableMenuName(c, types));
   if (/voltageRatings/.test(editor)) {
     fail("the editor still looks the rating up by name in a table that does "
       + "not reach it, so the filter does nothing");
+  }
+  /* And says so when the catalogue has none. */
+  if (!/cableChoices\.noneAtVoltage/.test(editor)) {
+    fail("an empty HV list is shown with no explanation");
   }
 }
 

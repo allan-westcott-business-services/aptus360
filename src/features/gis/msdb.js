@@ -458,3 +458,97 @@ export function withAssumedMeters(features = [], {
   }
   return extra.length ? [...features, ...extra] : features;
 }
+
+/* ── A cable from one board to another ──
+
+   Two boards in one building, joined by a feeder somebody drew by hand
+   through the structure. The dig stops at the first board and starts
+   again at the second; between them the cable runs where no trench
+   goes, and no routine could have laid it.
+
+   ── Stamped, not deduced ──
+
+   The cable records the two boards it joins, the way a POC route
+   records its POC and its substation. The build then reads a fact
+   instead of inferring one from shape: without it, dragging a board
+   onto the end of an ordinary run would turn that run into a link with
+   nothing said.
+
+   `linkEnds` falls back to the ends' positions for cables drawn before
+   the stamp existed. That fallback is exactly as good as the drawing —
+   it disappears as cables are redrawn, and it never overrules a stamp. */
+export const MSDB_LINK_REACH_M = 2;
+
+export function stampLink(geometry = [], boards = []) {
+  const g = geometry || [];
+  if (g.length < 2) return null;
+  const at = (p) => boards.find((b) => {
+    const q = b.Attributes?.Span_Anchor ?? b.Geometry?.[0];
+    return Array.isArray(q) && Array.isArray(p)
+      && Math.hypot(q[0] - p[0], q[1] - p[1]) <= MSDB_LINK_REACH_M;
+  });
+  const a = at(g[0]);
+  const b = at(g[g.length - 1]);
+  if (!a || !b || Number(a.Feature_ID) === Number(b.Feature_ID)) return null;
+
+  /* The circuit comes from the boards, which is the only place it is
+     stated. Where they disagree it is left alone: a cable joining two
+     circuits is a thing to be told about rather than stamped with
+     whichever end was read first. */
+  const ca = a.Attributes?.Circuit_ID;
+  const cb = b.Attributes?.Circuit_ID;
+  const agreed = ca != null && cb != null && Number(ca) === Number(cb)
+    ? Number(ca) : null;
+
+  return {
+    MSDB_Link_A_ID: Number(a.Feature_ID),
+    MSDB_Link_B_ID: Number(b.Feature_ID),
+    ...(agreed != null ? {
+      Circuit_ID: agreed,
+      Circuit_Name: a.Attributes?.Circuit_Name ?? b.Attributes?.Circuit_Name ?? null,
+      Circuit_Letter: a.Attributes?.Circuit_Letter ?? b.Attributes?.Circuit_Letter ?? null,
+    } : {}),
+  };
+}
+
+/* The two boards a cable joins, by the stamp where it has one and by
+   its ends where it does not. Null for everything else, which is every
+   cable on a drawing with no boards on it. */
+export function linkEnds(line, boards = []) {
+  if (line?.Feature_Type !== "line") return null;
+  if (!/main/i.test(String(line.Attributes?.Line_Type ?? ""))) return null;
+
+  const byId = (id) => boards.find((b) => Number(b.Feature_ID) === Number(id));
+  const sa = line.Attributes?.MSDB_Link_A_ID;
+  const sb = line.Attributes?.MSDB_Link_B_ID;
+  if (sa != null && sb != null) {
+    const a = byId(sa);
+    const b = byId(sb);
+    /* A stamp naming a board that has been deleted is not a link any
+       more. Said by returning nothing rather than by half a pair. */
+    return a && b ? { a, b, stamped: true } : null;
+  }
+
+  const guess = stampLink(line.Geometry, boards);
+  if (!guess) return null;
+  return { a: byId(guess.MSDB_Link_A_ID), b: byId(guess.MSDB_Link_B_ID), stamped: false };
+}
+
+/* ── Which board the network reaches first ──
+
+   Measured back along the network to the source, not by the direction
+   somebody happened to draw the cable in. The build runs UP TO the
+   nearer board and resumes FROM the further one.
+
+   `distanceTo` is asked of the caller, because only the canvas knows
+   how far anything is from the substation. Absent for either board, the
+   order cannot be settled and this says so instead of picking. */
+export function linkOrder(ends, distanceTo) {
+  if (!ends?.a || !ends?.b) return null;
+  const da = distanceTo(ends.a);
+  const db = distanceTo(ends.b);
+  if (!Number.isFinite(da) || !Number.isFinite(db)) return null;
+  return da <= db
+    ? { first: ends.a, second: ends.b, firstM: da, secondM: db }
+    : { first: ends.b, second: ends.a, firstM: db, secondM: da };
+}

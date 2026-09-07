@@ -6,7 +6,7 @@ import { listProjects, getProject } from "../../api/projects.js";
 import {
   listGis, createFeature, moveFeatures, deleteFeatures, updateFeature, ensurePlots,
   restoreFeatures, listUndo, recordUndo, markUndone, clearUndo,
-  traceNetwork, assignMeters, bulkUpdateFeatures,
+  assignMeters, bulkUpdateFeatures,
 } from "../../api/gis.js";
 import {
   SNAP_PX, CONNECT_M, snapTargets, findSnap, nearestOnLines, connectedTo, lineLength,
@@ -37,6 +37,7 @@ import {
 import { originMissing,
   circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, metredSuppliesInside, circuitKva,
   assignWay, releaseWays, circuitsFrom, pocUnit, spanLabel, originNodeFor, traceFrom,
+  distancesFrom,
   sourceImpedance, NO_SOURCE_NOTE, upstreamVoltDropPct, workingVoltage, voltageOf,
   circuitReport,
 } from "./electric.js";
@@ -110,7 +111,7 @@ import { alpha } from "../../lib/colour.js";
 import PrintModal from "./PrintModal.jsx";
 import {
   withAssumedMeters, servedFlats, flatsFromPlots, apartmentLoad,
-  apartmentLevels, worstApartment, riserDrop,
+  apartmentLevels, worstApartment, riserDrop, stampLink, linkEnds, linkOrder,
 } from "./msdb.js";
 import { printView, drawnBounds } from "./printSheet.js";
 import { inLightingView } from "./lightingView.js";
@@ -9865,6 +9866,20 @@ export default function GISCanvasPage() {
                different circuits is a cable joining two networks, which
                is a thing to be told about rather than guessed at. */
             ...inheritedCircuit(run.geometry, lineType),
+            /* ── A cable drawn board to board is a link ──
+
+               Two boards in one building, joined by a feeder running
+               through the structure where no trench goes. Recorded at
+               the moment it is drawn, so the build reads a fact rather
+               than deducing one from shape: without it, dragging a
+               board onto the end of an ordinary run would turn that run
+               into a link with nothing said.
+
+               After the circuit inheritance above, because the boards
+               state the circuit outright and that beats what the ends
+               happened to touch. */
+            ...(stampLink(run.geometry,
+              features.filter((x) => x.Feature_Role === "msdb")) || {}),
             // Recorded at draw time using the metre tolerance, not the
             // pixel one — what it touches, not what it looked near.
             Connects: connectedTo(run.geometry, features, null),
@@ -9993,15 +10008,23 @@ export default function GISCanvasPage() {
          does that job from the routed network; the routine this called
          put joints on the trench layer with no role, which the rest of
          the application does not recognise as joints at all. */
-      if (op === "trace") {
-        if (selected.length !== 1) {
-          setError("Select the source — a substation, feeder pillar or POC — then trace.");
-          return;
-        }
-        const r = await traceNetwork(projectId, selected[0]);
-        setStatus(r.traced ? `${r.traced} cable${r.traced === 1 ? "" : "s"} numbered into ways and circuits`
-                           : "Nothing is connected to that source yet");
-      } else if (op === "meters") {
+      /* ── "trace" is no longer an operation here either ──
+
+         Number the Network from Here walked out from a source and wrote
+         Way and Circuit onto the cables it reached. It predated the
+         circuit work: Build LV Network now assigns real circuits and
+         their ways, the lasso decides which output a run belongs to,
+         and the tracer's numbering was a second writer of the same two
+         fields arriving at a different answer.
+
+         Removed rather than hidden. It was already off the Electric
+         menu and reachable only by right-clicking any point that was
+         not a span node or a vertex — a catch-all branch, which is how
+         it came to be offered on features it makes no sense for.
+
+         The endpoint and the API function stay; nothing in the client
+         calls them. */
+      if (op === "meters") {
         const r = await assignMeters(projectId);
         setStatus(r.assigned ? `${r.assigned} plot${r.assigned === 1 ? "" : "s"} assigned to a cable`
                              : "No plots were close enough to a cable");
@@ -15630,8 +15653,40 @@ export default function GISCanvasPage() {
            whole circuit from the origin, everywhere else \u2014
            circuitBuildParts is feederSections with a label on until
            an assignment exists. */
+        /* ── Board-to-board links on this circuit ──
+
+           The dig stops at the first board and starts again at the
+           second, so the far side is an island the routing cannot
+           reach. Each link gets a part rooted at its second board.
+
+           Which board is second is decided HERE, because only this page
+           knows how far anything is from the substation: measured back
+           along the network, not by the direction the cable happens to
+           be drawn in. */
+        const msdbLinks = (() => {
+          const boards = src.filter((x) => x.Feature_Role === "msdb"
+            && Number(x.Attributes?.Circuit_ID) === Number(c.id));
+          if (boards.length < 2) return [];
+          /* The circuit's own origin, the same one the routing below is
+             given: a two-POC site measures each circuit from the POC it
+             actually runs back to. */
+          const originId = c.meters
+            .map((m) => m.Attributes?.Circuit_Origin_ID)
+            .find((x) => x != null) ?? null;
+          if (originId == null) return [];
+          const far = distancesFrom(src, originId);
+          const out = [];
+          for (const line of src) {
+            const ends = linkEnds(line, boards);
+            if (!ends) continue;
+            const order = linkOrder(ends, (b) => far.get(Number(b.Feature_ID)));
+            if (order) out.push({ ...order, link: line });
+          }
+          return out;
+        })();
+
         const parts = circuitBuildParts(src, {
-          lineTypes, circuitId: c.id,
+          lineTypes, circuitId: c.id, msdbLinks,
           plotById: (id) => plotList.find((p) => p.plot_id === id),
           nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
           seedIds, meterIds,
@@ -23141,16 +23196,22 @@ export default function GISCanvasPage() {
                           It predates the circuit and feeder work: for
                           electric, Build LV Network now assigns real
                           circuits and their ways, and all the tracer adds
-                          is a hop count nothing reads. Its remaining use is
-                          gas and water, where there are no circuits and
-                          "which main leaves the source" is the right
-                          question — so the code, the endpoint and the
-                          function stay, and this is one line to restore.
+                          is a hop count nothing reads.
 
-                          runNetwork("trace") is still called by the context
-                          menu on a point, which is deliberate: it is
-                          reachable when wanted without sitting in a menu
-                          that is otherwise about circuits. */}
+                          Now removed from the client entirely: the
+                          context-menu item that was its last route has
+                          gone too. It wrote Way and Circuit onto cables
+                          from its own walk, which is a second writer of
+                          two fields the build and the lasso already
+                          own, and two writers of one field disagreeing
+                          is the fault this application keeps finding.
+
+                          The endpoint and the API function stay, so it
+                          is a call to restore rather than a rewrite if
+                          gas or water ever wants it — there are no
+                          circuits on those layers and "which main
+                          leaves the source" is a fair question there.
+                          Nothing calls them today. */}
                       <MenuItem label={busy === "meters" ? "Working\u2026" : "Assign Meters"}
                         hint="Match meters to their plots"
                         disabled={!!busy} onClick={() => runNetwork("meters")} />
@@ -25624,13 +25685,7 @@ export default function GISCanvasPage() {
                     setCtx(null);
                     setTimeout(() => runFullTrace(), 0);
                   }}>Full Trace from Here</button>
-                ) : (
-                  <button className="gc-item" disabled={!!busy} onClick={() => {
-                    setSelected([ctx.feature.Feature_ID]);
-                    setCtx(null);
-                    setTimeout(() => runNetwork("trace"), 0);
-                  }}>Number the Network from Here</button>
-                )}
+                ) : null}
 
                 <div className="gc-sep" />
                 {/* Hiding from here saves hunting for the right entry in

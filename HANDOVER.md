@@ -157,6 +157,8 @@ caught a fault that had already shipped at least once.
 | `node checktwostations.mjs` | Each meter says which substation and way feeds it |
 | `node checkroutepair.mjs` | Routing a supply asks which pair, and keeps the other |
 | `node checkdeletekey.mjs` | Delete removes the selection, live and not stale |
+| `node checknumberremoved.mjs` | The old numbering pass stays out of the client |
+| `node checkmsdblink.mjs` | Board-to-board links: stamped, ordered, routed past |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
@@ -3118,6 +3120,65 @@ setups, and swallowing it silently would be its own surprise.
 And `removeSelected` takes a list only when it IS a list — an `onClick`
 hands it a MouseEvent, and the button and the key reach the same code by
 different doors.
+
+**"Number the Network from Here" is gone from the client.** It walked
+out from a source and wrote `Way` and `Circuit` onto the cables it
+reached. That predated the circuit work: Build LV Network now assigns
+real circuits and their ways, and the lasso decides which output a run
+belongs to — so the tracer was **a second writer of the same two
+fields**, arriving at its own answer. That is the shape of fault this
+session kept finding.
+
+It was already hidden from the Electric menu. Its last route was the
+catch-all branch of the canvas context menu — offered on any point that
+was not a span node or a vertex, which is how it came to appear on
+features it makes no sense for.
+
+**The endpoint and `traceNetwork` stay.** Gas and water have no circuits
+and "which main leaves the source" is a fair question there, so this is
+a call to restore rather than a rewrite. Nothing in the client calls
+them today.
+
+`checknumberremoved` holds all of it, including that **Assign Meters is
+untouched** — it shares `runNetwork`, and removing one branch of a
+function must not take the other with it.
+
+**Two boards joined by a hand-drawn feeder.** Two MSDBs in one
+building, linked by a cable running through the structure where no
+trench goes. The dig runs up to the first board and starts again at the
+second, so **the second board's trench is an island** — unreachable from
+the source, because the only thing joining them is a cable and the
+routing graph is built from trenches. Left alone, everything past the
+second board was never routed at all.
+
+**Stamped, not deduced.** A cable drawn end to end between two boards
+records both board ids and takes their circuit, the way a POC route
+records its POC and substation. Without it, dragging a board onto the
+end of an ordinary run would turn that run into a link with nothing
+said. `linkEnds` falls back to the ends' positions for cables drawn
+before the stamp existed — as good as the drawing, never overruling a
+stamp, and it disappears as cables are redrawn.
+
+**Boards on two different circuits** are still recognised as a link, so
+the build can route past them, but the circuit is left alone: stamping
+one of them would be picking whichever end was read first.
+
+**First is the board nearer the source ALONG THE NETWORK**, not the
+direction the cable was drawn in. Decided in the canvas, because only it
+knows how far anything is from the substation. On the reported drawing
+MSDB 1 is 43.4 m and MSDB 2 is 66.1 m — and the risers the designer had
+already entered agree, which is a good sign the rule is the natural one.
+
+`msdbLinkParts` adds a part rooted at the second board, exactly as a
+link box output is rooted at its box, on **both** exits of
+`circuitBuildParts`. `spanTrace` now accepts a board as a root for the
+same reason it accepts a link box. The link is never `Generated`, so a
+rebuild already spares it.
+
+**Still to do:** the levels do not yet chain across the link. The second
+board's figure should be the first board's OUTPUT level plus the link's
+own drop, carrying the second board's flats and everything beyond it —
+not the first board's flats, which come off at the first board.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

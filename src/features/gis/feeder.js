@@ -262,6 +262,11 @@ export function buildFeederModel(features = [], opts = {}) {
        meter's circuit is decided by whether its seed is in seedIds, and
        a non-residential supply has no seed to be in it. */
     meterIds = null,
+    /* Which MSDBs belong to this circuit, by Feature_ID. A board's flats
+       are counted off the board itself rather than synthesised into
+       meters, so the board needs its own membership \u2014 the same shape as
+       meterIds, for the same reason. */
+    msdbIds = null,
     eps = CONNECT_EPS, tol = SNAP_TOL, fallbackKva = 0,
   } = opts;
 
@@ -742,6 +747,69 @@ export function buildFeederModel(features = [], opts = {}) {
          drawing fault someone has to go and find. */
       skipped.push({ id: m.Feature_ID, label: m.Label, plotId: m.Plot_ID });
     }
+  }
+
+  /* ── A board's flats, counted from the board ──
+
+     A Multi Service Distribution Board carries its flats in a table on
+     itself. They were reaching the model as synthesised meters, through
+     the plot list, the house types, the consumption table and two
+     membership rules \u2014 five things that each have to be right for a
+     number the designer typed into one field.
+
+     They are counted here instead, off the board, because that is where
+     the answer is. The board says how many flats it has and what they
+     draw; the model needs a count and a load at a node, and this is
+     both.
+
+     The synthesised meters still have their uses \u2014 they carry each
+     flat's own tail for the levels \u2014 but the TERMINAL count no longer
+     depends on any of that machinery being right. Ten flats on a board
+     is ten, whatever the specs say about bedrooms.
+
+     Only where the board names this circuit: a board on another
+     circuit's cable is another circuit's load. */
+  for (const b of features) {
+    if (b.Feature_Role !== "msdb" || b.Layer_Key !== "electric") continue;
+    /* Whose circuit this is. `buildFeederModel` is not told a circuit
+       id \u2014 it is pruned by the member sets \u2014 so a board is judged the
+       way a supply is: by its own membership, where one was given.
+
+       `msdbIds` is the set of boards this trace should count. Absent,
+       every board is counted, which is right for a trace of the whole
+       drawing and never happens on a circuit walk. */
+    if (msdbIds && !msdbIds.has(Number(b.Feature_ID))) continue;
+    const flats = (b.Attributes?.MSDB_Plot_IDs || []).length;
+    if (!flats) continue;
+    const at = b.Attributes?.Span_Anchor ?? (b.Geometry || [])[0];
+    if (!Array.isArray(at)) continue;
+    const nn = nearest(at);
+    if (nn.i < 0 || nn.d > tol) {
+      skipped.push({ id: b.Feature_ID, label: b.Label ?? "MSDB", plotId: null });
+      continue;
+    }
+    meterCount[nn.i] += flats;
+    /* What the board draws, as its own editor worked it out. Absent, the
+       same fallback a meter with no figure uses \u2014 a board that has not
+       been costed still has flats, and counting them as nothing would
+       size the cable to it for nobody. */
+    const stated = Number(b.Attributes?.MSDB_Total_kVA);
+    meterKva[nn.i] += Number.isFinite(stated) && stated > 0
+      ? stated : flats * fallbackKva;
+    /* ── Load, not a customer ──
+
+       `metersAt` is what the service-tail machinery reads: for each
+       entry it goes looking for that customer's own service cable, to
+       work out the drop from the main to their cut-out. A board has no
+       service \u2014 its flats hang off it on tails INSIDE the building, and
+       the board's own editor works those out.
+
+       Pushed in here, the board would be a customer whose service
+       cannot be found, and the levels would report a leg with no
+       service on a leg that is perfectly well served.
+
+       So it counts and it draws, and it is not a tee. */
+    attached.push(b.Feature_ID);
   }
 
   if (!attached.length) {
@@ -1645,6 +1713,8 @@ export function circuitTraceParts(features = [], originId, opts = {}) {
     }
   }
 
+  parts.push(...msdbLinkParts(features, opts));
+
   return parts;
 }
 
@@ -1878,6 +1948,42 @@ export function linkWayAssignments(features = [], circuitId) {
    so with the output's name on it, and the others still build \u2014 a
    half-buildable split is shown half built, with words, rather than
    refused whole. */
+/* ── On from the far side of a board-to-board link ──
+
+   Two boards in one building, joined by a feeder somebody drew through
+   the structure. The dig runs up to the first board and starts again at
+   the second, so the second board's trench is an ISLAND: unreachable
+   from the source, because the only thing joining them is a cable and
+   the routing graph is built from trenches.
+
+   Left alone, everything past the second board is never routed at all.
+
+   So a part rooted at the second board, exactly as a link box output is
+   rooted at its box. The walk from there reaches its own trench and
+   whatever lies beyond it; the link stays as drawn, being nobody's to
+   lay.
+
+   Which board is second is decided by distance back to the source, and
+   the CALLER decides it — only the canvas knows how far anything is
+   from the substation. */
+function msdbLinkParts(features, opts) {
+  const out = [];
+  for (const { first, second, link } of (opts.msdbLinks || [])) {
+    if (!second?.Feature_ID) continue;
+    const r = spanTrace(features, second.Feature_ID, {
+      ...opts,
+      /* Not passed on: a part rooted at a board must not root further
+         parts at the same boards, which would walk in a circle. */
+      msdbLinks: [],
+      rootFeature: second,
+    });
+    const via = `from ${second.Label ?? `MSDB ${second.Feature_ID}`}`;
+    if (r.error) { out.push({ error: r.error, via, board: second, link }); continue; }
+    out.push({ ...r, via, board: second, fromBoard: first, link });
+  }
+  return out;
+}
+
 export function circuitBuildParts(features = [], opts = {}) {
   const { circuitId } = opts;
   const asg = circuitId != null
@@ -1885,7 +1991,10 @@ export function circuitBuildParts(features = [], opts = {}) {
     : { boxes: [], assignedSeedIds: new Set(), assignedMeterIds: new Set() };
   if (!asg.boxes.length) {
     const r = feederSections(features, opts);
-    return r.error ? [{ ...r, via: "origin" }] : [{ ...r, via: "origin" }];
+    /* The link parts belong on this path too: a circuit with no link
+       box is the ordinary case, and it is where the reported drawing's
+       two boards sit. */
+    return [{ ...r, via: "origin" }, ...msdbLinkParts(features, opts)];
   }
 
   const parts = [];
@@ -1981,7 +2090,10 @@ export function circuitBuildParts(features = [], opts = {}) {
       : { ...r, via: "origin" });
   }
 
-  return [...parts, ...wayParts];
+  /* And the far side of any board-to-board link, on this path as much
+     as the other: a circuit can have both a link box and two boards in
+     a building. */
+  return [...parts, ...wayParts, ...msdbLinkParts(features, opts)];
 }
 
 export function spanTrace(features = [], nodeId, opts = {}) {
@@ -2037,9 +2149,18 @@ export function spanTrace(features = [], nodeId, opts = {}) {
   } = opts;
 
   const node = features.find((f) => Number(f.Feature_ID) === Number(nodeId));
+  /* A board is a place a walk can start from, for the same reason a
+     link box is: one cable arrives, one leaves, and everything past it
+     is fed through it. The far side of a board-to-board link is rooted
+     here, and the dig it stands on is an island until something does.
+
+     The message still names what somebody can SELECT, because that is
+     the only way a person reaches this \u2014 a board root is asked for by
+     the build, not chosen off the canvas. */
   if (!node || (node.Feature_Role !== "spannode"
     && node.Feature_Role !== "feederpoint"
-    && node.Feature_Role !== "linkbox")) {
+    && node.Feature_Role !== "linkbox"
+    && node.Feature_Role !== "msdb")) {
     return { error: "Select a feeder point, link box or span node." };
   }
   const circuitId = wantedCircuit ?? node.Attributes?.Circuit_ID;
@@ -2075,8 +2196,26 @@ export function spanTrace(features = [], nodeId, opts = {}) {
     && f.Layer_Key === "electric"
     && Number(f.Attributes?.Circuit_ID) === Number(circuitId)
     && f.Attributes?.Circuit_Origin_ID != null);
+  /* ── Which boards this walk counts ──
+
+     A board names its circuit, and where an output is being traced, its
+     output too: two outputs of one box are two independent runs, and a
+     board on one is not load on the other.
+
+     Worked out here, where the circuit and the output are both known,
+     rather than inside the model \u2014 which is told what belongs to this
+     walk and not how to decide it. */
+  const msdbIds = new Set(features
+    .filter((f) => f.Feature_Role === "msdb"
+      && (wantedCircuit == null
+        || Number(f.Attributes?.Circuit_ID) === Number(wantedCircuit))
+      && (linkWay == null
+        || f.Attributes?.Link_Way == null
+        || Number(f.Attributes.Link_Way) === Number(linkWay)))
+    .map((f) => Number(f.Feature_ID)));
+
   const M = buildFeederModel(features, {
-    lineTypes, plotById, nrsById, seedIds, meterIds,
+    lineTypes, plotById, nrsById, seedIds, meterIds, msdbIds,
     /* Rooted at the box where one is given: an output's cable begins
        there and knows nothing of the POC behind it. */
     ...(rootFeature ? { rootFeature } : {}),

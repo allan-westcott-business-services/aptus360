@@ -1,4 +1,9 @@
 import { runLength } from "./lengths.js";
+/* Renamed on import: this file already has a local `carries` that asks
+   which LAYER a line is on, and two functions of one name answering
+   different questions is how a trench that refuses LV came to be walked
+   across by every distance on the drawing. */
+import { carries as carriesUtility } from "./trenchCarries.js";
 /* Electric network: POC, substation, circuits.
 
    Ported from the original's gisSetPocOutput, gisSetSubAttr,
@@ -881,8 +886,29 @@ function networkFrom(features, rootId) {
      the fixtures and for drawings older than layers. Nothing else can
      carry the site's electricity, so nothing else can be the way a
      meter reaches the substation. */
-  const carries = (f) => f.Layer_Key == null
+  /* ── And a dig that refuses LV is not a way through ──
+
+     This asks which LAYER a line is on, and it shadows the module's own
+     `carries`, which asks what a trench has been told to hold. Two
+     functions of one name answering different questions, and this one
+     was the only one a distance ever consulted.
+
+     A trench with `Carries_LV` off is deliberate isolation: two
+     circuits that must not meet, drawn to meet nowhere. The routing
+     honours it \u2014 no cable is laid across such a trench \u2014 but every
+     DISTANCE walked straight over it, so a meter on one circuit was
+     measured back to the substation through the other circuit's dig,
+     and the two networks were one as far as anything measured was
+     concerned.
+
+     A cable is still a way through whatever a trench says: a cable that
+     exists is a fact, and this flag is about where cable may be LAID. */
+  const onElectric = (f) => f.Layer_Key == null
     || f.Layer_Key === "electric" || f.Layer_Key === "trench";
+  const isTrenchLine = (f) => f.Layer_Key === "trench"
+    || /trench/i.test(String(f.Attributes?.Line_Type ?? ""));
+  const carries = (f) => onElectric(f)
+    && (!isTrenchLine(f) || carriesUtility(f, "electric", "lv"));
   const lines = features.filter((f) => (f.Geometry || []).length >= 2 && carries(f));
 
   /* How much a line's drawn metres are worth, where somebody has

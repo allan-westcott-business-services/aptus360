@@ -159,6 +159,7 @@ caught a fault that had already shipped at least once.
 | `node checkdeletekey.mjs` | Delete removes the selection, live and not stale |
 | `node checknumberremoved.mjs` | The old numbering pass stays out of the client |
 | `node checkmsdblink.mjs` | Board-to-board links: stamped, ordered, routed past |
+| `node checkisolation.mjs` | A trench that refuses LV is not walked across |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
@@ -3323,6 +3324,30 @@ after the feeder is built.
     kind of thing enters a model that has only ever had one shape, the
     question to ask is not "does this work" but "what does everything
     here assume about how a part begins".
+
+98. **Two functions of one name, and only the wrong one was asked.**
+    `networkFrom` in `electric.js` declares a LOCAL `carries` that asks
+    which LAYER a line is on. The module `trenchCarries.js` exports a
+    `carries` that asks what a trench has been told to hold. Every
+    distance on the drawing went through the local one.
+
+    So a trench with `Carries_LV` off — deliberate isolation, two
+    circuits drawn to meet nowhere — was walked straight across by
+    everything that measured anything. **11 of circuit 1's meters were
+    measured back through circuit 2's dig.** The routing had always
+    honoured the flag, which is why no cable was ever laid across it and
+    why this went unseen: the drawing looked right and the numbers were
+    from another network.
+
+    Imported as `carriesUtility` now, because a name that shadows
+    another answering a different question is the fault itself, not an
+    accident of it. A CABLE is still a way through whatever a trench
+    says: a cable that exists is a fact, and the flag is about where
+    cable may be LAID.
+
+    Verified both ways on the live drawing: each circuit still reaches
+    all of its own meters from its own substation, and neither reaches
+    the other's.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

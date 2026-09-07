@@ -302,6 +302,31 @@ const link = f.find((x) => x.Feature_ID === 47622);
   }
 }
 
+// 9. One stop at one cable end.
+//
+//    Marks are deduped by node INDEX, which is right while the far end
+//    of a part is the same node the end-of-line pass found. On a part
+//    rooted at a board it is not: that walk has its own node numbering,
+//    so the two land a metre apart and both are kept \u2014 two feeder end
+//    points at the end of one cable, 0.88 m apart on the reported
+//    drawing.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/const sameSpot = \(a, b\) => Math\.hypot/.test(canvas)) {
+    fail("the far-end mark is deduped by index alone, so a part rooted at a "
+      + "board adds a second stop beside the first");
+  }
+  if (!/m\.index === term\.index \|\| sameSpot\(m, term\)/.test(canvas)) {
+    fail("the position test is worked out and not used");
+  }
+  /* At the distance somebody would call the same place. Two genuine
+     stops within a metre and a half of each other on one feeder is not
+     a design. */
+  if (!/\) <= 1\.5;/.test(canvas)) {
+    fail("the same-place distance is not the one this was written for");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Board-to-board links behave (stamped, ordered, and routed on from).");
 process.exit(bad ? 1 : 0);

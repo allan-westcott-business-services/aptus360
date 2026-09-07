@@ -15980,7 +15980,24 @@ export default function GISCanvasPage() {
              definition — for the trunk that is the link box, which the
              full-circuit model calls nothing at all. */
           const term = partEndMark(pt.model, pt.sections);
-          if (term && !marks.some((m) => m.index === term.index)) marks.push(term);
+          /* ── One stop at one end ──
+
+             Deduped by index, which is right while the far end of a
+             part is the same NODE the end-of-line pass found. On a part
+             rooted at a board it is not: the walk has its own node
+             numbering, so the two land a metre apart and both are kept
+             \u2014 two feeder end points at the end of one cable, B4 and B5,
+             0.88 m apart on the reported drawing.
+
+             By position as well, at the distance somebody would call
+             the same place. Two genuine stops within a metre and a half
+             of each other on one feeder is not a design; it is this
+             fault. */
+          const sameSpot = (a, b) => Math.hypot(a.point[0] - b.point[0],
+            a.point[1] - b.point[1]) <= 1.5;
+          if (term && !marks.some((m) => m.index === term.index || sameSpot(m, term))) {
+            marks.push(term);
+          }
           /* And a stop wherever a straight joint stands on this part's
              cable. The model is the dig and has never heard of a
              fitting clicked onto a cable, so nothing else can offer

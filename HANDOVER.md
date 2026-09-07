@@ -3253,6 +3253,22 @@ On the reported drawing: 9 m + 22.7 m + 9 m = **0.831%** at 6.6 kVA.
     asking**, and "it works on the path I tested" is not the same as
     "it works".
 
+95. **Two feeder end points at one cable end.** Marks are deduped by
+    node INDEX, which is right while the far end of a part is the same
+    node the end-of-line pass found. A part rooted at a board has its
+    own node numbering, so the two landed 0.88 m apart and both were
+    kept — B4 and B5 on top of each other on the reported drawing.
+
+    Deduped by position as well now, at 1.5 m: two genuine stops that
+    close together on one feeder is not a design.
+
+**Service joints are a different feature.** `autoLayServices` /
+`layServicesThenTee` place them, and neither knows anything about parts
+or boards — they work from the drawing. Plots past a board are not
+excluded by anything in the MSDB work; the drawing simply had no
+service cables on it at all, so **Auto Lay Service Cable has to be run**
+after the feeder is built.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

@@ -1622,7 +1622,8 @@ export function circuitTraceParts(features = [], originId, opts = {}) {
        The same omission was made on the build path and found the same
        way: one early return added later than the code below it. */
     const head = r.error ? { error: r.error, via: "origin" } : { ...r, via: "origin" };
-    return [head, ...msdbLinkParts(features, opts)];
+    return [head, ...msdbLinkParts(features, opts,
+      (fs, o, nodeId) => spanTrace(fs, nodeId, o))];
   }
 
   /* ── Two boxes in series is a design error, not a shape to render ──
@@ -1721,7 +1722,8 @@ export function circuitTraceParts(features = [], originId, opts = {}) {
     }
   }
 
-  parts.push(...msdbLinkParts(features, opts));
+  parts.push(...msdbLinkParts(features, opts,
+    (fs, o, nodeId) => spanTrace(fs, nodeId, o)));
 
   return parts;
 }
@@ -1974,17 +1976,30 @@ export function linkWayAssignments(features = [], circuitId) {
    Which board is second is decided by distance back to the source, and
    the CALLER decides it — only the canvas knows how far anything is
    from the substation. */
-function msdbLinkParts(features, opts) {
+function msdbLinkParts(features, opts, walk) {
   const out = [];
   for (const { first, second, link } of (opts.msdbLinks || [])) {
     if (!second?.Feature_ID) continue;
-    const r = spanTrace(features, second.Feature_ID, {
+    /* ── Walked the way the caller walks everything else ──
+
+       The two callers want different things from a part. The LEVELS
+       want legs, which `spanTrace` gives. The BUILD wants sections \u2014
+       the cable it is about to lay \u2014 which only `feederSections` gives.
+
+       Using spanTrace for both produced a part that reached the meters
+       beyond the second board and laid nothing: one leg, no sections,
+       and no cable on the drawing past MSDB 2.
+
+       So the walker comes from the caller, exactly as `rootFeature` is
+       how a link box output is walked on each path. */
+    const r = walk(features, {
       ...opts,
       /* Not passed on: a part rooted at a board must not root further
          parts at the same boards, which would walk in a circle. */
       msdbLinks: [],
       rootFeature: second,
-    });
+      originId: null,
+    }, second.Feature_ID);
     const via = `from ${second.Label ?? `MSDB ${second.Feature_ID}`}`;
     if (r.error) { out.push({ error: r.error, via, board: second, link }); continue; }
     out.push({ ...r, via, board: second, fromBoard: first, link });
@@ -2002,7 +2017,8 @@ export function circuitBuildParts(features = [], opts = {}) {
     /* The link parts belong on this path too: a circuit with no link
        box is the ordinary case, and it is where the reported drawing's
        two boards sit. */
-    return [{ ...r, via: "origin" }, ...msdbLinkParts(features, opts)];
+    return [{ ...r, via: "origin" },
+      ...msdbLinkParts(features, opts, (fs, o) => feederSections(fs, o))];
   }
 
   const parts = [];
@@ -2101,7 +2117,8 @@ export function circuitBuildParts(features = [], opts = {}) {
   /* And the far side of any board-to-board link, on this path as much
      as the other: a circuit can have both a link box and two boards in
      a building. */
-  return [...parts, ...wayParts, ...msdbLinkParts(features, opts)];
+  return [...parts, ...wayParts,
+    ...msdbLinkParts(features, opts, (fs, o) => feederSections(fs, o))];
 }
 
 export function spanTrace(features = [], nodeId, opts = {}) {

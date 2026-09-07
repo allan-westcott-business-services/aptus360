@@ -239,6 +239,69 @@ const link = f.find((x) => x.Feature_ID === 47622);
   }
 }
 
+// 8. The build LAYS cable past the second board.
+//
+//    The two callers want different things from a part. The levels want
+//    legs, which `spanTrace` gives. The build wants SECTIONS \u2014 the
+//    cable it is about to lay \u2014 which only `feederSections` gives.
+//
+//    Using spanTrace for both produced a part that reached the meters
+//    beyond the second board and laid nothing: one leg, no sections, no
+//    cable on the drawing.
+{
+  const feeder = readFileSync("./src/features/gis/feeder.js", "utf8");
+  const fn = feeder.slice(feeder.indexOf("function msdbLinkParts"),
+    feeder.indexOf("export function circuitBuildParts"));
+  if (!/const r = walk\(features, \{/.test(fn)) {
+    fail("the link part walks one way for both callers, so one of them gets "
+      + "the wrong shape of answer");
+  }
+
+  /* The build's calls use feederSections; the levels' use spanTrace. */
+  const buildFn = feeder.slice(feeder.indexOf("export function circuitBuildParts"));
+  if (!/msdbLinkParts\(features, opts, \(fs, o\) => feederSections\(fs, o\)\)/.test(buildFn)) {
+    fail("the build walks a link part with spanTrace, which yields legs and "
+      + "no cable to lay");
+  }
+  const traceFn = feeder.slice(feeder.indexOf("export function circuitTraceParts"),
+    feeder.indexOf("export function serviceTrenchCheck"));
+  if (!/spanTrace\(fs, nodeId, o\)/.test(traceFn)) {
+    fail("the levels walk a link part with feederSections, which yields no "
+      + "legs and so no figures");
+  }
+
+  /* And on the reported drawing it lays something. */
+  const boards2 = f.filter((x) => x.Feature_Role === "msdb");
+  const originId = 46907;
+  const dd = distancesFrom(f, originId);
+  const ls = [];
+  for (const line of f) {
+    const e = linkEnds(line, boards2);
+    if (!e) continue;
+    const o = linkOrder(e, (b) => dd.get(Number(b.Feature_ID)));
+    if (o) ls.push({ ...o, link: line });
+  }
+  if (ls.length) {
+    const ids2 = boards2.flatMap((b) => b.Attributes.MSDB_Plot_IDs || []);
+    const src2 = withAssumedMeters(f, {
+      plotList: ids2.map((id, i) => ({ plot_id: id, plot_number: `F${i + 1}`,
+        Property_Config_ID: 500, Heat_Source_ID: 2 })),
+      configs: [{ Property_Config_ID: 500, Bedrooms: 1, Property_Type_ID: 7 }],
+      propertyTypes: [{ Property_Type_ID: 7, Property_Type: "Flat" }],
+      consumption: [{ Bedrooms: 1, Heat_Source_ID: 2, Consumption_kVA: 2.2 }],
+    });
+    const mem = circuitMembership(src2, 2);
+    const parts = circuitBuildParts(src2, { lineTypes: raw.lineTypes || [],
+      circuitId: 2, plotById: () => null, nrsById: () => null,
+      seedIds: mem.seedIds, meterIds: mem.meterIds, originId, msdbLinks: ls });
+    const far = parts.find((p) => /^from /.test(String(p.via)));
+    if (!far) fail("no part is rooted at the second board");
+    else if (!(far.sections?.length > 0)) {
+      fail("the part past the second board lays no cable at all");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Board-to-board links behave (stamped, ordered, and routed on from).");
 process.exit(bad ? 1 : 0);

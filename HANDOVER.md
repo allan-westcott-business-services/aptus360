@@ -3234,6 +3234,25 @@ On the reported drawing: 9 m + 22.7 m + 9 m = **0.831%** at 6.6 kVA.
     catalogue with an empty column stamping nothing on anything is a
     worse day than a wrong size.
 
+94. **One part-maker, two callers wanting different shapes.** The
+    levels want LEGS, which `spanTrace` gives. The build wants SECTIONS
+    — the cable it is about to lay — which only `feederSections` gives.
+
+    `msdbLinkParts` used `spanTrace` for both, so on the build path the
+    part rooted at the second board **reached the meters beyond it and
+    laid nothing**: one leg, no sections, no cable on the drawing past
+    MSDB 2. Nothing errored; the part was simply the wrong shape and
+    the build had nothing to write.
+
+    The walker now comes from the caller, exactly as `rootFeature` is
+    how a link box output is walked on each path. Measured on the
+    reported drawing: **22.5 m of cable in seven points** where there
+    was none.
+
+    **A shared helper serving two callers has to be told which one is
+    asking**, and "it works on the path I tested" is not the same as
+    "it works".
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

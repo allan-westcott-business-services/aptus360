@@ -10,7 +10,7 @@ import {
   stampLink, linkEnds, linkOrder, withAssumedMeters,
 } from "./src/features/gis/msdb.js";
 import { circuitMembership, circuitBuildParts } from "./src/features/gis/feeder.js";
-import { distancesFrom } from "./src/features/gis/electric.js";
+import { distancesFrom, originMissing } from "./src/features/gis/electric.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -142,6 +142,100 @@ const link = f.find((x) => x.Feature_ID === 47622);
      boards, which would walk in a circle. */
   if (!/msdbLinks: \[\],/.test(feeder)) {
     fail("a link part passes the links on to itself, so the walk recurses");
+  }
+}
+
+// 6. The levels chain across the link.
+//
+//    The second board's dig is an island, so no leg ends on it and it
+//    had no figure at all. A part rooted at it gives it one, started
+//    from the FIRST board's figure carried across.
+{
+  const feeder = readFileSync("./src/features/gis/feeder.js", "utf8");
+  const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  /* Both exits of BOTH parts functions. The early return for a circuit
+     with no link box is the ordinary case, and it is where two boards
+     in one building sit \u2014 the same omission was made on each path. */
+  const traceFn = feeder.slice(feeder.indexOf("export function circuitTraceParts"),
+    feeder.indexOf("export function serviceTrenchCheck"));
+  if ((traceFn.match(/msdbLinkParts/g) || []).length < 2) {
+    fail("the levels path makes link parts on only one of its exits, so a "
+      + "circuit with no link box leaves the second board with no figure");
+  }
+
+  /* A board part starts from the first board's figure, the way an
+     output starts from the figure at its box. */
+  if (!/part\.fromBoard \? boardFigure\(part\.fromBoard\) : null/.test(vd)) {
+    fail("a board part starts from the circuit's baseline rather than from "
+      + "the board that feeds it");
+  }
+  if (!/const across = part\.acrossLink;/.test(vd)) {
+    fail("nothing is added between the two boards, so the link and the "
+      + "risers cost nothing");
+  }
+
+  /* ── The three lengths, in the order the cable runs them ──
+
+     The figure at the first board's stop is at GROUND. From there the
+     cable goes UP that board's riser, ALONG the link, and DOWN the
+     second board's run to the dig it starts from. The reverse was
+     tried first and read both risers as nought on the reported
+     drawing, because each board records only the one it has. */
+  if (!/part\.fromBoard\.Attributes\?\.MSDB_Riser_M\) \|\| 0, upCable/.test(canvas)) {
+    fail("the first board's riser is not on the path between the boards");
+  }
+  if (!/part\.board\.Attributes\?\.MSDB_Down_M\) \|\| 0, downCable/.test(canvas)) {
+    fail("the second board's run down is not on the path between the boards");
+  }
+  if (/fromBoard\.Attributes\?\.MSDB_Down_M/.test(canvas)) {
+    fail("the first board's run DOWN is used, which is the reverse of the "
+      + "way the cable runs");
+  }
+
+  /* And the arithmetic, against the reported drawing. */
+  const boards2 = f.filter((x) => x.Feature_Role === "msdb");
+  const poc2 = f.find((x) => x.Feature_Role === "poc");
+  const d2 = distancesFrom(f, poc2.Feature_ID);
+  const l2 = f.find((x) => linkEnds(x, boards2));
+  const o2 = linkOrder(linkEnds(l2, boards2), (b) => d2.get(Number(b.Feature_ID)));
+  const up = Number(o2.first.Attributes.MSDB_Riser_M) || 0;
+  const down = Number(o2.second.Attributes.MSDB_Down_M) || 0;
+  if (!(up > 0) || !(down > 0)) {
+    fail("the fixture no longer has a riser at each end of the link, so the "
+      + "reversal this check exists for would not show");
+  }
+}
+
+// 7. The circuit's context comes from its ORIGIN part.
+//
+//    Everything is computed against one part: the transformer, the
+//    working voltage, the upstream drop, and the test for a POC that
+//    has not been declared.
+//
+//    "The first part without an error" was fine while every part began
+//    at the substation. A part rooted at an MSDB does not \u2014 its model's
+//    origin is the BOARD, which has no transformer and no declared
+//    output voltage, so `originMissing` reports it as undeclared and
+//    the whole circuit is skipped, taking every feeder point's level
+//    with it.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (/const r = parts\.find\(\(x\) => !x\.error\) \|\| parts\[0\]/.test(canvas)) {
+    fail("the circuit's context is taken from whichever part has no error, "
+      + "which can now be a part rooted at a board");
+  }
+  if (!/x\.via === "origin" \|\| x\.via === "trunk"/.test(canvas)) {
+    fail("the origin part is not named, so a board part can supply the "
+      + "transformer and voltage for the whole circuit");
+  }
+
+  /* A board is not a declared origin, and never will be. */
+  const board = f.find((x) => x.Feature_Role === "msdb");
+  if (!originMissing(board, []).length) {
+    fail("a board reads as a fully declared origin, so this could not have "
+      + "been caught by the guard that skips undeclared ones");
   }
 }
 

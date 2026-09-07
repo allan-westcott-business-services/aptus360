@@ -1763,7 +1763,25 @@ export default function GISCanvasPage() {
         nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
         stopAt: "spannodes",
       });
-      const r = parts.find((x) => !x.error) || parts[0] || {};
+      /* ── The circuit's context comes from its ORIGIN part ──
+
+         Everything below is computed against this one: the transformer,
+         the working voltage, the upstream drop, and the test for a POC
+         that has not been declared.
+
+         "The first part without an error" was fine while every part
+         began at the substation. A part rooted at an MSDB does not: its
+         model's origin is the BOARD, which has no transformer and no
+         declared output voltage \u2014 so `originMissing` reports it as
+         undeclared and `continue` skips the whole circuit, taking every
+         feeder point's level with it.
+
+         Named rather than found: the trunk or the origin, and nothing
+         else may stand in for it. */
+      const r = parts.find((x) => !x.error
+        && (x.via === "origin" || x.via === "trunk"))
+        ?? parts.find((x) => x.via === "origin" || x.via === "trunk")
+        ?? {};
       if (!r.model) continue;
 
       /* ── No declared origin, no levels ──

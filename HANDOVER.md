@@ -3175,10 +3175,45 @@ link box output is rooted at its box, on **both** exits of
 same reason it accepts a link box. The link is never `Generated`, so a
 rebuild already spares it.
 
-**Still to do:** the levels do not yet chain across the link. The second
-board's figure should be the first board's OUTPUT level plus the link's
-own drop, carrying the second board's flats and everything beyond it —
-not the first board's flats, which come off at the first board.
+**The levels chain across the link.** A part rooted at the second board
+starts from the FIRST board's figure, exactly as a link box output
+starts from the figure at its box. Between them lie three lengths, and
+they are on the cable in this order:
+
+    up   the first board's riser
+    along the link, drawn through the building
+    down the second board's run to its own dig
+
+On the reported drawing: 9 m + 22.7 m + 9 m = **0.831%** at 6.6 kVA.
+
+90. **The two risers, reversed.** I first wrote the first board's DOWN
+    and the second board's RISER — the reverse of the way the cable
+    runs. It read as **nought for both** on the reported drawing,
+    because each board records only the one it has, so the chain simply
+    cost nothing and looked plausible. Getting it backwards is invisible
+    while the other two fields are blank, which is why it needed
+    checking against a drawing rather than reasoning.
+
+91. **The same early return, missed twice.** `circuitTraceParts` and
+    `circuitBuildParts` each have an exit for a circuit with no link
+    box, and each was added before the link parts below it. Both
+    returned before making them, so the second board had no figure on
+    the levels path and no route on the build path. Found separately,
+    an hour apart, in two functions with the same shape.
+
+92. **A new kind of part poisoning the whole circuit's context.** The
+    levels take the transformer, the working voltage, the upstream drop
+    and the undeclared-POC test from `parts.find((x) => !x.error)`.
+
+    That was fine while every part began at the substation. A part
+    rooted at an MSDB does not: its model's origin is the BOARD, which
+    has no transformer and no declared output voltage — so
+    `originMissing` reports it as undeclared, the loop hits `continue`,
+    and **every feeder point on that circuit loses its level at once.**
+
+    Named now rather than found: the origin or the trunk part, and
+    nothing else may stand in for it. **Adding a part changed what "the
+    first part" means**, and nothing about the change said so.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

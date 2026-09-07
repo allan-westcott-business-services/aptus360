@@ -26,9 +26,10 @@ import { servedPlots, JOINT_KINDS, straightJointWarning,
   jointCables, cableEndsAt, servicesAt } from "./joints.js";
 import {
   FLOORS, msdbLoad, apartmentLevels, worstApartment, flatsFromPlots,
-  servedFlats, riserDrop, msdbSupply,
+  servedFlats, riserDrop, outputDrop, msdbSupply,
 } from "./msdb.js";
 import { bedColour } from "../../lib/bedColours.js";
+import { kvaOf } from "./voltDrop.js";
 import {
   pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS, ampsFor,
   moveCircuitToWay, compactWays,
@@ -731,6 +732,29 @@ export default function FeatureEditor({
     kva: msdbTotals.kva,
     voltageV: Number(lookups?.vdSettings?.[0]?.Nominal_Voltage_V) || 400,
   }), [f, levelsAt, msdbTailCable, msdbTotals, lookups]);
+
+  /* ── What leaves the board ──
+
+     The board's own figure plus the run back down to ground. It carries
+     only the load fed ONWARD: the flats are taken off at the board, so
+     sizing this for them would be sizing it for load that never travels
+     it.
+
+     The load beyond it is `ampsThrough` on the stop's own figure \u2014 what
+     the levels check found still travelling past this point, which is
+     the downstream load and nothing else. Converted back to kVA at the
+     scheme's voltage, because that is what the drop is worked out
+     from. */
+  const msdbOut = useMemo(() => {
+    const voltageV = Number(lookups?.vdSettings?.[0]?.Nominal_Voltage_V) || 400;
+    const through = Number(levelsAt?.ampsThrough) || 0;
+    return outputDrop(f, {
+      at: msdbAt?.pct == null ? null : msdbAt,
+      cable: msdbTailCable ?? null,
+      kva: kvaOf(through, voltageV),
+      voltageV,
+    });
+  }, [f, msdbAt, msdbTailCable, levelsAt, lookups]);
 
   const msdbLevels = useMemo(() => apartmentLevels(f, msdbServed, {
     at: msdbAt?.pct == null ? null : msdbAt,
@@ -1536,7 +1560,7 @@ export default function FeatureEditor({
 
               <div className="fe-row">
                 <div className="fld">
-                  <label htmlFor="fe-msdb-riser">Boundary to MSDB (m)</label>
+                  <label htmlFor="fe-msdb-riser">Ground to MSDB (m)</label>
                   {/* The drawing stops at the boundary. A board on the
                       fourth floor is fifteen metres further on, up a
                       riser nobody has drawn and nobody can \u2014 and that
@@ -1550,6 +1574,28 @@ export default function FeatureEditor({
                       e.target.value === "" ? null : Number(e.target.value))} />
                 </div>
                 <div className="fld">
+                  <label htmlFor="fe-msdb-down">MSDB to ground (m)</label>
+                  {/* ── The run back down ──
+
+                      A board on the fourth floor is reached by a cable
+                      running up to it, and the feeder that carries on to
+                      plots elsewhere runs back DOWN to ground before it
+                      goes anywhere. Two runs, and not the same length:
+                      the outgoing cable may drop a different shaft.
+
+                      Left blank where nothing continues past the board.
+                      A nought would claim a run of no length; blank says
+                      there is no run. */}
+                  <input id="fe-msdb-down" type="number" min="0" step="0.1"
+                    placeholder="No cable onward"
+                    value={f.Attributes?.MSDB_Down_M ?? ""}
+                    onChange={(e) => setAttr("MSDB_Down_M")(
+                      e.target.value === "" ? null : Number(e.target.value))} />
+                </div>
+              </div>
+
+              <div className="fe-row">
+                <div className="fld">
                   <span className="fe-lab">At the board</span>
                   <div className="fe-msdb-at">
                     {msdbAt?.pct == null
@@ -1559,11 +1605,40 @@ export default function FeatureEditor({
                           <strong>{msdbAt.pct.toFixed(2)}%</strong>
                           {msdbAt.riserPct > 0 && (
                             <span className="hint">
-                              {" "}including {msdbAt.riserPct.toFixed(2)}% up the riser
+                              {" "}including {msdbAt.riserPct.toFixed(2)}% up from the ground
                             </span>
                           )}
                         </>
                       )}
+                  </div>
+                </div>
+                <div className="fld">
+                  {/* ── Where the outgoing cable starts ──
+
+                      Not the same as the figure at the board: the run
+                      back down to ground is between them, and a feeder
+                      drawn on the canvas from this board begins at THIS
+                      number rather than at the board's.
+
+                      Shown only where there is a run down, because a
+                      board nothing continues past has no output to
+                      report. */}
+                  <span className="fe-lab">Leaving the board</span>
+                  <div className="fe-msdb-at">
+                    {msdbOut == null
+                      ? <span className="fe-msdb-none">No cable onward</span>
+                      : msdbOut.pct == null
+                        ? <span className="fe-msdb-none">Run the levels check</span>
+                        : (
+                          <>
+                            <strong>{msdbOut.pct.toFixed(2)}%</strong>
+                            {msdbOut.downPct > 0 && (
+                              <span className="hint">
+                                {" "}including {msdbOut.downPct.toFixed(2)}% down to the ground
+                              </span>
+                            )}
+                          </>
+                        )}
                   </div>
                 </div>
               </div>

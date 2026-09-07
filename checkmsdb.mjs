@@ -11,7 +11,7 @@
 import { readFileSync } from "node:fs";
 import {
   FLOORS, apartmentLoad, msdbLoad, apartmentLevels, worstApartment, msdbText,
-  flatsFromPlots, servedFlats, isFlatType, shortType, riserDrop,
+  flatsFromPlots, servedFlats, isFlatType, shortType, riserDrop, outputDrop,
   assumedMeters, msdbSupply, withAssumedMeters,
 } from "./src/features/gis/msdb.js";
 import { circuitsFrom, circuitReport } from "./src/features/gis/electric.js";
@@ -1043,6 +1043,77 @@ const served = (b) => servedFlats(b, flats);
   /* Matched by the id the build stamps, not by position alone. */
   if (!/Number\(f\.Feature_ID\) === Number\(stamped\)/.test(canvas)) {
     fail("the stop is matched to its board by position only");
+  }
+}
+
+// 25. Two vertical runs, not one.
+//
+//     A board on the fourth floor is reached by a cable running UP to
+//     it, and the feeder that carries on to plots elsewhere runs back
+//     DOWN to ground before it goes anywhere. Not the same length: the
+//     outgoing cable may drop a different shaft.
+{
+  const cable = { Loop_Impedance_Ohm: 0.9785, Volt_Drop_Base: 3094 };
+  const at = { ohms: 0.20, pct: 4.42 };
+  const both = board({ MSDB_Riser_M: 15, MSDB_Down_M: 15 });
+  const flatsOnly = board({ MSDB_Riser_M: 15 });
+
+  /* Up carries EVERYTHING the board draws: its flats and whatever is
+     fed onward through it. */
+  const atBoard = riserDrop(both, { at, cable, kva: 62 });
+  if (!(atBoard.pct > at.pct)) fail("the run up costs nothing");
+
+  /* Down carries ONLY what is downstream \u2014 the flats are taken off at
+     the board, and sizing this for them would size it for load that
+     never travels it. */
+  const leaving = outputDrop(both, { at: atBoard, cable, kva: 40 });
+  if (!leaving) fail("a board with a run down reports no output level");
+  else {
+    if (!(leaving.pct > atBoard.pct)) {
+      fail("the outgoing cable starts at the board's own figure, so the run "
+        + "back down to ground counts for nothing");
+    }
+    /* Carrying less costs less: the proof that the two runs are not
+       given the same load. */
+    const heavier = outputDrop(both, { at: atBoard, cable, kva: 62 });
+    if (!(heavier.pct > leaving.pct)) {
+      fail("the run down does not depend on the load through it");
+    }
+  }
+
+  /* ── The board's own figure does not move ──
+     The drop down affects what LEAVES the board, not the board. Its
+     flats hang off the board and are unaffected by a cable running away
+     from them. */
+  const withoutDown = riserDrop(flatsOnly, { at, cable, kva: 62 });
+  if (Math.abs(withoutDown.pct - atBoard.pct) > 1e-9) {
+    fail("recording a run back down changed the figure at the board, so "
+      + "every flat moved with it");
+  }
+
+  /* ── Nothing continues past it ──
+     A board at the end of the line has no cable going back to ground,
+     and a blank says that where a nought would claim a run of no
+     length. */
+  if (outputDrop(flatsOnly, { at: atBoard, cable, kva: 0 }) !== null) {
+    fail("a board with no run recorded reports an output level anyway");
+  }
+  if (outputDrop(board({ MSDB_Down_M: 0 }), { at: atBoard, cable, kva: 0 }) === null) {
+    fail("a run explicitly recorded as zero is treated as no run at all");
+  }
+
+  /* And the field is asked for, under the name it was asked for. */
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/Ground to MSDB \(m\)/.test(editor)) {
+    fail("the run up is still headed Boundary to MSDB");
+  }
+  if (!/MSDB to ground \(m\)/.test(editor)) fail("there is no field for the run down");
+  if (!/MSDB_Down_M/.test(editor)) fail("the run down is not recorded");
+  /* Only the downstream load, read off what the levels found still
+     travelling past the stop. */
+  if (!/kvaOf\(through, voltageV\)/.test(editor)) {
+    fail("the run down is costed for a load worked out some other way than "
+      + "what the levels check found passing through");
   }
 }
 

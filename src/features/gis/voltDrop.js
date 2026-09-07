@@ -44,6 +44,16 @@ export function ampsOf(kva, voltageV) {
   return (Number(kva) || 0) * 1000 / (Math.sqrt(3) * v);
 }
 
+/* The other way round, for a figure that arrives in amps and has to be
+   costed as load. Written beside `ampsOf` so the two cannot drift: a
+   second copy of this arithmetic elsewhere is a second answer to the
+   same question. */
+export function kvaOf(amps, voltageV) {
+  const v = Number(voltageV);
+  if (!(v > 0)) return 0;
+  return (Number(amps) || 0) * Math.sqrt(3) * v / 1000;
+}
+
 export const VD_DEFAULTS = {
   unbalanced: false,
   maxLoopOhms: 0.28,

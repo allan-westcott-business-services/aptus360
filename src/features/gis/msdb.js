@@ -126,6 +126,52 @@ export function riserDrop(feature, {
   };
 }
 
+/* ── The run back down, and what leaves the board ──
+
+   A board on the fourth floor is reached by a cable running up to it,
+   and the feeder that carries on to plots elsewhere runs back DOWN to
+   ground before it goes anywhere. Two vertical runs, not one, and they
+   are not the same length: the outgoing cable may drop a different
+   shaft.
+
+   ── Which carries what ──
+
+   The run UP carries everything the board draws: its own flats and
+   whatever is fed onward through it. The run DOWN carries only what is
+   downstream, because the flats are already taken off at the board.
+   Sizing the down-run for the flats as well would be sizing it for load
+   that never travels it.
+
+   ── And the board's own figure does not move ──
+
+   The drop down affects what LEAVES the board, not the board. Its flats
+   hang off the board and are unaffected by a cable that runs away from
+   them.
+
+   Null where the board records no run down. A board nothing continues
+   past has no cable going back to ground, and an empty field says that
+   where a nought would claim a run of no length. */
+export function outputDrop(feature, {
+  at = null,
+  cable = null,
+  kva = 0,
+  voltageV = 400,
+} = {}) {
+  const raw = feature?.Attributes?.MSDB_Down_M;
+  if (raw == null || raw === "") return null;
+  const lengthM = Number(raw) || 0;
+  const tail = serviceVoltDrop({ cable, lengthM, kva, voltageV });
+  if (!at) return { ohms: null, pct: null, lengthM, missingSpec: tail.missingSpec };
+  return {
+    lengthM,
+    missingSpec: tail.missingSpec,
+    ohms: (Number(at.ohms) || 0) + tail.ohms,
+    pct: (Number(at.pct) || 0) + tail.pct,
+    downOhms: tail.ohms,
+    downPct: tail.pct,
+  };
+}
+
 /* ── The level at a dwelling ──
 
    The board's own figure plus that dwelling's tail, which is exactly

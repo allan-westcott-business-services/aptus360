@@ -2552,6 +2552,34 @@ future role either.
     **A message that names a cause is a claim, and a wrong one sends
     somebody to fix a table that was never broken.**
 
+**Two vertical runs, not one.** `GROUND TO MSDB` is the cable running UP
+to a board on the fourth floor; `MSDB TO GROUND` is the separate run
+back DOWN that the outgoing feeder takes before it goes anywhere. Not
+the same length — the outgoing cable may drop a different shaft.
+
+**They carry different loads.** The run up carries everything the board
+draws: its own flats AND whatever is fed onward through it. The run down
+carries only what is downstream, because the flats are taken off at the
+board — costing it for them would size it for load that never travels
+it. The downstream figure is `ampsThrough` on the stop's own levels
+figure, converted back with `kvaOf`, which is written beside `ampsOf` so
+the two cannot drift.
+
+**The board's own figure does not move.** The drop down affects what
+LEAVES the board. Its flats hang off the board and are unaffected by a
+cable running away from them.
+
+**Blank, not zero, where nothing continues past.** A board at the end of
+the line has no cable back to ground, and an empty field says that where
+a nought would claim a run of no length. A run recorded AS zero is still
+a run and is treated as one.
+
+Measured: boundary 4.42% → board 7.30% (15 m up, 62 kVA) → outgoing
+cable starts at 9.15% (15 m down, 40 kVA).
+
+**Two boards on one floor** need no field: the horizontal cable between
+them is drawn on the canvas and measured there.
+
 **The riser is part of the level.** The drawing stops at the boundary; a
 board on the fourth floor is fifteen metres further on, up a riser
 nobody has drawn and nobody can. `MSDB_Riser_M` carries the boundary

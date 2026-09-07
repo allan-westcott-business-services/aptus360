@@ -156,6 +156,7 @@ caught a fault that had already shipped at least once.
 | `node checkinherit.mjs` | A drawn cable takes the circuit it was drawn from |
 | `node checktwostations.mjs` | Each meter says which substation and way feeds it |
 | `node checkroutepair.mjs` | Routing a supply asks which pair, and keeps the other |
+| `node checkdeletekey.mjs` | Delete removes the selection, live and not stale |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
@@ -3047,6 +3048,28 @@ service and LSZH cable to somebody sizing a run at eleven kilovolts.
     rounds.** Each fix was right and none of them was sufficient,
     because I confirmed the gate I had just changed rather than listing
     every gate the list passes through.
+
+**Delete removes the selection.** Delete or Backspace, through the same
+`removeSelected` the button uses — a shortcut that skipped the
+plot-marker warning or the service cascade would delete a service nobody
+picked. Never while typing, since Delete and Backspace are how a field
+is edited.
+
+**Read through a ref, not the closure.** That key listener is bound once
+per change of `features`, so everything it closes over is as it was
+then. The Escape handlers beside it have the same shape and mostly
+survive it because a drawing reloads often — but a SELECTION changes on
+every click, and deleting whatever was selected when the drawing last
+loaded is the worst possible way to be wrong. `liveSelected` is written
+on every render.
+
+`preventDefault` fires only when something will actually be deleted:
+Backspace on a page with no selection is the browser's Back on some
+setups, and swallowing it silently would be its own surprise.
+
+And `removeSelected` takes a list only when it IS a list — an `onClick`
+hands it a MouseEvent, and the button and the key reach the same code by
+different doors.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

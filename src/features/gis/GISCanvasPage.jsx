@@ -21071,7 +21071,18 @@ export default function GISCanvasPage() {
     setTimeout(() => setStatus(""), 5000);
   }
 
-  async function removeSelected() {
+  /* What is selected right now, for the keyboard shortcut. The listener
+     it is read from is bound once per change of `features` and would
+     otherwise act on a selection from whenever that last happened. */
+  const liveSelected = useRef([]);
+  liveSelected.current = selected;
+
+  async function removeSelected(only = null) {
+    /* An onClick hands this a MouseEvent, which is not a selection.
+       Taken only when it is a list of ids, so the button and the key
+       reach the same code by different doors without one of them
+       arriving with the door handle in its hand. */
+    const selected = Array.isArray(only) ? only : liveSelected.current;
     if (!selected.length) return;
     const withPlots = features.filter((f) => selected.includes(f.Feature_ID) && f.Plot_ID);
     if (withPlots.length && !window.confirm(
@@ -21138,6 +21149,43 @@ export default function GISCanvasPage() {
       if (!typing && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "y") {
         e.preventDefault();
         runRedo(1);
+        return;
+      }
+
+      /* ── Delete removes what is selected ──
+
+         Where hands already go for it. `removeSelected` is the same
+         path the button uses, so the plot-marker warning and the
+         service cascade are asked exactly as they are on a click \u2014 a
+         keyboard shortcut that skipped either would delete a service
+         nobody picked.
+
+         Not while typing: Delete and Backspace are how a field is
+         edited, and taking them would make the notes box unusable.
+         Backspace as well as Delete, because a Mac keyboard's large
+         key is Backspace and reaching for it is the same gesture.
+
+         Nothing happens with nothing selected, and `preventDefault`
+         only where something will \u2014 Backspace on a page with no
+         selection is the browser's Back on some setups, and swallowing
+         it silently would be its own surprise. */
+      if (!typing && (e.key === "Delete" || e.key === "Backspace")) {
+        /* ── Read through a ref, not the closure ──
+
+           This listener is bound once per change of `features`, so
+           everything it closes over is as it was then. That is already
+           true of the Escape handlers below and mostly survives because
+           a drawing reloads often \u2014 but a selection changes on every
+           click, and deleting whatever was selected the last time the
+           drawing loaded is the worst possible way to be wrong about
+           this.
+
+           `liveSelected` is written on every render, so the key reads
+           what is on screen now. */
+        const now = liveSelected.current;
+        if (!now.length) return;
+        e.preventDefault();
+        removeSelected(now);
         return;
       }
 

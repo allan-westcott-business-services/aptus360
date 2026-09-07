@@ -303,6 +303,37 @@ const names = (r) => r.list.map((c) => cableMenuName(c, types));
   }
 }
 
+/* ── A default cable has to suit the run it is stamped on ──
+
+   One scope field, `Default_Main_Cable_Size_ID`, serves both `elec_main`
+   and `elec_hv`. A scheme whose default main is an HV cable stamped
+   that HV cable on every LV main somebody drew: on the reported drawing
+   the hand-drawn link between two boards came out as HV while every
+   built LV main beside it was ordinary LV cable.
+
+   The same rule the dropdown applies. Where the default does not suit,
+   nothing is stamped — an empty size is a question the panel already
+   asks plainly, and the wrong cable is a wrong answer nobody is
+   prompted to check. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  if (!/const wantHv = lineTypeKey === "elec_hv";/.test(canvas)) {
+    fail("a drawn cable takes the scheme's default whatever voltage it is, "
+      + "so an HV default lands on every LV main");
+  }
+  if (!/if \(rating != null && \(Number\(rating\) === 2\) !== wantHv\) return \{\};/
+    .test(canvas)) {
+    fail("the default is not checked against the run's own voltage");
+  }
+  /* A catalogue that has never had the column filled in would otherwise
+     stamp nothing on anything, which is a worse day than a wrong size. */
+  if (!/No rating recorded is not a reason to refuse/.test(canvas)) {
+    fail("a cable with no voltage recorded is refused as a default, so a "
+      + "catalogue with an empty column stamps nothing at all");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Cable menus behave (one rule, right usage, name order).");
 process.exit(bad ? 1 : 0);

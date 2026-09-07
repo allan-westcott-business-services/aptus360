@@ -3215,6 +3215,25 @@ On the reported drawing: 9 m + 22.7 m + 9 m = **0.831%** at 6.6 kVA.
     nothing else may stand in for it. **Adding a part changed what "the
     first part" means**, and nothing about the change said so.
 
+93. **One default field serving two voltages.** `Default_Main_Cable_Size_ID`
+    on the scope is stamped on every hand-drawn electric main — and it
+    serves both `elec_main` and `elec_hv`. A scheme whose default is an
+    HV cable put that HV cable on every LV main somebody drew.
+
+    On the reported drawing the hand-drawn link between two boards came
+    out carrying cable 55, the same size the HV routes use, while all
+    eight built LV mains beside it carried cable 1. The build works its
+    own size out and never consults the default, which is why only
+    hand-drawn runs were affected and why it went unnoticed.
+
+    The default is now checked against the run's own voltage, the same
+    rule the dropdown applies. Where it does not suit, **nothing is
+    stamped**: an empty size is a question the panel already asks
+    plainly, and the wrong cable is a wrong answer nobody is prompted to
+    check. A cable with no rating recorded is still allowed, because a
+    catalogue with an empty column stamping nothing on anything is a
+    worse day than a wrong size.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

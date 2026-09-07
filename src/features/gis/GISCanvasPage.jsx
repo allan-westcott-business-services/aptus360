@@ -3428,7 +3428,36 @@ export default function GISCanvasPage() {
       const id = isService
         ? scope.Default_Service_Cable_Size_ID
         : scope.Default_Main_Cable_Size_ID;
-      return id != null ? { VD_Cable_Size_ID: Number(id) } : {};
+      if (id == null) return {};
+
+      /* ── The default has to suit the run it is stamped on ──
+
+         One scope field serves both `elec_main` and `elec_hv`, so a
+         scheme whose default main is an HV cable stamps that HV cable
+         on every LV main somebody draws. On the reported drawing the
+         hand-drawn link between two boards came out as HV while every
+         built LV main beside it was ordinary LV cable.
+
+         The same rule the dropdown applies: an HV run takes HV cable,
+         an LV run takes LV. Where the default does not suit, nothing is
+         stamped \u2014 an empty size is a question the panel already asks
+         plainly, and the wrong cable is a wrong answer nobody is
+         prompted to check.
+
+         Read by voltage rating id, not by name: one column, one
+         comparison, no second table to be missing. */
+      const wantHv = lineTypeKey === "elec_hv";
+      const size = (lookups?.cableSizes || [])
+        .find((c) => Number(c.Cable_Size_ID) === Number(id));
+      const type = (lookups?.cableTypes || [])
+        .find((x) => Number(x.Cable_Type_ID) === Number(size?.Cable_Type_ID));
+      const rating = type?.Voltage_Rating_ID;
+      /* No rating recorded is not a reason to refuse: a catalogue that
+         has never had the column filled in would otherwise stamp
+         nothing on anything, which is a worse day than a wrong size. */
+      if (rating != null && (Number(rating) === 2) !== wantHv) return {};
+
+      return { VD_Cable_Size_ID: Number(id) };
     }
     const size = isService ? scope.Default_Service_Size : scope.Default_Main_Size;
     return withPipeId(layerKey, size ? { Size: size } : floor);

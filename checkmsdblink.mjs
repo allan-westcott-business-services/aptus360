@@ -319,11 +319,27 @@ const link = f.find((x) => x.Feature_ID === 47622);
   if (!/m\.index === term\.index \|\| sameSpot\(m, term\)/.test(canvas)) {
     fail("the position test is worked out and not used");
   }
-  /* At the distance somebody would call the same place. Two genuine
-     stops within a metre and a half of each other on one feeder is not
-     a design. */
-  if (!/\) <= 1\.5;/.test(canvas)) {
-    fail("the same-place distance is not the one this was written for");
+
+  /* ── And ACROSS parts, which is where it actually showed ──
+
+     `seen` keyed on the exact centimetre, which dedupes a mark two
+     parts found at the same NODE and nothing else. A part rooted at a
+     board walks its own trench with its own numbering, so its far end
+     and the trunk's end-of-line land near one cable end without being
+     the same point: 0.88 m apart on one drawing, 2.39 m on the next.
+     Raising a within-part threshold could never have fixed it. */
+  if (/const key = `\$\{Math\.round\(m\.point\[0\] \* 100\)\}/.test(canvas)) {
+    fail("stops are deduped across parts by an exact position key, so two "
+      + "marks a metre apart are both written");
+  }
+  if (!/walked\.some\(\(w\) => Math\.hypot\(w\.point\[0\] - m\.point\[0\]/.test(canvas)) {
+    fail("nothing compares a stop against the ones already placed");
+  }
+  /* Two stops within two and a half metres on one circuit is not a
+     design: a span is tens of metres. Wide enough for both reported
+     gaps, far short of anything real. */
+  if (!/\) <= 2\.5\)\) continue;/.test(canvas)) {
+    fail("the across-parts distance is not the one this was written for");
   }
 }
 

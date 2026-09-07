@@ -3259,8 +3259,23 @@ On the reported drawing: 9 m + 22.7 m + 9 m = **0.831%** at 6.6 kVA.
     own node numbering, so the two landed 0.88 m apart and both were
     kept — B4 and B5 on top of each other on the reported drawing.
 
-    Deduped by position as well now, at 1.5 m: two genuine stops that
-    close together on one feeder is not a design.
+    Deduped by position within a part — and that was not where it
+    showed. `seen`, the ACROSS-parts test, keyed on the exact
+    centimetre, which dedupes a mark two parts found at the same NODE
+    and nothing else. A part rooted at a board walks its own trench with
+    its own numbering, so its far end and the trunk's end-of-line landed
+    near one cable end without being the same point: **0.88 m apart on
+    one drawing, 2.39 m on the next.** Raising a within-part threshold
+    could never have fixed it, and my first attempt did exactly that.
+
+    Both tests are by distance now, the across-parts one at 2.5 m. Two
+    stops that close together on one circuit is not a design: a span is
+    tens of metres.
+
+    **It was never only about boards.** On the same drawing A3 and A6
+    are 2.36 m apart on circuit 1, which has no MSDB — and only A6 has a
+    cable ending on it. The duplication predates the link work; the
+    board part just made it happen often enough to notice.
 
 **Service joints are a different feature.** `autoLayServices` /
 `layServicesThenTee` place them, and neither knows anything about parts

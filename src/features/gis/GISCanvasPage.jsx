@@ -15949,7 +15949,6 @@ export default function GISCanvasPage() {
            once. The box itself is a manual point the maintenance
            below adopts, so the mark lands on it rather than making a
            twin beside it. */
-        const seen = new Set();
         const walked = [];
         /* ── A part may only mark nodes on the cable it lays ──
 
@@ -16012,9 +16011,24 @@ export default function GISCanvasPage() {
           for (const i of orderNodesFromRoot(pt.model, marks.map((m) => m.index))) {
             const m = byIndex.get(i);
             if (!m) continue;
-            const key = `${Math.round(m.point[0] * 100)},${Math.round(m.point[1] * 100)}`;
-            if (seen.has(key)) continue;
-            seen.add(key);
+            /* ── One stop per place, across parts as well ──
+
+               `seen` keyed on the exact centimetre, which dedupes a
+               mark two parts found at the SAME node and nothing else.
+
+               A part rooted at a board walks its own trench with its
+               own node numbering, so its far end and the trunk's
+               end-of-line land near the same cable end without being
+               the same point: 0.88 m apart on one drawing, 2.39 m on
+               the next. Keyed exactly, both were written, and the
+               drawing showed B4 and B5 on top of each other.
+
+               By distance instead. Two stops within two and a half
+               metres of one another on one circuit is not a design \u2014
+               a span is tens of metres, and the fittings this numbers
+               are metres apart at their closest. */
+            if (walked.some((w) => Math.hypot(w.point[0] - m.point[0],
+              w.point[1] - m.point[1]) <= 2.5)) continue;
             walked.push(m);
           }
         }

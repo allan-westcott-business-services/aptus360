@@ -11540,10 +11540,22 @@ export default function GISCanvasPage() {
     const label = role === "substation" ? `Substation ${count}`
       : role === "governor" ? `Gas Governor ${count}`
         : isValve ? `SV ${count}`
-          /* Numbered like the others once there can be several. The
-             first keeps the name every existing drawing has, so
-             nothing that reads "Electric POC" by label breaks. */
-          : count === 1 ? `${utilityName} POC` : `${utilityName} POC ${count}`;
+          /* ── A board is named by whoever places it ──
+
+             Everything else here has a name that means something the
+             moment it is placed: a substation is Substation 2, a
+             service valve is SV 7. A board is "the one in core B's
+             riser", which nothing in this function knows.
+
+             Left blank rather than given a name somebody has to notice
+             is wrong. It fell through to the POC branch and came out
+             called "Electric POC 2", which is not merely unhelpful \u2014 it
+             is the name of a different kind of thing. */
+          : role === "msdb" ? ""
+            /* Numbered like the others once there can be several. The
+               first keeps the name every existing drawing has, so
+               nothing that reads "Electric POC" by label breaks. */
+            : count === 1 ? `${utilityName} POC` : `${utilityName} POC ${count}`;
 
     try {
       await addFeature({
@@ -27120,7 +27132,21 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 /* A section heading inside the table: the trunk, then each output. Quiet
    enough to read as a divider rather than as another leg. */
 /* ── The MSDB panel ── */
+/* ── Room to breathe in the board's panel ──
+
+   The shared fe-row rule sets a horizontal gap and nothing vertical, so
+   rows of fields sat directly against one another. That is tolerable in
+   a panel of three or four; this one has a location, a floor, two
+   riser lengths, two readouts, a tail cable and a table, and stacked
+   tight they read as one block of boxes rather than as separate
+   questions.
+
+   Spaced here rather than on fe-row itself: every other editor in the
+   app uses that class and none of them asked for this. */
 .fe-msdb { margin: 10px 0 0; }
+.fe-msdb > .fld, .fe-msdb > .fe-row { margin-bottom: 14px; }
+.fe-msdb > .fe-row > .fld { margin-bottom: 0; }
+.fe-msdb label, .fe-msdb .fe-lab { display: block; margin-bottom: 4px; }
 .fe-msdb-h { display: flex; align-items: center; gap: 10px; margin: 12px 0 6px; }
 .fe-msdb-h .hint { margin-right: auto; }
 .fe-msdb-t { width: 100%; border-collapse: collapse; font-size: 12.5px; }

@@ -1470,6 +1470,22 @@ export default function FeatureEditor({
               draws nothing. */}
           {isMsdb && (
             <div className="fe-msdb">
+              {/* ── The board's name, first ──
+
+                  What it is called is the first thing somebody wants to
+                  set and the first thing they read, so it sits above the
+                  rest rather than below the table \u2014 the shared Label
+                  field is at the foot of the panel, past forty flats.
+
+                  The same `Label` the rest of the editor writes, not a
+                  second name for one thing. */}
+              <div className="fld">
+                <label htmlFor="fe-msdb-label">Label</label>
+                <input id="fe-msdb-label" type="text" placeholder="MSDB"
+                  value={f.Label ?? ""}
+                  onChange={(e) => setF((p) => ({ ...p, Label: e.target.value }))} />
+              </div>
+
               <div className="fld">
                 <label htmlFor="fe-msdb-loc">Location</label>
                 <input id="fe-msdb-loc" type="text"
@@ -2116,11 +2132,17 @@ export default function FeatureEditor({
             </div>
           ) : (
             <>
-              <div className="fld">
-                <label htmlFor="fe-label">Label</label>
-                <input id="fe-label" value={f.Label}
-                  onChange={(e) => setF((p) => ({ ...p, Label: e.target.value }))} />
-              </div>
+              {/* A board has its own Label field at the top of its
+                  panel, where it is the first thing read rather than
+                  the last. Two boxes writing one value is two places to
+                  wonder which won. */}
+              {!isMsdb && (
+                <div className="fld">
+                  <label htmlFor="fe-label">Label</label>
+                  <input id="fe-label" value={f.Label}
+                    onChange={(e) => setF((p) => ({ ...p, Label: e.target.value }))} />
+                </div>
+              )}
 
               {/* Not on a span node.
 

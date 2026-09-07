@@ -1117,6 +1117,40 @@ const served = (b) => servedFlats(b, flats);
   }
 }
 
+// 26. The board's own name, first and unnamed by default.
+{
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  /* What it is called is the first thing somebody sets and the first
+     thing they read. The shared Label field sits at the FOOT of the
+     panel, past forty flats. */
+  const labelAt = editor.indexOf('htmlFor="fe-msdb-label"');
+  const locAt = editor.indexOf('htmlFor="fe-msdb-loc"');
+  if (labelAt < 0) fail("the board has no Label field of its own");
+  else if (!(labelAt < locAt)) fail("the Label field is below Location");
+
+  /* And one box for one value: the shared field is hidden for a board,
+     because two boxes writing one thing is two places to wonder which
+     won. */
+  if (!/\{!isMsdb && \(/.test(editor)) {
+    fail("a board shows two Label fields writing the same value");
+  }
+  /* The same Label the rest of the editor writes, not a second name. */
+  if (!/id="fe-msdb-label"[^]{0,200}Label: e\.target\.value/.test(editor)) {
+    fail("the board's Label field writes somewhere other than Label");
+  }
+
+  /* ── No default name ──
+     It fell through to the POC branch and came out called "Electric
+     POC 2" \u2014 not merely unhelpful, but the name of a different kind of
+     thing. */
+  if (!/role === "msdb" \? ""/.test(canvas)) {
+    fail("a placed board is given a default name, which somebody has to "
+      + "notice is wrong");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The MSDB behaves (flats on a table, load and levels derived).");
 process.exit(bad ? 1 : 0);

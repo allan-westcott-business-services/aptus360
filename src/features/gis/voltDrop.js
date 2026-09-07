@@ -611,16 +611,69 @@ export function levelsForParts(parts = [], opts = {}) {
     }
   }
 
+  /* ── Where a board's part begins ──
+
+     A link box's output starts from the figure at its box. A part
+     rooted at the far side of a board-to-board link starts from the
+     figure at the FIRST board, carried across the link.
+
+     Three things between the two boards, and each is on the cable:
+       the first board's run back down to ground,
+       the link itself, drawn through the building,
+       the second board's run up from ground.
+
+     `atBoard` is filled from the trunk's own legs, so the first board
+     must have been reached by the dig \u2014 which it is, that being what
+     makes it first. */
+  const atBoard = new Map();
+  for (const [stopId, fig] of out) {
+    atBoard.set(Number(stopId), fig);
+  }
+  const boardFigure = (board) => {
+    if (!board) return null;
+    const at = board.Attributes?.Span_Anchor ?? board.Geometry?.[0];
+    if (!Array.isArray(at)) return null;
+    /* The stop standing ON the board: the levels are keyed on stops and
+       a board is not one, the same lookup the editor makes. */
+    let best = null;
+    for (const [stopId, fig] of atBoard) {
+      const f = (opts.features || []).find((x) => Number(x.Feature_ID) === Number(stopId));
+      const p = f?.Attributes?.Span_Anchor ?? f?.Geometry?.[0];
+      if (!Array.isArray(p)) continue;
+      const d = Math.hypot(p[0] - at[0], p[1] - at[1]);
+      if (d <= 2 && (!best || d < best.d)) best = { d, fig };
+    }
+    return best?.fig ?? null;
+  };
+
   for (const part of parts) {
     if (part.error || part === trunk) continue;
-    const from = atBox.get(Number(part.box?.Feature_ID));
+    const from = atBox.get(Number(part.box?.Feature_ID))
+      ?? (part.fromBoard ? boardFigure(part.fromBoard) : null);
     /* No trunk figure — a box the trunk could not reach. The output is
        still reported, from the same baseline the circuit uses, rather
        than dropped: a missing row reads as a missing design. */
+    /* ── Across the link, before the second board's own walk ──
+
+       The figure at the first board is at the bottom of nothing: it is
+       the level where the dig reached it. Between there and the second
+       board's walk lie three lengths, and the caller works them out
+       because it holds the cable catalogue:
+
+         the first board's run back down to ground,
+         the link drawn through the building,
+         the second board's run up from ground.
+
+       `part.acrossLink` is that total, already costed for the load the
+       link carries \u2014 the second board's flats and everything beyond
+       it, never the first board's. */
+    const across = part.acrossLink;
     const start = from
       ? {
-        transformer: { Loop_Impedance_Ohm: from.ohms },
-        startPct: from.pct,
+        transformer: {
+          Loop_Impedance_Ohm: from.ohms + (Number(across?.ohms) || 0),
+        },
+        startPct: from.pct + (Number(across?.pct) || 0),
       }
       : {};
     for (const leg of part.legs || []) {

@@ -98,7 +98,8 @@ import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, servic
   spanTrace, orderNodesFromRoot, lvOrigin, lvOrigins,
   circuitTraceParts } from "./feeder.js";
 import { cumulativeToNode, serviceVoltDrop, VD_DEFAULTS, defaultFeederCable,
-  levelsForParts } from "./voltDrop.js";
+  levelsForParts, kvaOf,
+} from "./voltDrop.js";
 import {
   feederRenderPlan, offsetPolyline, circuitColours, circuitIdOf, feederColourAt,
 } from "./feederColour.js";
@@ -112,6 +113,7 @@ import PrintModal from "./PrintModal.jsx";
 import {
   withAssumedMeters, servedFlats, flatsFromPlots, apartmentLoad,
   apartmentLevels, worstApartment, riserDrop, stampLink, linkEnds, linkOrder,
+  msdbLoad,
 } from "./msdb.js";
 import { printView, drawnBounds } from "./printSheet.js";
 import { inLightingView } from "./lightingView.js";
@@ -1725,8 +1727,33 @@ export default function GISCanvasPage() {
       /* In parts, so a link box's outputs are traced as the separate
          cables they are. Without a box this is one part and behaves
          exactly as the single trace did. */
+      /* ── Board-to-board links, for the levels as for the build ──
+
+         The second board's dig is an island: nothing reaches it from
+         the source, so no leg ends there and it has no figure at all.
+         A part rooted at it gives it one, and the chain across the link
+         is applied below.
+
+         Worked out the same way the build works it out \u2014 nearer to the
+         source is first \u2014 because the two must agree about which board
+         is fed from which. */
+      const msdbLinks = (() => {
+        const boards = src.filter((x) => x.Feature_Role === "msdb"
+          && Number(x.Attributes?.Circuit_ID) === Number(c.id));
+        if (boards.length < 2) return [];
+        const far = distancesFrom(src, origin.Feature_ID);
+        const out = [];
+        for (const line of src) {
+          const ends = linkEnds(line, boards);
+          if (!ends) continue;
+          const order = linkOrder(ends, (b) => far.get(Number(b.Feature_ID)));
+          if (order) out.push({ ...order, link: line });
+        }
+        return out;
+      })();
+
       const parts = circuitTraceParts(src, origin.Feature_ID, {
-        lineTypes, circuitId: c.id,
+        lineTypes, circuitId: c.id, msdbLinks,
         plotById: (id) => plotList.find((pl) => pl.plot_id === id),
         /* Non-residential supplies bring their own kVA, having no plot
            to hold one. Passed everywhere a feeder model is built, because
@@ -1758,7 +1785,71 @@ export default function GISCanvasPage() {
 
       /* Every part's legs, with each output starting from the trunk's
          figures at the box. */
+      /* ── What the level costs to get from one board to the other ──
+
+         Three lengths, all on the cable between them: the first board's
+         run back DOWN to ground, the link drawn through the building,
+         and the second board's run UP from ground.
+
+         Costed for the load the link carries \u2014 the second board's flats
+         and everything beyond it. The first board's flats come off at
+         the first board and never travel this.
+
+         Written onto the part here, because this is where the cable
+         catalogue and the boards' own figures are both to hand. */
+      for (const part of parts) {
+        if (!part.fromBoard || !part.board) continue;
+        const tail = (id) => cables.find((x) =>
+          Number(x.Cable_Size_ID) === Number(id)) ?? null;
+        const linkCable = tail(part.link?.Attributes?.VD_Cable_Size_ID
+          ?? part.link?.Attributes?.Manual_VD_Cable_Size_ID);
+        /* Each board's own tail cable for its own vertical run, falling
+           back to whatever the link is drawn in. */
+        const upCable = tail(part.fromBoard.Attributes?.MSDB_Tail_Cable_ID)
+          ?? linkCable;
+        const downCable = tail(part.board.Attributes?.MSDB_Tail_Cable_ID) ?? linkCable;
+        const volts = Number(vs?.Nominal_Voltage_V) || 400;
+        /* Everything the second board carries: its own flats, plus
+           whatever its walk reaches beyond. */
+        const kva = kvaOf(Number(part.model?.cumKva?.[part.model?.S]) || 0, volts)
+          || msdbLoad(part.board, servedFlats(part.board, flatsFromPlots({
+            plotList,
+            configs: lookups?.propertyConfigs || [],
+            propertyTypes: lookups?.propertyTypes || [],
+          })), lookups?.houseTypeConsumption || []).kva;
+
+        /* ── The three lengths, in the order the cable runs them ──
+
+           The figure at the first board's stop is at GROUND: it is where
+           the dig reached. From there the cable goes UP that board's
+           riser to the board itself, ALONG the link through the
+           building, and then DOWN the second board's run to the ground
+           its own dig starts from.
+
+           So it is the FIRST board's riser and the SECOND board's down
+           \u2014 the reverse was tried first and read both as nought on the
+           reported drawing, because each board records only the one it
+           has. Getting it backwards costs nothing visible when the
+           other two fields are blank, which is exactly why it needed
+           checking against a drawing rather than reasoning. */
+        const legs = [
+          [Number(part.fromBoard.Attributes?.MSDB_Riser_M) || 0, upCable],
+          [lineLength(part.link?.Geometry || []), linkCable],
+          [Number(part.board.Attributes?.MSDB_Down_M) || 0, downCable],
+        ];
+        let ohms = 0;
+        let pct = 0;
+        for (const [lengthM, cable] of legs) {
+          if (!(lengthM > 0)) continue;
+          const d = serviceVoltDrop({ cable, lengthM, kva, voltageV: volts });
+          ohms += d.ohms;
+          pct += d.pct;
+        }
+        part.acrossLink = { ohms, pct };
+      }
+
       const figures = levelsForParts(parts, {
+        features: src,
         base: {
           ...ctx,
           /* This circuit's own origin, not the site's first — the

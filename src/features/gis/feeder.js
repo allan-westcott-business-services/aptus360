@@ -1614,7 +1614,15 @@ export function circuitTraceParts(features = [], originId, opts = {}) {
 
   if (!asg.boxes.length) {
     const r = spanTrace(features, originId, opts);
-    return r.error ? [{ error: r.error, via: "origin" }] : [{ ...r, via: "origin" }];
+    /* The link parts belong on this path too. A circuit with no link
+       box is the ordinary case, and it is where two boards in one
+       building sit \u2014 without this the second board's dig is an island
+       with no leg ending on it, so it has no figure at all.
+
+       The same omission was made on the build path and found the same
+       way: one early return added later than the code below it. */
+    const head = r.error ? { error: r.error, via: "origin" } : { ...r, via: "origin" };
+    return [head, ...msdbLinkParts(features, opts)];
   }
 
   /* ── Two boxes in series is a design error, not a shape to render ──

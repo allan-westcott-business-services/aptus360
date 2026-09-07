@@ -3303,6 +3303,27 @@ after the feeder is built.
     reached it; the levels assumed a leg ended on it; the marks assumed
     somebody else had already numbered it.
 
+97. **Every figure came from a leg's END.** That is right for a trunk
+    and for a link box output: their roots are already stops that
+    something else arrived at, and the arriving leg set the figure.
+
+    A part rooted at the far side of a board-to-board link has no such
+    leg — nothing arrives there, which is the whole point. So even with
+    a feeder point standing on MSDB 2, **no figure was ever written
+    against it**, and every flat on it showed a dash.
+
+    The board's own stop now takes the part's STARTING figure: the first
+    board's level carried across the link. Measured end to end with the
+    stop the build places: MSDB 1 at 3.500%, MSDB 2 at **4.331%** —
+    0.831% for the riser, the link and the run back down.
+
+    **Four rounds on one board, four different things that assumed
+    something arrives from upstream:** the trench, a leg, a mark, and
+    now a figure. Each was necessary; none was sufficient. When a new
+    kind of thing enters a model that has only ever had one shape, the
+    question to ask is not "does this work" but "what does everything
+    here assume about how a part begins".
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

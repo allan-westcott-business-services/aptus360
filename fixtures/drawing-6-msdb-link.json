@@ -661,8 +661,8 @@
       "Feature_Type": "point",
       "Geometry": [
         [
-          194.71838956692764,
-          79.14619710816442
+          194.4238084452334,
+          79.36888178916168
         ]
       ],
       "Label": "13",
@@ -843,6 +843,10 @@
       "Attributes": {
         "Circuit_ID": 2,
         "Circuit_Name": "Circuit 2",
+        "Cutout_Offset": [
+          1.7305286686842576,
+          -0.10937328398667591
+        ],
         "Meter_Utility": "Electric",
         "Circuit_Letter": "B",
         "Circuit_Origin_ID": 46907
@@ -885,15 +889,13 @@
           46911,
           46926,
           46927,
-          46946,
-          46953,
-          46997,
-          47052,
-          47626,
-          47627,
-          47628,
-          47631,
-          47632
+          47751,
+          47757,
+          47840,
+          47841,
+          47842,
+          47845,
+          47846
         ],
         "Length_m": 20.31,
         "Line_Type": "trench_main",
@@ -916,7 +918,10 @@
       ],
       "Label": "Electric POC 1",
       "Attributes": {
-        "Output": null
+        "Output": null,
+        "Output_V": 400,
+        "Source_Volt_Drop_Pct": 0.25,
+        "Source_Loop_Impedance_Ohm": 0.035
       },
       "Plot_ID": null,
       "Feature_Role": "poc"
@@ -947,8 +952,7 @@
         "Connects": [
           46903,
           47046,
-          47051,
-          47052
+          47755
         ],
         "Length_m": 5.7,
         "Line_Type": "trench_main",
@@ -981,10 +985,8 @@
           46902,
           46929,
           46930,
-          46948,
-          47051,
-          47052,
-          47638
+          47754,
+          47852
         ],
         "Length_m": 4.65,
         "Line_Type": "trench_main",
@@ -1007,6 +1009,7 @@
       ],
       "Label": "Substation 1",
       "Attributes": {
+        "Output_V": "400",
         "Way_Fuse_A": "200",
         "Way_Circuits": {
           "1": 2
@@ -1038,14 +1041,14 @@
         "Connects": [
           46907,
           46929,
-          46945,
-          46947,
-          47013,
-          47051,
-          47052,
           47618,
-          47638,
-          47639
+          47750,
+          47752,
+          47851,
+          47852,
+          47853,
+          47855,
+          47856
         ],
         "Length_m": 8.38,
         "Line_Type": "trench_main",
@@ -1070,8 +1073,8 @@
           82.68549328177983
         ],
         [
-          182.33441518094486,
-          83.50961577442921
+          185.2175771717918,
+          84.88799691828478
         ]
       ],
       "Label": "Mains Trench",
@@ -1081,12 +1084,10 @@
         "Connects": [
           46927,
           46928,
-          46951,
-          46952,
-          47012,
-          47015,
-          47052,
-          47627
+          47758,
+          47759,
+          47841,
+          47854
         ],
         "Length_m": 6.93,
         "Line_Type": "trench_main",
@@ -1167,13 +1168,12 @@
         "Connects": [
           46925,
           46926,
-          46954,
-          46999,
-          47003,
-          47626,
-          47629,
-          47630,
-          47633
+          47760,
+          47761,
+          47840,
+          47843,
+          47844,
+          47847
         ],
         "Length_m": 34.73,
         "Line_Type": "trench_main",
@@ -1213,15 +1213,12 @@
         "Connects": [
           46924,
           46926,
-          46954,
-          46955,
-          47003,
-          47006,
-          47626,
-          47629,
-          47630,
-          47633,
-          47637
+          47761,
+          47762,
+          47840,
+          47843,
+          47844,
+          47847
         ],
         "Length_m": 14.19,
         "Line_Type": "trench_main",
@@ -1259,18 +1256,15 @@
           46924,
           46925,
           46927,
-          46953,
-          46954,
-          46997,
-          47003,
-          47052,
-          47626,
-          47627,
-          47628,
-          47629,
-          47630,
-          47632,
-          47633
+          47757,
+          47761,
+          47840,
+          47841,
+          47842,
+          47843,
+          47844,
+          47846,
+          47847
         ],
         "Length_m": 6.57,
         "Line_Type": "trench_main",
@@ -1347,15 +1341,12 @@
           46899,
           46909,
           46926,
-          46952,
-          46953,
-          46997,
-          47012,
-          47052,
-          47626,
-          47627,
-          47628,
-          47632
+          47757,
+          47758,
+          47840,
+          47841,
+          47842,
+          47846
         ],
         "Length_m": 41.88,
         "Line_Type": "trench_main",
@@ -1372,8 +1363,8 @@
       "Feature_Type": "line",
       "Geometry": [
         [
-          182.33441518094486,
-          83.50961577442921
+          185.2175771717918,
+          84.88799691828478
         ],
         [
           185.97906297981106,
@@ -1394,12 +1385,11 @@
         "Size": null,
         "Connects": [
           46909,
-          46951,
-          47015,
-          47052,
-          47623
+          47623,
+          47759,
+          47854
         ],
-        "Length_m": 15.58,
+        "Length_m": 12.39,
         "Line_Type": "trench_main",
         "Build_Status": "planned",
         "Surface_Type": "unmade"
@@ -1446,13 +1436,13 @@
           46903,
           46908,
           46930,
-          46947,
-          46948,
-          47013,
-          47051,
-          47052,
           47618,
-          47638
+          47752,
+          47754,
+          47851,
+          47852,
+          47853,
+          47856
         ],
         "Length_m": 21.9,
         "Line_Type": "trench_main",
@@ -1508,13 +1498,9 @@
         "Connects": [
           46903,
           46929,
-          46948,
-          46950,
-          47024,
-          47051,
-          47052,
-          47638,
-          47641
+          47754,
+          47756,
+          47852
         ],
         "Length_m": 19.99,
         "Line_Type": "trench_main",
@@ -1523,385 +1509,6 @@
       },
       "Plot_ID": null,
       "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 46945,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          218.46109980513444,
-          77.33584156218375
-        ]
-      ],
-      "Label": "Point E0",
-      "Attributes": {
-        "Connects": [
-          46907,
-          46908,
-          47051,
-          47638,
-          47639
-        ],
-        "Span_Seq": 0,
-        "Span_Kind": "origin",
-        "Span_Label": "E0",
-        "Span_Anchor": [
-          218.46109980513444,
-          77.33584156218375
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "spannode"
-    },
-    {
-      "Feature_ID": 46946,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          162.14626048358434,
-          50.681480777691
-        ]
-      ],
-      "Label": "Point E0b",
-      "Attributes": {
-        "Connects": [
-          46899,
-          46911,
-          47052,
-          47628,
-          47631
-        ],
-        "Span_Seq": 0,
-        "Span_Kind": "origin",
-        "Span_Label": "E0b",
-        "Span_Anchor": [
-          162.14626048358434,
-          50.681480777691
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "spannode"
-    },
-    {
-      "Feature_ID": 46947,
-      "Project_ID": 6,
-      "Layer_Key": "trench",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          223.9804114881292,
-          83.64211398377176
-        ]
-      ],
-      "Label": "Point 1",
-      "Attributes": {
-        "Connects": [
-          46908,
-          46929,
-          47013,
-          47051,
-          47052,
-          47618,
-          47638
-        ],
-        "Span_Seq": 1,
-        "Span_Kind": "junction",
-        "Span_Label": "1",
-        "Span_Anchor": [
-          223.9804114881292,
-          83.64211398377176
-        ],
-        "VD_Cable_Size_ID": null,
-        "Manual_VD_Cable_Size_ID": 55
-      },
-      "Plot_ID": null,
-      "Feature_Role": "spannode"
-    },
-    {
-      "Feature_ID": 46948,
-      "Project_ID": 6,
-      "Layer_Key": "trench",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          238.7995948497677,
-          67.76290491062993
-        ]
-      ],
-      "Label": "Point 3",
-      "Attributes": {
-        "Connects": [
-          46903,
-          46929,
-          46930,
-          47051,
-          47052,
-          47638
-        ],
-        "Span_Seq": 3,
-        "Span_Kind": "junction",
-        "Span_Label": "3",
-        "Span_Anchor": [
-          238.7995948497677,
-          67.76290491062993
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "spannode"
-    },
-    {
-      "Feature_ID": 46949,
-      "Project_ID": 6,
-      "Layer_Key": "trench",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          252.17678343432777,
-          64.58844715300805
-        ]
-      ],
-      "Label": "Point 4",
-      "Attributes": {
-        "Connects": [],
-        "Span_Seq": 4,
-        "Span_Kind": "end",
-        "Span_Label": "4",
-        "Span_Anchor": [
-          250.572401110109,
-          63.33812137786157
-        ],
-        "VD_Cable_Size_ID": null,
-        "Manual_VD_Cable_Size_ID": 55
-      },
-      "Plot_ID": null,
-      "Feature_Role": "spannode"
-    },
-    {
-      "Feature_ID": 46950,
-      "Project_ID": 6,
-      "Layer_Key": "trench",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          227.52532943092257,
-          52.10517676931197
-        ]
-      ],
-      "Label": "Point 5",
-      "Attributes": {
-        "Connects": [
-          46930,
-          47024,
-          47638,
-          47641
-        ],
-        "Span_Seq": 5,
-        "Span_Kind": "end",
-        "Span_Label": "5",
-        "Span_Anchor": [
-          227.52532943092257,
-          52.10517676931197
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "spannode"
-    },
-    {
-      "Feature_ID": 46951,
-      "Project_ID": 6,
-      "Layer_Key": "trench",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          182.33441518094486,
-          83.50961577442921
-        ]
-      ],
-      "Label": "Point 8",
-      "Attributes": {
-        "Connects": [
-          46909,
-          46928,
-          47015,
-          47052
-        ],
-        "Span_Seq": 8,
-        "Span_Kind": "junction",
-        "Span_Label": "8",
-        "Span_Anchor": [
-          182.33441518094486,
-          83.50961577442921
-        ],
-        "VD_Cable_Size_ID": null,
-        "Manual_VD_Cable_Size_ID": 57
-      },
-      "Plot_ID": null,
-      "Feature_Role": "spannode"
-    },
-    {
-      "Feature_ID": 46952,
-      "Project_ID": 6,
-      "Layer_Key": "trench",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          175.989498749044,
-          80.132377426202
-        ]
-      ],
-      "Label": "Point 7",
-      "Attributes": {
-        "Connects": [
-          46909,
-          46927,
-          47012,
-          47052,
-          47627
-        ],
-        "Span_Seq": 7,
-        "Span_Kind": "junction",
-        "Span_Label": "7",
-        "Span_Anchor": [
-          175.989498749044,
-          80.132377426202
-        ],
-        "VD_Cable_Size_ID": null,
-        "Manual_VD_Cable_Size_ID": 57
-      },
-      "Plot_ID": null,
-      "Feature_Role": "spannode"
-    },
-    {
-      "Feature_ID": 46953,
-      "Project_ID": 6,
-      "Layer_Key": "trench",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          144.43280154126913,
-          55.1590431666863
-        ]
-      ],
-      "Label": "Point 6",
-      "Attributes": {
-        "Connects": [
-          46899,
-          46926,
-          46927,
-          46997,
-          47052,
-          47626,
-          47627,
-          47628,
-          47632
-        ],
-        "Span_Seq": 6,
-        "Span_Kind": "junction",
-        "Span_Label": "6",
-        "Span_Anchor": [
-          144.43280154126913,
-          55.1590431666863
-        ],
-        "VD_Cable_Size_ID": null,
-        "Manual_VD_Cable_Size_ID": 57
-      },
-      "Plot_ID": null,
-      "Feature_Role": "spannode"
-    },
-    {
-      "Feature_ID": 46954,
-      "Project_ID": 6,
-      "Layer_Key": "trench",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          142.320773297282,
-          48.940371649895866
-        ]
-      ],
-      "Label": "Point 10",
-      "Attributes": {
-        "Connects": [
-          46924,
-          46925,
-          46926,
-          47003,
-          47626,
-          47629,
-          47630,
-          47633
-        ],
-        "Span_Seq": 10,
-        "Span_Kind": "junction",
-        "Span_Label": "10",
-        "Span_Anchor": [
-          142.320773297282,
-          48.940371649895866
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "spannode"
-    },
-    {
-      "Feature_ID": 46955,
-      "Project_ID": 6,
-      "Layer_Key": "trench",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          155.758889398673,
-          44.37269981953051
-        ]
-      ],
-      "Label": "Point 11",
-      "Attributes": {
-        "Connects": [
-          46925,
-          47006,
-          47630,
-          47637
-        ],
-        "Span_Seq": 11,
-        "Span_Kind": "end",
-        "Span_Label": "11",
-        "Span_Anchor": [
-          155.758889398673,
-          44.37269981953051
-        ],
-        "VD_Cable_Size_ID": null,
-        "Manual_VD_Cable_Size_ID": 57
-      },
-      "Plot_ID": null,
-      "Feature_Role": "spannode"
-    },
-    {
-      "Feature_ID": 46956,
-      "Project_ID": 6,
-      "Layer_Key": "trench",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          109.29707778918448,
-          61.34636192843619
-        ]
-      ],
-      "Label": "Point 9",
-      "Attributes": {
-        "Connects": [],
-        "Span_Seq": 9,
-        "Span_Kind": "end",
-        "Span_Label": "9",
-        "Span_Anchor": [
-          109.44009078967277,
-          60.1166530661315
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "spannode"
     },
     {
       "Feature_ID": 46957,
@@ -1927,10 +1534,8 @@
         "Site": "On-site",
         "Connects": [
           46924,
-          46998,
-          47025,
-          47629,
-          47635
+          47843,
+          47849
         ],
         "Length_m": 9.31,
         "Line_Type": "trench_service",
@@ -1965,9 +1570,7 @@
         "Site": "On-site",
         "Connects": [
           46924,
-          47000,
-          47027,
-          47629
+          47843
         ],
         "Length_m": 2.95,
         "Line_Type": "trench_service",
@@ -2002,9 +1605,7 @@
         "Site": "On-site",
         "Connects": [
           46924,
-          47001,
-          47028,
-          47629
+          47843
         ],
         "Length_m": 10.25,
         "Line_Type": "trench_service",
@@ -2039,9 +1640,7 @@
         "Site": "On-site",
         "Connects": [
           46924,
-          47002,
-          47029,
-          47629
+          47843
         ],
         "Length_m": 7.48,
         "Line_Type": "trench_service",
@@ -2076,9 +1675,7 @@
         "Site": "On-site",
         "Connects": [
           46925,
-          47004,
-          47030,
-          47630
+          47844
         ],
         "Length_m": 7.78,
         "Line_Type": "trench_service",
@@ -2113,10 +1710,8 @@
         "Site": "On-site",
         "Connects": [
           46925,
-          47005,
-          47031,
-          47630,
-          47634
+          47844,
+          47848
         ],
         "Length_m": 3.3,
         "Line_Type": "trench_service",
@@ -2151,10 +1746,7 @@
         "Site": "On-site",
         "Connects": [
           46927,
-          47008,
-          47032,
-          47052,
-          47627
+          47841
         ],
         "Length_m": 2.24,
         "Line_Type": "trench_service",
@@ -2188,9 +1780,7 @@
       "Attributes": {
         "Site": "On-site",
         "Connects": [
-          46927,
-          47033,
-          47045
+          46927
         ],
         "Length_m": 2.76,
         "Line_Type": "trench_service",
@@ -2225,10 +1815,7 @@
         "Site": "On-site",
         "Connects": [
           46927,
-          47010,
-          47034,
-          47052,
-          47627
+          47841
         ],
         "Length_m": 2.44,
         "Line_Type": "trench_service",
@@ -2263,11 +1850,8 @@
         "Site": "On-site",
         "Connects": [
           46927,
-          47011,
-          47035,
-          47052,
-          47627,
-          47636
+          47841,
+          47850
         ],
         "Length_m": 2.55,
         "Line_Type": "trench_service",
@@ -2302,9 +1886,8 @@
         "Site": "On-site",
         "Connects": [
           46928,
-          47014,
-          47036,
-          47052
+          47854,
+          47859
         ],
         "Length_m": 2.89,
         "Line_Type": "trench_service",
@@ -2339,9 +1922,7 @@
         "Site": "On-site",
         "Connects": [
           46928,
-          47016,
-          47037,
-          47052
+          47854
         ],
         "Length_m": 2.86,
         "Line_Type": "trench_service",
@@ -2376,11 +1957,7 @@
         "Site": "On-site",
         "Connects": [
           46929,
-          47021,
-          47042,
-          47051,
-          47052,
-          47638
+          47852
         ],
         "Length_m": 5.53,
         "Line_Type": "trench_service",
@@ -2415,9 +1992,7 @@
         "Site": "On-site",
         "Connects": [
           46930,
-          47022,
-          47043,
-          47638
+          47852
         ],
         "Length_m": 9.1,
         "Line_Type": "trench_service",
@@ -2452,10 +2027,8 @@
         "Site": "On-site",
         "Connects": [
           46930,
-          47023,
-          47044,
-          47638,
-          47640
+          47852,
+          47858
         ],
         "Length_m": 9.72,
         "Line_Type": "trench_service",
@@ -2465,1330 +2038,6 @@
       },
       "Plot_ID": 55,
       "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 46997,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          144.43280154126913,
-          55.1590431666863
-        ]
-      ],
-      "Label": "Breech Joint",
-      "Attributes": {
-        "Ways_In": 2,
-        "Services": 0,
-        "Generated": true,
-        "Circuit_ID": 1,
-        "Joint_Code": "BRE",
-        "Joint_Type": "breech",
-        "Joint_Cables": [
-          46977,
-          46978,
-          46979
-        ],
-        "Joint_Reasons": [
-          "breech"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 46998,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          110.21858559030704,
-          59.852039429509105
-        ]
-      ],
-      "Label": "Service Joint",
-      "Attributes": {
-        "Ways_In": 1,
-        "Services": 1,
-        "Generated": true,
-        "Circuit_ID": 1,
-        "Joint_Code": "SVC",
-        "Joint_Type": "service",
-        "Joint_Cables": [
-          46980,
-          47025
-        ],
-        "Joint_Reasons": [
-          "service"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 46999,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          109.44009078967277,
-          60.1166530661315
-        ]
-      ],
-      "Label": "Bottle End",
-      "Attributes": {
-        "Ways_In": 1,
-        "Services": 0,
-        "Generated": true,
-        "Circuit_ID": 1,
-        "Joint_Code": "BTL",
-        "Joint_Type": "bottleend",
-        "Joint_Cables": [
-          46980
-        ],
-        "Joint_Reasons": [
-          "bottleend"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47000,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          116.93876990786165,
-          57.567820691513546
-        ]
-      ],
-      "Label": "Service Joint",
-      "Attributes": {
-        "Ways_In": 2,
-        "Services": 1,
-        "Generated": true,
-        "Circuit_ID": 1,
-        "Joint_Code": "SVC",
-        "Joint_Type": "service",
-        "Joint_Cables": [
-          46980,
-          47027
-        ],
-        "Joint_Reasons": [
-          "service"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47001,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          124.55420688391077,
-          54.97930183299427
-        ]
-      ],
-      "Label": "Service Joint",
-      "Attributes": {
-        "Ways_In": 2,
-        "Services": 1,
-        "Generated": true,
-        "Circuit_ID": 1,
-        "Joint_Code": "SVC",
-        "Joint_Type": "service",
-        "Joint_Cables": [
-          46980,
-          47028
-        ],
-        "Joint_Reasons": [
-          "service"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47002,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          135.01722802869057,
-          51.42287721343166
-        ]
-      ],
-      "Label": "Service Joint",
-      "Attributes": {
-        "Ways_In": 2,
-        "Services": 1,
-        "Generated": true,
-        "Circuit_ID": 1,
-        "Joint_Code": "SVC",
-        "Joint_Type": "service",
-        "Joint_Cables": [
-          46980,
-          47029
-        ],
-        "Joint_Reasons": [
-          "service"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47003,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          142.320773297282,
-          48.940371649895866
-        ]
-      ],
-      "Label": "Breech Joint",
-      "Attributes": {
-        "Ways_In": 2,
-        "Services": 0,
-        "Generated": true,
-        "Circuit_ID": 1,
-        "Joint_Code": "BRE",
-        "Joint_Type": "breech",
-        "Joint_Cables": [
-          46977,
-          46980,
-          46981
-        ],
-        "Joint_Reasons": [
-          "breech"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47004,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          146.2109064421439,
-          47.618099134307386
-        ]
-      ],
-      "Label": "Service Joint",
-      "Attributes": {
-        "Ways_In": 2,
-        "Services": 1,
-        "Generated": true,
-        "Circuit_ID": 1,
-        "Joint_Code": "SVC",
-        "Joint_Type": "service",
-        "Joint_Cables": [
-          46981,
-          47030
-        ],
-        "Joint_Reasons": [
-          "service"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47005,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          153.5203018279055,
-          45.13360509149361
-        ]
-      ],
-      "Label": "Service Joint",
-      "Attributes": {
-        "Ways_In": 1,
-        "Services": 1,
-        "Generated": true,
-        "Circuit_ID": 1,
-        "Joint_Code": "SVC",
-        "Joint_Type": "service",
-        "Joint_Cables": [
-          46981,
-          47031
-        ],
-        "Joint_Reasons": [
-          "service"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47006,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          155.758889398673,
-          44.37269981953051
-        ]
-      ],
-      "Label": "Bottle End",
-      "Attributes": {
-        "Ways_In": 1,
-        "Services": 0,
-        "Generated": true,
-        "Circuit_ID": 1,
-        "Joint_Code": "BTL",
-        "Joint_Type": "bottleend",
-        "Joint_Cables": [
-          46981
-        ],
-        "Joint_Reasons": [
-          "bottleend"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47008,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          154.9079336479783,
-          69.44096790896548
-        ]
-      ],
-      "Label": "Service Joint",
-      "Attributes": {
-        "Ways_In": 2,
-        "Services": 1,
-        "Generated": true,
-        "Circuit_ID": 1,
-        "Joint_Code": "SVC",
-        "Joint_Type": "service",
-        "Joint_Cables": [
-          46978,
-          47032
-        ],
-        "Joint_Reasons": [
-          "service"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47009,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          159.4916167923277,
-          72.04451302546435
-        ]
-      ],
-      "Label": "Service Joint",
-      "Attributes": {
-        "Ways_In": 2,
-        "Services": 1,
-        "Generated": true,
-        "Circuit_ID": 1,
-        "Joint_Code": "SVC",
-        "Joint_Type": "service",
-        "Joint_Cables": [
-          46978,
-          47033
-        ],
-        "Joint_Reasons": [
-          "service"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47010,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          170.30230752394377,
-          77.34430853527688
-        ]
-      ],
-      "Label": "Service Joint",
-      "Attributes": {
-        "Ways_In": 2,
-        "Services": 1,
-        "Generated": true,
-        "Circuit_ID": 1,
-        "Joint_Code": "SVC",
-        "Joint_Type": "service",
-        "Joint_Cables": [
-          46978,
-          47034
-        ],
-        "Joint_Reasons": [
-          "service"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47011,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          175.05181486976713,
-          79.67269053510617
-        ]
-      ],
-      "Label": "Service Joint",
-      "Attributes": {
-        "Ways_In": 1,
-        "Services": 1,
-        "Generated": true,
-        "Circuit_ID": 1,
-        "Joint_Code": "SVC",
-        "Joint_Type": "service",
-        "Joint_Cables": [
-          46978,
-          47035
-        ],
-        "Joint_Reasons": [
-          "service"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47012,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          175.989498749044,
-          80.132377426202
-        ]
-      ],
-      "Label": "Bottle End",
-      "Attributes": {
-        "Ways_In": 1,
-        "Services": 0,
-        "Generated": true,
-        "Circuit_ID": 1,
-        "Joint_Code": "BTL",
-        "Joint_Type": "bottleend",
-        "Joint_Cables": [
-          46978
-        ],
-        "Joint_Reasons": [
-          "bottleend"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47013,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          223.9804114881292,
-          83.64211398377176
-        ]
-      ],
-      "Label": "Breech Joint",
-      "Attributes": {
-        "Ways_In": 2,
-        "Services": 0,
-        "Generated": true,
-        "Circuit_ID": 2,
-        "Joint_Code": "BRE",
-        "Joint_Type": "breech",
-        "Joint_Cables": [
-          46989,
-          46990,
-          46991
-        ],
-        "Joint_Reasons": [
-          "breech"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47014,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          185.97906297981106,
-          85.33347042194939
-        ]
-      ],
-      "Label": "Service Joint",
-      "Attributes": {
-        "Ways_In": 1,
-        "Services": 1,
-        "Generated": true,
-        "Circuit_ID": 2,
-        "Joint_Code": "SVC",
-        "Joint_Type": "service",
-        "Joint_Cables": [
-          46990,
-          47036
-        ],
-        "Joint_Reasons": [
-          "service"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47015,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          182.33441518094486,
-          83.50961577442921
-        ]
-      ],
-      "Label": "Bottle End",
-      "Attributes": {
-        "Ways_In": 1,
-        "Services": 0,
-        "Generated": true,
-        "Circuit_ID": 2,
-        "Joint_Code": "BTL",
-        "Joint_Type": "bottleend",
-        "Joint_Cables": [
-          46990
-        ],
-        "Joint_Reasons": [
-          "bottleend"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47016,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          190.46538397586153,
-          87.57851516988346
-        ]
-      ],
-      "Label": "Service Joint",
-      "Attributes": {
-        "Ways_In": 2,
-        "Services": 1,
-        "Generated": true,
-        "Circuit_ID": 2,
-        "Joint_Code": "SVC",
-        "Joint_Type": "service",
-        "Joint_Cables": [
-          46990,
-          47037
-        ],
-        "Joint_Reasons": [
-          "service"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47021,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          237.67526469703242,
-          69.85821747920778
-        ]
-      ],
-      "Label": "Service Joint",
-      "Attributes": {
-        "Ways_In": 2,
-        "Services": 1,
-        "Generated": true,
-        "Circuit_ID": 2,
-        "Joint_Code": "SVC",
-        "Joint_Type": "service",
-        "Joint_Cables": [
-          46991,
-          47042
-        ],
-        "Joint_Reasons": [
-          "service"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47022,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          233.9684222506479,
-          58.945675230131066
-        ]
-      ],
-      "Label": "Service Joint",
-      "Attributes": {
-        "Ways_In": 2,
-        "Services": 1,
-        "Generated": true,
-        "Circuit_ID": 2,
-        "Joint_Code": "SVC",
-        "Joint_Type": "service",
-        "Joint_Cables": [
-          46991,
-          47043
-        ],
-        "Joint_Reasons": [
-          "service"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47023,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          228.11693858782021,
-          52.72636506724855
-        ]
-      ],
-      "Label": "Service Joint",
-      "Attributes": {
-        "Ways_In": 1,
-        "Services": 1,
-        "Generated": true,
-        "Circuit_ID": 2,
-        "Joint_Code": "SVC",
-        "Joint_Type": "service",
-        "Joint_Cables": [
-          46991,
-          47044
-        ],
-        "Joint_Reasons": [
-          "service"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47024,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          227.52532943092257,
-          52.10517676931197
-        ]
-      ],
-      "Label": "Bottle End",
-      "Attributes": {
-        "Ways_In": 1,
-        "Services": 0,
-        "Generated": true,
-        "Circuit_ID": 2,
-        "Joint_Code": "BTL",
-        "Joint_Type": "bottleend",
-        "Joint_Cables": [
-          46991
-        ],
-        "Joint_Reasons": [
-          "bottleend"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
-    },
-    {
-      "Feature_ID": 47025,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          110.21858559030704,
-          59.852039429509105
-        ],
-        [
-          112.32134722350612,
-          66.03837592869226
-        ],
-        [
-          113.3594169269319,
-          68.61336741165648
-        ],
-        [
-          115.54236489391948,
-          69.09031580760907
-        ]
-      ],
-      "Label": null,
-      "Attributes": {
-        "Connects": [
-          46856,
-          46924,
-          46957,
-          46998,
-          47629,
-          47635
-        ],
-        "Length_m": 11.54,
-        "Generated": true,
-        "Line_Type": "elec_service",
-        "VD_Cable_Size_ID": 51
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 47027,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          116.93876990786165,
-          57.567820691513546
-        ],
-        [
-          116.78679891483887,
-          57.120721179086324
-        ],
-        [
-          115.88993240304704,
-          54.813502411589056
-        ],
-        [
-          113.3550714044631,
-          54.85687468712231
-        ]
-      ],
-      "Label": null,
-      "Attributes": {
-        "Connects": [
-          46862,
-          46924,
-          46959,
-          47000,
-          47629
-        ],
-        "Length_m": 5.48,
-        "Generated": true,
-        "Line_Type": "elec_service",
-        "VD_Cable_Size_ID": 51
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 47028,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          124.55420688391077,
-          54.97930183299427
-        ],
-        [
-          122.78394923925475,
-          49.771193929944744
-        ],
-        [
-          121.11134478421985,
-          45.32215314169811
-        ],
-        [
-          119.52885202060598,
-          48.5026399971511
-        ]
-      ],
-      "Label": null,
-      "Attributes": {
-        "Connects": [
-          46864,
-          46924,
-          46960,
-          47001,
-          47629
-        ],
-        "Length_m": 13.81,
-        "Generated": true,
-        "Line_Type": "elec_service",
-        "VD_Cable_Size_ID": 51
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 47029,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          135.01722802869057,
-          51.42287721343166
-        ],
-        [
-          134.8528578811694,
-          50.93929931904178
-        ],
-        [
-          132.59350828336258,
-          44.349556783396956
-        ],
-        [
-          130.30089494142467,
-          45.035182245181375
-        ]
-      ],
-      "Label": null,
-      "Attributes": {
-        "Connects": [
-          46866,
-          46924,
-          46961,
-          47002,
-          47629
-        ],
-        "Length_m": 9.87,
-        "Generated": true,
-        "Line_Type": "elec_service",
-        "VD_Cable_Size_ID": 51
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 47030,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          146.2109064421439,
-          47.618099134307386
-        ],
-        [
-          146.02377815786582,
-          47.06756667414551
-        ],
-        [
-          143.41722914525818,
-          40.36119246410911
-        ],
-        [
-          141.53248694751235,
-          41.121651869736965
-        ]
-      ],
-      "Label": null,
-      "Attributes": {
-        "Connects": [
-          46868,
-          46925,
-          46962,
-          47004,
-          47630
-        ],
-        "Length_m": 9.81,
-        "Generated": true,
-        "Line_Type": "elec_service",
-        "VD_Cable_Size_ID": 51
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 47031,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          153.5203018279055,
-          45.13360509149361
-        ],
-        [
-          153.31710273468653,
-          44.53579222143989
-        ],
-        [
-          152.2887321284615,
-          42.071091701213504
-        ],
-        [
-          149.47106467365006,
-          42.53166889862358
-        ]
-      ],
-      "Label": null,
-      "Attributes": {
-        "Connects": [
-          46870,
-          46925,
-          46963,
-          47005,
-          47630,
-          47634
-        ],
-        "Length_m": 6.16,
-        "Generated": true,
-        "Line_Type": "elec_service",
-        "VD_Cable_Size_ID": 51
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 47032,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          154.9079336479783,
-          69.44096790896548
-        ],
-        [
-          155.1745270213747,
-          68.97161573823162
-        ],
-        [
-          155.98255176724416,
-          67.47119358185061
-        ],
-        [
-          154.96472398479142,
-          66.61250508899403
-        ]
-      ],
-      "Label": null,
-      "Attributes": {
-        "Connects": [
-          46872,
-          46927,
-          46964,
-          47008,
-          47052,
-          47627
-        ],
-        "Length_m": 3.58,
-        "Generated": true,
-        "Line_Type": "elec_service",
-        "VD_Cable_Size_ID": 51
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 47033,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          159.7487321534022,
-          72.1705603678549
-        ],
-        [
-          160.11883076441347,
-          71.41562149965972
-        ],
-        [
-          161.20740518685625,
-          69.83304278309436
-        ],
-        [
-          162.84079955446535,
-          70.69401304604044
-        ]
-      ],
-      "Label": null,
-      "Attributes": {
-        "Connects": [
-          46874,
-          46927,
-          46965,
-          47045
-        ],
-        "Length_m": 4.61,
-        "Generated": true,
-        "Line_Type": "elec_service",
-        "VD_Cable_Size_ID": 51
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 47034,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          170.30230752394377,
-          77.34430853527688
-        ],
-        [
-          170.57388496778705,
-          76.79033626415121
-        ],
-        [
-          171.53887598074604,
-          75.24293478538213
-        ],
-        [
-          170.3355020052903,
-          74.54370937119589
-        ]
-      ],
-      "Label": null,
-      "Attributes": {
-        "Connects": [
-          46876,
-          46927,
-          46966,
-          47010,
-          47052,
-          47627
-        ],
-        "Length_m": 3.83,
-        "Generated": true,
-        "Line_Type": "elec_service",
-        "VD_Cable_Size_ID": 51
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 47035,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          175.05181486976713,
-          79.67269053510617
-        ],
-        [
-          175.40739018771157,
-          78.94737674007837
-        ],
-        [
-          176.2893816905408,
-          77.43961759353996
-        ],
-        [
-          174.87016681873675,
-          76.73488746890817
-        ]
-      ],
-      "Label": null,
-      "Attributes": {
-        "Connects": [
-          46878,
-          46927,
-          46967,
-          47011,
-          47052,
-          47627,
-          47636
-        ],
-        "Length_m": 4.14,
-        "Generated": true,
-        "Line_Type": "elec_service",
-        "VD_Cable_Size_ID": 51
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 47036,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          185.97906297981106,
-          85.33347042194939
-        ],
-        [
-          186.39746022769378,
-          84.49737824178533
-        ],
-        [
-          187.11886710176543,
-          82.67915276478872
-        ],
-        [
-          185.67569518385784,
-          82.06572335478434
-        ]
-      ],
-      "Label": null,
-      "Attributes": {
-        "Connects": [
-          46880,
-          46928,
-          46968,
-          47014,
-          47052
-        ],
-        "Length_m": 4.46,
-        "Generated": true,
-        "Line_Type": "elec_service",
-        "VD_Cable_Size_ID": 51
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 47037,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          190.46538397586153,
-          87.57851516988346
-        ],
-        [
-          190.87692551886707,
-          86.75612289158623
-        ],
-        [
-          191.795275316859,
-          85.0449800848267
-        ],
-        [
-          190.5122784309405,
-          84.50437264147835
-        ]
-      ],
-      "Label": null,
-      "Attributes": {
-        "Connects": [
-          46882,
-          46928,
-          46969,
-          47016,
-          47052
-        ],
-        "Length_m": 4.25,
-        "Generated": true,
-        "Line_Type": "elec_service",
-        "VD_Cable_Size_ID": 51
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 47042,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          237.67526469703242,
-          69.85821747920778
-        ],
-        [
-          235.06825064341973,
-          67.84290551471128
-        ],
-        [
-          233.23397024340971,
-          69.11311918231273
-        ],
-        [
-          234.15984692222074,
-          70.44300353329533
-        ]
-      ],
-      "Label": null,
-      "Attributes": {
-        "Connects": [
-          46892,
-          46929,
-          46974,
-          47021,
-          47051,
-          47052,
-          47638
-        ],
-        "Length_m": 7.15,
-        "Generated": true,
-        "Line_Type": "elec_service",
-        "VD_Cable_Size_ID": 51
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 47043,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          233.9684222506479,
-          58.945675230131066
-        ],
-        [
-          229.10767265835952,
-          63.213861705199875
-        ],
-        [
-          227.2321877883958,
-          65.05423898060907
-        ],
-        [
-          228.9613012891147,
-          66.57961508353162
-        ]
-      ],
-      "Label": null,
-      "Attributes": {
-        "Connects": [
-          46894,
-          46930,
-          46975,
-          47022,
-          47638
-        ],
-        "Length_m": 11.4,
-        "Generated": true,
-        "Line_Type": "elec_service",
-        "VD_Cable_Size_ID": 51
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 47044,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          228.11693858782021,
-          52.72636506724855
-        ],
-        [
-          223.6130834786397,
-          57.01575997823172
-        ],
-        [
-          222.80539612892403,
-          60.4176118889502
-        ],
-        [
-          223.06204323250603,
-          60.56414957349201
-        ]
-      ],
-      "Label": null,
-      "Attributes": {
-        "Connects": [
-          46896,
-          46930,
-          46976,
-          47023,
-          47638,
-          47640
-        ],
-        "Length_m": 10.01,
-        "Generated": true,
-        "Line_Type": "elec_service",
-        "VD_Cable_Size_ID": 51
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 47045,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          159.7487321534022,
-          72.1705603678549
-        ]
-      ],
-      "Label": "Service Joint",
-      "Attributes": {
-        "Plot_ID": null,
-        "Generated": true,
-        "Joint_Code": "SVC",
-        "Joint_Type": "service",
-        "Joint_Cables": [
-          46978,
-          47033
-        ],
-        "Joint_Reasons": [
-          "service"
-        ]
-      },
-      "Plot_ID": null,
-      "Feature_Role": "joint"
     },
     {
       "Feature_ID": 47046,
@@ -3806,257 +2055,13 @@
         "Output": null,
         "Connects": [
           46902
-        ]
+        ],
+        "Output_V": 400,
+        "Source_Volt_Drop_Pct": 0.5,
+        "Source_Loop_Impedance_Ohm": 0.035
       },
       "Plot_ID": null,
       "Feature_Role": "poc"
-    },
-    {
-      "Feature_ID": 47051,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          245.51129862926697,
-          59.88467934317827
-        ],
-        [
-          241.81259750505288,
-          64.22622997182052
-        ],
-        [
-          238.7995948497677,
-          67.76290491062993
-        ],
-        [
-          238.48829795028232,
-          68.80647504199831
-        ],
-        [
-          237.67526469703242,
-          69.85821747920778
-        ],
-        [
-          234.803501274738,
-          73.57313989939138
-        ],
-        [
-          232.08594238775663,
-          76.09714426007494
-        ],
-        [
-          223.9804114881292,
-          83.64211398377176
-        ],
-        [
-          218.46109980513444,
-          77.33584156218375
-        ]
-      ],
-      "Label": "Supply from POC",
-      "Attributes": {
-        "Connects": [
-          46900,
-          46902,
-          46907,
-          46908,
-          46945,
-          47052,
-          47638,
-          47639
-        ],
-        "Length_m": 40.63,
-        "Generated": true,
-        "Line_Type": "elec_hv",
-        "Poc_Route": true,
-        "Poc_Route_Poc_ID": 46900,
-        "Poc_Route_Sub_ID": 46907,
-        "Manual_VD_Cable_Size_ID": 55
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 47052,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          250.572401110109,
-          63.33812137786157
-        ],
-        [
-          245.51129862926697,
-          59.88467934317827
-        ],
-        [
-          241.81259750505288,
-          64.22622997182052
-        ],
-        [
-          238.7995948497677,
-          67.76290491062993
-        ],
-        [
-          238.48829795028232,
-          68.80647504199831
-        ],
-        [
-          237.67526469703242,
-          69.85821747920778
-        ],
-        [
-          234.803501274738,
-          73.57313989939138
-        ],
-        [
-          232.08594238775663,
-          76.09714426007494
-        ],
-        [
-          223.9804114881292,
-          83.64211398377176
-        ],
-        [
-          221.0779512731048,
-          86.34384625988957
-        ],
-        [
-          216.78200155774277,
-          90.34269728375283
-        ],
-        [
-          213.1164558585662,
-          93.7547416844947
-        ],
-        [
-          209.28942027116085,
-          96.87685795870632
-        ],
-        [
-          206.97824676195825,
-          95.84188194723147
-        ],
-        [
-          205.46468995291693,
-          95.08446785050734
-        ],
-        [
-          201.0457856713932,
-          92.87315977478298
-        ],
-        [
-          197.38668788702807,
-          91.04207406553523
-        ],
-        [
-          196.27125452066664,
-          90.4838889015613
-        ],
-        [
-          190.46538397586153,
-          87.57851516988346
-        ],
-        [
-          185.97906297981106,
-          85.33347042194939
-        ],
-        [
-          182.33441518094486,
-          83.50961577442921
-        ],
-        [
-          180.8796044200816,
-          82.68549328177983
-        ],
-        [
-          175.989498749044,
-          80.132377426202
-        ],
-        [
-          175.05181486976713,
-          79.67269053510617
-        ],
-        [
-          170.30230752394377,
-          77.34430853527688
-        ],
-        [
-          159.4916167923277,
-          72.04451302546435
-        ],
-        [
-          154.9079336479783,
-          69.44096790896548
-        ],
-        [
-          153.2781267222278,
-          68.51523292058506
-        ],
-        [
-          150.01612704301428,
-          65.88728953017464
-        ],
-        [
-          147.66171184957332,
-          62.4749770089017
-        ],
-        [
-          146.22504315749939,
-          59.955141492394965
-        ],
-        [
-          145.93979497390754,
-          59.2032844617599
-        ],
-        [
-          144.6664595847534,
-          55.84702763082467
-        ],
-        [
-          144.43280154126913,
-          55.1590431666863
-        ],
-        [
-          145.80442685282011,
-          54.0161197511656
-        ],
-        [
-          149.33758056841032,
-          52.258469683915536
-        ],
-        [
-          161.080982198047,
-          48.22468797663161
-        ],
-        [
-          162.14626048358434,
-          50.681480777691
-        ]
-      ],
-      "Label": "Supply from POC",
-      "Attributes": {
-        "Connects": [
-          46899,
-          46902,
-          46911,
-          46946,
-          47046,
-          47628,
-          47631
-        ],
-        "Length_m": 158.13,
-        "Generated": true,
-        "Line_Type": "elec_hv",
-        "Poc_Route": true,
-        "Poc_Route_Poc_ID": 47046,
-        "Poc_Route_Sub_ID": 46911,
-        "Manual_VD_Cable_Size_ID": 57
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
     },
     {
       "Feature_ID": 47617,
@@ -4072,10 +2077,15 @@
       "Label": "MSDB 2",
       "Attributes": {
         "Output": null,
+        "Connects": [
+          47622
+        ],
         "Circuit_ID": 2,
         "MSDB_Floor": "3rd",
         "MSDB_Down_M": 9,
         "Circuit_Name": "Circuit 2",
+        "MSDB_Riser_M": null,
+        "MSDB_Location": "Riser on 3rd Floor",
         "MSDB_Plot_IDs": [
           56,
           57,
@@ -4115,12 +2125,12 @@
         "Connects": [
           46908,
           46929,
-          46947,
-          47013,
-          47051,
-          47052,
           47621,
-          47638
+          47752,
+          47851,
+          47852,
+          47853,
+          47856
         ],
         "Length_m": 3.97,
         "Line_Type": "trench_main",
@@ -4145,7 +2155,8 @@
       "Attributes": {
         "Output": null,
         "Connects": [
-          47621
+          47621,
+          47622
         ],
         "Circuit_ID": 2,
         "MSDB_Floor": "3rd",
@@ -4196,10 +2207,12 @@
         "Site": "On-site",
         "Size": null,
         "Connects": [
-          47052,
           47618,
           47620,
-          47622
+          47689,
+          47753,
+          47853,
+          47857
         ],
         "Length_m": 7.19,
         "Line_Type": "trench_main",
@@ -4209,56 +2222,6 @@
           -1.3393581643732573
         ],
         "Surface_Type": "unmade"
-      },
-      "Plot_ID": null,
-      "Feature_Role": "shape"
-    },
-    {
-      "Feature_ID": 47622,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "line",
-      "Geometry": [
-        [
-          215.80943975812278,
-          84.19918619819654
-        ],
-        [
-          213.95539880125503,
-          82.38714397832344
-        ],
-        [
-          208.79795403807142,
-          87.10980099126289
-        ],
-        [
-          200.20203423826675,
-          82.84016064092108
-        ],
-        [
-          199.094391726669,
-          84.92818504170926
-        ],
-        [
-          199.5156778052052,
-          85.97237114993935
-        ]
-      ],
-      "Label": "Electric Main",
-      "Attributes": {
-        "Site": "On-site",
-        "Size": null,
-        "Connects": [
-          47617,
-          47620,
-          47621,
-          47623
-        ],
-        "Length_m": 22.67,
-        "Line_Type": "elec_main",
-        "Build_Status": "planned",
-        "Surface_Type": null,
-        "VD_Cable_Size_ID": 55
       },
       "Plot_ID": null,
       "Feature_Role": "shape"
@@ -4292,9 +2255,10 @@
         "Size": null,
         "Connects": [
           46928,
-          47052,
           47617,
-          47622
+          47689,
+          47763,
+          47854
         ],
         "Length_m": 6.9,
         "Line_Type": "trench_main",
@@ -4305,19 +2269,182 @@
       "Feature_Role": "shape"
     },
     {
-      "Feature_ID": 47624,
+      "Feature_ID": 47689,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          199.5156778052052,
+          85.97237114993935
+        ],
+        [
+          199.05272111224716,
+          84.88982995638703
+        ],
+        [
+          200.22155808734482,
+          82.68149636874054
+        ],
+        [
+          208.70332993793073,
+          87.0416304934964
+        ],
+        [
+          214.00356797504008,
+          82.22403100619172
+        ],
+        [
+          215.80943975812278,
+          84.19918619819654
+        ]
+      ],
+      "Label": "Electric Main",
+      "Attributes": {
+        "Site": "On-site",
+        "Size": null,
+        "Connects": [
+          47617,
+          47620,
+          47621,
+          47623,
+          47753,
+          47763,
+          47853,
+          47854,
+          47857
+        ],
+        "Length_m": 23.05,
+        "Line_Type": "elec_main",
+        "Circuit_ID": 2,
+        "Build_Status": "planned",
+        "Circuit_Name": "Circuit 2",
+        "Label_Offset": [
+          0.1766510009765625,
+          -0.19346771240234376
+        ],
+        "Surface_Type": null,
+        "Circuit_Letter": "B",
+        "MSDB_Link_A_ID": 47617,
+        "MSDB_Link_B_ID": 47620,
+        "Manual_VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47750,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          218.46109980513444,
+          77.33584156218375
+        ]
+      ],
+      "Label": "Point E0",
+      "Attributes": {
+        "Connects": [
+          46907,
+          46908,
+          47851,
+          47855
+        ],
+        "Span_Seq": 0,
+        "Span_Kind": "origin",
+        "Span_Label": "E0",
+        "Span_Anchor": [
+          218.46109980513444,
+          77.33584156218375
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 47751,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          162.14626048358434,
+          50.681480777691
+        ]
+      ],
+      "Label": "Point E0b",
+      "Attributes": {
+        "Connects": [
+          46899,
+          46911,
+          47842,
+          47845
+        ],
+        "Span_Seq": 0,
+        "Span_Kind": "origin",
+        "Span_Label": "E0b",
+        "Span_Anchor": [
+          162.14626048358434,
+          50.681480777691
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 47752,
       "Project_ID": 6,
       "Layer_Key": "trench",
       "Feature_Type": "point",
       "Geometry": [
         [
-          214.6721137083181,
-          84.21811014839184
+          223.9804114881292,
+          83.64211398377176
+        ]
+      ],
+      "Label": "Point 1",
+      "Attributes": {
+        "Connects": [
+          46908,
+          46929,
+          47618,
+          47851,
+          47852,
+          47853,
+          47856
+        ],
+        "Span_Seq": 1,
+        "Span_Kind": "junction",
+        "Span_Label": "1",
+        "Span_Anchor": [
+          223.9804114881292,
+          83.64211398377176
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 47753,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          215.80943975812278,
+          84.19918619819654
         ]
       ],
       "Label": "Point 2",
       "Attributes": {
-        "Connects": [],
+        "Connects": [
+          47620,
+          47621,
+          47689,
+          47853,
+          47857
+        ],
         "Span_Seq": 2,
         "Span_Kind": "end",
         "Span_Label": "2",
@@ -4330,34 +2457,303 @@
       "Feature_Role": "spannode"
     },
     {
-      "Feature_ID": 47625,
+      "Feature_ID": 47754,
       "Project_ID": 6,
       "Layer_Key": "trench",
       "Feature_Type": "point",
       "Geometry": [
         [
-          200.1656778052052,
-          84.92237114993935
+          238.7995948497677,
+          67.76290491062993
+        ]
+      ],
+      "Label": "Point 3",
+      "Attributes": {
+        "Connects": [
+          46903,
+          46929,
+          46930,
+          47852
+        ],
+        "Span_Seq": 3,
+        "Span_Kind": "junction",
+        "Span_Label": "3",
+        "Span_Anchor": [
+          238.7995948497677,
+          67.76290491062993
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 47755,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          250.572401110109,
+          63.33812137786157
+        ]
+      ],
+      "Label": "Point 4",
+      "Attributes": {
+        "Connects": [
+          46902,
+          47046
+        ],
+        "Span_Seq": 4,
+        "Span_Kind": "end",
+        "Span_Label": "4",
+        "Span_Anchor": [
+          250.572401110109,
+          63.33812137786157
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 47756,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          227.52532943092257,
+          52.10517676931197
+        ]
+      ],
+      "Label": "Point 5",
+      "Attributes": {
+        "Connects": [
+          46930,
+          47852
+        ],
+        "Span_Seq": 5,
+        "Span_Kind": "end",
+        "Span_Label": "5",
+        "Span_Anchor": [
+          227.52532943092257,
+          52.10517676931197
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 47757,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          144.43280154126913,
+          55.1590431666863
+        ]
+      ],
+      "Label": "Point 6",
+      "Attributes": {
+        "Connects": [
+          46899,
+          46926,
+          46927,
+          47840,
+          47841,
+          47842,
+          47846
+        ],
+        "Span_Seq": 6,
+        "Span_Kind": "junction",
+        "Span_Label": "6",
+        "Span_Anchor": [
+          144.43280154126913,
+          55.1590431666863
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 47758,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          175.989498749044,
+          80.132377426202
+        ]
+      ],
+      "Label": "Point 7",
+      "Attributes": {
+        "Connects": [
+          46909,
+          46927,
+          47841
+        ],
+        "Span_Seq": 7,
+        "Span_Kind": "junction",
+        "Span_Label": "7",
+        "Span_Anchor": [
+          175.989498749044,
+          80.132377426202
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 47759,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          185.2175771717918,
+          84.88799691828478
+        ]
+      ],
+      "Label": "Point 8",
+      "Attributes": {
+        "Connects": [
+          46909,
+          46928,
+          47854
+        ],
+        "Span_Seq": 8,
+        "Span_Kind": "junction",
+        "Span_Label": "8",
+        "Span_Anchor": [
+          185.2175771717918,
+          84.88799691828478
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 47760,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          109.44009078967277,
+          60.1166530661315
+        ]
+      ],
+      "Label": "Point 9",
+      "Attributes": {
+        "Connects": [
+          46924,
+          47843
+        ],
+        "Span_Seq": 9,
+        "Span_Kind": "end",
+        "Span_Label": "9",
+        "Span_Anchor": [
+          109.44009078967277,
+          60.1166530661315
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 47761,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          142.320773297282,
+          48.940371649895866
+        ]
+      ],
+      "Label": "Point 10",
+      "Attributes": {
+        "Connects": [
+          46924,
+          46925,
+          46926,
+          47840,
+          47843,
+          47844,
+          47847
+        ],
+        "Span_Seq": 10,
+        "Span_Kind": "junction",
+        "Span_Label": "10",
+        "Span_Anchor": [
+          142.320773297282,
+          48.940371649895866
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 47762,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          155.758889398673,
+          44.37269981953051
+        ]
+      ],
+      "Label": "Point 11",
+      "Attributes": {
+        "Connects": [
+          46925,
+          47844
+        ],
+        "Span_Seq": 11,
+        "Span_Kind": "end",
+        "Span_Label": "11",
+        "Span_Anchor": [
+          155.758889398673,
+          44.37269981953051
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "spannode"
+    },
+    {
+      "Feature_ID": 47763,
+      "Project_ID": 6,
+      "Layer_Key": "trench",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          199.13546998049816,
+          87.40943780032997
         ]
       ],
       "Label": "Point 12",
       "Attributes": {
-        "Connects": [],
+        "Connects": [
+          47617,
+          47623,
+          47689,
+          47854
+        ],
         "Span_Seq": 12,
         "Span_Kind": "end",
         "Span_Label": "12",
         "Span_Anchor": [
           199.5156778052052,
           85.97237114993935
-        ],
-        "VD_Cable_Size_ID": 55,
-        "Manual_VD_Cable_Size_ID": null
+        ]
       },
       "Plot_ID": null,
       "Feature_Role": "spannode"
     },
     {
-      "Feature_ID": 47626,
+      "Feature_ID": 47840,
       "Project_ID": 6,
       "Layer_Key": "electric",
       "Feature_Type": "line",
@@ -4382,17 +2778,14 @@
           46925,
           46926,
           46927,
-          46953,
-          46954,
-          46997,
-          47003,
-          47052,
-          47627,
-          47628,
-          47629,
-          47630,
-          47632,
-          47633
+          47757,
+          47761,
+          47841,
+          47842,
+          47843,
+          47844,
+          47846,
+          47847
         ],
         "Length_m": 6.57,
         "Generated": true,
@@ -4407,7 +2800,7 @@
       "Feature_Role": "shape"
     },
     {
-      "Feature_ID": 47627,
+      "Feature_ID": 47841,
       "Project_ID": 6,
       "Layer_Key": "electric",
       "Feature_Type": "line",
@@ -4476,14 +2869,11 @@
           46909,
           46926,
           46927,
-          46952,
-          46953,
-          46997,
-          47012,
-          47052,
-          47626,
-          47628,
-          47632
+          47757,
+          47758,
+          47840,
+          47842,
+          47846
         ],
         "Length_m": 41.88,
         "Generated": true,
@@ -4498,7 +2888,7 @@
       "Feature_Role": "shape"
     },
     {
-      "Feature_ID": 47628,
+      "Feature_ID": 47842,
       "Project_ID": 6,
       "Layer_Key": "electric",
       "Feature_Type": "line",
@@ -4534,14 +2924,12 @@
           46911,
           46926,
           46927,
-          46946,
-          46953,
-          46997,
-          47052,
-          47626,
-          47627,
-          47631,
-          47632
+          47751,
+          47757,
+          47840,
+          47841,
+          47845,
+          47846
         ],
         "Length_m": 20.83,
         "Generated": true,
@@ -4556,7 +2944,7 @@
       "Feature_Role": "shape"
     },
     {
-      "Feature_ID": 47629,
+      "Feature_ID": 47843,
       "Project_ID": 6,
       "Layer_Key": "electric",
       "Feature_Type": "line",
@@ -4596,12 +2984,11 @@
           46924,
           46925,
           46926,
-          46954,
-          46999,
-          47003,
-          47626,
-          47630,
-          47633
+          47760,
+          47761,
+          47840,
+          47844,
+          47847
         ],
         "Length_m": 34.73,
         "Generated": true,
@@ -4616,7 +3003,7 @@
       "Feature_Role": "shape"
     },
     {
-      "Feature_ID": 47630,
+      "Feature_ID": 47844,
       "Project_ID": 6,
       "Layer_Key": "electric",
       "Feature_Type": "line",
@@ -4648,14 +3035,11 @@
           46924,
           46925,
           46926,
-          46954,
-          46955,
-          47003,
-          47006,
-          47626,
-          47629,
-          47633,
-          47637
+          47761,
+          47762,
+          47840,
+          47843,
+          47847
         ],
         "Length_m": 14.19,
         "Generated": true,
@@ -4670,7 +3054,7 @@
       "Feature_Role": "shape"
     },
     {
-      "Feature_ID": 47631,
+      "Feature_ID": 47845,
       "Project_ID": 6,
       "Layer_Key": "electric",
       "Feature_Type": "point",
@@ -4685,9 +3069,8 @@
         "Connects": [
           46899,
           46911,
-          46946,
-          47052,
-          47628
+          47751,
+          47842
         ],
         "Span_Seq": 0,
         "Generated": true,
@@ -4705,7 +3088,7 @@
       "Feature_Role": "feederpoint"
     },
     {
-      "Feature_ID": 47632,
+      "Feature_ID": 47846,
       "Project_ID": 6,
       "Layer_Key": "electric",
       "Feature_Type": "point",
@@ -4721,12 +3104,10 @@
           46899,
           46926,
           46927,
-          46953,
-          46997,
-          47052,
-          47626,
-          47627,
-          47628
+          47757,
+          47840,
+          47841,
+          47842
         ],
         "Span_Seq": 1,
         "Generated": true,
@@ -4739,14 +3120,13 @@
         ],
         "Circuit_Name": "Circuit 1",
         "Circuit_Letter": "A",
-        "VD_Cable_Size_ID": null,
-        "Manual_VD_Cable_Size_ID": 57
+        "VD_Cable_Size_ID": 1
       },
       "Plot_ID": null,
       "Feature_Role": "feederpoint"
     },
     {
-      "Feature_ID": 47633,
+      "Feature_ID": 47847,
       "Project_ID": 6,
       "Layer_Key": "electric",
       "Feature_Type": "point",
@@ -4762,11 +3142,10 @@
           46924,
           46925,
           46926,
-          46954,
-          47003,
-          47626,
-          47629,
-          47630
+          47761,
+          47840,
+          47843,
+          47844
         ],
         "Span_Seq": 2,
         "Generated": true,
@@ -4785,7 +3164,7 @@
       "Feature_Role": "feederpoint"
     },
     {
-      "Feature_ID": 47634,
+      "Feature_ID": 47848,
       "Project_ID": 6,
       "Layer_Key": "electric",
       "Feature_Type": "point",
@@ -4800,9 +3179,7 @@
         "Connects": [
           46925,
           46963,
-          47005,
-          47031,
-          47630
+          47844
         ],
         "Span_Seq": 3,
         "Generated": true,
@@ -4821,7 +3198,7 @@
       "Feature_Role": "feederpoint"
     },
     {
-      "Feature_ID": 47635,
+      "Feature_ID": 47849,
       "Project_ID": 6,
       "Layer_Key": "electric",
       "Feature_Type": "point",
@@ -4836,9 +3213,7 @@
         "Connects": [
           46924,
           46957,
-          46998,
-          47025,
-          47629
+          47843
         ],
         "Span_Seq": 4,
         "Generated": true,
@@ -4857,7 +3232,7 @@
       "Feature_Role": "feederpoint"
     },
     {
-      "Feature_ID": 47636,
+      "Feature_ID": 47850,
       "Project_ID": 6,
       "Layer_Key": "electric",
       "Feature_Type": "point",
@@ -4872,10 +3247,7 @@
         "Connects": [
           46927,
           46967,
-          47011,
-          47035,
-          47052,
-          47627
+          47841
         ],
         "Span_Seq": 5,
         "Generated": true,
@@ -4894,42 +3266,7 @@
       "Feature_Role": "feederpoint"
     },
     {
-      "Feature_ID": 47637,
-      "Project_ID": 6,
-      "Layer_Key": "electric",
-      "Feature_Type": "point",
-      "Geometry": [
-        [
-          155.758889398673,
-          44.37269981953051
-        ]
-      ],
-      "Label": "Point A6",
-      "Attributes": {
-        "Connects": [
-          46925,
-          46955,
-          47006,
-          47630
-        ],
-        "Span_Seq": 6,
-        "Generated": true,
-        "Span_Kind": "end",
-        "Circuit_ID": 1,
-        "Span_Label": "A6",
-        "Span_Anchor": [
-          155.758889398673,
-          44.37269981953051
-        ],
-        "Circuit_Name": "Circuit 1",
-        "Circuit_Letter": "A",
-        "VD_Cable_Size_ID": 1
-      },
-      "Plot_ID": null,
-      "Feature_Role": "feederpoint"
-    },
-    {
-      "Feature_ID": 47638,
+      "Feature_ID": 47851,
       "Project_ID": 6,
       "Layer_Key": "electric",
       "Feature_Type": "line",
@@ -4938,6 +3275,46 @@
           218.46109980513444,
           77.33584156218375
         ],
+        [
+          223.9804114881292,
+          83.64211398377176
+        ]
+      ],
+      "Label": "B1",
+      "Attributes": {
+        "KVA": 8.1,
+        "Cables": 1,
+        "Meters": 6,
+        "Connects": [
+          46907,
+          46908,
+          46929,
+          47618,
+          47750,
+          47752,
+          47852,
+          47853,
+          47855,
+          47856
+        ],
+        "Length_m": 8.38,
+        "Generated": true,
+        "Line_Type": "elec_main",
+        "Circuit_ID": 2,
+        "Build_Status": "planned",
+        "Circuit_Name": "Circuit 2",
+        "Circuit_Letter": "B",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47852,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
         [
           223.9804114881292,
           83.64211398377176
@@ -4991,24 +3368,24 @@
           52.10517676931197
         ]
       ],
-      "Label": "B1",
+      "Label": "B2",
       "Attributes": {
         "KVA": 4.5,
         "Cables": 1,
         "Meters": 3,
         "Tail_M": 0.9,
         "Connects": [
-          46907,
           46908,
+          46929,
           46930,
-          46945,
-          46950,
-          47024,
-          47051,
-          47639,
-          47641
+          47618,
+          47752,
+          47756,
+          47851,
+          47853,
+          47856
         ],
-        "Length_m": 50.27,
+        "Length_m": 41.89,
         "Generated": true,
         "Line_Type": "elec_main",
         "Circuit_ID": 2,
@@ -5021,7 +3398,127 @@
       "Feature_Role": "shape"
     },
     {
-      "Feature_ID": 47639,
+      "Feature_ID": 47853,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          223.9804114881292,
+          83.64211398377176
+        ],
+        [
+          221.0779512731048,
+          86.34384625988957
+        ],
+        [
+          219.65452312155136,
+          87.66883316578391
+        ],
+        [
+          217.22724072126076,
+          84.97111318800327
+        ],
+        [
+          215.80943975812278,
+          84.19918619819654
+        ]
+      ],
+      "Label": "B3",
+      "Attributes": {
+        "KVA": 3.6,
+        "Cables": 1,
+        "Meters": 3,
+        "Connects": [
+          46908,
+          46929,
+          47618,
+          47620,
+          47621,
+          47689,
+          47752,
+          47753,
+          47851,
+          47852,
+          47856,
+          47857
+        ],
+        "Length_m": 11.15,
+        "Generated": true,
+        "Line_Type": "elec_main",
+        "Circuit_ID": 2,
+        "Build_Status": "planned",
+        "Circuit_Name": "Circuit 2",
+        "Circuit_Letter": "B",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47854,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          199.5156778052052,
+          85.97237114993935
+        ],
+        [
+          198.20148628375347,
+          85.40898028020221
+        ],
+        [
+          196.99949818752106,
+          87.6755864045262
+        ],
+        [
+          196.27125452066664,
+          90.4838889015613
+        ],
+        [
+          190.46538397586153,
+          87.57851516988346
+        ],
+        [
+          185.97906297981106,
+          85.33347042194939
+        ],
+        [
+          185.2175771717918,
+          84.88799691828478
+        ]
+      ],
+      "Label": "B4",
+      "Attributes": {
+        "KVA": 3,
+        "Cables": 1,
+        "Meters": 2,
+        "Tail_M": 0.9,
+        "Connects": [
+          46909,
+          46928,
+          47617,
+          47623,
+          47689,
+          47759,
+          47763
+        ],
+        "Length_m": 19.29,
+        "Generated": true,
+        "Line_Type": "elec_main",
+        "Circuit_ID": 2,
+        "Build_Status": "planned",
+        "Circuit_Name": "Circuit 2",
+        "Circuit_Letter": "B",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47855,
       "Project_ID": 6,
       "Layer_Key": "electric",
       "Feature_Type": "point",
@@ -5036,9 +3533,8 @@
         "Connects": [
           46907,
           46908,
-          46945,
-          47051,
-          47638
+          47750,
+          47851
         ],
         "Span_Seq": 0,
         "Generated": true,
@@ -5056,7 +3552,82 @@
       "Feature_Role": "feederpoint"
     },
     {
-      "Feature_ID": 47640,
+      "Feature_ID": 47856,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          223.9804114881292,
+          83.64211398377176
+        ]
+      ],
+      "Label": "Point B1",
+      "Attributes": {
+        "Connects": [
+          46908,
+          46929,
+          47618,
+          47752,
+          47851,
+          47852,
+          47853
+        ],
+        "Span_Seq": 1,
+        "Generated": true,
+        "Span_Kind": "junction",
+        "Circuit_ID": 2,
+        "Span_Label": "B1",
+        "Span_Anchor": [
+          223.9804114881292,
+          83.64211398377176
+        ],
+        "Circuit_Name": "Circuit 2",
+        "Circuit_Letter": "B",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "feederpoint"
+    },
+    {
+      "Feature_ID": 47857,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          215.80943975812278,
+          84.19918619819654
+        ]
+      ],
+      "Label": "Point B2",
+      "Attributes": {
+        "Connects": [
+          47620,
+          47621,
+          47689,
+          47753,
+          47853
+        ],
+        "Span_Seq": 2,
+        "Generated": true,
+        "Span_Kind": "end",
+        "Circuit_ID": 2,
+        "Span_Label": "B2",
+        "Span_Anchor": [
+          215.80943975812278,
+          84.19918619819654
+        ],
+        "Circuit_Name": "Circuit 2",
+        "Circuit_Letter": "B",
+        "VD_Cable_Size_ID": null,
+        "Manual_VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "feederpoint"
+    },
+    {
+      "Feature_ID": 47858,
       "Project_ID": 6,
       "Layer_Key": "electric",
       "Feature_Type": "point",
@@ -5066,20 +3637,18 @@
           52.72636506724855
         ]
       ],
-      "Label": "Point B1",
+      "Label": "Point B3",
       "Attributes": {
         "Connects": [
           46930,
           46976,
-          47023,
-          47044,
-          47638
+          47852
         ],
-        "Span_Seq": 1,
+        "Span_Seq": 3,
         "Generated": true,
         "Span_Kind": "end",
         "Circuit_ID": 2,
-        "Span_Label": "B1",
+        "Span_Label": "B3",
         "Span_Anchor": [
           228.11693858782021,
           52.72636506724855
@@ -5092,7 +3661,663 @@
       "Feature_Role": "feederpoint"
     },
     {
-      "Feature_ID": 47641,
+      "Feature_ID": 47859,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          185.3258510047134,
+          86.5881365596447
+        ]
+      ],
+      "Label": "Point B4",
+      "Attributes": {
+        "Connects": [
+          46928,
+          46968,
+          47854
+        ],
+        "Span_Seq": 4,
+        "Generated": true,
+        "Span_Kind": "end",
+        "Circuit_ID": 2,
+        "Span_Label": "B4",
+        "Span_Anchor": [
+          185.97906297981106,
+          85.33347042194939
+        ],
+        "Circuit_Name": "Circuit 2",
+        "Circuit_Letter": "B",
+        "VD_Cable_Size_ID": 1
+      },
+      "Plot_ID": null,
+      "Feature_Role": "feederpoint"
+    },
+    {
+      "Feature_ID": 47860,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          144.43280154126913,
+          55.1590431666863
+        ]
+      ],
+      "Label": "Breech Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "BRE",
+        "Joint_Type": "breech",
+        "Joint_Cables": [
+          47840,
+          47841,
+          47842
+        ],
+        "Joint_Reasons": [
+          "breech"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47861,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          110.21858559030704,
+          59.852039429509105
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 1,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          47843,
+          47884
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47862,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          109.44009078967277,
+          60.1166530661315
+        ]
+      ],
+      "Label": "Bottle End",
+      "Attributes": {
+        "Ways_In": 1,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "BTL",
+        "Joint_Type": "bottleend",
+        "Joint_Cables": [
+          47843
+        ],
+        "Joint_Reasons": [
+          "bottleend"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47863,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          116.93876990786165,
+          57.567820691513546
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          47843,
+          47885
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47864,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          124.55420688391077,
+          54.97930183299427
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          47843,
+          47886
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47865,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          135.01722802869057,
+          51.42287721343166
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          47843,
+          47887
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47866,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          142.320773297282,
+          48.940371649895866
+        ]
+      ],
+      "Label": "Breech Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "BRE",
+        "Joint_Type": "breech",
+        "Joint_Cables": [
+          47840,
+          47843,
+          47844
+        ],
+        "Joint_Reasons": [
+          "breech"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47867,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          146.2109064421439,
+          47.618099134307386
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          47844,
+          47888
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47868,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          153.5203018279055,
+          45.13360509149361
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 1,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          47844,
+          47889
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47869,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          155.758889398673,
+          44.37269981953051
+        ]
+      ],
+      "Label": "Bottle End",
+      "Attributes": {
+        "Ways_In": 1,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "BTL",
+        "Joint_Type": "bottleend",
+        "Joint_Cables": [
+          47844
+        ],
+        "Joint_Reasons": [
+          "bottleend"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47870,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          154.9079336479783,
+          69.44096790896548
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          47841,
+          47890
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47871,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          159.4916167923277,
+          72.04451302546435
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          47841,
+          47891
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47872,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          170.30230752394377,
+          77.34430853527688
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          47841,
+          47892
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47873,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          175.05181486976713,
+          79.67269053510617
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 1,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          47841,
+          47893
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47874,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          175.989498749044,
+          80.132377426202
+        ]
+      ],
+      "Label": "Bottle End",
+      "Attributes": {
+        "Ways_In": 1,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "BTL",
+        "Joint_Type": "bottleend",
+        "Joint_Cables": [
+          47841
+        ],
+        "Joint_Reasons": [
+          "bottleend"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47875,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          215.80943975812278,
+          84.19918619819654
+        ]
+      ],
+      "Label": "Bottle End",
+      "Attributes": {
+        "Ways_In": 0,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "BTL",
+        "Joint_Type": "bottleend",
+        "Joint_Reasons": [
+          "bottleend"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47876,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          199.5156778052052,
+          85.97237114993935
+        ]
+      ],
+      "Label": "Bottle End",
+      "Attributes": {
+        "Ways_In": 0,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 1,
+        "Joint_Code": "BTL",
+        "Joint_Type": "bottleend",
+        "Joint_Reasons": [
+          "bottleend"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47877,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          223.9804114881292,
+          83.64211398377176
+        ]
+      ],
+      "Label": "Breech Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "BRE",
+        "Joint_Type": "breech",
+        "Joint_Cables": [
+          47851,
+          47852,
+          47853
+        ],
+        "Joint_Reasons": [
+          "breech"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47878,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          237.67526469703242,
+          69.85821747920778
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          47852,
+          47896
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47879,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          233.9684222506479,
+          58.945675230131066
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 2,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          47852,
+          47897
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47880,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          228.11693858782021,
+          52.72636506724855
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Ways_In": 1,
+        "Services": 1,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          47852,
+          47898
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47881,
       "Project_ID": 6,
       "Layer_Key": "electric",
       "Feature_Type": "point",
@@ -5102,29 +4327,767 @@
           52.10517676931197
         ]
       ],
-      "Label": "Point B2",
+      "Label": "Bottle End",
       "Attributes": {
-        "Connects": [
-          46930,
-          46950,
-          47024,
-          47638
-        ],
-        "Span_Seq": 2,
+        "Ways_In": 1,
+        "Services": 0,
         "Generated": true,
-        "Span_Kind": "end",
         "Circuit_ID": 2,
-        "Span_Label": "B2",
-        "Span_Anchor": [
-          227.52532943092257,
-          52.10517676931197
+        "Joint_Code": "BTL",
+        "Joint_Type": "bottleend",
+        "Joint_Cables": [
+          47852
         ],
-        "Circuit_Name": "Circuit 2",
-        "Circuit_Letter": "B",
-        "VD_Cable_Size_ID": 1
+        "Joint_Reasons": [
+          "bottleend"
+        ]
       },
       "Plot_ID": null,
-      "Feature_Role": "feederpoint"
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47882,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          215.80943975812278,
+          84.19918619819654
+        ]
+      ],
+      "Label": "Bottle End",
+      "Attributes": {
+        "Ways_In": 0,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "BTL",
+        "Joint_Type": "bottleend",
+        "Joint_Cables": [
+          47689,
+          47853
+        ],
+        "Joint_Reasons": [
+          "bottleend"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47883,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          199.5156778052052,
+          85.97237114993935
+        ]
+      ],
+      "Label": "Bottle End",
+      "Attributes": {
+        "Ways_In": 0,
+        "Services": 0,
+        "Generated": true,
+        "Circuit_ID": 2,
+        "Joint_Code": "BTL",
+        "Joint_Type": "bottleend",
+        "Joint_Cables": [
+          47689,
+          47854
+        ],
+        "Joint_Reasons": [
+          "bottleend"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47884,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          110.21858559030704,
+          59.852039429509105
+        ],
+        [
+          112.32134722350612,
+          66.03837592869226
+        ],
+        [
+          113.3594169269319,
+          68.61336741165648
+        ],
+        [
+          115.54236489391948,
+          69.09031580760907
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46856,
+          46924,
+          46957,
+          47843,
+          47849,
+          47861
+        ],
+        "Length_m": 11.54,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 48
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47885,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          116.93876990786165,
+          57.567820691513546
+        ],
+        [
+          116.78679891483887,
+          57.120721179086324
+        ],
+        [
+          115.88993240304704,
+          54.813502411589056
+        ],
+        [
+          113.3550714044631,
+          54.85687468712231
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46862,
+          46924,
+          46959,
+          47843,
+          47863
+        ],
+        "Length_m": 5.48,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 48
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47886,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          124.55420688391077,
+          54.97930183299427
+        ],
+        [
+          122.78394923925475,
+          49.771193929944744
+        ],
+        [
+          121.11134478421985,
+          45.32215314169811
+        ],
+        [
+          119.52885202060598,
+          48.5026399971511
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46864,
+          46924,
+          46960,
+          47843,
+          47864
+        ],
+        "Length_m": 13.81,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 48
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47887,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          135.01722802869057,
+          51.42287721343166
+        ],
+        [
+          134.8528578811694,
+          50.93929931904178
+        ],
+        [
+          132.59350828336258,
+          44.349556783396956
+        ],
+        [
+          130.30089494142467,
+          45.035182245181375
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46866,
+          46924,
+          46961,
+          47843,
+          47865
+        ],
+        "Length_m": 9.87,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 48
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47888,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          146.2109064421439,
+          47.618099134307386
+        ],
+        [
+          146.02377815786582,
+          47.06756667414551
+        ],
+        [
+          143.41722914525818,
+          40.36119246410911
+        ],
+        [
+          141.53248694751235,
+          41.121651869736965
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46868,
+          46925,
+          46962,
+          47844,
+          47867
+        ],
+        "Length_m": 9.81,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 48
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47889,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          153.5203018279055,
+          45.13360509149361
+        ],
+        [
+          153.31710273468653,
+          44.53579222143989
+        ],
+        [
+          152.2887321284615,
+          42.071091701213504
+        ],
+        [
+          149.47106467365006,
+          42.53166889862358
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46870,
+          46925,
+          46963,
+          47844,
+          47848,
+          47868
+        ],
+        "Length_m": 6.16,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 48
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47890,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          154.9079336479783,
+          69.44096790896548
+        ],
+        [
+          155.1745270213747,
+          68.97161573823162
+        ],
+        [
+          155.98255176724416,
+          67.47119358185061
+        ],
+        [
+          154.96472398479142,
+          66.61250508899403
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46872,
+          46927,
+          46964,
+          47841,
+          47870
+        ],
+        "Length_m": 3.58,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 48
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47891,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          159.7487321534022,
+          72.1705603678549
+        ],
+        [
+          160.11883076441347,
+          71.41562149965972
+        ],
+        [
+          161.20740518685625,
+          69.83304278309436
+        ],
+        [
+          162.84079955446535,
+          70.69401304604044
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46874,
+          46927,
+          46965
+        ],
+        "Length_m": 4.61,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 48
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47892,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          170.30230752394377,
+          77.34430853527688
+        ],
+        [
+          170.57388496778705,
+          76.79033626415121
+        ],
+        [
+          171.53887598074604,
+          75.24293478538213
+        ],
+        [
+          170.3355020052903,
+          74.54370937119589
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46876,
+          46927,
+          46966,
+          47841,
+          47872
+        ],
+        "Length_m": 3.83,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 48
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47893,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          175.05181486976713,
+          79.67269053510617
+        ],
+        [
+          175.40739018771157,
+          78.94737674007837
+        ],
+        [
+          176.2893816905408,
+          77.43961759353996
+        ],
+        [
+          174.87016681873675,
+          76.73488746890817
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46878,
+          46927,
+          46967,
+          47841,
+          47850,
+          47873
+        ],
+        "Length_m": 4.14,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 48
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47894,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          185.97906297981106,
+          85.33347042194939
+        ],
+        [
+          186.39746022769378,
+          84.49737824178533
+        ],
+        [
+          187.11886710176543,
+          82.67915276478872
+        ],
+        [
+          185.67569518385784,
+          82.06572335478434
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46880,
+          46928,
+          46968,
+          47854
+        ],
+        "Length_m": 4.46,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 48
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47895,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          190.46538397586153,
+          87.57851516988346
+        ],
+        [
+          190.87692551886707,
+          86.75612289158623
+        ],
+        [
+          191.795275316859,
+          85.0449800848267
+        ],
+        [
+          190.5122784309405,
+          84.50437264147835
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46882,
+          46928,
+          46969,
+          47854
+        ],
+        "Length_m": 4.25,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 48
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47896,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          237.67526469703242,
+          69.85821747920778
+        ],
+        [
+          235.06825064341973,
+          67.84290551471128
+        ],
+        [
+          233.23397024340971,
+          69.11311918231273
+        ],
+        [
+          234.15984692222074,
+          70.44300353329533
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46892,
+          46929,
+          46974,
+          47852,
+          47878
+        ],
+        "Length_m": 7.15,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 48
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47897,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          233.9684222506479,
+          58.945675230131066
+        ],
+        [
+          229.10767265835952,
+          63.213861705199875
+        ],
+        [
+          227.2321877883958,
+          65.05423898060907
+        ],
+        [
+          228.9613012891147,
+          66.57961508353162
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46894,
+          46930,
+          46975,
+          47852,
+          47879
+        ],
+        "Length_m": 11.4,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 48
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47898,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "line",
+      "Geometry": [
+        [
+          228.11693858782021,
+          52.72636506724855
+        ],
+        [
+          223.6130834786397,
+          57.01575997823172
+        ],
+        [
+          222.80539612892403,
+          60.4176118889502
+        ],
+        [
+          223.06204323250603,
+          60.56414957349201
+        ]
+      ],
+      "Label": null,
+      "Attributes": {
+        "Connects": [
+          46896,
+          46930,
+          46976,
+          47852,
+          47858,
+          47880
+        ],
+        "Length_m": 10.01,
+        "Generated": true,
+        "Line_Type": "elec_service",
+        "VD_Cable_Size_ID": 48
+      },
+      "Plot_ID": null,
+      "Feature_Role": "shape"
+    },
+    {
+      "Feature_ID": 47899,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          159.7487321534022,
+          72.1705603678549
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Plot_ID": null,
+        "Generated": true,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          47841,
+          47891
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47900,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          185.97906297981106,
+          85.33347042194939
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Plot_ID": null,
+        "Generated": true,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          47854,
+          47894
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
+    },
+    {
+      "Feature_ID": 47901,
+      "Project_ID": 6,
+      "Layer_Key": "electric",
+      "Feature_Type": "point",
+      "Geometry": [
+        [
+          190.46538397586153,
+          87.57851516988346
+        ]
+      ],
+      "Label": "Service Joint",
+      "Attributes": {
+        "Plot_ID": null,
+        "Generated": true,
+        "Joint_Code": "SVC",
+        "Joint_Type": "service",
+        "Joint_Cables": [
+          47854,
+          47895
+        ],
+        "Joint_Reasons": [
+          "service"
+        ]
+      },
+      "Plot_ID": null,
+      "Feature_Role": "joint"
     }
   ],
   "layers": [

@@ -676,6 +676,34 @@ export function levelsForParts(parts = [], opts = {}) {
         startPct: from.pct + (Number(across?.pct) || 0),
       }
       : {};
+    /* ── The board a part begins at gets a figure of its own ──
+
+       Every figure here is set from a leg's END. That is right for a
+       trunk and for an output: their roots are already stops that
+       something else arrived at, and the leg that arrived set the
+       figure.
+
+       A part rooted at the far side of a board-to-board link has no
+       such leg \u2014 nothing arrives there, which is the whole point of the
+       link. So the board sat with a feeder point on it and no figure
+       against it, and every flat on it showed a dash.
+
+       The figure is the start: the first board's level carried across
+       the link. Written here rather than left to a leg that will never
+       come. */
+    if (part.board && from) {
+      const at = part.board.Attributes?.Span_Anchor ?? part.board.Geometry?.[0];
+      const stop = Array.isArray(at) ? (opts.features || []).find((x) =>
+        x.Feature_Role === "feederpoint"
+        && Array.isArray(x.Attributes?.Span_Anchor ?? x.Geometry?.[0])
+        && Math.hypot(
+          (x.Attributes?.Span_Anchor ?? x.Geometry[0])[0] - at[0],
+          (x.Attributes?.Span_Anchor ?? x.Geometry[0])[1] - at[1]) <= 2) : null;
+      if (stop && !out.has(Number(stop.Feature_ID))) {
+        out.set(Number(stop.Feature_ID), figureAt(part, part.model?.S ?? 0, start));
+      }
+    }
+
     for (const leg of part.legs || []) {
       if (leg.stopId == null || skipLeg(leg)) continue;
       out.set(Number(leg.stopId), figureAt(part, leg.endIdx, {

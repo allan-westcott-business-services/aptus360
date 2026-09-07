@@ -9,7 +9,8 @@ import { readFileSync } from "node:fs";
 import {
   stampLink, linkEnds, linkOrder, withAssumedMeters,
 } from "./src/features/gis/msdb.js";
-import { circuitMembership, circuitBuildParts } from "./src/features/gis/feeder.js";
+import { circuitMembership, circuitBuildParts, circuitTraceParts } from "./src/features/gis/feeder.js";
+import { levelsForParts } from "./src/features/gis/voltDrop.js";
 import { distancesFrom, originMissing } from "./src/features/gis/electric.js";
 
 let bad = 0;
@@ -17,7 +18,12 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
 const raw = JSON.parse(readFileSync("./fixtures/drawing-6-msdb-link.json", "utf8"));
 const f = raw.features;
 const boards = f.filter((x) => x.Feature_Role === "msdb");
-const link = f.find((x) => x.Feature_ID === 47622);
+/* Found by what it IS, not by a row number: the fixture is refreshed
+   from real drawings and the ids change every time. */
+const link = f.find((x) => x.Attributes?.MSDB_Link_A_ID != null)
+  ?? f.find((x) => x.Feature_Type === "line"
+    && /main/i.test(String(x.Attributes?.Line_Type ?? ""))
+    && stampLink(x.Geometry, boards));
 
 // 1. Stamped when drawn, from the boards it joins.
 {
@@ -49,9 +55,10 @@ const link = f.find((x) => x.Feature_ID === 47622);
   }
 
   /* A cable that is not board to board is not a link. */
-  const other = f.find((x) => x.Attributes?.Line_Type === "elec_main"
-    && x.Feature_ID !== 47622);
-  if (other && stampLink(other.Geometry, boards)) {
+  /* A cable that is not board to board is not a link. Its own geometry,
+     so the test does not depend on which drawing the fixture is. */
+  const away = [[900, 900], [940, 900]];
+  if (stampLink(away, boards)) {
     fail("an ordinary main was stamped as a board-to-board link");
   }
 }
@@ -61,7 +68,12 @@ const link = f.find((x) => x.Feature_ID === 47622);
 //    The fallback is exactly as good as the drawing: it covers cables
 //    drawn before the stamp existed, and never overrules a stamp.
 {
-  const byEnds = linkEnds(link, boards);
+  /* Built here rather than taken from the fixture: a drawing refreshed
+     from the app carries a real stamp, and this is the case for one
+     that does not. */
+  const bare = { Feature_Type: "line", Attributes: { Line_Type: "elec_main" },
+    Geometry: link.Geometry };
+  const byEnds = linkEnds(bare, boards);
   if (!byEnds) fail("an unstamped link is not recognised by its ends");
   else if (byEnds.stamped) fail("an unstamped link claims to be stamped");
 
@@ -367,6 +379,72 @@ const link = f.find((x) => x.Feature_ID === 47622);
   if (!/marks\.push\(\{ index: pt\.model\.S/.test(canvas)) {
     fail("the root mark is not added to this part's own marks, so the "
       + "ordering pass never sees it");
+  }
+}
+
+// 11. The board a part begins at gets a figure of its own.
+//
+//     Every figure is set from a leg's END. That is right for a trunk
+//     and for an output: their roots are already stops that something
+//     else arrived at, and the leg that arrived set the figure.
+//
+//     A part rooted at the far side of a link has no such leg \u2014 nothing
+//     arrives there, which is the whole point of the link. So the board
+//     sat with a feeder point on it and NO figure against it, and every
+//     flat on it showed a dash.
+{
+  const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
+  if (!/if \(part\.board && from\) \{/.test(vd)) {
+    fail("only leg ends get figures, so a board that a part BEGINS at "
+      + "never gets one");
+  }
+  if (!/out\.set\(Number\(stop\.Feature_ID\), figureAt\(part, part\.model\?\.S/.test(vd)) {
+    fail("the board's own figure is not the part's starting figure");
+  }
+  /* Not overwritten where a leg does end there, which is the ordinary
+     case for every other kind of part. */
+  if (!/!out\.has\(Number\(stop\.Feature_ID\)\)/.test(vd)) {
+    fail("the starting figure overwrites one a leg had already set");
+  }
+
+  /* End to end, with the stop the build now places at the board. */
+  const boards2 = f.filter((x) => x.Feature_Role === "msdb");
+  const b2 = boards2.find((b) => b.Label === "MSDB 2") ?? boards2[1];
+  const stop = { Feature_ID: 999001, Feature_Type: "point",
+    Feature_Role: "feederpoint", Layer_Key: "electric",
+    Geometry: [[...b2.Geometry[0]]],
+    Attributes: { Circuit_ID: 2, Span_Seq: 6, Span_Label: "B6",
+      Span_Kind: "junction", Span_Anchor: [...b2.Geometry[0]],
+      At_Joint_ID: b2.Feature_ID, Generated: true } };
+  const world = [...f, stop];
+  const origin2 = world.find((x) => x.Feature_Role === "feederpoint"
+    && Number(x.Attributes?.Circuit_ID) === 2 && Number(x.Attributes?.Span_Seq) === 0);
+  const sub = world.find((x) => x.Feature_Role === "substation");
+  if (origin2 && sub) {
+    const dd = distancesFrom(world, sub.Feature_ID);
+    const ls = [];
+    for (const line of world) {
+      const e = linkEnds(line, boards2);
+      if (!e) continue;
+      const o = linkOrder(e, (b) => dd.get(Number(b.Feature_ID)));
+      if (o) ls.push({ ...o, link: line });
+    }
+    const mem = circuitMembership(world, 2);
+    const parts = circuitTraceParts(world, origin2.Feature_ID, {
+      lineTypes: raw.lineTypes || [], circuitId: 2, plotById: () => null,
+      nrsById: () => null, seedIds: mem.seedIds, meterIds: mem.meterIds,
+      stopAt: "spannodes", msdbLinks: ls });
+    for (const p of parts) if (p.fromBoard) p.acrossLink = { ohms: 0.04, pct: 0.831 };
+    const figs = levelsForParts(parts, { features: world, base: {
+      cables: [{ Cable_Size_ID: 1, Loop_Impedance_Ohm: 0.9785, Volt_Drop_Base: 3094 }],
+      limits: {}, transformer: { Loop_Impedance_Ohm: 0.02 }, voltageV: 400,
+      startPct: 3.5 } });
+    const got = figs.get(999001);
+    if (!got) fail("the stop at the second board still has no figure");
+    else if (!(got.pct > 3.5)) {
+      fail(`the second board reads ${got.pct}%, no worse than the first \u2014 the `
+        + "link and the risers cost nothing");
+    }
   }
 }
 

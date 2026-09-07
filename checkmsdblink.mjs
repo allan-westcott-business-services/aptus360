@@ -343,6 +343,33 @@ const link = f.find((x) => x.Feature_ID === 47622);
   }
 }
 
+// 10. A part rooted at a board starts AT that board.
+//
+//     Every other part's root is already a stop by the time it is
+//     walked: a link box is marked by the trunk arriving at it, and the
+//     origin is the origin. Nothing arrives at the far side of a
+//     board-to-board link \u2014 that is the whole point of it \u2014 so its root
+//     was marked by nobody. No feeder point at the board, no figure,
+//     and no levels for its flats.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/if \(pt\.board && pt\.model\?\.nodes\?\.\[pt\.model\.S\]\)/.test(canvas)) {
+    fail("the board a part is rooted at is never marked, so it gets no "
+      + "feeder point and no level");
+  }
+  /* Stamped with the board it stands on, so the drag carries it and
+     the editor can find its figure. */
+  if (!/atFeatureId: pt\.board\.Feature_ID/.test(canvas)) {
+    fail("the stop at a board does not say which board it stands on");
+  }
+  /* And it must survive the across-parts dedupe: on the reported
+     drawing the nearest other stop is fourteen metres away. */
+  if (!/marks\.push\(\{ index: pt\.model\.S/.test(canvas)) {
+    fail("the root mark is not added to this part's own marks, so the "
+      + "ordering pass never sees it");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Board-to-board links behave (stamped, ordered, and routed on from).");
 process.exit(bad ? 1 : 0);

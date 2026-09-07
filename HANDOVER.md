@@ -3284,6 +3284,25 @@ excluded by anything in the MSDB work; the drawing simply had no
 service cables on it at all, so **Auto Lay Service Cable has to be run**
 after the feeder is built.
 
+96. **A part rooted at a board was marked by nobody.** Every other
+    part's root is already a stop by the time it is walked: a link box
+    is marked by the trunk arriving at it, and the origin is the origin.
+    **Nothing arrives at the far side of a board-to-board link** — that
+    is the whole point of it — so MSDB 2's root had no mark, and with no
+    mark there is no feeder point, no figure, and no levels for its
+    flats.
+
+    The root is marked now, stamped with the board it stands on so the
+    drag carries it and the editor can find its figure. On the reported
+    drawing the root node sits exactly on the board, and the nearest
+    other stop is fourteen metres away, so it survives the 2.5 m dedupe
+    comfortably.
+
+    **Three rounds on one board, each a different thing that assumed
+    something arrives from upstream.** The routing assumed the trench
+    reached it; the levels assumed a leg ended on it; the marks assumed
+    somebody else had already numbered it.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

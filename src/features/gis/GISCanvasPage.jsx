@@ -15978,6 +15978,21 @@ export default function GISCanvasPage() {
           /* And the far end of what this part lays, which is a stop by
              definition — for the trunk that is the link box, which the
              full-circuit model calls nothing at all. */
+          /* ── A part rooted at a board starts AT that board ──
+
+             Every other part's root is already a stop by the time it is
+             walked: a link box is marked by the trunk arriving at it,
+             and the origin is the origin. Nothing arrives at the far
+             side of a board-to-board link \u2014 that is the whole point of
+             it \u2014 so its root was marked by nobody and the board had no
+             feeder point, no figure, and no levels for its flats.
+
+             Marked here, at the node the walk begins from. */
+          if (pt.board && pt.model?.nodes?.[pt.model.S]) {
+            const root = pt.model.nodes[pt.model.S];
+            marks.push({ index: pt.model.S, point: [root[0], root[1]],
+              kind: "junction", atFeatureId: pt.board.Feature_ID });
+          }
           const term = partEndMark(pt.model, pt.sections);
           /* ── One stop at one end ──
 

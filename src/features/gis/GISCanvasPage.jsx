@@ -1742,12 +1742,34 @@ export default function GISCanvasPage() {
           && Number(x.Attributes?.Circuit_ID) === Number(c.id));
         if (boards.length < 2) return [];
         const far = distancesFrom(src, origin.Feature_ID);
+
+        /* ── Only where the dig does not already get there ──
+
+           A link part exists because the second board's trench is an
+           ISLAND: the dig stops at the first board and starts again at
+           the second, and a cable is the only thing between them.
+
+           Dig a mains trench between the two and there is no island.
+           The ordinary routing reaches the second board by itself, and
+           a link part on top of that would lay a second cable over the
+           first and stand a second stop beside its stop.
+
+           Reachability measured over TRENCHES alone, because that is
+           what the routing walks: measuring over cables as well would
+           call every board reachable the moment somebody drew the link,
+           which is the case this exists for. */
+        const dig = src.filter((x) => x.Feature_Type !== "line"
+          || isTrenchType(x.Attributes?.Line_Type, lineTypes));
+        const byDig = distancesFrom(dig, origin.Feature_ID);
+
         const out = [];
         for (const line of src) {
           const ends = linkEnds(line, boards);
           if (!ends) continue;
           const order = linkOrder(ends, (b) => far.get(Number(b.Feature_ID)));
-          if (order) out.push({ ...order, link: line });
+          if (!order) continue;
+          if (byDig.has(Number(order.second.Feature_ID))) continue;
+          out.push({ ...order, link: line });
         }
         return out;
       })();

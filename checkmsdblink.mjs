@@ -12,6 +12,7 @@ import {
 import { circuitMembership, circuitBuildParts, circuitTraceParts } from "./src/features/gis/feeder.js";
 import { levelsForParts } from "./src/features/gis/voltDrop.js";
 import { distancesFrom, originMissing } from "./src/features/gis/electric.js";
+import { isTrenchType } from "./src/features/gis/snapping.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -444,6 +445,55 @@ const link = f.find((x) => x.Attributes?.MSDB_Link_A_ID != null)
     else if (!(got.pct > 3.5)) {
       fail(`the second board reads ${got.pct}%, no worse than the first \u2014 the `
         + "link and the risers cost nothing");
+    }
+  }
+}
+
+// 12. A trench between the boards makes the link part unnecessary.
+//
+//     A link part exists because the second board's trench is an
+//     ISLAND: the dig stops at the first board and starts again at the
+//     second, with only a cable between them.
+//
+//     Dig a mains trench between the two and there is no island. The
+//     ordinary routing reaches the second board by itself, and a link
+//     part on top of that would lay a second cable over the first and
+//     stand a second stop beside its stop.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/if \(byDig\.has\(Number\(order\.second\.Feature_ID\)\)\) continue;/.test(canvas)) {
+    fail("a link part is made even where the dig already reaches the second "
+      + "board, so the cable and the stop are laid twice");
+  }
+  /* Measured over TRENCHES alone, because that is what the routing
+     walks. Measuring over cables as well would call every board
+     reachable the moment somebody drew the link \u2014 which is the case
+     this exists for. */
+  if (!/isTrenchType\(x\.Attributes\?\.Line_Type, lineTypes\)/.test(canvas)) {
+    fail("reachability is measured over cables as well as trenches, so the "
+      + "link switches itself off the moment it is drawn");
+  }
+
+  /* And it behaves that way on the fixture, both with and without. */
+  const boards2 = f.filter((x) => x.Feature_Role === "msdb");
+  const sub = f.find((x) => x.Feature_Role === "substation");
+  if (boards2.length === 2 && sub) {
+    const [b1, b2] = boards2;
+    const trench = { Feature_ID: 999900, Feature_Type: "line",
+      Feature_Role: "shape", Layer_Key: "trench",
+      Geometry: [[...b1.Geometry[0]], [...b2.Geometry[0]]],
+      Attributes: { Line_Type: "trench_main", Carries_LV: true } };
+    const digOf = (world) => world.filter((x) => x.Feature_Type !== "line"
+      || isTrenchType(x.Attributes?.Line_Type, raw.lineTypes || []));
+    const before = distancesFrom(digOf(f), sub.Feature_ID);
+    const after = distancesFrom(digOf([...f, trench]), sub.Feature_ID);
+    const island = boards2.find((b) => !before.has(Number(b.Feature_ID)));
+    if (!island) {
+      fail("the fixture has no board the dig cannot reach, so the case this "
+        + "was written for is untested");
+    } else if (!after.has(Number(island.Feature_ID))) {
+      fail("a mains trench drawn between the boards does not make the far "
+        + "one reachable, so the link part would still be made");
     }
   }
 }

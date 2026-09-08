@@ -3450,6 +3450,25 @@ behaviour and this is a deliberate change to it.
      contents so the reading order the original note argued for
      survives.
 
+**A trench between two boards is the simpler answer**, and the link
+machinery now stands down when it sees one.
+
+A link part exists because the second board's dig is an ISLAND: the
+trench stops at the first board and starts again at the second, with
+only a cable between them. Dig a mains trench between the two and there
+is no island — the ordinary routing reaches the second board by itself,
+and a link part on top of that would lay a second cable over the first
+and stand a second stop beside its stop.
+
+Reachability is measured over TRENCHES alone, because that is what the
+routing walks. Measuring over cables as well would call every board
+reachable the moment somebody drew the link, which is the case the whole
+mechanism exists for.
+
+The stamping, ordering and level-chaining stay: a hand-drawn link
+through a building where no trench can go is still a real case, and the
+guard is what lets both approaches sit on one drawing.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

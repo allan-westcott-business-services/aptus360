@@ -20928,10 +20928,29 @@ export default function GISCanvasPage() {
     for (const line of features) {
       if (line.Feature_Type !== "line" || line.Layer_Key !== "electric") continue;
       if (line.Attributes?.Circuit_ID == null) continue;
-      if (line.Attributes?.VD_Cable_Size_ID == null) continue;
+      /* ── Both sizes, not just the calculated one ──
+
+         This compared `VD_Cable_Size_ID` on each side and ignored the
+         override entirely. So a cable set BY HAND drifted from its
+         point without ever being reported: the calculated field was
+         unchanged on both, the warning never appeared, the "fix"
+         button never offered itself, and the levels went on being
+         costed from the point's old size.
+
+         Which is the whole of "I changed the cable and nothing
+         happened" \u2014 the one number a designer sets by hand was the one
+         number this could not see.
+
+         The sync writes both fields, so both are compared. */
+      const wantSystem = line.Attributes?.VD_Cable_Size_ID ?? null;
+      const wantManual = line.Attributes?.Manual_VD_Cable_Size_ID ?? null;
+      if (wantSystem == null && wantManual == null) continue;
       for (const node of nodesFedBy(line, features)) {
-        if (String(node.Attributes?.VD_Cable_Size_ID ?? "")
-          !== String(line.Attributes.VD_Cable_Size_ID)) out.push(node);
+        const a = node.Attributes || {};
+        if (String(a.VD_Cable_Size_ID ?? "") !== String(wantSystem ?? "")
+          || String(a.Manual_VD_Cable_Size_ID ?? "") !== String(wantManual ?? "")) {
+          out.push(node);
+        }
       }
     }
     return out;

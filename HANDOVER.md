@@ -3624,6 +3624,27 @@ is not.
      the API. It locks the expected figures and the structural rules,
      but it would not catch the app diverging from the emulation.
 
+108. **And the drift detector could not see an override at all.**
+     `cablesOutOfStep` compared `VD_Cable_Size_ID` on each side —
+     the CALCULATED field, on both the cable and the point. A cable set
+     by hand changes `Manual_VD_Cable_Size_ID` and leaves the calculated
+     one alone, so drift caused by an override was invisible: no
+     warning, no "fix" button, and the levels went on being costed from
+     the point's old size.
+
+     Measured on the reported drawing: overriding one cable reported
+     **0 nodes out of step** comparing the calculated size, and **1**
+     comparing both.
+
+     **The one number a designer sets by hand was the one number this
+     could not see.** The sync had always written both fields; only the
+     detector read one.
+
+     Four rounds on this symptom now, each a different link: the field
+     the bulk panel wrote, the point the single save synced, the pairing
+     rule, and the drift check. Every one of them looked correct in
+     isolation.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

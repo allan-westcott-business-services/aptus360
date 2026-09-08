@@ -11,7 +11,7 @@
    the substation — was paired with point B2. Changing it moved B2's
    figure and left B1's exactly where it was. */
 import { readFileSync } from "node:fs";
-import { nodeFedBy } from "./src/features/gis/spanNodes.js";
+import { nodeFedBy, nodesFedBy } from "./src/features/gis/spanNodes.js";
 import { cableIdOf, circuitMembership, circuitTraceParts } from "./src/features/gis/feeder.js";
 import { levelsForParts } from "./src/features/gis/voltDrop.js";
 
@@ -103,6 +103,55 @@ const f = raw.features;
           + `made bigger: ${before[k]?.toFixed(3)}% then ${after[k]?.toFixed(3)}%`);
       }
     }
+  }
+}
+
+// 3. A cable set BY HAND counts as out of step.
+//
+//    `cablesOutOfStep` compared `VD_Cable_Size_ID` on each side and
+//    ignored the override entirely. So a cable set by hand drifted from
+//    its point without ever being reported: the calculated field was
+//    unchanged on both, the warning never appeared, the "fix" button
+//    never offered itself, and the levels went on being costed from the
+//    point's old size.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("const cablesOutOfStep");
+  const body = canvas.slice(at, canvas.indexOf("\n  }, [", at));
+  if (!/wantManual/.test(body)) {
+    fail("the out-of-step check ignores the override, so a cable set by hand "
+      + "never reports drift and the fix button never appears");
+  }
+  if (!/String\(a\.Manual_VD_Cable_Size_ID \?\? ""\) !== String\(wantManual \?\? ""\)/
+    .test(body)) {
+    fail("the override is read and not compared");
+  }
+  /* A cable with neither size is not drift, it is a cable nobody has
+     sized. */
+  if (!/if \(wantSystem == null && wantManual == null\) continue;/.test(body)) {
+    fail("a cable with no size at all is reported as out of step");
+  }
+
+  /* And on the reported drawing an override does register. */
+  const changed = f.map((x) => (x.Attributes?.Line_Type === "elec_main"
+    && Number(x.Attributes?.Circuit_ID) === 2 && x.Label === "B1"
+    ? { ...x, Attributes: { ...x.Attributes, Manual_VD_Cable_Size_ID: 3 } } : x));
+  let seen = 0;
+  for (const line of changed) {
+    if (line.Feature_Type !== "line" || line.Layer_Key !== "electric") continue;
+    if (line.Attributes?.Circuit_ID == null) continue;
+    const ws = line.Attributes?.VD_Cable_Size_ID ?? null;
+    const wm = line.Attributes?.Manual_VD_Cable_Size_ID ?? null;
+    if (ws == null && wm == null) continue;
+    for (const nd of nodesFedBy(line, changed)) {
+      const a = nd.Attributes || {};
+      if (String(a.VD_Cable_Size_ID ?? "") !== String(ws ?? "")
+        || String(a.Manual_VD_Cable_Size_ID ?? "") !== String(wm ?? "")) seen++;
+    }
+  }
+  if (!seen) {
+    fail("overriding a cable on the fixture reports no drift at all, so "
+      + "nothing would prompt the points to be brought into step");
   }
 }
 

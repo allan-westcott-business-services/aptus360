@@ -71,7 +71,7 @@ const meters = some((x) => x.Feature_Role === "meter", 4);
 {
   if (mains.length && meters.length) {
     const k = keysFor([...mains.slice(0, 2), ...meters.slice(0, 2)]);
-    if (k.includes("VD_Cable_Size_ID")) {
+    if (k.includes("Manual_VD_Cable_Size_ID")) {
       fail("a selection of cables AND meters is offered a cable size");
     }
     if (!k.includes("Circuit_ID")) {
@@ -82,7 +82,7 @@ const meters = some((x) => x.Feature_Role === "meter", 4);
      catalogues: the same key meaning two things is two fields. */
   if (mains.length && svc.length) {
     const k = keysFor([...mains.slice(0, 2), ...svc.slice(0, 2)]);
-    if (k.includes("VD_Cable_Size_ID")) {
+    if (k.includes("Manual_VD_Cable_Size_ID")) {
       fail("mains and services are offered one cable list, so a service "
         + "cable can be set on a main");
     }
@@ -135,7 +135,7 @@ const meters = some((x) => x.Feature_Role === "meter", 4);
   }
   /* Offered on a run as on a service. */
   const mainsSel = f.filter((x) => x.Attributes?.Line_Type === "elec_main").slice(0, 3);
-  if (mainsSel.length && !keysFor(mainsSel).includes("VD_Cable_Size_ID")) {
+  if (mainsSel.length && !keysFor(mainsSel).includes("Manual_VD_Cable_Size_ID")) {
     fail("a run of mains is not offered a cable size");
   }
 
@@ -217,7 +217,7 @@ const meters = some((x) => x.Feature_Role === "meter", 4);
   const L = (t, i) => ({ Feature_ID: i, Feature_Type: "line",
     Layer_Key: "electric", Attributes: { Line_Type: t } });
   const cableOf = (sel) => fieldsForMany(classesIn(sel, o2), o2)
-    .find((x) => x.key === "VD_Cable_Size_ID");
+    .find((x) => x.key === "Manual_VD_Cable_Size_ID");
 
   const hv = cableOf([L("elec_hv", 1), L("elec_hv", 2)]);
   if (!hv) fail("a run of HV is offered no cable at all");
@@ -235,6 +235,49 @@ const meters = some((x) => x.Feature_Role === "meter", 4);
   if (!/String\(match\.voltageIds \?\? ""\) === String\(f\.voltageIds \?\? ""\)/.test(src)) {
     fail("the voltage is carried on the field and not compared, so HV and LV "
       + "merge into one field");
+  }
+}
+
+// 8. The bulk cable field writes the OVERRIDE.
+//
+//    Every electric line carries two sizes: `VD_Cable_Size_ID`, which
+//    Build LV Network works out, and `Manual_VD_Cable_Size_ID`, which a
+//    designer sets to overrule it. The single-feature editor has always
+//    written the second.
+//
+//    This wrote the FIRST, so a bulk change looked right until the next
+//    build recalculated the field and put its own answer back \u2014 the
+//    size returned to what it had been and nothing said why.
+{
+  const src = readFileSync("./src/features/gis/bulkEdit.js", "utf8");
+  if (/key: "VD_Cable_Size_ID", label: "Cable"/.test(src)) {
+    fail("the bulk cable field writes the calculated size, which the next "
+      + "build overwrites");
+  }
+  if (!/key: "Manual_VD_Cable_Size_ID", label: "Cable"/.test(src)) {
+    fail("the bulk cable field does not write the override");
+  }
+
+  /* And the calculated size is left alone, so the build's own answer
+     survives for anything not overridden. */
+  const mainsAny = f.filter((x) => x.Attributes?.Line_Type === "elec_main").slice(0, 2);
+  if (mainsAny.length) {
+    const r = planBulkEditOn(mainsAny, { Manual_VD_Cable_Size_ID: 3 },
+      { lineTypes: raw.lineTypes || [], features: f });
+    const a = r.rows[0]?.Attributes || {};
+    if (Number(a.Manual_VD_Cable_Size_ID) !== 3) fail("the override was not written");
+    if (a.VD_Cable_Size_ID !== mainsAny[0].Attributes.VD_Cable_Size_ID) {
+      fail("the calculated size was changed as well, so the build's own "
+        + "answer is lost");
+    }
+  }
+
+  /* The same field the one-at-a-time editor writes, so the two agree
+     about what "set the cable" means. */
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/setAttr\("Manual_VD_Cable_Size_ID"\)/.test(editor)) {
+    fail("the single-feature editor no longer writes the override, so the "
+      + "two editors disagree");
   }
 }
 

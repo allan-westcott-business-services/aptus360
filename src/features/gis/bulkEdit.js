@@ -162,9 +162,23 @@ export function fieldsFor(cls, { lineTypes = [] } = {}) {
        The voltage is part of what makes two fields the same field.
        Carried here so the intersection sees it, and so the control can
        offer the right catalogue. */
-    out.push({ key: "VD_Cable_Size_ID", label: "Cable", kind: "cable",
+    /* ── The override, not the calculated size ──
+
+       Every electric line carries two: `VD_Cable_Size_ID`, which Build
+       LV Network works out, and `Manual_VD_Cable_Size_ID`, which a
+       designer sets to overrule it. The single-feature editor has
+       always written the second.
+
+       This wrote the FIRST, so a bulk change looked right until the
+       next build recalculated the field and put its own answer back \u2014
+       the size returned to what it had been and nothing said why.
+
+       The same field as the one-at-a-time editor, so the two agree
+       about what "set the cable" means. */
+    out.push({ key: "Manual_VD_Cable_Size_ID", label: "Cable", kind: "cable",
       usage: cls.lineType === "elec_service" ? "service" : "mains",
-      voltageIds: cls.lineType === "elec_hv" ? [2] : null });
+      voltageIds: cls.lineType === "elec_hv" ? [2] : null,
+      note: "Overrides what the build works out" });
 
     /* The circuit is offered above, for every electric feature rather
        than for lines alone: a meter carries one too, and moving a run

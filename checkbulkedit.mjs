@@ -37,7 +37,12 @@ const keys = (cs) => fieldsForMany(cs, { lineTypes }).map((f) => f.key);
 //    joint is a form that writes a cable size onto a joint.
 {
   const alone = keys([cable]);
-  if (!alone.includes("VD_Cable_Size_ID")) fail("a cable alone is offered no cable field");
+  /* The OVERRIDE, not the calculated size: the bulk panel writes the
+     same field the one-at-a-time editor does, so a change survives the
+     next build instead of being recalculated away. */
+  if (!alone.includes("Manual_VD_Cable_Size_ID")) {
+    fail("a cable alone is offered no cable field");
+  }
   const mixed = keys([cable, joint]);
   if (mixed.includes("VD_Cable_Size_ID")) fail("cable field survived into a mixed selection");
   if (!mixed.includes("Build_Status")) fail("status did not survive a mixed selection");

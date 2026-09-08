@@ -3505,6 +3505,70 @@ guard is what lets both approaches sit on one drawing.
      it.** Stopping the write leaves every drawing made before the fix
      still displaying it as fact.
 
+**Existing plant is off the bill of materials.** Migration
+`0208_bom_no_existing.sql` — **NOT YET RUN**, and it must go after 0207.
+
+A bill lists what somebody has to buy and lay. Something already in the
+ground is neither: it is a fact about the site, drawn so the design can
+avoid it, tee off it, or record that it is there. Counting it puts cable
+on the take-off nobody will order and trench on it nobody will dig — and
+the error is invisible, because an existing main looks exactly like a
+new one on a bill that does not say which is which.
+
+**One rule catches both ways of being existing.** `Build_Status =
+'existing'` is the field somebody sets; the line types ending
+`_existing` default to that status when drawn, so a feature drawn as an
+existing main already carries it.
+
+**`remove` stays ON the bill.** Taking a main out is work somebody
+prices.
+
+**COALESCE, not a bare comparison.** `Build_Status` is NULL on every
+feature never given a status — 89 of 130 on the drawing this was written
+against — and `NULL <> 'existing'` is NULL rather than true, which would
+drop them all. Same fault as the NRS exclusion, same fix.
+
+Applied to all THREE feature reads: lines, points and the MSDB tails.
+The body is 0207's, copied and added to — `checkbomroles` diffs the two
+functions and fails if 0208 differs by more than the new rule, because
+0205 lost nine columns to being reconstructed from memory.
+
+**An existing trench: no dig, and laying only for what is new.** The
+dig and the setup were already zero — a hole somebody else opened is not
+dug twice, and the machine is not moved for it.
+
+The LAYING was kept whatever the trench held, on the reasoning that a
+pipe goes in whether or not this job made the trench. That is right for
+a new run through an old route. It is wrong for a run already in the
+ground: an existing trench holding an existing cable was charged an hour
+to lay a cable that is lying there, while the bill — which drops
+existing features altogether once 0208 runs — said nothing of the sort.
+
+Each content now answers for itself, which is what keeps the reuse case
+working: the new cable in the old trench is laid, the old one beside it
+is not.
+
+105. **The bulk cable field wrote the size the build recalculates.**
+     Every electric line carries two: `VD_Cable_Size_ID`, which Build LV
+     Network works out, and `Manual_VD_Cable_Size_ID`, which a designer
+     sets to overrule it. The single-feature editor has always written
+     the second.
+
+     The bulk panel wrote the FIRST. A change looked right on screen
+     until the next build recalculated the field and put its own answer
+     back — the size returned to what it had been, the levels never
+     moved, and **nothing said why**. On the reported drawing every
+     cable was still size 1 with no override anywhere.
+
+     Now the same field as the one-at-a-time editor, so the two agree
+     about what "set the cable" means, and the calculated size is left
+     alone so the build's own answer survives for everything not
+     overridden.
+
+     **Two fields for one idea, and the two editors picked different
+     ones.** The one that looked like the answer was the one the build
+     owns.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

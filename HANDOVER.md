@@ -160,6 +160,7 @@ caught a fault that had already shipped at least once.
 | `node checknumberremoved.mjs` | The old numbering pass stays out of the client |
 | `node checkmsdblink.mjs` | Board-to-board links: stamped, ordered, routed past |
 | `node checkisolation.mjs` | A trench that refuses LV is not walked across |
+| `node checkbulkfields.mjs` | Bulk edit offers only what the selection shares |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
@@ -3348,6 +3349,31 @@ after the feeder is built.
     Verified both ways on the live drawing: each circuit still reaches
     all of its own meters from its own substation, and neither reaches
     the other's.
+
+**Bulk edit offers what the selection shares, and only that.**
+`fieldsForMany` already intersected the classes correctly; what was
+wrong was what the classes themselves offered.
+
+**Circuit was missing entirely** — the field somebody opens this panel
+for. It is on every electric feature now, cables and fittings and
+meters alike, but not on a trench: a dig belongs to no circuit, and two
+circuits commonly share one.
+
+**A circuit carries its name and letter**, for the same reason a line
+type carries its layer. Writing the id alone leaves a run numbered 3 and
+still called Circuit 2 on every sheet that names it. Taken from whatever
+is already on that circuit, since there is no circuits table.
+
+**Name and Depth are off cables and pipes.** Forty cables sharing one
+label says nothing anybody wants to read — the drawing tells them apart
+by circuit, size and where they run. And a cable's depth is the depth of
+the trench it lies in: setting it on the cable as well is two places to
+say one thing, disagreeing the moment either is edited. A TRENCH keeps
+both, being a thing on a programme and the thing that is dug.
+
+Two rules in `checkbulkedit` expected Label to survive every mix and had
+to be corrected rather than weakened — they were right about the old
+behaviour and this is a deliberate change to it.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

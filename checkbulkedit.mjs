@@ -47,8 +47,12 @@ const keys = (cs) => fieldsForMany(cs, { lineTypes }).map((f) => f.key);
      whole set rather than as "no cable field", so a field that starts
      leaking into mixed sets is caught whichever field it is. */
   const three = keys([trench, cable, joint]).sort();
-  if (three.join(",") !== "Build_Status,Label") {
-    fail(`trench+cable+joint offered ${three.join(", ")}, expected Build_Status and Label`);
+  /* Label no longer survives a mix that contains a CABLE: forty cables
+     sharing one name says nothing anybody wants to read, so a cable is
+     not offered it and the intersection drops it. A trench and a joint
+     alone would still keep it. */
+  if (three.join(",") !== "Build_Status") {
+    fail(`trench+cable+joint offered ${three.join(", ")}, expected Build_Status`);
   }
   if (!keys([trench]).includes("Surface_Type")) fail("a trench alone is offered no surface");
   if (keys([trench, cable]).includes("Surface_Type")) fail("surface survived onto cables");
@@ -145,7 +149,9 @@ const keys = (cs) => fieldsForMany(cs, { lineTypes }).map((f) => f.key);
   if (classesIn([], { lineTypes }).length) fail("classesIn found a class in nothing");
   /* And the fields that follow are the ones those two share. */
   const ks = fieldsForMany(cs, { lineTypes }).map((f) => f.key).sort();
-  if (ks.join(",") !== "Build_Status,Label") {
+  /* A main and a joint share their circuit as well as their status, and
+     neither is a thing that wants a shared name. */
+  if (ks.join(",") !== "Build_Status,Circuit_ID") {
     fail(`a main and a joint were offered ${ks.join(", ")}`);
   }
 }

@@ -7,6 +7,7 @@ import { statusesFor } from "./buildStatus.js";
 import { bulkDeleteCategories, idsForKeys } from "./bulkDelete.js";
 import { classesIn, fieldsForMany, planBulkEditOn, CLEAR } from "./bulkEdit.js";
 import { cableMenu, cableMenuName } from "./cableMenu.js";
+import { circuitsFrom } from "./electric.js";
 
 /* Editing many features at once, by selecting them or by naming them.
 
@@ -52,6 +53,16 @@ export default function BulkEditor({
      type's name plus the size, exactly as the cable editor shows it. */
   cableSizes = [], cableTypes = [],
 }) {
+  /* ── The circuits on this drawing ──
+
+     Derived here rather than passed in: `circuitsFrom` is the one place
+     that answers what a circuit is, and a list assembled a second way
+     would disagree with the canvas the first time either changed. */
+  const circuits = useMemo(
+    () => circuitsFrom(allFeatures.length ? allFeatures : features),
+    [allFeatures, features],
+  );
+
   const typeName = (id) =>
     propertyTypes.find((t) => t.Property_Type_ID === id)?.Property_Type ?? "";
 
@@ -147,7 +158,11 @@ export default function BulkEditor({
       .filter((k) => k !== "Property_Config_ID"));
     const featureDraft = Object.fromEntries(
       Object.entries(draft).filter(([k]) => offered.has(k)));
-    return planBulkEditOn(targets, featureDraft, { lineTypes, statusesFor });
+    /* The whole drawing as well as the targets: a circuit's name and
+       letter live on whatever is already on it, which may be nothing in
+       the selection. */
+    return planBulkEditOn(targets, featureDraft,
+      { lineTypes, statusesFor, features: allFeatures });
   }, [targets, draft, shared, lineTypes]);
 
   const plotChange = houseType && seeds.length
@@ -262,6 +277,35 @@ export default function BulkEditor({
             {(f.options || []).map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
           {f.note && <p className="hint">{f.note}.</p>}
+        </div>
+      );
+    }
+
+    /* ── Which circuit to move them to ──
+
+       The circuits that exist on this drawing, not a free number: a
+       circuit is a thing with meters on it, and typing an id that
+       belongs to nothing would move a run of cable onto a network that
+       is not there.
+
+       Name and letter travel with the id, exactly as they do when a
+       cable inherits a circuit from what it was drawn from \u2014 a circuit
+       named in one place and numbered in another is two answers. */
+    if (f.kind === "circuit") {
+      return (
+        <div className="fld" key={f.key}>
+          <label htmlFor={`be-${f.key}`}>{f.label}</label>
+          <select id={`be-${f.key}`} value={draft[f.key] ?? ""}
+            onChange={(e) => set(f.key, e.target.value === "" ? "" : Number(e.target.value))}>
+            <option value="">Leave unchanged</option>
+            {circuits.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          {f.note && <p className="hint">{f.note}.</p>}
+          {!circuits.length && (
+            <p className="hint">No circuits on this drawing yet.</p>
+          )}
         </div>
       );
     }

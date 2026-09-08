@@ -100,12 +100,24 @@ export function fieldsFor(cls, { lineTypes = [] } = {}) {
      here anyway, because this list is the answer to "what can these be
      told to do", and a field the panel draws from somewhere else is a
      second place to remember one. */
-  out.push({ key: "Label", label: "Name", kind: "text",
-    note: "They will share it" });
-
   const isLine = !!cls.lineType;
   const t = lineTypes.find((x) => x.Type_Key === cls.lineType);
   const isTrench = isLine && (t?.Is_Trench ?? String(cls.lineType).includes("trench"));
+
+  /* ── A name is for a thing, not for a run of cable ──
+
+     Giving forty cables one name says nothing anybody wants to read:
+     the drawing already tells them apart by circuit, size and where
+     they run, and "they will share it" is a promise of forty identical
+     labels. A point is different \u2014 a board, a joint, a link box is a
+     thing somebody calls something.
+
+     Trenches keep it: a dig is a thing on a programme, and "Phase 2
+     spine" across a run of them is a real sentence. */
+  if (!isLine || isTrench) {
+    out.push({ key: "Label", label: "Name", kind: "text",
+      note: "They will share it" });
+  }
 
   if (isLine) {
     out.push({ key: "Line_Type", label: "Line type", kind: "lineType",
@@ -117,9 +129,39 @@ export function fieldsFor(cls, { lineTypes = [] } = {}) {
       options: ["On-site", "Off-site"],
       note: "Normally worked out from the boundary" });
   }
+  /* ── The circuit, on anything that carries one ──
+
+     Cables and the fittings on them are all stamped with a circuit, and
+     moving a run from one to another is a single decision about many
+     features \u2014 which is exactly what this panel is for. It was the one
+     field somebody would come here for and not find.
+
+     Not on a trench: a dig belongs to no circuit, and two circuits
+     commonly share one. */
+  if (cls.layer === "electric" && !isTrench) {
+    out.push({ key: "Circuit_ID", label: "Circuit", kind: "circuit",
+      note: "Moves them to that circuit" });
+  }
+
   if (isLine && cls.layer === "electric") {
+    /* ── An HV run is not an LV main ──
+
+       `usage` splits mains from services, and both HV and LV mains are
+       "mains" \u2014 so an HV cable and an LV main looked like the same
+       field, `fieldsForMany` kept it across a mixed selection, and the
+       control offered LV cable for a run at eleven kilovolts.
+
+       The voltage is part of what makes two fields the same field.
+       Carried here so the intersection sees it, and so the control can
+       offer the right catalogue. */
     out.push({ key: "VD_Cable_Size_ID", label: "Cable", kind: "cable",
-      usage: cls.lineType === "elec_service" ? "service" : "mains" });
+      usage: cls.lineType === "elec_service" ? "service" : "mains",
+      voltageIds: cls.lineType === "elec_hv" ? [2] : null });
+
+    /* The circuit is offered above, for every electric feature rather
+       than for lines alone: a meter carries one too, and moving a run
+       of them is the same decision. Two pushes of one key put the
+       control on screen twice. */
   }
   /* Gas and water carry a size as free text — there is no catalogue for
      them the way there is for electric cable. Not on a trench: a trench
@@ -128,10 +170,16 @@ export function fieldsFor(cls, { lineTypes = [] } = {}) {
   if (isLine && !isTrench && cls.layer !== "electric") {
     out.push({ key: "Size", label: "Size", kind: "text" });
   }
-  /* Depth on anything drawn as a line, trench or not. A trench is dug to
-     a depth and a pipe is laid at one; the cover over a service is the
-     figure a site argues about, and it is the same field on both. */
-  if (isLine) {
+  /* ── Depth belongs to the dig ──
+
+     This was on anything drawn as a line, on the reasoning that a
+     trench is dug to a depth and a pipe is laid at one. In practice the
+     depth of a cable is the depth of the trench it is in: setting it on
+     the cable as well is two places to say one thing, and they disagree
+     the moment somebody edits either.
+
+     So the trench carries it, and a cable or a pipe does not. */
+  if (isTrench) {
     out.push({ key: "Depth_m", label: "Depth (m)", kind: "number", step: "0.05" });
   }
 
@@ -212,7 +260,13 @@ export function fieldsForMany(classes = [], opts = {}) {
     /* Same field, same meaning. kind decides the control and usage
        decides which catalogue it offers; either differing makes them
        two fields that happen to share a name. */
-    return match.kind === f.kind && String(match.usage ?? "") === String(f.usage ?? "");
+    /* Same field, same meaning: the control AND the catalogue it offers.
+       `voltageIds` joins `usage` in deciding that \u2014 an HV cable field
+       and an LV one are two fields that happen to share a name, and
+       treating them as one offered LV cable for an HV run. */
+    return match.kind === f.kind
+      && String(match.usage ?? "") === String(f.usage ?? "")
+      && String(match.voltageIds ?? "") === String(f.voltageIds ?? "");
   }));
 }
 
@@ -322,6 +376,31 @@ export function planBulkEditOn(members = [], draft = {}, opts = {}) {
   if (attrs.Line_Type) {
     const t = lineTypes.find((x) => x.Type_Key === attrs.Line_Type);
     if (t?.Layer_Key) cols.Layer_Key = t.Layer_Key;
+  }
+
+  /* ── A circuit carries its name and letter ──
+
+     The same reason as the layer above: everything that reads a circuit
+     reads all three, and writing the id alone leaves a run numbered 3
+     and still called Circuit 2 on every sheet that names it.
+
+     Taken from a feature already on that circuit, which is where those
+     names live \u2014 there is no circuits table. Where nothing on the
+     drawing is on it yet, only the id is written, which is honest: the
+     name will arrive with the first thing that has one. */
+  if (attrs.Circuit_ID != null && attrs.Circuit_ID !== CLEAR) {
+    /* From the whole drawing where the caller passed it, falling back
+       to the members themselves. `planBulkEditOn` is given a settled
+       set, not the drawing \u2014 so the names come from `opts.features`
+       when it is there, and from the selection when it is not. */
+    const pool = (opts.features?.length ? opts.features : members);
+    const on = pool.find((x) => x.Layer_Key === "electric"
+      && Number(x.Attributes?.Circuit_ID) === Number(attrs.Circuit_ID)
+      && x.Attributes?.Circuit_Name != null);
+    if (on) {
+      attrs.Circuit_Name = on.Attributes.Circuit_Name;
+      attrs.Circuit_Letter = on.Attributes.Circuit_Letter ?? null;
+    }
   }
 
   const rows = [];

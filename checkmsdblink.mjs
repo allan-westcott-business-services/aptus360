@@ -538,6 +538,34 @@ const link = f.find((x) => x.Attributes?.MSDB_Link_A_ID != null)
   }
 }
 
+// 14. A trench never shows a circuit label.
+//
+//     Two circuits commonly share one trench, so a trench naming one of
+//     them is saying something untrue about the other. It could only
+//     ever be there by mistake \u2014 as it was when a mains trench drawn
+//     between two boards came back stamped with a link and a circuit \u2014
+//     and a label drawn from a mistake is how the mistake gets
+//     believed.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/const circuit = isTrenchType\(a\.Line_Type, lineTypes\)\s*\n?\s*\? null : a\.Circuit_Letter;/
+    .test(canvas)) {
+    fail("a trench carrying a stray circuit still draws a circuit label, so "
+      + "a drawing that has one keeps showing it");
+  }
+
+  /* Refused at the point of DRAWING, not only at the point of writing:
+     the reported drawing already carries the stray circuit, and it must
+     stop showing without anybody editing the trench. */
+  const wt = JSON.parse(readFileSync("./fixtures/drawing-6-msdb-trench.json", "utf8"));
+  const stray = wt.features.find((x) => /trench/i.test(String(x.Attributes?.Line_Type))
+    && x.Attributes?.Circuit_Letter != null);
+  if (!stray) {
+    fail("the fixture has no trench carrying a circuit, so the case this was "
+      + "written for is untested");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Board-to-board links behave (stamped, ordered, and routed on from).");
 process.exit(bad ? 1 : 0);

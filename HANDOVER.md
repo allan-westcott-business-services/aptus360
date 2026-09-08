@@ -3490,6 +3490,21 @@ guard is what lets both approaches sit on one drawing.
      is the second time today one word inside another has cost a
      rebuild.
 
+104. **And the stray circuit was still being LABELLED.** Fixing the
+     write does nothing for a drawing that already carries the bad
+     value: the trench went on showing "Circuit B · 30.2 m" because the
+     label read `Circuit_Letter` from whatever was on the feature.
+
+     A dig belongs to no circuit — two circuits commonly share one
+     trench, so a trench naming one is saying something untrue about the
+     other. The label now refuses at the point of DRAWING, so a drawing
+     that already has one stops showing it without anybody editing the
+     trench.
+
+     **A bad value has two lives: the writing of it and the reading of
+     it.** Stopping the write leaves every drawing made before the fix
+     still displaying it as fact.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

@@ -5713,7 +5713,20 @@ export default function GISCanvasPage() {
              from the tracer and means how far out the cable sits. They
              used to share the key 'Circuit', so 1B might have been
              either and running the tracer overwrote the real one. */
-          const circuit = a.Circuit_Letter;
+          /* ── A dig belongs to no circuit ──
+
+             Two circuits commonly share one trench, and a trench that
+             names one of them is saying something untrue about the
+             other. It could only ever be there by mistake \u2014 as it was
+             when a mains trench drawn between two boards came back
+             stamped with a link and a circuit \u2014 and a label drawn from
+             a mistake is how the mistake gets believed.
+
+             Refused at the point of drawing rather than only at the
+             point of writing, so a drawing that already carries one
+             stops showing it without anybody editing the trench. */
+          const circuit = isTrenchType(a.Line_Type, lineTypes)
+            ? null : a.Circuit_Letter;
           const tag = circuit
             ? `${a.Way ?? ""}${circuit}`
             : (a.Way ? `${a.Way}${a.Hop_Letter ?? ""}` : "");

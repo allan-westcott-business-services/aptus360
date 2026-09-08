@@ -360,6 +360,8 @@ export default function FeatureEditor({
         .replace(/[^0-9.]/g, ""));
       return {
         utility: c.utility,
+        /* Its own status, for the laying: see utilityKeys below. */
+        buildStatus: c.feature?.Attributes?.Build_Status ?? null,
         outsideDiameterMM: mm > 0 ? mm : null,
         /* Where along the trench it runs. Without this a trench with
            three consecutive gas runs along it is sized as three gas
@@ -377,7 +379,25 @@ export default function FeatureEditor({
        contents. */
     return {
       ...trenchSize(items, { trenchM: res.trenchM }),
-      utilityKeys: items.map((x) => x.utility),
+      /* ── Only what this job lays ──
+
+         The dig is skipped for an existing trench, because a hole
+         somebody else opened is not dug twice. The LAYING was kept, on
+         the reasoning that a pipe goes in whether or not this job made
+         the trench \u2014 which is right for a NEW run through an old
+         route.
+
+         It is wrong for a run that is itself already in the ground. An
+         existing trench holding an existing cable was charged an hour
+         to lay a cable that is lying there, and the bill \u2014 which drops
+         existing features altogether \u2014 said nothing of the sort.
+
+         So each content answers for itself, which is also what makes
+         the reuse case still work: the new cable in the old trench is
+         laid, and the old one beside it is not. */
+      utilityKeys: items
+        .filter((x) => String(x.buildStatus ?? "") !== "existing")
+        .map((x) => x.utility),
     };
   }, [isTrench, feature, allFeatures, lineTypes]);
 
@@ -747,14 +767,35 @@ export default function FeatureEditor({
      from. */
   const msdbOut = useMemo(() => {
     const voltageV = Number(lookups?.vdSettings?.[0]?.Nominal_Voltage_V) || 400;
-    const through = Number(levelsAt?.ampsThrough) || 0;
+
+    /* ── The run back down carries what is BEYOND the board ──
+
+       The flats are taken off AT the board. The cable running back to
+       the ground carries only what is fed onward from it, so costing
+       it for the flats sizes it for load that never travels it \u2014 the
+       same rule the risers were built to a fortnight ago, and the one
+       thing "leaving the board" must not include.
+
+       `ampsThrough` is the load the levels found still travelling past
+       this stop. That was unambiguous while a flat was not a feature on
+       the drawing; now that the levels put an assumed meter at the
+       board for each flat, a meter standing ON the stop is a question
+       about how the model counts it rather than a fact to rely on.
+
+       So the board's own flats are subtracted outright. Two ways of
+       saying the same thing agreeing is worth more here than either
+       alone, and this one is the one somebody can check by hand. */
+    const through = kvaOf(Number(levelsAt?.ampsThrough) || 0, voltageV);
+    const ownFlats = msdbTotals?.kva ?? 0;
+    const onward = Math.max(0, through - ownFlats);
+
     return outputDrop(f, {
       at: msdbAt?.pct == null ? null : msdbAt,
       cable: msdbTailCable ?? null,
-      kva: kvaOf(through, voltageV),
+      kva: onward,
       voltageV,
     });
-  }, [f, msdbAt, msdbTailCable, levelsAt, lookups]);
+  }, [f, msdbAt, msdbTailCable, levelsAt, lookups, msdbTotals]);
 
   const msdbLevels = useMemo(() => apartmentLevels(f, msdbServed, {
     at: msdbAt?.pct == null ? null : msdbAt,

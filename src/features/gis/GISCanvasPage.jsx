@@ -1954,7 +1954,25 @@ export default function GISCanvasPage() {
       if (drag.current) return;              // still moving; the next change re-arms
       levelsSeen.current = levelsKey;
       try {
-        const m = levelsByNode(features);
+        /* ── The flats on a board are load like any other ──
+
+           The levels walked the raw drawing, where a board is one
+           point with nothing hanging off it. Its flats live in
+           `MSDB_Plot_IDs` and are not meters on the canvas, so their
+           kVA was absent from every figure upstream of the board \u2014 the
+           cable arriving at it was costed for the load beyond it and
+           nothing else.
+
+           `withAssumedMeters` is what the BUILD has always used for
+           this: it puts a meter at the board for each flat, so the same
+           walk that counts a house counts a flat. The levels use it
+           now for the same reason. */
+        const m = levelsByNode(withAssumedMeters(features, {
+          plotList,
+          configs: lookups?.propertyConfigs || [],
+          propertyTypes: lookups?.propertyTypes || [],
+          consumption: lookups?.houseTypeConsumption || [],
+        }));
         /* Null only where there is nothing to say — no circuits, no
            cable catalogue. An empty result replaces nothing, so the
            previous figures stay rather than blinking out. */
@@ -20708,7 +20726,7 @@ export default function GISCanvasPage() {
     let volts = null;
     if (leg.fromIdx != null) {
       const at = cumulativeToNode({
-        model: part.model, targetIdx: leg.fromIdx, spanNodes: part.spanNodes,
+        model: part.model, targetIdx: leg.fromIdx, stops: part.stops,
         /* The same cable, so the voltage arriving here advances between
            junctions instead of repeating the figure at the last span
            node — the drop to this point includes the run up to it. */
@@ -20727,11 +20745,11 @@ export default function GISCanvasPage() {
     /* The cable on this leg.
 
        Taken from the leg, which carries it — including for a junction,
-       which is deliberately absent from spanNodes so that it reports a
+       which is deliberately absent from the stops so that it reports a
        figure without changing how the figure is computed. Falls back to
        the span node for legs recorded before that was so. */
     const id = leg.cableSizeId
-      ?? (part.spanNodes || []).find((x) => x.index === leg.endIdx)?.cableSizeId
+      ?? (part.stops || []).find((x) => x.index === leg.endIdx)?.cableSizeId
       ?? null;
     const cable = id != null ? ctx.cableById(id) : null;
     const type = cable
@@ -20779,7 +20797,7 @@ export default function GISCanvasPage() {
        edges to the foot \u2014 the mains node its spur leaves from \u2014 and
        claimed by the leg whose chain holds that foot. A meter standing
        directly on the main has no service edge and is its own foot. */
-    const stopIdxSet = new Set((part.spanNodes || []).map((x) => x.index));
+    const stopIdxSet = new Set((part.stops || []).map((x) => x.index));
     stopIdxSet.add(part.model.S);
     const chain = new Set([leg.endIdx]);
     for (let u = part.model.parent[leg.endIdx];
@@ -20858,7 +20876,7 @@ export default function GISCanvasPage() {
         const foot = m.foot;
         const atFoot = foot != null && foot !== leg.endIdx
           ? cumulativeToNode({
-            model: part.model, targetIdx: foot, spanNodes: part.spanNodes,
+            model: part.model, targetIdx: foot, stops: part.stops,
             partialCableId: leg.cableSizeId ?? null,
             cableById: ctx.cableById, transformer: ctx.transformer,
             startPct: ctx.startPct ?? 0,
@@ -21108,7 +21126,7 @@ export default function GISCanvasPage() {
         for (const [boxId, idx] of part.boxIdx) {
           startAtBox.set(`${part.circuitId}:${Number(boxId)}`,
             cumulativeToNode({ ...trunkCtx, model: part.model, targetIdx: idx,
-              spanNodes: part.spanNodes }));
+              stops: part.stops }));
         }
       }
 
@@ -21156,7 +21174,7 @@ export default function GISCanvasPage() {
 
         for (const leg of part.legs) {
           leg.vd = cumulativeToNode({
-            model: part.model, targetIdx: leg.endIdx, spanNodes: part.spanNodes,
+            model: part.model, targetIdx: leg.endIdx, stops: part.stops,
             /* The cable this leg is made of, so the length between the
                last span node and this point is charged rather than left
                out — without it every junction on a run reports the
@@ -21236,7 +21254,7 @@ export default function GISCanvasPage() {
       }))),
       parts,
       model: parts[0].model,
-      spanNodes: parts[0].spanNodes,
+      stops: parts[0].stops,
       limits: parts[0].limits,
       startId: parts[0].startId,
       totalMetres: Math.round(parts.reduce((t, p) => t + (p.totalMetres || 0), 0) * 10) / 10,
@@ -21344,7 +21362,7 @@ export default function GISCanvasPage() {
       };
       for (const leg of r.legs) {
         leg.vd = cumulativeToNode({
-          model: r.model, targetIdx: leg.endIdx, spanNodes: r.spanNodes,
+          model: r.model, targetIdx: leg.endIdx, stops: r.stops,
           partialCableId: leg.cableSizeId ?? null,
           ...ctx,
         });

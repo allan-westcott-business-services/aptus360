@@ -3699,6 +3699,64 @@ is not.
      testing an emulation of a mechanism the answer no longer depends on
      is testing nothing.
 
+**`spanNodes` is now `stops`.** The field had not held a span node
+since feeder points took over as the measuring points: `stopRole` picks
+`feederpoint` on any drawing that has them, and falls back to span nodes
+only for drawings older than that.
+
+A span node belongs to the TRENCH; a feeder point belongs to the cable,
+and the volt drop is settled at the cable's points. `stops` is what
+`isStopFeature` and `stopRole` already called them.
+
+Renamed across `feeder.js`, `voltDrop.js`, `scenario.js`,
+`GISCanvasPage.jsx` and seven checks. **Two things deliberately left
+alone:** the `spanNodes.js` MODULE, which is correctly named and does
+concern the trench; and `CallOffsTab`, whose own `spanNodes` state
+genuinely holds span nodes.
+
+`checkcablelevels` now fails if any of the four files uses the old name
+outside a comment, and if the stops list ever contains a span node on a
+drawing that has feeder points.
+
+**Three names cost real time in one session** — `/main/` matching
+`trench_main`, two separate functions called `carries`, and this. A name
+that was true when it was written and is not true now is worse than a
+bad name, because it reads as documentation.
+
+111. **The levels could not see a board's flats at all.** They walked
+     the raw drawing, where a board is one point with nothing hanging
+     off it — its flats live in `MSDB_Plot_IDs` and are not meters on
+     the canvas. So their kVA was absent from every figure UPSTREAM of
+     the board: the cable arriving at it was costed for whatever lay
+     beyond it and nothing else.
+
+     `withAssumedMeters` is what the BUILD has always used for exactly
+     this. The levels use it now.
+
+112. **And what LEAVES the board must not carry them.** The flats are
+     taken off at the board; the run back down to ground carries only
+     what is fed onward. `ampsThrough` was unambiguous while a flat was
+     not a feature on the drawing — the moment 111 put an assumed meter
+     at the board for each flat, "through" at that very stop became a
+     question about how the model counts a meter standing on a node
+     rather than a fact.
+
+     The board's own flats are subtracted outright now, floored at
+     zero. Two ways of saying the same thing agreeing is worth more
+     than either alone, and this is the one somebody can check by hand.
+
+     **The fix for one of these made the other one wrong.** 111 changed
+     what "through" means, and 112 is the correction — worth remembering
+     as a pair rather than two entries.
+
+**STILL WRONG:** the level at the stop BEYOND a board is computed from
+the board's arriving figure, not from what leaves it. On the reported
+drawing B3 is 0.08% at the board and 0.27% leaving it, and B4 reads
+0.09% — 0.08% plus its own leg. The run-down is shown in the panel and
+is not yet part of the cascade. That is the next thing to fix and it
+belongs in `cumulativeToNode`, where a stop standing on a board should
+add that board's run-down to everything past it.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

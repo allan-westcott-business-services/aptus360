@@ -1111,7 +1111,12 @@ const served = (b) => servedFlats(b, flats);
   if (!/MSDB_Down_M/.test(editor)) fail("the run down is not recorded");
   /* Only the downstream load, read off what the levels found still
      travelling past the stop. */
-  if (!/kvaOf\(through, voltageV\)/.test(editor)) {
+  /* From what the levels found passing through, LESS the board's own
+     flats: they are taken off at the board and never travel the run
+     down. The bare `ampsThrough` was used until a board's flats became
+     assumed meters standing on that very stop, at which point "through"
+     stopped being a fact to rely on. */
+  if (!/kvaOf\(Number\(levelsAt\?\.ampsThrough\) \|\| 0, voltageV\)/.test(editor)) {
     fail("the run down is costed for a load worked out some other way than "
       + "what the levels check found passing through");
   }
@@ -1148,6 +1153,44 @@ const served = (b) => servedFlats(b, flats);
   if (!/role === "msdb" \? ""/.test(canvas)) {
     fail("a placed board is given a default name, which somebody has to "
       + "notice is wrong");
+  }
+}
+
+// 27. What leaves the board is costed for what is BEYOND it.
+//
+//     The flats are taken off AT the board. The cable running back to
+//     the ground carries only what is fed onward, so costing it for the
+//     flats sizes it for load that never travels it.
+{
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/const onward = Math\.max\(0, through - ownFlats\);/.test(editor)) {
+    fail("the run back down is costed for everything through the board, "
+      + "including its own flats");
+  }
+  if (!/const ownFlats = msdbTotals\?\.kva \?\? 0;/.test(editor)) {
+    fail("the board's own load is not taken out of what leaves it");
+  }
+  /* Never negative: a board whose flats exceed what the levels found
+     travelling through it is a drawing still being built, not a cable
+     carrying less than nothing. */
+  if (!/Math\.max\(0,/.test(editor)) {
+    fail("the onward load can go negative");
+  }
+
+  /* And the arithmetic itself. */
+  const cable = { Loop_Impedance_Ohm: 0.9785, Volt_Drop_Base: 3094 };
+  const at = { ohms: 0.20, pct: 4.42 };
+  const both = board({ MSDB_Riser_M: 9, MSDB_Down_M: 9 });
+  const withFlats = outputDrop(both, { at, cable, kva: 6.6 });
+  const onwardOnly = outputDrop(both, { at, cable, kva: 3.0 });
+  if (!(onwardOnly.pct < withFlats.pct)) {
+    fail("taking the flats out of the onward load did not reduce the drop, "
+      + "so the two are not distinguished at all");
+  }
+  /* Nothing beyond the board is no drop on the way down. */
+  const none = outputDrop(both, { at, cable, kva: 0 });
+  if (!(Math.abs(none.pct - at.pct) < 1e-9)) {
+    fail("a board with nothing beyond it still charges for the run down");
   }
 }
 

@@ -392,7 +392,19 @@ export default function BulkEditor({
          the service sizes out of a bulk edit without anyone asking for
          that. It is a decision, not an oversight \u2014 whoever settles it
          should set the same answer in both. */
-      const menu = cableMenu(cableSizes, cableTypes, { usage: "service" });
+      /* ── The list the FIELD asked for ──
+
+         This was hard-coded to "service", which was true while the only
+         cable field that reached here was a service: mains were turned
+         away above with a message. Removing that message let mains fall
+         into this branch, and they were offered the service catalogue
+         under a note about customers' tails \u2014 a list of the wrong
+         cables, described as the wrong thing.
+
+         `f.usage` is what `fieldsFor` decided, from the line type. It
+         has been on the field all along and was ignored. */
+      const menu = cableMenu(cableSizes, cableTypes,
+        { usage: f.usage || "mains", voltageIds: f.voltageIds || null });
       const list = menu.list;
       const nameOf = (c) => cableMenuName(c, cableTypes);
       return (
@@ -408,10 +420,18 @@ export default function BulkEditor({
               </option>
             ))}
           </select>
+          {/* Said for what these actually are. A service is a tail to
+              one customer; a main is the run everything hangs off, and
+              the point it feeds carries a copy of this size which the
+              save brings into step. */}
           <p className="fe-tip">
-            The tail each customer is fed through &mdash; the same size on
-            every one you are changing. Lengths are each cable&rsquo;s own
-            and are not touched.
+            {f.usage === "service"
+              ? "The tail each customer is fed through \u2014 the same size on "
+                + "every one you are changing. Lengths are each cable\u2019s own "
+                + "and are not touched."
+              : "The same size on every run you are changing. The point each "
+                + "one feeds carries a copy, and it is brought into step when "
+                + "this is applied."}
           </p>
         </div>
       );

@@ -3413,6 +3413,28 @@ behaviour and this is a deliberate change to it.
     **When a guard exists because two things must move together, the
     answer is to move them, not to forbid the move.**
 
+100. **And removing the refusal dropped mains into the service
+     branch.** The dropdown was hard-coded to `usage: "service"`, which
+     was true while the only cable field reaching it was a service —
+     mains were turned away above with a message. With the message gone
+     they fell through to it, and two LV feeder mains were offered
+     **service cables**, under a note about the tail each customer is
+     fed through: the wrong list, described as the wrong thing.
+
+     `f.usage` had been on the field the whole time and was ignored.
+     The note follows it too.
+
+     **Deleting a branch moves everything it caught into the branch
+     below**, and what that branch assumed about its input was written
+     down nowhere except in the branch that no longer runs.
+
+101. **An HV run is not an LV main, here as in the cable editor.** Both
+     are "Mains" by usage, so a field carrying usage alone offers LV
+     cable for eleven kilovolts. The voltage now rides on the field and
+     `fieldsForMany` compares it alongside kind and usage — so a
+     selection holding both is offered NEITHER, which is right: there is
+     no one size that suits both.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

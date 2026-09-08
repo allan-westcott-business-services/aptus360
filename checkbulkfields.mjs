@@ -184,6 +184,60 @@ const meters = some((x) => x.Feature_Role === "meter", 4);
   }
 }
 
+// 7. The cable list is the one the field asked for.
+//
+//    The dropdown was hard-coded to the SERVICE catalogue, which was
+//    true while the only cable field reaching it was a service \u2014 mains
+//    were turned away with a message. Removing that message let mains
+//    fall into the same branch, and they were offered service cables
+//    under a note about customers' tails: the wrong list, described as
+//    the wrong thing.
+{
+  const panel = readFileSync("./src/features/gis/BulkEditor.jsx", "utf8");
+  if (/cableMenu\(cableSizes, cableTypes, \{ usage: "service" \}\)/.test(panel)) {
+    fail("the cable list is fixed to services, so a run of mains is offered "
+      + "the wrong catalogue");
+  }
+  if (!/usage: f\.usage \|\| "mains"/.test(panel)) {
+    fail("the list does not follow the field's own usage");
+  }
+  /* And the words follow it too. */
+  if (!/f\.usage === "service"\s*\n?\s*\? "The tail each customer/.test(panel)) {
+    fail("a run of mains is described as a customer's tail");
+  }
+
+  /* ── An HV run is not an LV main ──
+     Both are "Mains" by usage, so a field carrying usage alone offers
+     LV cable for eleven kilovolts. The voltage rides on the field and
+     is compared alongside kind and usage, so a selection holding both
+     is offered NEITHER \u2014 there is no one size that suits both. */
+  const lt = [{ Type_Key: "elec_main", Layer_Key: "electric" },
+    { Type_Key: "elec_hv", Layer_Key: "electric" }];
+  const o2 = { lineTypes: lt, layers: [{ Layer_Key: "electric" }], surfaceTypes: [] };
+  const L = (t, i) => ({ Feature_ID: i, Feature_Type: "line",
+    Layer_Key: "electric", Attributes: { Line_Type: t } });
+  const cableOf = (sel) => fieldsForMany(classesIn(sel, o2), o2)
+    .find((x) => x.key === "VD_Cable_Size_ID");
+
+  const hv = cableOf([L("elec_hv", 1), L("elec_hv", 2)]);
+  if (!hv) fail("a run of HV is offered no cable at all");
+  else if (String(hv.voltageIds) !== "2") {
+    fail("an HV run's cable field does not ask for HV cable");
+  }
+  if (cableOf([L("elec_main", 3), L("elec_main", 4)])?.voltageIds) {
+    fail("an LV main's cable field asks for a voltage, narrowing it wrongly");
+  }
+  if (cableOf([L("elec_hv", 5), L("elec_main", 6)])) {
+    fail("a selection of HV and LV mains is offered one cable list, so an LV "
+      + "cable can be set on eleven kilovolts");
+  }
+  const src = readFileSync("./src/features/gis/bulkEdit.js", "utf8");
+  if (!/String\(match\.voltageIds \?\? ""\) === String\(f\.voltageIds \?\? ""\)/.test(src)) {
+    fail("the voltage is carried on the field and not compared, so HV and LV "
+      + "merge into one field");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Bulk edit offers what they share (and only that).");
 process.exit(bad ? 1 : 0);

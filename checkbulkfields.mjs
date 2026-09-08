@@ -281,6 +281,36 @@ const meters = some((x) => x.Feature_Role === "meter", 4);
   }
 }
 
+// 9. Both editors bring the copies into step, by one rule.
+//
+//    A cable's size is held twice: on the run, and on the point the
+//    levels read it from. `carryCableToNode` carries it to the node
+//    `nodesFedBy` returns \u2014 which is not always the point the LEG uses.
+//    On the reported drawing, changing the cable on leg B0\u2192B1 updated
+//    B2, the leg went on being costed from B1's stale copy, and the
+//    figures did not move.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  /* To the END of saveFeature, not a fixed window: the function runs to
+     sixteen thousand characters and a 12k slice stopped two hundred
+     lines short of the line being looked for. A check that reads a
+     fixed-offset window breaks when the function grows \u2014 fault 33, and
+     this is its fourth outing. */
+  const startAt = canvas.indexOf("async function saveFeature");
+  const single = canvas.slice(startAt,
+    canvas.indexOf("\n  async function", startAt + 30));
+  if (!/await syncNodeCables\(\{ silent: true, srcFeatures: src \}\);/.test(single)) {
+    fail("a cable changed one at a time does not bring every point that "
+      + "copies it into step, so the levels do not move");
+  }
+  /* The bulk save runs the same routine. */
+  const bulk = canvas.slice(canvas.indexOf("async function applyBulk"),
+    canvas.indexOf("async function applyBulk") + 4000);
+  if (!/syncNodeCables\(\{ silent: true, srcFeatures: fresh\.features/.test(bulk)) {
+    fail("the bulk save no longer syncs, so the two editors disagree again");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Bulk edit offers what they share (and only that).");
 process.exit(bad ? 1 : 0);

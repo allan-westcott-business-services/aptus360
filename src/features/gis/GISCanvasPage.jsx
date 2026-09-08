@@ -11233,8 +11233,26 @@ export default function GISCanvasPage() {
       }
 
       if (isFeeder && String(wasSize ?? "") !== String(nowSize ?? "")) {
-        await carryCableToNode(after,
-          features.map((x) => (x.Feature_ID === id ? after : x)));
+        const src = features.map((x) => (x.Feature_ID === id ? after : x));
+        await carryCableToNode(after, src);
+
+        /* ── And every other point that copies a cable ──
+
+           `carryCableToNode` carries this cable to the node it feeds,
+           by `nodesFedBy`. The LEVELS read each leg's span points, and
+           those are not always the same point: changing the cable on
+           leg B0→B1 updated B2, the leg went on being costed from B1's
+           stale copy, and the figures did not move at all. Which is
+           what "changing the cable does not change the levels" was.
+
+           `syncNodeCables` is the routine behind "N nodes out of step
+           with their cables — fix". It pairs every cable with the point
+           that copies it by one rule, and the bulk save already runs
+           it. One mechanism rather than two that disagree.
+
+           Silent: the save has already said what it did, and a second
+           line about span nodes would be noise on every cable edit. */
+        await syncNodeCables({ silent: true, srcFeatures: src });
       }
     }
     catch (e) { setError(e.message); await load(projectId); throw e; }

@@ -3569,6 +3569,29 @@ is not.
      ones.** The one that looked like the answer was the one the build
      owns.
 
+106. **The levels read the POINT's copy, and the wrong point was being
+     updated.** A cable's size is held twice — on the run, and on the
+     span point the volt drop sum reads it from.
+
+     `carryCableToNode` carries a changed cable to the node `nodesFedBy`
+     returns. That is not always the point the LEG uses: on the reported
+     drawing, changing cable 49627 on leg B0→B1 updated **B2**, the leg
+     went on being costed from B1's stale copy, and every figure stayed
+     exactly where it was.
+
+     Proved by setting the override on the cable alone (figures
+     unmoved: B1 0.187%) and then on the point as well (B1 0.060%).
+
+     `syncNodeCables` — the routine behind "N nodes out of step with
+     their cables — fix" — pairs every cable with the point that copies
+     it by ONE rule, and the bulk save already ran it. The single-feature
+     save now runs it too.
+
+     **Two mechanisms for one job, and the older one paired things
+     differently.** The symptom was not "the sync is broken" but "the
+     number never moves", which points at the calculation rather than at
+     a copy nobody mentions.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

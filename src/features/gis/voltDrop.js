@@ -278,6 +278,11 @@ export function cumulativeToNode({
   /* The transformer sets the baseline every downstream figure adds to.
      Without one there is no starting impedance, and a total that began
      at zero would read better than the truth. */
+  /* The load leaving the last board the walk passed, for the panel that
+     shows what leaves a board. Null where the walk passed none. */
+  let onwardKvaOut = null;
+  /* And what that run down costs, for the same panel. */
+  let downPctOut = null;
   let ohms = transformer?.Loop_Impedance_Ohm != null
     ? Number(transformer.Loop_Impedance_Ohm) : 0;
   /* Kept apart from the cable's own drop, and added at the end. Two
@@ -436,23 +441,49 @@ export function cumulativeToNode({
          flats are taken off AT the board and never go down this cable,
          which is why `cumKva` at the child is the right figure and the
          board's own total is not. */
-      if (cur !== targetIdx) {
+      {
         /* From the stop, which resolved it from the BOARD it stands on.
            Read from the stop's own feature it was always nothing: a
            stop at a board is a feeder point, and the board is a
            separate feature in the same place. */
         const down = Number(sn.downM) || 0;
         if (down > 0) {
-          const beyond = kvaOf(ampsThrough, v);
+          /* ── The load that actually goes down it ──
+
+             `ampsThrough` is the load at the TARGET \u2014 wherever this
+             call happens to be measuring \u2014 so the same riser was
+             costed differently depending on which stop was being asked
+             about, and the board's own panel used a third figure
+             again.
+
+             The load leaving the board is `cumKva` at the NEXT node on
+             the path. Cumulative load flows downstream, so the child's
+             figure already excludes the board's own flats: they are
+             taken off at the board and never travel this cable. That
+             is the same quantity the panel calls "onward", arrived at
+             without subtracting anything. */
+          const onwardIdx = path[i + 1];
+          const beyond = onwardIdx != null ? (cumKva?.[onwardIdx] || 0) : 0;
+          /* Reported whether or not it is charged here: the board's own
+             figure does NOT include its run down \u2014 that is what "at the
+             board" means \u2014 but its panel still has to say what leaves
+             it, and both must be the same number. */
+          onwardKvaOut = beyond;
           const drop = serviceVoltDrop({
             cable: cableById(sn.cableSizeId),
             lengthM: down,
             kva: beyond,
             voltageV: v,
           });
-          ohms += drop.ohms;
-          pct += drop.pct;
-          if (drop.missingSpec) missingCable = true;
+          /* Charged only BEYOND the board. At the board itself the
+             flats hang off the figure as it arrives, and the run down
+             has not happened yet. */
+          if (cur !== targetIdx) {
+            ohms += drop.ohms;
+            pct += drop.pct;
+            if (drop.missingSpec) missingCable = true;
+          }
+          downPctOut = drop.pct;
         }
       }
     } else {
@@ -537,6 +568,21 @@ export function cumulativeToNode({
     upstreamPct: upstream,
     amps,
     ampsThrough,
+    /* ── What travels on from here ──
+
+       `ampsThrough` is the load AT this node, which for a board
+       includes its own flats: they are metered there. The load that
+       goes onward is the child's, and a board's run back down to the
+       ground carries exactly that.
+
+       Reported so the board's panel and this cascade cost the run down
+       from one number. They had been arriving at it two different ways
+       and disagreeing \u2014 the panel said 0.17% leaving while the stop
+       beyond read 0.10%. */
+    onwardKva: onwardKvaOut,
+    /* What the run back down costs at this load \u2014 the difference
+       between "at the board" and "leaving the board". */
+    downPct: downPctOut,
     /* The arithmetic of the leg arriving at the target. Null where no
        leg was charged. */
     working,

@@ -9,7 +9,7 @@
    drawing carries what is buried, the table carries what is in the
    building. */
 import { readFileSync } from "node:fs";
-import { cumulativeToNode } from "./src/features/gis/voltDrop.js";
+import { cumulativeToNode, serviceVoltDrop, kvaOf } from "./src/features/gis/voltDrop.js";
 import {
   FLOORS, apartmentLoad, msdbLoad, apartmentLevels, worstApartment, msdbText,
   flatsFromPlots, servedFlats, isFlatType, shortType, riserDrop, outputDrop,
@@ -1255,6 +1255,104 @@ const served = (b) => servedFlats(b, flats);
     cableById: () => cable, voltageV: 400, ampsThroughOverride: 0,
     transformer: { Loop_Impedance_Ohm: 0.02 } });
   if (!Number.isFinite(zero.pct)) fail("the figure past a board is not a number");
+}
+
+// 29. A stop beyond a board is never better than what leaves it.
+//
+//     The invariant somebody spotted from the screen: if 0.17% leaves
+//     the board, a stop downstream cannot read 0.10%. It held only if
+//     the panel and the cascade cost the run down from the SAME load,
+//     and they did not — the cascade used `ampsThrough`, which is the
+//     load at whichever node the call happens to be measuring.
+{
+  /* Four nodes, and the load KEEPS dropping past the board: 10 kVA of
+     flats at the board, 30 leaving it, 10 by the far end.
+
+     Three nodes could not tell the two rules apart \u2014 the load at the
+     target and the load leaving the board were the same number, so
+     costing the riser from either gave the same answer and a wrong
+     rule passed. */
+  const model = { nodes: [[0, 0], [50, 0], [100, 0], [150, 0]], S: 0,
+    parent: [-1, 0, 1, 2], cum: [4, 4, 3, 1], cumKva: [40, 40, 30, 10] };
+  const cable = { Cable_Size_ID: 1, Loop_Impedance_Ohm: 0.9785, Volt_Drop_Base: 3094 };
+  const stops = [
+    { index: 1, feature: { Attributes: {} }, cableSizeId: 1, downM: 9 },
+    { index: 2, feature: { Attributes: {} }, cableSizeId: 1 },
+    { index: 3, feature: { Attributes: {} }, cableSizeId: 1 },
+  ];
+  const go = (t) => cumulativeToNode({ model, targetIdx: t, stops,
+    cableById: () => cable, voltageV: 400,
+    transformer: { Loop_Impedance_Ohm: 0.02 } });
+
+  const atBoard = go(1);
+  const beyond = go(3);          /* the far end, past the board */
+
+  /* The panel's route to the onward load: what the levels found at the
+     board, less the board's own flats. The cascade's route: `cumKva` at
+     the child. They must be the same number. */
+  const through = kvaOf(atBoard.ampsThrough, 400);
+  const panelOnward = Math.max(0, through - 10);
+  if (Math.abs(panelOnward - model.cumKva[2]) > 1e-6) {
+    fail(`the panel costs the run down for ${panelOnward} kVA and the cascade `
+      + `for ${model.cumKva[2]} \u2014 the two disagree about what leaves the board`);
+  }
+
+  const down = serviceVoltDrop({ cable, lengthM: 9, kva: panelOnward,
+    voltageV: 400 }).pct;
+  const leaving = atBoard.pct + down;
+  if (!(beyond.pct >= leaving - 1e-9)) {
+    fail(`a stop beyond the board reads ${beyond.pct.toFixed(3)}% against `
+      + `${leaving.toFixed(3)}% leaving it \u2014 downstream cannot be better than `
+      + "the figure it starts from");
+  }
+  /* ── Costed for the load LEAVING the board, and nothing else ──
+
+     The invariant above holds under either rule once the legs are
+     added, so it cannot tell them apart on its own. This can: change
+     the load at the FAR end and the riser must not care; change the
+     load leaving the board and it must.
+
+     Under the old rule \u2014 `ampsThrough`, the load at whichever node was
+     being measured \u2014 both moved it. */
+  const vary = (kvaAtEnd, kvaLeaving) => cumulativeToNode({
+    model: { ...model, cumKva: [40, 40, kvaLeaving, kvaAtEnd] },
+    targetIdx: 3, stops, cableById: () => cable, voltageV: 400,
+    transformer: { Loop_Impedance_Ohm: 0.02 },
+  }).pct;
+
+  /* Same load leaving the board, different load at the end. The legs
+     move, so compare the difference the RISER makes: with the riser
+     against without it. */
+  const riserCost = (kvaAtEnd, kvaLeaving) => {
+    const withRiser = vary(kvaAtEnd, kvaLeaving);
+    const without = cumulativeToNode({
+      model: { ...model, cumKva: [40, 40, kvaLeaving, kvaAtEnd] },
+      targetIdx: 3, stops: [{ ...stops[0], downM: null }, stops[1], stops[2]],
+      cableById: () => cable, voltageV: 400,
+      transformer: { Loop_Impedance_Ohm: 0.02 },
+    }).pct;
+    return withRiser - without;
+  };
+
+  if (Math.abs(riserCost(10, 30) - riserCost(25, 30)) > 1e-9) {
+    fail("the run down costs a different amount when only the load at the "
+      + "FAR END changes \u2014 it is being costed for where the call is "
+      + "measuring rather than for what leaves the board");
+  }
+  if (!(riserCost(10, 30) > riserCost(10, 15))) {
+    fail("the run down costs the same whatever leaves the board, so it is "
+      + "not costed for its own load at all");
+  }
+
+  /* And the board's own figure is not charged the run down. */
+  const noDown = cumulativeToNode({ model, targetIdx: 1,
+    stops: [{ ...stops[0], downM: null }, stops[1]],
+    cableById: () => cable, voltageV: 400,
+    transformer: { Loop_Impedance_Ohm: 0.02 } });
+  if (Math.abs(noDown.pct - atBoard.pct) > 1e-9) {
+    fail("the run down was charged to the board's own figure, where the "
+      + "flats hang");
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

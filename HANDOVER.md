@@ -3770,6 +3770,36 @@ bad name, because it reads as documentation.
      feature**, and this is the third time that pair has been confused
      today — the board's own figure, the levels' pairing, and now this.
 
+114. **The panel and the cascade costed the run down from different
+     loads.** The invariant somebody spotted from the screen: if 0.17%
+     leaves the board, a stop downstream cannot read 0.10%.
+
+     It held only if both used the same load, and they did not. The
+     cascade used `ampsThrough` — the load at whichever node the CALL
+     was measuring — so the same riser cost a different amount depending
+     on which stop was being asked about. The panel used a third figure
+     again.
+
+     The cascade now uses `cumKva` at the next node on the path. That is
+     the load leaving the board, arrived at without subtracting
+     anything: cumulative load flows downstream, so the child's figure
+     already excludes the flats metered at the board. It equals the
+     panel's `through − flats` exactly, and the check asserts they
+     agree rather than trusting that they do.
+
+     **Three routes to one quantity, no two the same.** The fix is not
+     a better formula; it is one number with two readers.
+
+     **The first check written for this passed under both rules.** A
+     three-node model made "the load at the target" and "the load
+     leaving the board" the same number, so either rule gave the same
+     answer; and the downstream-is-worse invariant held either way once
+     the leg drops were added. The test that works varies each load
+     separately: change the load at the FAR END and the riser must not
+     care, change what leaves the board and it must. **A check that
+     cannot fail is worth less than no check**, because it is read as
+     cover.
+
 **A note worth keeping:** on the reported drawing the run-down correctly
 adds NOTHING, because the flats are the only load and they come off AT
 the board. Nothing travels the cable back down, so nothing drops along

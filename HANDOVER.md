@@ -3645,6 +3645,30 @@ is not.
      rule, and the drift check. Every one of them looked correct in
      isolation.
 
+109. **A board was marked as a stop and never broke the cable.**
+     `isBreak` was the origin, a fork, or an end. A board sitting
+     mid-run has exactly one child, so it was none of those and the
+     cable ran straight THROUGH it: **one 60.6 m section from B1 past
+     both MSDBs to B4**, where the ground holds three cables with a
+     board between each pair.
+
+     `jointMarks` has treated a board as a stop since the day it was
+     added — one cable arrives, one leaves, everything the block draws
+     is taken off in between. So the point was placed and the cable was
+     not cut at it, and the note directly above `isBreak` says those two
+     are meant to be the same place.
+
+     A STRAIGHT JOINT was in the same position: marked as a stop, never
+     breaking a section. Both break now.
+
+     Measured on the reported drawing: three sections became five —
+     8.4, 41.9, 11.2, 30.2, 19.3 m — ending B1→MSDB 1, MSDB 1→MSDB 2,
+     MSDB 2→B4.
+
+     **The comment beside the fault described the fault.** "A section
+     end and a span node are meant to be the same place" had been true
+     of forks and ends only, and nothing checked the other half.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

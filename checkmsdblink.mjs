@@ -566,6 +566,77 @@ const link = f.find((x) => x.Attributes?.MSDB_Link_A_ID != null)
   }
 }
 
+// 15. A board breaks the run.
+//
+//     `isBreak` was the origin, a fork, or an end. A board sitting
+//     mid-run has exactly one child, so it was none of those and the
+//     cable ran straight THROUGH it: one 60 m section from B1 past two
+//     MSDBs to B4, where the ground holds three cables with a board
+//     between each pair.
+//
+//     `jointMarks` has treated a board as a stop since it was added, so
+//     the point was placed and the cable was not cut at it \u2014 and the
+//     note above isBreak says those two are meant to be the same place.
+{
+  const src = readFileSync("./src/features/gis/feeder.js", "utf8");
+  if (!/const isBreak = \(u\) => u === S \|\| loadChildren\(u\)\.length !== 1 \|\| breakAt\.has\(u\);/
+    .test(src)) {
+    fail("a board mid-run does not break the cable, so one section runs "
+      + "through it");
+  }
+  /* A straight joint too: it was in the same position, marked as a stop
+     and never breaking a section. */
+  if (!/Joint_Type \?\? ""\)\.toLowerCase\(\) === "straight"/.test(src.slice(
+    src.indexOf("const breakAt = new Set();")))) {
+    fail("a straight joint does not break the run either");
+  }
+
+  /* On the drawing where it was reported. */
+  const bd = JSON.parse(readFileSync("./fixtures/drawing-6-board-breaks.json", "utf8"));
+  const bf = bd.features;
+  const boards3 = bf.filter((x) => x.Feature_Role === "msdb");
+  const ids3 = boards3.flatMap((b) => b.Attributes.MSDB_Plot_IDs || []);
+  const world = withAssumedMeters(bf, {
+    plotList: ids3.map((id, i) => ({ plot_id: id, plot_number: `F${i + 1}`,
+      Property_Config_ID: 500, Heat_Source_ID: 2 })),
+    configs: [{ Property_Config_ID: 500, Bedrooms: 1, Property_Type_ID: 7 }],
+    propertyTypes: [{ Property_Type_ID: 7, Property_Type: "Flat" }],
+    consumption: [{ Bedrooms: 1, Heat_Source_ID: 2, Consumption_kVA: 2.2 }],
+  });
+  const originId3 = bf.find((x) => x.Feature_Role === "substation")?.Feature_ID;
+  const mem3 = circuitMembership(world, 2);
+  const parts3 = circuitBuildParts(world, { lineTypes: bd.lineTypes || [],
+    circuitId: 2, plotById: () => null, nrsById: () => null,
+    seedIds: mem3.seedIds, meterIds: mem3.meterIds, originId: originId3 });
+  const secs = parts3.flatMap((p) => p.sections || []);
+  const near = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+  /* Every board must be the end of one section and the start of
+     another: that is what "the cable is broken at the board" means. */
+  for (const b of boards3) {
+    const ends = secs.filter((sx) => near(sx.pts[sx.pts.length - 1], b.Geometry[0]) <= 2);
+    const starts = secs.filter((sx) => near(sx.pts[0], b.Geometry[0]) <= 2);
+    if (!ends.length || !starts.length) {
+      fail(`${b.Label} is not where a cable ends and another begins `
+        + `(${ends.length} in, ${starts.length} out)`);
+    }
+  }
+  /* And no section runs straight PAST a board.
+
+     Tested against the board a section does not already end at: a dense
+     polyline has vertices a metre short of its own end, and at the
+     tolerance the ends are matched on those read as interior points.
+     The question is whether a board lies inside a section that carries
+     on beyond it, not whether a point near the end is near the end. */
+  const through = secs.filter((sx) => boards3.some((b) => {
+    const at = b.Geometry[0];
+    if (near(sx.pts[0], at) <= 2 || near(sx.pts[sx.pts.length - 1], at) <= 2) return false;
+    return sx.pts.some((p) => near(p, at) <= 2);
+  }));
+  if (through.length) {
+    fail(`${through.length} section(s) run through a board without stopping`);
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Board-to-board links behave (stamped, ordered, and routed on from).");
 process.exit(bad ? 1 : 0);

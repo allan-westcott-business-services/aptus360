@@ -983,7 +983,44 @@ export function feederSections(features = [], opts = {}) {
      two now agree about where a run divides — they must, because a
      section end and a span node are meant to be the same place. */
   const loadChildren = (u) => mainsChildren(u).filter((c) => cum[c] > 0);
-  const isBreak = (u) => u === S || loadChildren(u).length !== 1;
+
+  /* ── A board breaks the run, like a straight joint ──
+
+     `isBreak` was the origin, a fork, or an end. A board sitting
+     mid-run has exactly one child, so it was none of those and the
+     cable ran straight THROUGH it: one 60 m section from B1 past two
+     MSDBs to B4, where the ground holds three cables with a board
+     between each pair.
+
+     `jointMarks` has treated a board as a stop since the day it was
+     added, for the reason its note gives \u2014 one cable arrives, one
+     leaves, and everything the block draws is taken off in between. So
+     the point was placed and the cable was not cut at it, and the note
+     right above this says those two are meant to be the same place.
+
+     A straight joint is included for the same reason and was in the
+     same position: marked as a stop, never breaking a section. */
+  const breakAt = new Set();
+  for (const f of features) {
+    const role = String(f.Feature_Role ?? "");
+    const isBoard = role === "msdb";
+    const isStraight = role === "joint"
+      && String(f.Attributes?.Joint_Type ?? "").toLowerCase() === "straight";
+    if (!isBoard && !isStraight) continue;
+    const anch = f.Attributes?.Span_Anchor;
+    const at = (Array.isArray(anch) && anch.length === 2) ? anch : (f.Geometry || [])[0];
+    if (!Array.isArray(at)) continue;
+    /* The nearest node, within the same reach the marks use. A board
+       two metres off the dig is not on this run. */
+    let best = null;
+    for (let i = 0; i < nodes.length; i++) {
+      const d = Math.hypot(nodes[i][0] - at[0], nodes[i][1] - at[1]);
+      if (d <= 2 && (best == null || d < best.d)) best = { i, d };
+    }
+    if (best) breakAt.add(best.i);
+  }
+
+  const isBreak = (u) => u === S || loadChildren(u).length !== 1 || breakAt.has(u);
 
   const sections = [];
   const kvaAt = (i) => Math.round((cumKva[i] || 0) * 10) / 10;

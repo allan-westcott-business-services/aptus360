@@ -2855,6 +2855,28 @@ export function spanTrace(features = [], nodeId, opts = {}) {
   const startLabel = node.Attributes?.Span_Label ?? node.Label ?? `#${nodeId}`;
   for (const b of branches) walk(startIdx, b, 0, [], [startIdx], startLabel);
 
+  /* The run back down to ground of the board a stop stands on, if any.
+     By `At_Joint_ID`, which is what the build stamps on a point it
+     places at a fitting, falling back to position for a point that
+     predates the stamp. */
+  const boardDownAt = (f) => {
+    const named = f?.Attributes?.At_Joint_ID;
+    let board = named != null
+      ? features.find((x) => Number(x.Feature_ID) === Number(named)
+        && x.Feature_Role === "msdb")
+      : null;
+    if (!board) {
+      const at = f?.Attributes?.Span_Anchor ?? f?.Geometry?.[0];
+      if (Array.isArray(at)) {
+        board = features.find((x) => x.Feature_Role === "msdb"
+          && Array.isArray(x.Geometry?.[0])
+          && Math.hypot(x.Geometry[0][0] - at[0], x.Geometry[0][1] - at[1]) <= 2);
+      }
+    }
+    const m = Number(board?.Attributes?.MSDB_Down_M);
+    return Number.isFinite(m) && m > 0 ? m : null;
+  };
+
   /* Each stop and the cable of the leg ARRIVING at it, taken from the
      legs the walk just gathered so the two cannot give different
      answers about the same stretch of ground. */
@@ -2888,7 +2910,22 @@ export function spanTrace(features = [], nodeId, opts = {}) {
        looked more closely, but because it was computing a different
        sum. The junctions are stops for the table and nothing more; the
        arithmetic is identical to the ordinary check. */
-    spanNodes: [...stops]
+    /* ── Named for what they are ──
+
+       This was `spanNodes`, and has not held a span node since feeder
+       points took over as the measuring points — `stopRole` picks
+       `feederpoint` on any drawing that has them, and falls back to
+       span nodes only for drawings older than that.
+
+       A span node belongs to the TRENCH; a feeder point belongs to the
+       cable, and the volt drop is settled at the cable's points. A name
+       saying otherwise cost a session's worth of looking in the wrong
+       place, alongside `/main/` matching `trench_main` and two separate
+       functions called `carries`.
+
+       `stops` is what `isStopFeature` and `stopRole` already call
+       them. */
+    stops: [...stops]
       /* The measuring points, whichever kind this circuit uses \u2014 the
          same stopRole decision the stops themselves were gathered by.
          This filter said "spannode" alone after feeder points took
@@ -2920,6 +2957,22 @@ export function spanTrace(features = [], nodeId, opts = {}) {
            at it, and its size was worked out from the run. The point's
            own copy remains the fallback, for a stop no leg reached. */
         cableSizeId: legCableAt.get(index) ?? cableIdOf(f),
+        /* ── The board this stop stands on, and its run back down ──
+
+           A stop AT a board is a feeder point, not the board: the two
+           are separate features in the same place, and the point
+           carries `At_Joint_ID` naming the board rather than the
+           board's own fields.
+
+           The volt drop needs the run down, because everything past a
+           board starts from the board's OUTPUT. It looked for
+           `MSDB_Down_M` on the stop's own feature, found nothing on
+           every drawing, and added nothing \u2014 B4 read 0.08% from B3 with
+           nine metres never counted, while the board's panel said 0.17%
+           leaving.
+
+           Resolved here, where the drawing is in hand. */
+        downM: boardDownAt(f),
       })).concat([{
       index: startIdx, feature: node,
       cableSizeId: legCableAt.get(startIdx) ?? cableIdOf(node),

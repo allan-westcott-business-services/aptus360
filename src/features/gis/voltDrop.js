@@ -251,7 +251,7 @@ export function legVoltDrop({
 
 /* Everything from the substation out to one node, summed span by span. */
 export function cumulativeToNode({
-  model, targetIdx, spanNodes = [], cableById = () => null, partialCableId = null,
+  model, targetIdx, stops = [], cableById = () => null, partialCableId = null,
   transformer = null, voltageV = 400, settings = {},
   /* ── What the feeding network has already used ──
 
@@ -299,7 +299,11 @@ export function cumulativeToNode({
   path.reverse();
 
   const spanAt = new Map();
-  for (const sn of spanNodes) if (sn.index >= 0) spanAt.set(sn.index, sn);
+  /* The measuring points on this run. Called `spanNodes` until now,
+     and they have not been span nodes since feeder points took over:
+     a span node belongs to the trench, a feeder point to the cable,
+     and the volt drop is settled at the cable's points. */
+  for (const sn of stops) if (sn.index >= 0) spanAt.set(sn.index, sn);
 
   const v = voltageV > 0 ? voltageV : 400;
   /* The load passing on through the target — its whole subtree,
@@ -414,6 +418,43 @@ export function cumulativeToNode({
       working = leg.working || null;
       if (leg.missingSpec) missingCable = true;
       legLenM = 0; distKva = 0; distCount = 0; distJoints = 0;
+
+      /* ── Past a board, the run has been down to the ground ──
+
+         A board on the third floor is reached by a cable running UP to
+         it, and the feeder that carries on runs back DOWN before it
+         goes anywhere. The figure AT the board is where the flats hang;
+         everything beyond starts from the board's OUTPUT, which is the
+         board's figure plus that run down.
+
+         Added when the walk passes the board rather than at the target,
+         so it lands on everything beyond and on nothing at or before
+         it: B4 read 0.09% from B3's 0.08% with the nine metres never
+         counted, while the board's own panel said 0.27% leaving.
+
+         Carrying only what travels it \u2014 the load beyond the board. The
+         flats are taken off AT the board and never go down this cable,
+         which is why `cumKva` at the child is the right figure and the
+         board's own total is not. */
+      if (cur !== targetIdx) {
+        /* From the stop, which resolved it from the BOARD it stands on.
+           Read from the stop's own feature it was always nothing: a
+           stop at a board is a feeder point, and the board is a
+           separate feature in the same place. */
+        const down = Number(sn.downM) || 0;
+        if (down > 0) {
+          const beyond = kvaOf(ampsThrough, v);
+          const drop = serviceVoltDrop({
+            cable: cableById(sn.cableSizeId),
+            lengthM: down,
+            kva: beyond,
+            voltageV: v,
+          });
+          ohms += drop.ohms;
+          pct += drop.pct;
+          if (drop.missingSpec) missingCable = true;
+        }
+      }
     } else {
       /* Load tapped between span nodes is distributed load on the leg
          being accumulated \u2014 at the node itself and down every spur
@@ -592,7 +633,7 @@ export function levelsForParts(parts = [], opts = {}) {
     ...start,
     model: part.model,
     targetIdx,
-    spanNodes: part.spanNodes,
+    stops: part.stops,
   });
 
   const atBox = new Map();

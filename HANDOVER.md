@@ -3749,13 +3749,33 @@ bad name, because it reads as documentation.
      what "through" means, and 112 is the correction — worth remembering
      as a pair rather than two entries.
 
-**STILL WRONG:** the level at the stop BEYOND a board is computed from
-the board's arriving figure, not from what leaves it. On the reported
-drawing B3 is 0.08% at the board and 0.27% leaving it, and B4 reads
-0.09% — 0.08% plus its own leg. The run-down is shown in the panel and
-is not yet part of the cascade. That is the next thing to fix and it
-belongs in `cumulativeToNode`, where a stop standing on a board should
-add that board's run-down to everything past it.
+113. **The run-down never reached the cascade, because it was looked
+     for on the wrong feature.** `cumulativeToNode` already added a
+     board's run-down to everything past it — the code and its note
+     were written and correct. It read `MSDB_Down_M` from
+     `sn.feature.Attributes`, and **a stop at a board is a FEEDER
+     POINT**: the board is a separate feature standing in the same
+     place, and the point carries `At_Joint_ID` naming it rather than
+     the board's own fields.
+
+     So the lookup found nothing on every drawing and added nothing. B4
+     read 0.08% from B3 while B3's own panel said 0.17% leaving.
+
+     The stop now carries `downM`, resolved in `spanTrace` from the
+     board the point names — falling back to position for points that
+     predate the stamp. Measured: at the board unchanged, beyond it
+     9.282% → 10.117%.
+
+     **A feature and the point standing on it are not the same
+     feature**, and this is the third time that pair has been confused
+     today — the board's own figure, the levels' pairing, and now this.
+
+**A note worth keeping:** on the reported drawing the run-down correctly
+adds NOTHING, because the flats are the only load and they come off AT
+the board. Nothing travels the cable back down, so nothing drops along
+it. Once "leaving the board" stops counting the flats (112), the panel
+and the canvas agree at 0.08%. The two fixes together are what make that
+true; either alone leaves them disagreeing.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

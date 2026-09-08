@@ -9,6 +9,7 @@
    drawing carries what is buried, the table carries what is in the
    building. */
 import { readFileSync } from "node:fs";
+import { cumulativeToNode } from "./src/features/gis/voltDrop.js";
 import {
   FLOORS, apartmentLoad, msdbLoad, apartmentLevels, worstApartment, msdbText,
   flatsFromPlots, servedFlats, isFlatType, shortType, riserDrop, outputDrop,
@@ -1192,6 +1193,68 @@ const served = (b) => servedFlats(b, flats);
   if (!(Math.abs(none.pct - at.pct) < 1e-9)) {
     fail("a board with nothing beyond it still charges for the run down");
   }
+}
+
+// 28. Everything beyond a board starts from what LEAVES it.
+//
+//     A board on the third floor is reached by a cable running up to
+//     it; the feeder carrying on runs back DOWN before it goes
+//     anywhere. The figure at the board is where the flats hang.
+//     Everything past it starts from the board's OUTPUT.
+//
+//     The run down was read from `MSDB_Down_M` on the stop's own
+//     feature. A stop at a board is a FEEDER POINT — the board is a
+//     separate feature in the same place, and the point carries
+//     `At_Joint_ID` naming it. So the lookup found nothing on every
+//     drawing and added nothing: B4 read 0.08% from B3 while B3's own
+//     panel said 0.17% leaving.
+{
+  const feeder = readFileSync("./src/features/gis/feeder.js", "utf8");
+  const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
+
+  if (!/downM: boardDownAt\(f\),/.test(feeder)) {
+    fail("a stop does not carry the run down of the board it stands on");
+  }
+  if (!/const named = f\?\.Attributes\?\.At_Joint_ID;/.test(feeder)) {
+    fail("the board is not resolved from the point's At_Joint_ID");
+  }
+  if (/Number\(sn\.feature\?\.Attributes\?\.MSDB_Down_M\)/.test(vd)) {
+    fail("the run down is read from the stop's own feature, which is a "
+      + "feeder point and never carries it");
+  }
+  if (!/const down = Number\(sn\.downM\) \|\| 0;/.test(vd)) {
+    fail("the volt drop does not read the run down from the stop");
+  }
+
+  /* And the arithmetic: the board's own figure must not move, and
+     everything past it must. */
+  const model = { nodes: [[0, 0], [50, 0], [100, 0]], S: 0, parent: [-1, 0, 1],
+    cum: [3, 3, 3], cumKva: [30, 30, 30] };
+  const cable = { Cable_Size_ID: 1, Loop_Impedance_Ohm: 0.9785, Volt_Drop_Base: 3094 };
+  const stopsWith = (down) => [
+    { index: 1, feature: { Attributes: { Span_Label: "board" } }, cableSizeId: 1, downM: down },
+    { index: 2, feature: { Attributes: { Span_Label: "beyond" } }, cableSizeId: 1 },
+  ];
+  const pctAt = (target, down) => cumulativeToNode({ model, targetIdx: target,
+    stops: stopsWith(down), cableById: () => cable, voltageV: 400,
+    transformer: { Loop_Impedance_Ohm: 0.02 } }).pct;
+
+  if (Math.abs(pctAt(1, 9) - pctAt(1, null)) > 1e-9) {
+    fail("the run down changed the figure AT the board, where the flats hang");
+  }
+  if (!(pctAt(2, 9) > pctAt(2, null))) {
+    fail("the run down costs nothing beyond the board, so a stop past it "
+      + "reads the board's arriving figure");
+  }
+  /* Nothing flowing past means nothing dropping: a board at the end of
+     a circuit is not charged for a cable carrying no load. */
+  const idle = { ...model, cumKva: [30, 30, 30], cum: [3, 3, 3] };
+  const zero = cumulativeToNode({ model: idle, targetIdx: 2,
+    stops: [{ index: 1, feature: { Attributes: {} }, cableSizeId: 1, downM: 9 },
+      { index: 2, feature: { Attributes: {} }, cableSizeId: 1 }],
+    cableById: () => cable, voltageV: 400, ampsThroughOverride: 0,
+    transformer: { Loop_Impedance_Ohm: 0.02 } });
+  if (!Number.isFinite(zero.pct)) fail("the figure past a board is not a number");
 }
 
 console.log(bad ? `\n${bad} problem(s)`

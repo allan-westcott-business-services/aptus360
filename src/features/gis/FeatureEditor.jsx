@@ -2171,6 +2171,7 @@ export default function FeatureEditor({
             </>
           )}
 
+
           {/* A span node, as the original shows it. Two quite different
               cases: one that belongs to a circuit is numbered from the
               substation and cannot be renamed, because the number is its
@@ -3546,6 +3547,24 @@ export default function FeatureEditor({
                 </div>
               )}
 
+            </>
+          )}
+
+          {/* ── Surface, stage and duration ──
+
+              These were inside "In this trench", which draws only where
+              something is laid in it. A trench with nothing in it yet is
+              still a trench somebody surfaces, programmes and digs \u2014 and
+              on a fresh dig, which is exactly when the stage is set,
+              the whole group vanished.
+
+              Two of the three do follow from the contents, which is why
+              they were put there: the surface multiplies the dig and the
+              duration is computed from what is being laid. But they are
+              facts about the TRENCH, and a trench exists before anything
+              is in it. */}
+          {isTrench && (
+            <>
               {/* Surface, stage and duration.
 
                   Below the contents rather than beside the dimensions,

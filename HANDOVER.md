@@ -3435,6 +3435,21 @@ behaviour and this is a deliberate change to it.
      selection holding both is offered NEITHER, which is right: there is
      no one size that suits both.
 
+102. **A trench with nothing in it is still a trench.** Surface, build
+     status and duration sat inside the "In this trench" block, which
+     draws only where something is LAID in it. Two of the three do
+     follow from the contents — the surface multiplies the dig, the
+     duration is computed from what is being laid — which is why they
+     were grouped there, and the note beside them says so.
+
+     But they are facts about the trench, and a trench exists before
+     anything is in it. **On a fresh dig, which is exactly when somebody
+     sets the stage, the whole group vanished.**
+
+     Lifted into a block guarded on `isTrench` alone, kept after the
+     contents so the reading order the original note argued for
+     survives.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

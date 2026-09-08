@@ -356,6 +356,41 @@ if (separationFor("gas", "electric") !== separationFor("electric", "gas")) {
   }
 }
 
+/* ── A trench with nothing in it is still a trench ──
+
+   Surface, build status and duration sat inside the "In this trench"
+   block, which draws only where something is laid in it. Two of the
+   three do follow from the contents \u2014 the surface multiplies the dig,
+   the duration is computed from what is being laid \u2014 which is why they
+   were put there.
+
+   But they are facts about the TRENCH, and a trench exists before
+   anything is in it. On a fresh dig, which is exactly when somebody
+   sets the stage, the whole group vanished. */
+{
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  const contents = editor.indexOf("{isTrench && !!trenchContents.length && (");
+  const build = editor.indexOf('htmlFor="fe-build"');
+  const surface = editor.indexOf('htmlFor="fe-surface"');
+  const trenchOnly = editor.indexOf("{isTrench && (", contents);
+
+  if (contents < 0) fail("the contents block has moved; this check cannot find it");
+  else {
+    if (!(trenchOnly > contents)) {
+      fail("there is no trench-only block after the contents, so nothing can "
+        + "draw for a trench with nothing in it");
+    }
+    if (!(build > trenchOnly)) {
+      fail("Build status is inside the contents block, so a trench with "
+        + "nothing laid in it yet cannot be given a stage");
+    }
+    if (!(surface > trenchOnly)) {
+      fail("Surface is inside the contents block, so a fresh dig cannot be "
+        + "surfaced");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : `Trench sizing behaves (${EDGE_MARGIN_M * 2}m working room, `
     + `${MIN_WIDTH_M}m minimum width).`);

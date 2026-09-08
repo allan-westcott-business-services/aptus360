@@ -498,6 +498,46 @@ const link = f.find((x) => x.Attributes?.MSDB_Link_A_ID != null)
   }
 }
 
+// 13. A trench between two boards is a trench, not a link.
+//
+//     "trench_main" matches /main/, so a mains trench drawn board to
+//     board was stamped as a link AND given a circuit \u2014 a dig belongs
+//     to no circuit. The build then had a link to route around a dig
+//     that had already joined them, and laid the whole run a second
+//     time: on the reported drawing B5 covered B2 and B3 end to end,
+//     83 m of duplicate cable.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/isTrenchType\(lineType, lineTypes\) \? \{\} : \(stampLink/.test(canvas)) {
+    fail("a trench drawn between two boards is stamped as a link and given a "
+      + "circuit");
+  }
+
+  const src = readFileSync("./src/features/gis/msdb.js", "utf8");
+  if (!/if \(\/trench\/i\.test\(type\) \|\| line\.Layer_Key === "trench"\) return null;/
+    .test(src)) {
+    fail("a trench already carrying a link stamp is still read as a link, so "
+      + "the fault survives on drawings that have one");
+  }
+
+  /* On the drawing where it happened: a mains trench now joins the
+     boards, and nothing on it should read as a link. */
+  const withTrench = JSON.parse(
+    readFileSync("./fixtures/drawing-6-msdb-trench.json", "utf8"));
+  const wf = withTrench.features;
+  const wb = wf.filter((x) => x.Feature_Role === "msdb");
+  const stamped = wf.filter((x) => x.Attributes?.MSDB_Link_A_ID != null);
+  if (!stamped.length) {
+    fail("the fixture has no stamped line, so the case this was written for "
+      + "is untested");
+  }
+  const stillLinks = wf.filter((x) => linkEnds(x, wb));
+  if (stillLinks.length) {
+    fail(`${stillLinks.length} line(s) still read as a link on a drawing where `
+      + "a trench joins the boards");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Board-to-board links behave (stamped, ordered, and routed on from).");
 process.exit(bad ? 1 : 0);

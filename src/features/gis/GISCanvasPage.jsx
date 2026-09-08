@@ -10038,8 +10038,19 @@ export default function GISCanvasPage() {
                After the circuit inheritance above, because the boards
                state the circuit outright and that beats what the ends
                happened to touch. */
-            ...(stampLink(run.geometry,
-              features.filter((x) => x.Feature_Role === "msdb")) || {}),
+            /* ── A TRENCH drawn between two boards is not a link ──
+
+               `stampLink` is given geometry and a list of boards; what
+               kind of line it is has to be decided here, and was not.
+               So a mains trench drawn board to board came back stamped
+               as a link and carrying a circuit \u2014 a dig belongs to no
+               circuit, and the build then had a link to route around a
+               dig that had already joined them.
+
+               A link is a CABLE through a building where no trench
+               goes. If there is a trench, there is no link. */
+            ...(isTrenchType(lineType, lineTypes) ? {} : (stampLink(run.geometry,
+              features.filter((x) => x.Feature_Role === "msdb")) || {})),
             // Recorded at draw time using the metre tolerance, not the
             // pixel one — what it touches, not what it looked near.
             Connects: connectedTo(run.geometry, features, null),

@@ -3469,6 +3469,27 @@ The stamping, ordering and level-chaining stay: a hand-drawn link
 through a building where no trench can go is still a real case, and the
 guard is what lets both approaches sit on one drawing.
 
+103. **A mains trench drawn between two boards was stamped as a link.**
+     `"trench_main"` matches `/main/`, and `stampLink` is given geometry
+     and a list of boards — what KIND of line it is has to be decided by
+     the caller, and was not. So the trench came back carrying
+     `MSDB_Link_A_ID` and a **circuit**, which a dig never has.
+
+     The build then had a link to route around a dig that had already
+     joined the two boards, and laid the whole run a second time: **B5
+     covered B2 and B3 end to end, 83 m of duplicate cable on circuit
+     2.**
+
+     Two guards now. The stamp is not written on a trench, and
+     `linkEnds` refuses one — so a drawing already carrying the bad
+     stamp stops acting on it rather than needing the stamp cleared by
+     hand.
+
+     **A predicate that matches on a substring will eventually match
+     something it was never meant to.** `/main/` catching `trench_main`
+     is the second time today one word inside another has cost a
+     rebuild.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

@@ -516,7 +516,18 @@ export function stampLink(geometry = [], boards = []) {
    cable on a drawing with no boards on it. */
 export function linkEnds(line, boards = []) {
   if (line?.Feature_Type !== "line") return null;
-  if (!/main/i.test(String(line.Attributes?.Line_Type ?? ""))) return null;
+  const type = String(line.Attributes?.Line_Type ?? "");
+  if (!/main/i.test(type)) return null;
+  /* ── A trench is never a link ──
+
+     "trench_main" matches /main/, so a mains trench drawn between two
+     boards was read as a link \u2014 and one already stamped as such keeps
+     being read that way however the stamp got there.
+
+     A link is a CABLE through a building where no trench goes. Where
+     there IS a trench the routing walks it and needs no link at all,
+     which is the whole reason this refuses. */
+  if (/trench/i.test(type) || line.Layer_Key === "trench") return null;
 
   const byId = (id) => boards.find((b) => Number(b.Feature_ID) === Number(id));
   const sa = line.Attributes?.MSDB_Link_A_ID;

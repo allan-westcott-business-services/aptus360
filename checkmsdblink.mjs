@@ -637,6 +637,40 @@ const link = f.find((x) => x.Attributes?.MSDB_Link_A_ID != null)
   }
 }
 
+// 16. The build's own cable is not a link.
+//
+//     A link is a feeder somebody drew BY HAND through a building where
+//     no trench goes. Once the dig reaches both boards the build lays
+//     its own sections between them, and those END on two boards — so
+//     they matched, and the next build made a link part for each,
+//     laying the run again. Three runs, three lots of cable, each build
+//     feeding the next.
+{
+  const src = readFileSync("./src/features/gis/msdb.js", "utf8");
+  if (!/if \(line\.Attributes\?\.Generated\) return null;/.test(src)) {
+    fail("a cable the build laid between two boards is read as a link, so "
+      + "every rebuild lays the run again");
+  }
+
+  /* On a drawing where the build has run: nothing it laid is a link,
+     and a hand-drawn cable still is. */
+  const built = JSON.parse(readFileSync("./fixtures/drawing-6-board-breaks.json", "utf8"));
+  const bf = built.features;
+  const bb = bf.filter((x) => x.Feature_Role === "msdb");
+  if (bb.length >= 2) {
+    const generated = bf.filter((x) => x.Attributes?.Generated && linkEnds(x, bb));
+    if (generated.length) {
+      fail(`${generated.length} cable(s) the build laid are still read as links`);
+    }
+    const hand = { Feature_Type: "line", Attributes: { Line_Type: "elec_main" },
+      Geometry: [bb[0].Geometry[0], bb[1].Geometry[0]] };
+    if (!linkEnds(hand, bb)) {
+      fail("a hand-drawn cable between two boards is no longer a link, which "
+        + "is the case the whole mechanism exists for");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Board-to-board links behave (stamped, ordered, and routed on from).");
 process.exit(bad ? 1 : 0);

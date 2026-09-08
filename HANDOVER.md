@@ -3807,6 +3807,27 @@ it. Once "leaving the board" stops counting the flats (112), the panel
 and the canvas agree at 0.08%. The two fixes together are what make that
 true; either alone leaves them disagreeing.
 
+115. **The build fed itself: three lots of cable on one circuit.** A
+     link is a feeder somebody drew BY HAND through a building where no
+     trench goes. Once the dig reached both boards, the build laid its
+     own sections between them — and those sections END on two boards,
+     so `linkEnds` matched them.
+
+     Each rebuild then made a link part for every cable the previous
+     rebuild had laid, and laid the run again. Three runs, eleven
+     sections where five belong, with 19.3, 30.2 and 53.0 m each
+     appearing three times.
+
+     `Generated` is what the build stamps on everything it lays, and it
+     is already the discriminator the rebuild uses to know what is its.
+     `linkEnds` refuses it now. A hand-drawn cable between two boards is
+     still a link, which is the case the mechanism exists for.
+
+     **The deletion was working the whole time.** A rebuild would have
+     removed all sixteen generated mains; the extras were made WITHIN
+     each run, from the output of the run before. "It is not deleting"
+     and "it is creating too many" look identical from the drawing.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

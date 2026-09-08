@@ -528,6 +528,19 @@ export function linkEnds(line, boards = []) {
      there IS a trench the routing walks it and needs no link at all,
      which is the whole reason this refuses. */
   if (/trench/i.test(type) || line.Layer_Key === "trench") return null;
+  /* ── The build's own cable is not a link ──
+
+     A link is a feeder somebody drew BY HAND through a building where
+     no trench goes. Once the dig reaches both boards the build lays its
+     own sections between them, and those sections end on two boards \u2014
+     so they matched, and the next build made a link part for each,
+     laying the run again. Three runs, three lots of cable, each build
+     feeding the next.
+
+     `Generated` is what the build stamps on everything it lays, and it
+     is the discriminator the rebuild already uses to know what is
+     its. */
+  if (line.Attributes?.Generated) return null;
 
   const byId = (id) => boards.find((b) => Number(b.Feature_ID) === Number(id));
   const sa = line.Attributes?.MSDB_Link_A_ID;

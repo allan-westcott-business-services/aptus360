@@ -1011,6 +1011,9 @@
       ],
       "Label": "Substation 1",
       "Attributes": {
+        "Connects": [
+          49627
+        ],
         "Output_V": "400",
         "Way_Fuse_A": "200",
         "Way_Circuits": {
@@ -2697,7 +2700,9 @@
         "Span_Anchor": [
           142.320773297282,
           48.940371649895866
-        ]
+        ],
+        "VD_Cable_Size_ID": 1,
+        "Manual_VD_Cable_Size_ID": null
       },
       "Plot_ID": null,
       "Feature_Role": "spannode"
@@ -3697,7 +3702,8 @@
         "Build_Status": "planned",
         "Circuit_Name": "Circuit 1",
         "Circuit_Letter": "A",
-        "VD_Cable_Size_ID": 1
+        "VD_Cable_Size_ID": 1,
+        "Manual_VD_Cable_Size_ID": null
       },
       "Plot_ID": null,
       "Feature_Role": "shape"
@@ -3884,7 +3890,8 @@
         ],
         "Circuit_Name": "Circuit 1",
         "Circuit_Letter": "A",
-        "VD_Cable_Size_ID": 1
+        "VD_Cable_Size_ID": 1,
+        "Manual_VD_Cable_Size_ID": null
       },
       "Plot_ID": null,
       "Feature_Role": "feederpoint"
@@ -3958,7 +3965,8 @@
         ],
         "Circuit_Name": "Circuit 1",
         "Circuit_Letter": "A",
-        "VD_Cable_Size_ID": 1
+        "VD_Cable_Size_ID": 1,
+        "Manual_VD_Cable_Size_ID": 4
       },
       "Plot_ID": null,
       "Feature_Role": "feederpoint"
@@ -4064,7 +4072,6 @@
           49628,
           49629,
           49630,
-          49631,
           49644,
           49645
         ],
@@ -4076,7 +4083,7 @@
         "Circuit_Name": "Circuit 2",
         "Circuit_Letter": "B",
         "VD_Cable_Size_ID": 1,
-        "Manual_VD_Cable_Size_ID": null
+        "Manual_VD_Cable_Size_ID": 4
       },
       "Plot_ID": null,
       "Feature_Role": "shape"
@@ -4319,8 +4326,8 @@
       "Feature_Type": "point",
       "Geometry": [
         [
-          223.9804114881292,
-          83.64211398377176
+          224.86463390023857,
+          84.36596347107645
         ]
       ],
       "Label": "Point B1",
@@ -4331,7 +4338,6 @@
           47618,
           47752,
           49608,
-          49627,
           49628,
           49629
         ],
@@ -4345,8 +4351,13 @@
           83.64211398377176
         ],
         "Circuit_Name": "Circuit 2",
+        "Levels_Offset": [
+          1.0047760009765625,
+          -0.007159423828125011
+        ],
         "Circuit_Letter": "B",
-        "VD_Cable_Size_ID": 1
+        "VD_Cable_Size_ID": 1,
+        "Manual_VD_Cable_Size_ID": 4
       },
       "Plot_ID": null,
       "Feature_Role": "feederpoint"
@@ -4382,12 +4393,12 @@
         ],
         "Circuit_Name": "Circuit 2",
         "Levels_Offset": [
-          -5.054090732282589,
-          -2.631890426932329
+          -2.738043500878007,
+          -2.975558429836107
         ],
         "Circuit_Letter": "B",
         "VD_Cable_Size_ID": 1,
-        "Manual_VD_Cable_Size_ID": null
+        "Manual_VD_Cable_Size_ID": 4
       },
       "Plot_ID": null,
       "Feature_Role": "feederpoint"
@@ -5008,7 +5019,8 @@
           47751,
           47755,
           49618,
-          49621
+          49621,
+          49627
         ],
         "Length_m": 158.11,
         "Generated": true,

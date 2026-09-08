@@ -38,71 +38,32 @@ const f = raw.features;
   }
 }
 
-// 2. On the reported drawing, every level below the changed cable moves.
+// 2. The pairing prefers the build's own answer.
+//
+//    `syncNodeCables` keeps each point's COPY of the cable size in step
+//    with the cable. Which point a cable feeds was decided by
+//    `nodeFedBy`, from where the cable's ends lie relative to the
+//    substation \u2014 a guess, and on the reported drawing it paired the
+//    section leaving the substation with the wrong point.
+//
+//    The copy is now only a fallback for the levels (see 4 below), so
+//    this no longer decides the figures. It still decides what the
+//    drawing and the bill show against a point, which is reason enough
+//    to keep it right.
 {
-  const origin = f.find((x) => x.Feature_Role === "feederpoint"
-    && Number(x.Attributes?.Circuit_ID) === 2 && Number(x.Attributes?.Span_Seq) === 0);
-  /* Two sizes far enough apart that a wrong pairing cannot look right. */
-  const cat = {
-    1: { Cable_Size_ID: 1, Loop_Impedance_Ohm: 0.9785, Volt_Drop_Base: 3094 },
-    3: { Cable_Size_ID: 3, Loop_Impedance_Ohm: 0.3200, Volt_Drop_Base: 1000 },
-  };
-  const base = { cableById: (id) => cat[Number(id)] ?? null, limits: {},
-    transformer: { Loop_Impedance_Ohm: 0.02 }, voltageV: 400, startPct: 0 };
-
-  const sync = (world) => {
-    const byLabel = new Map();
-    for (const x of world) {
-      if (x.Feature_Role !== "feederpoint" && x.Feature_Role !== "spannode") continue;
-      const lab = x.Attributes?.Span_Label;
-      if (lab != null && lab !== "") byLabel.set(String(lab), x);
-    }
-    const pairs = new Map();
-    for (const line of world) {
-      if (line.Feature_Type !== "line" || line.Layer_Key !== "electric") continue;
-      const named = line.Attributes?.Generated
-        ? byLabel.get(String(line.Label ?? "")) : null;
-      const node = named ?? nodeFedBy(line, world);
-      const id = cableIdOf(line);
-      if (node && id != null) pairs.set(Number(node.Feature_ID), id);
-    }
-    return world.map((x) => (pairs.has(Number(x.Feature_ID))
-      ? { ...x, Attributes: { ...x.Attributes,
-        Manual_VD_Cable_Size_ID: pairs.get(Number(x.Feature_ID)) } } : x));
-  };
-  const pcts = (world) => {
-    const { seedIds, meterIds } = circuitMembership(world, 2);
-    const parts = circuitTraceParts(world, origin.Feature_ID,
-      { lineTypes: raw.lineTypes || [], circuitId: 2, plotById: () => null,
-        nrsById: () => null, seedIds, meterIds, stopAt: "spannodes" });
-    const figs = levelsForParts(parts, { features: world, base });
-    const out = {};
-    for (const [id, v] of figs) {
-      const ft = world.find((x) => Number(x.Feature_ID) === Number(id));
-      out[ft?.Attributes?.Span_Label ?? id] = v.pct;
-    }
-    return out;
-  };
-
-  /* The section leaving the substation: the one the build named after
-     the first point on the circuit. */
-  const first = f.find((x) => x.Attributes?.Line_Type === "elec_main"
-    && Number(x.Attributes?.Circuit_ID) === 2 && x.Label === "B1");
-  if (!first) {
-    fail("the fixture has no section leaving the substation, so this is "
-      + "untested");
-  } else {
-    const before = pcts(sync(f));
-    const after = pcts(sync(f.map((x) => (Number(x.Feature_ID) === Number(first.Feature_ID)
-      ? { ...x, Attributes: { ...x.Attributes, Manual_VD_Cable_Size_ID: 3 } } : x))));
-
-    /* A bigger cable drops less: every point below it must improve. */
-    for (const k of Object.keys(before)) {
-      if (!(after[k] < before[k])) {
-        fail(`${k} did not improve when the cable leaving the substation was `
-          + `made bigger: ${before[k]?.toFixed(3)}% then ${after[k]?.toFixed(3)}%`);
-      }
-    }
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/const pointByLabel = new Map\(\);/.test(canvas)) {
+    fail("the sync has no way to read the build's own pairing");
+  }
+  if (!/const named = line\.Attributes\?\.Generated/.test(canvas)) {
+    fail("a section the build laid is paired by geometry rather than by the "
+      + "point it was named after");
+  }
+  /* The geometric rule stays for anything the build did not lay: a
+     hand-drawn cable carries no section label. */
+  if (!/const node = named \?\? nodeFedBy\(line, src\);/.test(canvas)) {
+    fail("the geometric rule was removed, so a hand-drawn cable pairs with "
+      + "nothing at all");
   }
 }
 
@@ -152,6 +113,72 @@ const f = raw.features;
   if (!seen) {
     fail("overriding a cable on the fixture reports no drift at all, so "
       + "nothing would prompt the points to be brought into step");
+  }
+}
+
+// 4. The levels read the RUN, not the point's copy of it.
+//
+//    This is the root the three fixes above were patching around. The
+//    volt drop is settled from a part's span nodes, and each of those
+//    took its cable from `cableIdOf(feature)` \u2014 the copy stored on the
+//    point. So changing a cable moved the legs and left every figure
+//    exactly where it was, and the only thing that helped was writing
+//    the copy too.
+//
+//    The legs had always preferred the run: "the run is where the cable
+//    actually lives; the node's copy is fault 13 waiting to be read."
+//    The span nodes never learnt it.
+{
+  const src = readFileSync("./src/features/gis/feeder.js", "utf8");
+  if (!/cableSizeId: legCableAt\.get\(index\) \?\? cableIdOf\(f\)/.test(src)) {
+    fail("a span node takes its cable from the point's stored copy, so the "
+      + "levels cannot follow a cable that was changed");
+  }
+  /* The copy stays as the FALLBACK: a stop no leg reached has nothing
+     else to go on. */
+  if (!/\?\? cableIdOf\(f\)/.test(src)) {
+    fail("the point's copy was removed entirely, so a stop no leg reached "
+      + "has no cable at all");
+  }
+  const decl = src.indexOf("const legCableAt = new Map();");
+  if (decl < 0 || decl > src.indexOf("legCableAt.get(index)")) {
+    fail("the map is used before it is built");
+  }
+
+  /* And the figures follow a cable change with NOTHING else touched \u2014
+     no sync, no copy written, no rebuild. */
+  const origin = f.find((x) => x.Feature_Role === "feederpoint"
+    && Number(x.Attributes?.Circuit_ID) === 2 && Number(x.Attributes?.Span_Seq) === 0);
+  const cat = {
+    1: { Cable_Size_ID: 1, Loop_Impedance_Ohm: 0.9785, Volt_Drop_Base: 3094 },
+    3: { Cable_Size_ID: 3, Loop_Impedance_Ohm: 0.3200, Volt_Drop_Base: 1000 },
+  };
+  const base = { cableById: (id) => cat[Number(id)] ?? null, limits: {},
+    transformer: { Loop_Impedance_Ohm: 0.02 }, voltageV: 400, startPct: 0 };
+  const pcts = (world) => {
+    const mem = circuitMembership(world, 2);
+    const parts = circuitTraceParts(world, origin.Feature_ID,
+      { lineTypes: raw.lineTypes || [], circuitId: 2, plotById: () => null,
+        nrsById: () => null, seedIds: mem.seedIds, meterIds: mem.meterIds,
+        stopAt: "spannodes" });
+    const figs = levelsForParts(parts, { features: world, base });
+    const out = {};
+    for (const [id, v] of figs) {
+      const ft = world.find((x) => Number(x.Feature_ID) === Number(id));
+      out[ft?.Attributes?.Span_Label ?? id] = v.pct;
+    }
+    return out;
+  };
+  const first = f.find((x) => x.Attributes?.Line_Type === "elec_main"
+    && Number(x.Attributes?.Circuit_ID) === 2 && x.Label === "B1");
+  if (first) {
+    const before = pcts(f);
+    const after = pcts(f.map((x) => (Number(x.Feature_ID) === Number(first.Feature_ID)
+      ? { ...x, Attributes: { ...x.Attributes, Manual_VD_Cable_Size_ID: 3 } } : x)));
+    const moved = Object.keys(before).filter((k) => before[k] !== after[k]);
+    if (!moved.length) {
+      fail("changing a cable moved no figure at all, with no sync in the way");
+    }
   }
 }
 

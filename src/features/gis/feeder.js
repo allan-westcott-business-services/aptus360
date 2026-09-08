@@ -2855,6 +2855,14 @@ export function spanTrace(features = [], nodeId, opts = {}) {
   const startLabel = node.Attributes?.Span_Label ?? node.Label ?? `#${nodeId}`;
   for (const b of branches) walk(startIdx, b, 0, [], [startIdx], startLabel);
 
+  /* Each stop and the cable of the leg ARRIVING at it, taken from the
+     legs the walk just gathered so the two cannot give different
+     answers about the same stretch of ground. */
+  const legCableAt = new Map();
+  for (const l of legs) {
+    if (l.endIdx != null && l.cableSizeId != null) legCableAt.set(l.endIdx, l.cableSizeId);
+  }
+
   return {
     from: node.Attributes?.Span_Label ?? node.Label ?? `#${nodeId}`,
     circuitName,
@@ -2895,10 +2903,26 @@ export function spanTrace(features = [], nodeId, opts = {}) {
       .map(([index, f]) => ({
         index,
         feature: f,
-        cableSizeId: cableIdOf(f),
+        /* ── The run, not the point's copy of it ──
+
+           The legs above already prefer the cable and fall back to the
+           point, for the reason stated there: the run is where the
+           cable actually lives, and the node's copy is fault 13 waiting
+           to be read.
+
+           This still read the copy \u2014 and the VOLT DROP is settled from
+           these span nodes. So changing a cable moved the legs and left
+           every figure alone, which is the whole of "the levels do not
+           change when I change the cable size", through five rounds of
+           patching the copy rather than not reading it.
+
+           The leg ENDING at this node is the stretch of cable arriving
+           at it, and its size was worked out from the run. The point's
+           own copy remains the fallback, for a stop no leg reached. */
+        cableSizeId: legCableAt.get(index) ?? cableIdOf(f),
       })).concat([{
       index: startIdx, feature: node,
-      cableSizeId: cableIdOf(node),
+      cableSizeId: legCableAt.get(startIdx) ?? cableIdOf(node),
     }]),
     totalMetres: Math.round(legs.reduce((t, l) => t + l.metres, 0) * 10) / 10,
     totalMeters: cum[startIdx] || 0,

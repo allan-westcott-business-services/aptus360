@@ -3669,6 +3669,36 @@ is not.
      end and a span node are meant to be the same place" had been true
      of forks and ends only, and nothing checked the other half.
 
+110. **The root, after five rounds of patching around it.** The volt
+     drop is settled from a part's SPAN NODES, and each of those took
+     its cable from `cableIdOf(feature)` — the copy stored on the point.
+     So changing a cable moved the legs and left every figure exactly
+     where it was, and the only thing that ever helped was writing the
+     copy as well.
+
+     The legs had always preferred the run, and said why in a comment
+     directly above: *"the run is where the cable actually lives; the
+     node's copy is fault 13 waiting to be read."* **The span nodes
+     beside them never learnt it.**
+
+     A span node now takes the cable of the leg ARRIVING at it, worked
+     out from the run. The copy remains the fallback, for a stop no leg
+     reached.
+
+     Measured with no sync, no copy written and no rebuild — the cable
+     alone: B1 0.000% → 0.060%, B3 0.585% → 0.645%.
+
+     **Five fixes, four of them patching a copy nobody should have been
+     reading.** Each was a real fault and each made the copy more
+     correct; none of them asked why the calculation read a copy at all.
+     When a fix has to be made repeatedly in different places, the thing
+     being fixed is usually not the fault.
+
+     Two of the checks written along the way asserted on that copy
+     mechanism. One has been cut back to its structural half, because
+     testing an emulation of a mechanism the answer no longer depends on
+     is testing nothing.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

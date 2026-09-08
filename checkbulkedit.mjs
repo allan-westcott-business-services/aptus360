@@ -500,13 +500,18 @@ const keys = (cs) => fieldsForMany(cs, { lineTypes }).map((f) => f.key);
    The span-node-copy guard was applied to every cable field, and it
    blocked the one bulk edit services exist to need: eighty-four
    unsized tails, one fact, eighty-four editors. A service is copied
-   nowhere — its size lives on the line alone — so the panel offers
-   the field for the service class and keeps the guard's text for
-   mains, whose size really is held twice. */
+   nowhere — its size lives on the line alone.
+
+   The guard is gone for MAINS too now. Sizing a run is the commonest
+   bulk edit there is, and refusing it sent somebody to open forty
+   editors instead, where the drift the guard feared is just as
+   possible and nobody is watching for it. `syncNodeCables` runs after
+   the save and moves the copy with it, which is what the guard's own
+   note said had to happen. */
 {
   const be = readFileSync("./src/features/gis/BulkEditor.jsx", "utf8");
-  if (!/f\.kind === "cable" && f\.usage !== "service"/.test(be)) {
-    fails.push("the mains guard no longer spares the service class");
+  if (/f\.kind === "cable" && f\.usage !== "service"/.test(be)) {
+    fails.push("mains cables are singled out for refusal again");
   }
   if (!/The tail each customer is fed through/.test(be)) {
     fails.push("the service class has lost its bulk cable field");

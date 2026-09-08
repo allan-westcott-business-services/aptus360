@@ -3375,6 +3375,30 @@ Two rules in `checkbulkedit` expected Label to survive every mix and had
 to be corrected rather than weakened — they were right about the old
 behaviour and this is a deliberate change to it.
 
+99. **A refusal that cost more than the fault it prevented.** A mains
+    run's cable size is held twice — on the run, and on the point it
+    feeds, because the volt drop sum reads it from the point. Writing
+    one without the other leaves the cable saying 300 and the sum saying
+    95. So the bulk panel refused the edit: *"Cable size is set on the
+    run itself, not here."*
+
+    **Sizing a run is the commonest bulk edit there is.** The refusal
+    sent somebody to open forty editors instead — where the drift is
+    just as possible and nobody is watching for it. The guard protected
+    the data by making the job worse.
+
+    The cure was already written: `syncNodeCables`, the routine behind
+    "N nodes out of step with their cables — fix", pairs every cable
+    with the point that copies it. It now runs after a bulk cable edit,
+    from the drawing AS SAVED rather than from state that has not caught
+    up — reading state there would put the old sizes back.
+
+    Only where a cable size was part of the edit. A sync nobody asked
+    for is a second write to explain.
+
+    **When a guard exists because two things must move together, the
+    answer is to move them, not to forbid the move.**
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

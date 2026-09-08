@@ -348,27 +348,27 @@ export default function BulkEditor({
       );
     }
 
-    /* Cable — but only for a run.
+    /* ── Cable, on a run as much as on a service ──
 
-       A MAINS run's size is held twice — on the run and on the point it
-       feeds, because the volt drop sum reads it from the point — and
-       only the canvas can write both, so a bulk write of one from here
-       would leave the cable saying 300 and the sum saying 95, each true
-       to whichever reader looked. That guard was applied to every
-       cable, and it blocked the one bulk edit services exist to need:
-       a SERVICE feeds no measuring point and is copied nowhere — its
-       size lives on the line alone, read directly by the tail
-       calculation — so eighty-four unsized tails meant eighty-four
-       editors, for a guard protecting a consistency problem services
-       do not have. */
-    if (f.kind === "cable" && f.usage !== "service") {
-      return (
-        <p className="fe-tip" key={f.key}>
-          Cable size is set on the run itself, not here &mdash; the span node
-          it feeds carries a copy, and the two have to move together.
-        </p>
-      );
-    }
+       A MAINS run's size is held twice: on the run, and on the point it
+       feeds, because the volt drop sum reads it from the point. Writing
+       one without the other leaves the cable saying 300 and the sum
+       saying 95, each true to whichever reader looked \u2014 so this panel
+       refused the edit outright.
+
+       Refusing was the wrong answer to a real problem. Sizing a run is
+       the commonest bulk edit there is, and "not here" sent somebody to
+       open forty editors instead, where the drift is just as possible
+       and nobody is watching for it.
+
+       The canvas already owns the cure: `syncNodeCables` is the routine
+       behind "N nodes out of step with their cables \u2014 fix", and it
+       pairs every cable with the node it feeds. The apply below runs it
+       once the rows are written, so the two move together as the note
+       always said they must.
+
+       A SERVICE feeds no measuring point and is copied nowhere; it
+       never needed the guard and does not need the sync. */
     if (f.kind === "cable") {
       /* The same filter and the same words as the cable editor: usage
          is a fact of the cable TYPE, so the list is the sizes whose

@@ -117,6 +117,49 @@ const meters = some((x) => x.Feature_Role === "meter", 4);
   }
 }
 
+// 5. A cable size can be set in bulk.
+//
+//    A MAINS run's size is held twice: on the run, and on the point it
+//    feeds, because the volt drop sum reads it from the point. The
+//    panel REFUSED the edit for that reason \u2014 which sent somebody to
+//    open forty editors instead, where the drift is just as possible
+//    and nobody is watching for it.
+{
+  const panel = readFileSync("./src/features/gis/BulkEditor.jsx", "utf8");
+  if (/Cable size is set on the run itself/.test(panel)) {
+    fail("the panel still refuses a bulk cable edit, which is the edit it is "
+      + "most often opened for");
+  }
+  if (/f\.kind === "cable" && f\.usage !== "service"/.test(panel)) {
+    fail("mains cables are still singled out for refusal");
+  }
+  /* Offered on a run as on a service. */
+  const mainsSel = f.filter((x) => x.Attributes?.Line_Type === "elec_main").slice(0, 3);
+  if (mainsSel.length && !keysFor(mainsSel).includes("VD_Cable_Size_ID")) {
+    fail("a run of mains is not offered a cable size");
+  }
+
+  /* ── And the copy moves with it ──
+
+     `syncNodeCables` is the routine behind "N nodes out of step with
+     their cables \u2014 fix". Run after the rows are written, from the
+     drawing as just saved rather than from state that has not caught
+     up. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/if \(touchedCable\) \{/.test(canvas)) {
+    fail("a bulk cable edit does not bring the points that copy it into step");
+  }
+  if (!/srcFeatures: fresh\.features/.test(canvas)) {
+    fail("the sync reads state that has not caught up with the save, so it "
+      + "puts the OLD sizes back");
+  }
+  /* Only where a cable size was part of the edit: a sync nobody asked
+     for is a second write to explain. */
+  if (!/u\?\.Attributes\?\.VD_Cable_Size_ID !== undefined/.test(canvas)) {
+    fail("every bulk edit triggers the sync, whatever was changed");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Bulk edit offers what they share (and only that).");
 process.exit(bad ? 1 : 0);

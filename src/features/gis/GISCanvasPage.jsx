@@ -21316,9 +21316,36 @@ export default function GISCanvasPage() {
       await bulkUpdatePlots(projectId, plotIds, changes);
     }
 
+    const fresh = await listGis(projectId);
+
+    /* ── A cable's size lives in two places ──
+
+       On the run, and on the span node it feeds, because the volt drop
+       sum reads it from the node. This panel used to REFUSE a bulk
+       cable edit for that reason, which sent somebody to open forty
+       editors instead \u2014 where the drift is just as possible and nobody
+       is watching for it.
+
+       `syncNodeCables` is the routine behind "N nodes out of step with
+       their cables \u2014 fix", and it pairs every cable with the node it
+       feeds. Run here, from the drawing as just saved rather than from
+       state that has not caught up, so the two move together in one
+       action.
+
+       Only where a cable size was actually part of the edit: every
+       other bulk change leaves the pairing alone, and a sync nobody
+       asked for is a second write to explain. */
+    const touchedCable = updates.some((u) =>
+      u?.Attributes?.VD_Cable_Size_ID !== undefined
+      || u?.Attributes?.Manual_VD_Cable_Size_ID !== undefined);
+    if (touchedCable) {
+      await syncNodeCables({ silent: true, srcFeatures: fresh.features || [] });
+    }
+
     await load(projectId);
     const n = plotChange?.plotIds?.length || updates.length;
-    setStatus(`${n} ${plotChange?.plotIds?.length ? "plot" : "feature"}${n === 1 ? "" : "s"} updated`);
+    setStatus(`${n} ${plotChange?.plotIds?.length ? "plot" : "feature"}${n === 1 ? "" : "s"} updated`
+      + (touchedCable ? ", span nodes brought into step" : ""));
     setTimeout(() => setStatus(""), 5000);
   }
 

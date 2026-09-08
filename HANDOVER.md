@@ -3364,6 +3364,20 @@ type carries its layer. Writing the id alone leaves a run numbered 3 and
 still called Circuit 2 on every sheet that names it. Taken from whatever
 is already on that circuit, since there is no circuits table.
 
+**Line type is off the bulk panel entirely.** *"Reclassifies every one
+of them"* was the warning it carried, and it was the right warning:
+turning forty cables into trenches, or a run of gas main into water, is
+not an edit somebody makes to a selection — it is a mistake somebody
+makes to a selection. What a line IS was decided when it was drawn, and
+changing it moves the feature to another layer, another catalogue and
+another set of rules.
+
+It stays on the single-feature editor, where one line at a time can be
+reclassified deliberately and its own panel redraws around it. The
+control and the layer-carrying rule in `planBulkEditOn` are kept rather
+than deleted — both are correct, and reinstating the field is one line
+if a deliberate bulk reclassify is ever wanted.
+
 **Name and Depth are off cables and pipes.** Forty cables sharing one
 label says nothing anybody wants to read — the drawing tells them apart
 by circuit, size and where they run. And a cable's depth is the depth of

@@ -119,10 +119,18 @@ export function fieldsFor(cls, { lineTypes = [] } = {}) {
       note: "They will share it" });
   }
 
-  if (isLine) {
-    out.push({ key: "Line_Type", label: "Line type", kind: "lineType",
-      note: "Reclassifies every one of them" });
-  }
+  /* ── Line type is not a bulk edit ──
+
+     "Reclassifies every one of them" is the warning it carried, and it
+     was the right warning: turning forty cables into trenches, or a run
+     of gas main into water, is not an edit somebody makes to a
+     selection \u2014 it is a mistake somebody makes to a selection. What a
+     line IS was decided when it was drawn, and changing it moves the
+     feature to another layer, another catalogue and another set of
+     rules.
+
+     Left on the single-feature editor, where one line at a time can be
+     reclassified deliberately and its own panel redraws around it. */
   if (isTrench) {
     out.push({ key: "Surface_Type", label: "Surface", kind: "surface" });
     out.push({ key: "Site", label: "Site", kind: "choice",

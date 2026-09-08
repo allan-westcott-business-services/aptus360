@@ -160,6 +160,30 @@ const meters = some((x) => x.Feature_Role === "meter", 4);
   }
 }
 
+// 6. Line type is not a bulk edit.
+//
+//    "Reclassifies every one of them" was the warning it carried, and
+//    it was the right warning: turning forty cables into trenches, or a
+//    run of gas main into water, is not an edit somebody makes to a
+//    selection \u2014 it is a mistake somebody makes to a selection.
+{
+  for (const [what, sel] of [["cables", mains], ["services", svc],
+    ["trenches", trench]]) {
+    if (!sel.length) continue;
+    if (keysFor(sel).includes("Line_Type")) {
+      fail(`${what} are offered a Line type, which reclassifies every one of `
+        + "them and moves them to another layer");
+    }
+  }
+  /* And the single-feature editor keeps it: one line at a time can be
+     reclassified deliberately, with its own panel redrawing around it. */
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/htmlFor="fe-type"/.test(editor)) {
+    fail("the single-feature editor lost its Line type as well, so a line "
+      + "cannot be reclassified at all");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Bulk edit offers what they share (and only that).");
 process.exit(bad ? 1 : 0);

@@ -235,6 +235,11 @@ export default function BulkEditor({
       );
     }
 
+    /* Line type is no longer offered by `fieldsFor`, so this draws
+       nothing today. Kept rather than deleted: the control and the
+       layer rule behind it are correct, and reinstating the field is a
+       one-line change if a reclassify-in-bulk is ever wanted
+       deliberately. */
     if (f.kind === "lineType") {
       return (
         <div className="fld" key={f.key}>

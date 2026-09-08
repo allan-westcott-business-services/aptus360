@@ -3828,6 +3828,34 @@ true; either alone leaves them disagreeing.
      each run, from the output of the run before. "It is not deleting"
      and "it is creating too many" look identical from the drawing.
 
+116. **The export said what the code could not: `Leg charged (m)`
+     equalled the drawn length on every leg.** B3→B4 read 18.4 m with
+     MSDB 2's nine-metre run down nowhere in it.
+
+     That showed the fix was the wrong SHAPE, not just misplaced. It
+     added an extra ohms-and-percent to the total, which moved the
+     figure while the charged length still read 18.4 \u2014 a run that is
+     27.4 m of conductor. **A number that changes with nothing on the
+     sheet to explain it is worse than one that is wrong**, because it
+     cannot be argued with.
+
+     The run down is charged as METRES on the leg leaving the board:
+     `legLenM` starts at the riser length instead of zero. Length,
+     impedance, drop and the export now agree, and the load is right
+     without being chosen \u2014 the leg leaving a board carries what leaves
+     the board, by construction.
+
+     That also deleted three things the earlier attempt needed:
+     `onwardKva`, `downPct` and the separate drop. **A fix that needs
+     new fields to explain itself is usually being made in the wrong
+     place.**
+
+**The cut-out columns are blank because cable 51 has no electrical
+figures.** All sixteen services use it, and `missingSpec` fires when a
+cable has neither `Loop_Impedance_Ohm` nor `Volt_Drop_Base`. The blank
+is deliberate: a service that contributes nothing must not read like one
+that genuinely drops nothing. Fixed in Admin, not in code.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

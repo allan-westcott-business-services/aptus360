@@ -1222,8 +1222,25 @@ const served = (b) => servedFlats(b, flats);
     fail("the run down is read from the stop's own feature, which is a "
       + "feeder point and never carries it");
   }
-  if (!/const down = Number\(sn\.downM\) \|\| 0;/.test(vd)) {
-    fail("the volt drop does not read the run down from the stop");
+  /* ── Charged as METRES on the leg leaving the board ──
+
+     The first attempt bolted an extra ohms-and-percent onto the total.
+     That moved the figure while `Leg charged (m)` still read the drawn
+     length \u2014 18.4 m on the export for a run that is 27.4 m of
+     conductor. A number that changes with nothing on the sheet to
+     explain it is worse than one that is wrong, because it cannot be
+     argued with.
+
+     As metres, the length, the impedance, the drop and the export all
+     agree, and the load is right without being chosen: the leg leaving
+     a board carries what leaves the board. */
+  if (!/legLenM = Number\(sn\.downM\) \|\| 0;/.test(vd)) {
+    fail("the run down is not charged as metres on the leg leaving the "
+      + "board, so the export's charged length cannot show it");
+  }
+  if (/const beyond = onwardIdx/.test(vd)) {
+    fail("the run down is still added as a separate drop as well, so it is "
+      + "counted twice");
   }
 
   /* And the arithmetic: the board's own figure must not move, and

@@ -12925,9 +12925,35 @@ export default function GISCanvasPage() {
        A node takes the cable of the run that ARRIVES at it. A run
        leaving it is the next length of cable and has its own node
        further on. */
+    /* ── The build's own answer first ──
+
+       `nodeFedBy` decides which point a cable feeds from where its ends
+       lie relative to the substation. That is a guess, and on a run
+       where two points sit close together it picks the wrong one:
+       cable "B1", the section leaving the substation, was paired with
+       point B2, so changing that cable moved B2's figure and left B1's
+       exactly where it was. Which is "the levels do not change when I
+       change the cable leaving the substation".
+
+       The build already states the pairing. It labels each section it
+       lays after the point that section runs to, so cable B1 feeds
+       point B1 \u2014 no inference, and no two points to choose between.
+
+       The geometric rule stays for anything unlabelled: a cable drawn
+       by hand carries no section label and has only its ends to go
+       on. */
+    const pointByLabel = new Map();
+    for (const f of src) {
+      if (f.Feature_Role !== "feederpoint" && f.Feature_Role !== "spannode") continue;
+      const lab = f.Attributes?.Span_Label;
+      if (lab != null && lab !== "") pointByLabel.set(String(lab), f);
+    }
+
     const claims = new Map();
     for (const line of lines) {
-      const node = nodeFedBy(line, src);
+      const named = line.Attributes?.Generated
+        ? pointByLabel.get(String(line.Label ?? "")) : null;
+      const node = named ?? nodeFedBy(line, src);
       if (!node) continue;
       if (!claims.has(node.Feature_ID)) claims.set(node.Feature_ID, { node, lines: [] });
       claims.get(node.Feature_ID).lines.push(line);

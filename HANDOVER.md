@@ -161,6 +161,7 @@ caught a fault that had already shipped at least once.
 | `node checkmsdblink.mjs` | Board-to-board links: stamped, ordered, routed past |
 | `node checkisolation.mjs` | A trench that refuses LV is not walked across |
 | `node checkbulkfields.mjs` | Bulk edit offers only what the selection shares |
+| `node checkcablelevels.mjs` | Changing a cable changes the levels below it |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
@@ -3591,6 +3592,37 @@ is not.
      differently.** The symptom was not "the sync is broken" but "the
      number never moves", which points at the calculation rather than at
      a copy nobody mentions.
+
+107. **The sync paired the cable with the wrong point.** Which point a
+     cable feeds was decided by `nodeFedBy`, from where the cable's ends
+     lie relative to the substation. That is a guess, and where two
+     points sit close together it picks the wrong one.
+
+     On the reported drawing, cable **"B1" — the section leaving the
+     substation — was paired with point B2**. Changing it moved B2's
+     figure and left B1's exactly where it was, which is "the levels do
+     not change when I change the cable that leaves the substation".
+
+     **The build already states the pairing.** It labels each section it
+     lays after the point that section runs to, so cable B1 feeds point
+     B1 — no inference and no two points to choose between. The
+     geometric rule stays for anything unlabelled, since a hand-drawn
+     cable has only its ends to go on.
+
+     Measured before and after: every point on the circuit now improves
+     when the first cable is made bigger (B1 0.187% → 0.060%, B3 0.771%
+     → 0.645%).
+
+     **Three rounds on one symptom**, each a different link: the bulk
+     panel wrote the field the build recalculates; the single save
+     synced only one point; and the pairing itself was wrong. The first
+     two were mine from today.
+
+     **`checkcablelevels` has a weakness worth knowing.** Its
+     arithmetic half emulates the pairing rather than calling the app's
+     own sync, which lives inside the React component and writes through
+     the API. It locks the expected figures and the structural rules,
+     but it would not catch the app diverging from the emulation.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

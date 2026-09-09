@@ -13,6 +13,12 @@ import {
   classOf, classLabel, joinLines, isTrenchType, splitPolylineAt,
 } from "./snapping.js";
 import BasemapSetup from "./BasemapSetup.jsx";
+/* What a trench has been told to hold. Imported under its own name:
+   the levels file has a LOCAL `carries` asking which layer a line is
+   on, and two functions of one name answering different questions is
+   how a trench that refuses LV came to be walked across by every
+   distance on the drawing. */
+import { carries } from "./trenchCarries.js";
 import { getLookups } from "../../api/lookups.js";
 import { listNrs } from "../../api/nrs.js";
 import { listConnections } from "../../api/connections.js";
@@ -13562,6 +13568,74 @@ export default function GISCanvasPage() {
      almost always a mistake rather than a design with two incomers, so
      an existing one is replaced rather than added to — and it is said
      out loud before anything is written. */
+  /* ── Lay a pipe or a cable along a trench somebody picked ──
+
+     The trench is already the route: it was dug where the run has to
+     go, it bends where the ground made it bend, and it is the length
+     the run will be. Drawing the same shape again by hand is copying a
+     line that is already on the drawing, and the copy is never quite
+     the same shape.
+
+     So: the trench's own geometry, end to end. Not a walk, not a
+     shortest path \u2014 the whole of the one trench that was right-clicked
+     and nothing beyond it.
+
+     What it does NOT do is decide anything else. No circuit, no cable
+     size, no meters served: those are questions about a network, and
+     this is one length of pipe in one dig. The editor asks them
+     afterwards, the way it does for a run drawn by hand. */
+  async function layInTrench(trench, typeKey) {
+    const t = lineTypes.find((x) => x.Type_Key === typeKey);
+    if (!t) { setError("That line type is not on this project."); return; }
+
+    const g = trench?.Geometry || [];
+    if (g.length < 2) { setError("That trench has no length to lay along."); return; }
+
+    /* ── Does the dig allow it ──
+
+       A trench carries flags saying which utilities may pass, and they
+       are set deliberately: a dig with LV switched off is two circuits
+       kept apart, and laying an LV cable down it would undo by hand
+       what somebody drew on purpose.
+
+       Silence still means everything, so a drawing made before the
+       flags existed lays as it always did. */
+    const utility = t.Layer_Key === "electric" ? "electric" : t.Layer_Key;
+    const voltage = typeKey === "elec_hv" ? "hv"
+      : (t.Layer_Key === "electric" ? "lv" : null);
+    if (!carries(trench, utility, voltage)) {
+      setError(`This trench is marked as not carrying ${t.Label ?? typeKey}.`
+        + " Change what it carries in the trench editor, or pick another dig.");
+      return;
+    }
+
+    try {
+      await addFeature({
+        Layer_Key: t.Layer_Key,
+        Feature_Type: "line",
+        Feature_Role: "shape",
+        /* The trench's own points, copied. A reference would have been
+           tidier and wrong: the run is its own feature from here, and
+           moving the trench later is a decision about the trench. */
+        Geometry: g.map((p) => [p[0], p[1]]),
+        Label: t.Label ?? "",
+        Attributes: {
+          Line_Type: typeKey,
+          /* Which dig it was laid in, stated. Everything else works
+             this out by proximity, and proximity cannot tell two
+             parallel trenches apart. */
+          In_Trench_ID: trench.Feature_ID,
+          ...defaultsFor(typeKey),
+          ...inheritedCircuit(g, typeKey),
+        },
+      });
+      await load(projectId);
+      setStatus(`${t.Label ?? typeKey} laid along `
+        + `${trench.Label ?? "the trench"} \u2014 ${lineLength(g).toFixed(1)} m`);
+      setTimeout(() => setStatus(""), 5000);
+    } catch (e) { setError(e.message); }
+  }
+
   async function routeSupply(choice = null) {
     const r = routePocToSubstation(features, { lineTypes, ...(choice || {}) });
     if (r.error) { setError(r.error); return; }
@@ -26271,6 +26345,37 @@ export default function GISCanvasPage() {
                     setCtx(null);
                     setTimeout(() => runFullTrace(), 0);
                   }}>Full Trace from Here</button>
+                ) : (ctx.feature.Feature_Type === "line"
+                     && isTrenchType(ctx.feature.Attributes?.Line_Type, lineTypes)) ? (
+                  /* ── Lay something along this dig ──
+
+                      The trench is already the route: it was dug where
+                      the run has to go and it is the length the run
+                      will be. Drawing the same shape by hand is copying
+                      a line that is on the drawing, and the copy is
+                      never quite the same shape.
+
+                      Offered from the types this project has rather
+                      than a fixed list: a scheme with no gas layer has
+                      no gas pipe to lay, and a button for one is a
+                      button that fails. */
+                  <>
+                    {[["elec_hv", "HV Cable"],
+                      ["elec_main", "LV Cable"],
+                      ["elec_service", "Service Cable"],
+                      ["gas_main", "Gas Pipe"],
+                      ["water_main", "Water Pipe"]].map(([key, label]) => {
+                      const t = lineTypes.find((x) => x.Type_Key === key);
+                      if (!t) return null;
+                      const f = ctx.feature;
+                      return (
+                        <button key={key} className="gc-item" disabled={!!busy}
+                          onClick={() => { setCtx(null); layInTrench(f, key); }}>
+                          {`Lay ${label} in this trench`}
+                        </button>
+                      );
+                    })}
+                  </>
                 ) : null}
 
                 <div className="gc-sep" />

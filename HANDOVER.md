@@ -164,6 +164,7 @@ caught a fault that had already shipped at least once.
 | `node checkcablelevels.mjs` | Changing a cable changes the levels below it |
 | `node checkbuildblockers.mjs` | The build refuses a drawing it cannot build from |
 | `node checkhdcutout.mjs` | The cut-out stays passive, LV-only and aligned |
+| `node checklayintrench.mjs` | Laying a run along a trench: whole, own shape, allowed |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
@@ -4105,10 +4106,54 @@ was aimed.
 bends, and the angle that matters is the one under the symbol. Unlike a
 board, which is a thing in a building and stays upright.
 
+**On the bill it is HDCO** — migration `0210_bom_hdco.sql`, NOT YET RUN.
+The naming CASE in `gis_bom` lists the roles whose key is not their
+name and falls back to `initcap` for anything unlisted, so 'hdcutout'
+came out **"Hdcutout"**. The note beside that list said the fallback
+exists so a role added later "shows up here as the odd one out when
+somebody looks" — it did, and 0210 is the looking.
+
+0210 is **0208 verbatim plus one WHEN and its two-line note**: 288 lines
+carried, nothing dropped. `gis_bom` is replaced whole by every one of
+these, so a line lost in the copy is a rule silently lost —
+`checkbomroles` now diffs the two files and fails on any line of 0208
+missing from 0210, proved by deleting one.
+
 **Migration `0209_hdcutout_role.sql`, NOT YET RUN.** The constraint is
 rewritten whole, so the check asserts every previously allowed role
 survives — one left out is every feature of that kind refused on its
 next save.
+
+**Right-click a trench to lay a run along it.** HV cable, LV cable,
+service cable, gas pipe or water pipe, the whole length of that one
+trench.
+
+The trench is already the route: it was dug where the run has to go, it
+bends where the ground made it bend, and it is the length the run will
+be. Drawing that shape again by hand is copying a line already on the
+drawing, and the copy is never quite the same shape.
+
+**Its own points, copied.** A reference would have been tidier and
+wrong: the run is its own feature from there, and moving the trench
+later is a decision about the trench.
+
+**What the dig allows is honoured.** A trench with `Carries_LV` off is
+two circuits kept apart, drawn on purpose — laying an LV cable down it
+would undo by hand what somebody set deliberately. HV and LV are asked
+separately, since a dig may take one and not the other. Silence still
+means everything, so drawings made before the flags lay as they always
+did.
+
+**It decides nothing else.** No circuit of its own, no cable size, no
+meters served — those are questions about a network, and this is one
+length of pipe in one dig. It takes the same `defaultsFor` and
+`inheritedCircuit` a hand-drawn run takes, and records `In_Trench_ID`,
+which everything else has to work out by proximity. Proximity cannot
+tell two parallel trenches apart.
+
+The menu is built from the types the PROJECT has, not a fixed five: a
+scheme with no gas layer has no gas pipe to lay, and a button for one is
+a button that fails.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

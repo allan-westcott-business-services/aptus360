@@ -230,9 +230,22 @@ const line = (type, status) => ({
   if (!/statusOptions\(/.test(editor)) {
     fail("the main's field offers the trench statuses");
   }
-  /* The trench's own field is untouched. */
-  if (!/BUILD_STATUSES\.map/.test(editor)) {
+  /* ── The trench's field offers the trench's own stages ──
+
+     It mapped `BUILD_STATUSES`, the whole list, so a trench could be
+     set Live and a cable As-Built \u2014 neither of which means anything.
+     `statusChoices` is what the other two selects use, and it also
+     greys out a stage a trench underneath will not allow yet.
+
+     Asserted as "still has a field, and not the raw list": the shape of
+     the JSX is not the guarantee, and `checkstatusrules` holds what
+     each kind is handed. */
+  if (!/statusChoices\.map/.test(editor)) {
     fail("the trench lost its build status field");
+  }
+  if (/BUILD_STATUSES\.map/.test(editor)) {
+    fail("a select offers every status there is, so a trench can be set Live "
+      + "and a cable As-Built");
   }
   /* Read from the edited attributes, so changing a line's type to a
      main shows the field without saving first. */
@@ -517,6 +530,51 @@ const line = (type, status) => ({
   /* Nothing feeds the substation, which is the one case where the
      question does not arise. */
   if (shown(node(7, 0))) fail("the origin is asked what feeds it");
+}
+
+/* ── An HV cable is a main ──
+
+   `isMainFeature` tested `/_main$/`, which covers elec_main, gas_main
+   and water_main and misses `elec_hv`. An HV cable was therefore
+   neither a main nor a service, so NEITHER editor branch drew a build
+   status field and there was no way to mark one As-Laid.
+
+   It is a main in every sense that matters here: a run of the network,
+   laid in a trench, passing through the same stages. */
+{
+  const lt = [
+    { Type_Key: "elec_main", Layer_Key: "electric" },
+    { Type_Key: "elec_hv", Layer_Key: "electric" },
+    { Type_Key: "elec_service", Layer_Key: "electric" },
+    { Type_Key: "gas_main", Layer_Key: "gas" },
+    { Type_Key: "trench_main", Layer_Key: "trench" },
+  ];
+  const line = (key) => ({ Feature_Type: "line",
+    Layer_Key: lt.find((t) => t.Type_Key === key).Layer_Key,
+    Attributes: { Line_Type: key } });
+
+  if (!isMainFeature(line("elec_hv"), lt)) {
+    fail("an HV cable is not a main, so it gets no build status field at all");
+  }
+  for (const key of ["elec_main", "gas_main"]) {
+    if (!isMainFeature(line(key), lt)) fail(`${key} stopped being a main`);
+  }
+  /* A service is the thing being excluded, and a trench is not a main. */
+  if (isMainFeature(line("elec_service"), lt)) {
+    fail("a service is counted as a main, so it is offered the wrong stages");
+  }
+  if (isMainFeature(line("trench_main"), lt)) {
+    fail("a trench is counted as a main");
+  }
+
+  /* And the stages each is offered are its own. */
+  const stages = (key) => statusesFor(line(key), lt).map((x) => x.key ?? x).join(",");
+  if (stages("elec_hv") !== "planned,aslaid,live") {
+    fail(`an HV cable is offered ${stages("elec_hv")}, not its own three stages`);
+  }
+  if (stages("trench_main") === stages("elec_hv")) {
+    fail("a trench and a cable are offered the same stages");
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

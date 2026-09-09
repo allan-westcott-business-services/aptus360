@@ -126,8 +126,21 @@ export const EXISTING_SUFFIX = "_existing";
 export const isExistingType = (key) =>
   String(key || "").endsWith(EXISTING_SUFFIX);
 
+/* ── Two ways a trench is already there ──
+
+   Its LINE TYPE can say so \u2014 `trench_main_existing`, the incumbent's
+   main somebody has drawn in \u2014 and that is what this asked.
+
+   Its BUILD STATUS can say so too, and that was not asked. A mains
+   trench somebody marked Existing is in the ground before this job
+   starts: not dug by us, not on our bill, and not a dig to tee a new
+   service into. Auto Lay Service went on treating it as ours and ran
+   services off it.
+
+   Either says the same thing, so either counts. */
 export const isExistingFeature = (f) =>
-  isExistingType(f?.Attributes?.Line_Type);
+  isExistingType(f?.Attributes?.Line_Type)
+  || String(f?.Attributes?.Build_Status ?? "") === "existing";
 
 /* Trenches split into the ones we are digging and the ones already
    there.

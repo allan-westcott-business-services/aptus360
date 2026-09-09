@@ -3652,8 +3652,23 @@ export default function FeatureEditor({
                        depends on a JSON quirk rather than on what was
                        chosen. */
                     onChange={(e) => setAttr("Build_Status")(e.target.value || null)}>
-                    {BUILD_STATUSES.map((bs) => (
-                      <option key={bs.key} value={bs.key}>{bs.label}</option>
+                    {/* The stages this kind of line can be at, not all
+                        of them. A trench is existing, planned, to be
+                        removed or as-built; a cable is planned, as-laid
+                        or live. Offering the whole list let a trench be
+                        set Live and a cable be set As-Built, neither of
+                        which means anything \u2014 and `statusesFor` has
+                        answered this question all along. */}
+                    {/* `statusChoices` is the same list, already worked
+                        out at the top of this file \u2014 and it also greys
+                        out a stage a trench underneath will not allow
+                        yet. Using it rather than calling for the raw
+                        set keeps this select and the two below saying
+                        the same thing. */}
+                    {statusChoices.map((bs) => (
+                      <option key={bs.key} value={bs.key} disabled={bs.disabled}>
+                        {bs.label}
+                      </option>
                     ))}
                   </select>
                 </div>

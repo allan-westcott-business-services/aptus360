@@ -4133,6 +4133,14 @@ bends where the ground made it bend, and it is the length the run will
 be. Drawing that shape again by hand is copying a line already on the
 drawing, and the copy is never quite the same shape.
 
+**The MEASURED length comes with it too.** A trench's drawn length is
+what the polyline measures; its measured length is what somebody walked
+with a wheel, and where the two differ the measured one is the truth.
+Copying the geometry brought the drawn length across and left the
+measured one behind, so a 60 m dig corrected to 68 laid a 60 m cable in
+it. Not written where the trench has none — putting the drawn figure in
+that field would turn "as drawn" into a measurement nobody took.
+
 **Its own points, copied.** A reference would have been tidier and
 wrong: the run is its own feature from there, and moving the trench
 later is a decision about the trench.
@@ -4172,6 +4180,53 @@ a button that fails.
      trench-only arm appears after the plain line arm. **A check that
      greps for the code it wants cannot tell whether that code ever
      runs.**
+
+**The older "Lay X" items are gone.** They armed the DRAWING TOOL with
+a line type and left somebody to draw the run by hand along a trench
+already on the drawing. Laying it along that trench is what choosing a
+dig and a type was always for, so the two sat side by side offering the
+same intent with one of them doing the work.
+
+**Their rule was worth keeping and is now on the new items:** mains
+types in a mains trench, service types in a service trench. A service
+cable in a mains dig is not a mistake the drawing should help somebody
+make, and the trench already says which kind it is.
+
+`drawAs` itself stays — the toolbar and the Electric menu use it.
+
+125. **And the check's fixed window broke again.** Adding the filter
+     pushed the type list to 1466 characters from the button, past the
+     1400-character slice the check read, and it reported half the types
+     missing. Anchored on the list now rather than on an offset. That is
+     fault 33's sixth outing today; the shape is always the same — a
+     window sized to the code as it was, read as though it were a
+     boundary.
+
+**A cable can be set Planned, As-Laid or Live** — and an HV cable could
+not be set at all.
+
+126. **`isMainFeature` tested `/_main$/`.** That covers `elec_main`,
+     `gas_main` and `water_main` and misses **`elec_hv`**, so an HV
+     cable was neither a main nor a service and NEITHER editor branch
+     drew a build status field. It is a main in every sense that matters
+     here: a run of the network, laid in a trench, passing through the
+     same stages. A service is the thing being excluded, and it says so
+     directly now.
+
+127. **And the trench's own field offered every status there is.** It
+     mapped `BUILD_STATUSES` whole, so a trench could be set Live and a
+     cable As-Built — neither of which means anything. It uses
+     `statusChoices`, which the two selects below it already used, and
+     which also greys out a stage a trench underneath will not allow
+     yet. A check pinned the old behaviour in place and was corrected
+     rather than weakened.
+
+**Auto Lay Service will not tee into a mains trench marked Existing.**
+`isExistingFeature` asked only the LINE TYPE —
+`trench_main_existing`, the incumbent's main drawn in. A mains trench
+somebody marked Existing by its BUILD STATUS is equally in the ground
+before this job starts: not dug by us, not on our bill, not a dig to tee
+a new service into. Either says the same thing, so either counts now.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

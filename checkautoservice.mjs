@@ -6,7 +6,7 @@
    out shorter than the dig it sits in — and every quantity taken off it
    was wrong in the cheap direction. */
 import { readFileSync } from "node:fs";
-import { planSeed, layServices } from "./src/features/gis/autoService.js";
+import { planSeed, layServices, isExistingFeature} from "./src/features/gis/autoService.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -729,6 +729,39 @@ const utils = () => ["electric"];
   /* Self_Lay stays on the self-lay route and only there. */
   if (!/\.\.\.\(dig\.existing \? \{ Self_Lay: true \} : \{\}\)/.test(writes)) {
     fail("Self_Lay is no longer written on the self-lay route");
+  }
+}
+
+/* ── Two ways a mains trench is already there ──
+
+   Its LINE TYPE can say so — `trench_main_existing`, the incumbent's
+   main somebody has drawn in — and that is what `isExistingFeature`
+   asked.
+
+   Its BUILD STATUS can say so too, and that was not asked. A mains
+   trench marked Existing is in the ground before this job starts: not
+   dug by us, not on our bill, and not a dig to tee a new service into.
+   Auto Lay Service went on treating it as ours and ran services off
+   it. */
+{
+  const t = (lineType, status) => ({ Attributes: { Line_Type: lineType,
+    ...(status ? { Build_Status: status } : {}) } });
+
+  if (!isExistingFeature(t("trench_main", "existing"))) {
+    fail("a mains trench marked Existing is treated as ours, so a new service "
+      + "is teed into a dig that is already in the ground");
+  }
+  /* The line type still says it, as it always did. */
+  if (!isExistingFeature(t("trench_main_existing"))) {
+    fail("an incumbent main by line type stopped counting as existing");
+  }
+  /* And a trench we ARE digging is untouched: every plot would be
+     skipped for want of a main otherwise. */
+  if (isExistingFeature(t("trench_main"))) {
+    fail("a plain mains trench is counted as existing");
+  }
+  if (isExistingFeature(t("trench_main", "planned"))) {
+    fail("a mains trench marked Planned is counted as existing");
   }
 }
 

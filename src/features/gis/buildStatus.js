@@ -182,7 +182,18 @@ export function isMainType(typeKey, lineTypes = []) {
 export function isMainFeature(f, lineTypes = []) {
   if (!f || f.Feature_Type !== "line") return false;
   const key = String(f.Attributes?.Line_Type ?? "");
-  if (!/_main$/.test(key)) return false;
+  /* ── A main by what it is, not by how it is spelt ──
+
+     `/_main$/` covers elec_main, gas_main and water_main and misses
+     `elec_hv`, which is a main in every sense that matters here: it is
+     a run of the network, it is laid in a trench, and it passes through
+     the same stages. Without it an HV cable had no Build status control
+     at all \u2014 neither `isMain` nor `isService`, so neither editor branch
+     drew one.
+
+     A service is the thing being excluded, and it says so directly. */
+  if (/service/i.test(key)) return false;
+  if (!/_main$/.test(key) && key !== "elec_hv") return false;
   const t = lineTypes.find((x) => x.Type_Key === key);
   const layer = t?.Layer_Key ?? f.Layer_Key;
   return ["electric", "gas", "water"].includes(layer);

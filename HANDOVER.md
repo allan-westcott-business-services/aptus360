@@ -3850,11 +3850,73 @@ true; either alone leaves them disagreeing.
      new fields to explain itself is usually being made in the wrong
      place.**
 
+**The cut-out columns are blank because the service cable has no
+electrical figures.** All sixteen services are Single Phase Service CNE
+35 (size 51) — the catalogue row exists and is named, so it is the
+FIGURES that are absent, not the row.
+
+Fill in under **Admin → Electric Specs → cable sizes**: `Loop Z Ω/km`
+and `VD base` are the two the volt drop sum reads. Nothing else is
+needed and no rebuild is required — the columns fill on the next levels
+run.
+
+The panel already says so: the warnings line under the levels head
+carries "N with no cable figures" whenever `missingSpec` fires. Worth
+knowing it is there, because the export's blank cells say the same thing
+silently.
+
 **The cut-out columns are blank because cable 51 has no electrical
 figures.** All sixteen services use it, and `missingSpec` fires when a
 cable has neither `Loop_Impedance_Ohm` nor `Volt_Drop_Base`. The blank
 is deliberate: a service that contributes nothing must not read like one
 that genuinely drops nothing. Fixed in Admin, not in code.
+
+117. **The seam closed: "leaving the board" is now READ, not
+     recomputed.** The panel worked the figure out itself — its own
+     load, its own cable, its own arithmetic. It could be made to AGREE
+     with the cascade and never guaranteed to, and for a while it did
+     not: 0.17% in the panel against 0.10% at the stop beyond.
+
+     The cascade charges the run down as the first metres of the leg
+     leaving the board, so **its share of that leg's drop is its share
+     of that leg's length**. Taken as a proportion rather than
+     recomputed — no second choice of load, no second cable lookup,
+     nothing to drift — and attached to the board's own figure, which
+     the panel reads.
+
+     `outputDrop` is no longer called from the panel. One number, two
+     readers.
+
+     **The panel's 0.17% was wrong on two counts, and B4's 0.10% was
+     nearly right.** It costed the nine metres with `msdbTailCable` —
+     the 35 mm tail that feeds a flat — where the run down carries the
+     outgoing FEEDER, 95 mm. And it counted the flats' load, which comes
+     off at the board. Together: 0.087% claimed over nine metres where
+     the feeder drops 0.0078%, an eleven-fold overstatement.
+
+     From the export's own figures — the B3→B4 leg drops 0.0160% over
+     18.4 m at 4.3 A — the honest numbers are **leaving 0.091%, B4
+     0.107%**. The invariant holds, and it was the 0.17% that had to
+     move, not B4.
+
+     Reading the figure from the cascade fixes both faults at once: the
+     leg's own cable and the leg's own load, because it IS the leg.
+
+118. **And charging it revealed a fault in charging it.** Setting
+     `legLenM` to the riser length at every board charged those metres
+     to the BOARD's own figure when the board was the target: the walk
+     ends there and the leftover counts as a remainder past the last
+     stop. B3 read **0.821% against B4's 0.771%** — the board worse than
+     the stop beyond it, which cannot happen.
+
+     Set only where the walk carries on. At the board the run down has
+     not been travelled, which is what "at the board" means.
+
+     **A hand-built model hid this and the real pipeline showed it in
+     one run.** Three times today a synthetic `model` object gave a
+     confident wrong answer because its `cum`, `parent` and `cumKva`
+     were not consistent with each other. Test through
+     `circuitTraceParts` on a real drawing.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

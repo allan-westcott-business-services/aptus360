@@ -765,37 +765,29 @@ export default function FeatureEditor({
      the downstream load and nothing else. Converted back to kVA at the
      scheme's voltage, because that is what the drop is worked out
      from. */
+  /* ── What leaves the board, from the levels themselves ──
+
+     This used to work the figure out here: its own load, its own cable,
+     its own arithmetic. It could be made to AGREE with the cascade and
+     never guaranteed to \u2014 and for a while it did not, the panel saying
+     0.17% while the stop beyond read 0.10%.
+
+     The cascade charges the run down as the first metres of the leg
+     leaving the board, and reports its share of that leg on the board's
+     own figure. Read, not recomputed: one number, and the panel and the
+     drawing cannot drift.
+
+     Null where the levels have not run, or where nothing leaves the
+     board \u2014 a board at the end of a circuit has no outgoing cable and
+     no figure for one. */
   const msdbOut = useMemo(() => {
-    const voltageV = Number(lookups?.vdSettings?.[0]?.Nominal_Voltage_V) || 400;
-
-    /* ── The run back down carries what is BEYOND the board ──
-
-       The flats are taken off AT the board. The cable running back to
-       the ground carries only what is fed onward from it, so costing
-       it for the flats sizes it for load that never travels it \u2014 the
-       same rule the risers were built to a fortnight ago, and the one
-       thing "leaving the board" must not include.
-
-       `ampsThrough` is the load the levels found still travelling past
-       this stop. That was unambiguous while a flat was not a feature on
-       the drawing; now that the levels put an assumed meter at the
-       board for each flat, a meter standing ON the stop is a question
-       about how the model counts it rather than a fact to rely on.
-
-       So the board's own flats are subtracted outright. Two ways of
-       saying the same thing agreeing is worth more here than either
-       alone, and this one is the one somebody can check by hand. */
-    const through = kvaOf(Number(levelsAt?.ampsThrough) || 0, voltageV);
-    const ownFlats = msdbTotals?.kva ?? 0;
-    const onward = Math.max(0, through - ownFlats);
-
-    return outputDrop(f, {
-      at: msdbAt?.pct == null ? null : msdbAt,
-      cable: msdbTailCable ?? null,
-      kva: onward,
-      voltageV,
-    });
-  }, [f, msdbAt, msdbTailCable, levelsAt, lookups, msdbTotals]);
+    if (levelsAt?.leavingPct == null) return null;
+    return {
+      pct: levelsAt.leavingPct,
+      ohms: levelsAt.leavingOhms ?? null,
+      downPct: levelsAt.downPct ?? null,
+    };
+  }, [levelsAt]);
 
   const msdbLevels = useMemo(() => apartmentLevels(f, msdbServed, {
     at: msdbAt?.pct == null ? null : msdbAt,

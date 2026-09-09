@@ -1117,9 +1117,11 @@ const served = (b) => servedFlats(b, flats);
      down. The bare `ampsThrough` was used until a board's flats became
      assumed meters standing on that very stop, at which point "through"
      stopped being a fact to rely on. */
-  if (!/kvaOf\(Number\(levelsAt\?\.ampsThrough\) \|\| 0, voltageV\)/.test(editor)) {
-    fail("the run down is costed for a load worked out some other way than "
-      + "what the levels check found passing through");
+  /* The panel no longer costs the run down at all \u2014 it reads what the
+     cascade charged. Asserted as the absence of its old arithmetic,
+     because "does not compute this" has no positive form. */
+  if (/kvaOf\(Number\(levelsAt\?\.ampsThrough\) \|\| 0, voltageV\)/.test(editor)) {
+    fail("the panel is costing the run down itself again");
   }
 }
 
@@ -1157,41 +1159,41 @@ const served = (b) => servedFlats(b, flats);
   }
 }
 
-// 27. What leaves the board is costed for what is BEYOND it.
+// 27. What leaves the board is READ, not recomputed.
 //
-//     The flats are taken off AT the board. The cable running back to
-//     the ground carries only what is fed onward, so costing it for the
-//     flats sizes it for load that never travels it.
+//     The panel used to work the figure out itself: its own load, its
+//     own cable, its own arithmetic. That could be made to agree with
+//     the cascade and never guaranteed to \u2014 and for a while it did not,
+//     the panel saying 0.17% while the stop beyond read 0.10%.
+//
+//     The cascade charges the run down as the first metres of the leg
+//     leaving the board and reports its share on the board's own
+//     figure. The panel reads that. One number, and the panel and the
+//     drawing cannot drift.
 {
   const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
-  if (!/const onward = Math\.max\(0, through - ownFlats\);/.test(editor)) {
-    fail("the run back down is costed for everything through the board, "
-      + "including its own flats");
+  if (/const onward = Math\.max\(0, through - ownFlats\);/.test(editor)) {
+    fail("the panel still works out its own load for the run down, so it can "
+      + "disagree with the levels");
   }
-  if (!/const ownFlats = msdbTotals\?\.kva \?\? 0;/.test(editor)) {
-    fail("the board's own load is not taken out of what leaves it");
+  if (!/if \(levelsAt\?\.leavingPct == null\) return null;/.test(editor)) {
+    fail("the panel does not read what leaves the board from the levels");
   }
-  /* Never negative: a board whose flats exceed what the levels found
-     travelling through it is a drawing still being built, not a cable
-     carrying less than nothing. */
-  if (!/Math\.max\(0,/.test(editor)) {
-    fail("the onward load can go negative");
+  if (/outputDrop\(f, \{/.test(editor)) {
+    fail("the panel still calls outputDrop, which is a second arithmetic for "
+      + "the same figure");
   }
 
-  /* And the arithmetic itself. */
-  const cable = { Loop_Impedance_Ohm: 0.9785, Volt_Drop_Base: 3094 };
-  const at = { ohms: 0.20, pct: 4.42 };
-  const both = board({ MSDB_Riser_M: 9, MSDB_Down_M: 9 });
-  const withFlats = outputDrop(both, { at, cable, kva: 6.6 });
-  const onwardOnly = outputDrop(both, { at, cable, kva: 3.0 });
-  if (!(onwardOnly.pct < withFlats.pct)) {
-    fail("taking the flats out of the onward load did not reduce the drop, "
-      + "so the two are not distinguished at all");
+  const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
+  if (!/here\.leavingPct = here\.pct \+ \(beyond\.pct - here\.pct\) \* share;/.test(vd)) {
+    fail("the cascade does not report what leaves a board, so the panel has "
+      + "nothing to read");
   }
-  /* Nothing beyond the board is no drop on the way down. */
-  const none = outputDrop(both, { at, cable, kva: 0 });
-  if (!(Math.abs(none.pct - at.pct) < 1e-9)) {
-    fail("a board with nothing beyond it still charges for the run down");
+  /* As a PROPORTION of the leg it is part of \u2014 no second choice of
+     load, no second cable lookup, nothing to drift. */
+  if (!/const share = Math\.min\(1, down \/ chargedM\);/.test(vd)) {
+    fail("the run down's share is recomputed rather than taken from the leg "
+      + "it is part of");
   }
 }
 
@@ -1234,7 +1236,12 @@ const served = (b) => servedFlats(b, flats);
      As metres, the length, the impedance, the drop and the export all
      agree, and the load is right without being chosen: the leg leaving
      a board carries what leaves the board. */
-  if (!/legLenM = Number\(sn\.downM\) \|\| 0;/.test(vd)) {
+  /* Charged only where the walk CARRIES ON: at the board the run down
+     has not been travelled, and leaving the metres on the counter
+     charged them to the board's own figure as a remainder \u2014 B3 read
+     0.821% against B4's 0.771%, the board worse than the stop beyond
+     it, which cannot happen. */
+  if (!/legLenM = cur === targetIdx \? 0 : \(Number\(sn\.downM\) \|\| 0\);/.test(vd)) {
     fail("the run down is not charged as metres on the leg leaving the "
       + "board, so the export's charged length cannot show it");
   }

@@ -436,7 +436,13 @@ export function cumulativeToNode({
          As metres, the length, the impedance, the drop and the export
          all agree, and the load is right without being chosen: the leg
          leaving a board carries what leaves the board. */
-      legLenM = Number(sn.downM) || 0;
+      /* Only where the walk CARRIES ON. Where the board is the target,
+         the run down has not been travelled yet \u2014 that is what "at the
+         board" means \u2014 and leaving the metres on the counter charged
+         them to the board's own figure as a remainder past the last
+         stop. B3 read 0.821% against B4's 0.771%: the board worse than
+         the stop beyond it, which cannot happen. */
+      legLenM = cur === targetIdx ? 0 : (Number(sn.downM) || 0);
       distKva = 0; distCount = 0; distJoints = 0;
     } else {
       /* Load tapped between span nodes is distributed load on the leg
@@ -734,6 +740,45 @@ export function levelsForParts(parts = [], opts = {}) {
         ...start,
         partialCableId: leg.cableSizeId ?? null,
       }));
+    }
+  }
+
+  /* ── What leaves a board, from the cascade rather than beside it ──
+
+     A board's panel shows "leaving the board", and it used to work the
+     figure out itself: its own load, its own cable, its own arithmetic.
+     That could be made to AGREE with the levels but never guaranteed
+     to, and for a while it did not \u2014 the panel said 0.17% while the
+     stop beyond read 0.10%.
+
+     The run down is charged as the first metres of the leg leaving the
+     board, so its share of that leg's drop is exactly its share of that
+     leg's length. Taken as a proportion rather than recomputed, which
+     is what makes it the same number: no second choice of load, no
+     second cable lookup, nothing to drift.
+
+     Attached to the board's own figure, so the panel reads it and
+     computes nothing. */
+  for (const part of parts) {
+    if (part.error) continue;
+    for (const st of part.stops || []) {
+      const down = Number(st.downM) || 0;
+      if (!(down > 0)) continue;
+      const here = out.get(Number(st.feature?.Feature_ID));
+      if (!here || here.pct == null) continue;
+
+      /* The leg that LEAVES this board: the one whose walk began here.
+         Its end carries the charged length, which includes the run
+         down. */
+      const onward = (part.legs || []).find((l) => l.fromIdx === st.index);
+      const beyond = onward ? out.get(Number(onward.stopId)) : null;
+      const chargedM = Number(beyond?.working?.chargedM) || 0;
+      if (!beyond || beyond.pct == null || !(chargedM > 0)) continue;
+
+      const share = Math.min(1, down / chargedM);
+      here.leavingPct = here.pct + (beyond.pct - here.pct) * share;
+      here.leavingOhms = here.ohms + (beyond.ohms - here.ohms) * share;
+      here.downPct = here.leavingPct - here.pct;
     }
   }
 

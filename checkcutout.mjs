@@ -15,6 +15,8 @@
    Drawing the same figure against every plot on the leg would be twenty
    labels saying one thing, on a drawing already carrying the plan. */
 import { readFileSync } from "node:fs";
+import { serviceVoltDrop } from "./src/features/gis/voltDrop.js";
+import { cableIdOf } from "./src/features/gis/feeder.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -195,7 +197,7 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
     fail("a meter does not know which node on the main its service leaves "
       + "from, so every plot on a leg shares one figure");
   }
-  if (!/targetIdx: foot, spanNodes: part\.spanNodes/.test(canvas)) {
+  if (!/targetIdx: foot, stops: part\.stops/.test(canvas)) {
     fail("the drop is not measured at the plot's own tee");
   }
   if (!/r\.mainPct != null \? r\.mainPct : \(Number\(leg\.vd\?\.pct\) \|\| 0\)/.test(canvas)) {
@@ -208,6 +210,59 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
     fail("the leg's own worst figure has gone, which is what the sheet "
       + "reports and what the limit is judged on");
   }
+}
+
+/* ── A service sized BY HAND still gets a cut-out figure ──
+
+   The service lookup read `VD_Cable_Size_ID` alone. A service sized by
+   hand carries `Manual_VD_Cable_Size_ID` and leaves the calculated
+   field empty, so the lookup found nothing, `serviceVoltDrop` returned
+   `missingSpec: !cable`, and every cut-out column came out blank.
+
+   It reads as "the cable has no figures" and it means "there is no
+   cable" — the same words for a catalogue nobody has filled in and a
+   field this never looked at. Two projects were diagnosed as bad data
+   on the strength of it, and both catalogues were complete. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  if (/const svcId = found\.service\?\.Attributes\?\.VD_Cable_Size_ID/.test(canvas)) {
+    fail("the service's cable is looked up by the calculated size alone, so "
+      + "one sized by hand reports no cable at all");
+  }
+  if (!/const svcId = cableIdOf\(found\.service\) \?\? null;/.test(canvas)) {
+    fail("the service's cable is not chosen by the one rule everything else "
+      + "uses");
+  }
+
+  /* And that rule really does prefer the override. */
+  const byHand = { Attributes: { Manual_VD_Cable_Size_ID: 51 } };
+  const built = { Attributes: { VD_Cable_Size_ID: 1 } };
+  const both = { Attributes: { VD_Cable_Size_ID: 1, Manual_VD_Cable_Size_ID: 51 } };
+  if (cableIdOf(byHand) !== 51) {
+    fail("a service sized by hand still resolves to no cable");
+  }
+  if (cableIdOf(built) !== 1) fail("a service the build sized resolves to nothing");
+  if (cableIdOf(both) !== 51) fail("the calculated size beats the override");
+
+  /* ── The two blanks must not read alike ──
+
+     `missingSpec: !cable` says there is no cable; the other one says
+     the cable has no figures. They were reported the same way, which is
+     what made "no figures in the catalogue" the wrong answer twice. */
+  const noCable = serviceVoltDrop({ cable: null, lengthM: 10, kva: 5 });
+  const noFigures = serviceVoltDrop({
+    cable: { Cable_Size_ID: 9 }, lengthM: 10, kva: 5 });
+  const priced = serviceVoltDrop({
+    cable: { Cable_Size_ID: 9, Loop_Impedance_Ohm: 0.9785, Volt_Drop_Base: 3094 },
+    lengthM: 10, kva: 5 });
+  if (!noCable.missingSpec) fail("a service with no cable is reported as priced");
+  if (!noFigures.missingSpec) fail("a cable with no figures is reported as priced");
+  if (priced.missingSpec) {
+    fail("a cable WITH figures is reported as missing them, which is the "
+      + "catalogue on the reported drawing");
+  }
+  if (!(priced.pct > 0)) fail("a priced service drops nothing");
 }
 
 console.log(bad ? `\n${bad} problem(s)`

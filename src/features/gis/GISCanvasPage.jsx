@@ -19,6 +19,9 @@ import BasemapSetup from "./BasemapSetup.jsx";
    how a trench that refuses LV came to be walked across by every
    distance on the drawing. */
 import { carries } from "./trenchCarries.js";
+/* What a cable is called, for the levels export: the type's name plus
+   the size, the same words the editor shows. */
+import { cableMenuName } from "./cableMenu.js";
 import { getLookups } from "../../api/lookups.js";
 import { listNrs } from "../../api/nrs.js";
 import { listConnections } from "../../api/connections.js";
@@ -100,8 +103,13 @@ import { planFeederPoints, planInsertion, marksOnPart,
   partEndMark, jointMarks } from "./feederPoints.js";
 import { anchorSnapshot, withMovedAnchor, anchorUpdates } from "./anchorFollow.js";
 import { nodeFedBy as nodeFedByLine, runThrough as runThroughNode } from "./spanNodes.js";
+/* `cableIdOf` is the one rule for which size a run is laid in: the
+   override where somebody set one, the build's own answer elsewhere.
+   Kept above the braces rather than inside them \u2014 a comment between
+   the names reads as a name to anything parsing the list, and
+   checkimports reported two exports that do not exist. */
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
-  spanTrace, orderNodesFromRoot, lvOrigin, lvOrigins,
+  spanTrace, orderNodesFromRoot, lvOrigin, lvOrigins, cableIdOf,
   circuitTraceParts } from "./feeder.js";
 import { cumulativeToNode, serviceVoltDrop, VD_DEFAULTS, defaultFeederCable,
   levelsForParts, kvaOf,
@@ -13625,6 +13633,23 @@ export default function GISCanvasPage() {
              this out by proximity, and proximity cannot tell two
              parallel trenches apart. */
           In_Trench_ID: trench.Feature_ID,
+
+          /* ── The measured length comes with it ──
+
+             A trench's drawn length is what the polyline measures; its
+             MEASURED length is what somebody walked with a wheel, and
+             where the two differ the measured one is the truth. Copying
+             the geometry brought the drawn length across and left the
+             measured one behind, so a 60 m dig somebody had corrected
+             to 68 laid a 60 m cable in it.
+
+             The run is in that trench for its whole length, so it is
+             the same length. Not copied where the trench has none:
+             writing the drawn figure into the field would turn "as
+             drawn" into a measurement nobody took. */
+          ...(Number(trench.Attributes?.Measured_Length_m) > 0
+            ? { Measured_Length_m: Number(trench.Attributes.Measured_Length_m) }
+            : {}),
           ...defaultsFor(typeKey),
           ...inheritedCircuit(g, typeKey),
         },
@@ -20950,6 +20975,24 @@ export default function GISCanvasPage() {
            thing and must not read alike. */
         "Service (m)": l.service?.lengthM != null
           ? Number(l.service.lengthM.toFixed(1)) : null,
+        /* ── Why the three columns after this are blank ──
+
+           A blank is honest \u2014 a service that drops nothing and one
+           nobody has specified must not read alike \u2014 but it says
+           nothing about which of the two it is, and a reader has no way
+           to tell a finished sheet from an unfinished catalogue.
+
+           Three projects have now lost a morning to service cables with
+           no `Loop_Impedance_Ohm` and no `Volt_Drop_Base` against them.
+           The panel says so on screen; the export said nothing at all,
+           and the export is what gets read.
+
+           Named so the fix is one line long: the cable to go and fill
+           in. */
+        "Service cable": l.service
+          ? `${l.service.cableName ?? "not set"}`
+            + (l.service.missingSpec ? " \u2014 no figures in the catalogue" : "")
+          : null,
         "Service ohms": l.service && !l.service.missingSpec
           ? Number(l.service.ohms.toFixed(4)) : null,
         "Service volt drop (%)": l.service && !l.service.missingSpec
@@ -21142,13 +21185,37 @@ export default function GISCanvasPage() {
            main is not the run that gets dug, and the perpendicular was
            what made service lengths wrong elsewhere in this file. */
         if (!found) continue;
-        const svcId = found.service?.Attributes?.VD_Cable_Size_ID ?? null;
+        /* ── The override first, as everywhere else ──
+
+           This read the CALCULATED size alone. A service sized by hand
+           carries `Manual_VD_Cable_Size_ID` and leaves the calculated
+           field empty, so the lookup found nothing, `serviceVoltDrop`
+           reported `missingSpec: !cable`, and the cut-out columns came
+           out blank on a project whose catalogue was complete.
+
+           It reads as "the cable has no figures" and it means "there is
+           no cable" \u2014 the same words for a catalogue somebody has not
+           filled in and a field this never looked at. Two projects were
+           diagnosed as bad data on the strength of it, and the data was
+           fine.
+
+           `cableIdOf` is the one rule: the override where there is one,
+           the build's answer elsewhere. */
+        const svcId = cableIdOf(found.service) ?? null;
+        /* Named as well as costed. A blank cut-out column is honest but
+           silent: it cannot say whether the service drops nothing or
+           whether nobody has given the cable its figures, and three
+           projects have now lost a morning to the second. */
+        const svcCable = svcId != null ? ctx.cableById(svcId) : null;
         const r = serviceVoltDrop({
-          cable: svcId != null ? ctx.cableById(svcId) : null,
+          cable: svcCable,
           lengthM: found.serviceM,
           kva,
           voltageV: startV,
         });
+        r.cableName = svcCable
+          ? cableMenuName(svcCable, lookups?.cableTypes || [])
+          : null;
         /* ── Every meter's own figure, not only the worst ──
 
            The worst is what the leg has to pass on, and it was the only
@@ -26246,40 +26313,18 @@ export default function GISCanvasPage() {
                   setEditing(ctx.feature); setCtx(null);
                 }}>Edit</button>
 
-                {/* ── Lay something in this trench ──
+                {/* ── "Lay X" that armed the drawing tool has gone ──
 
-                    Offered on the trench because that is what is under
-                    the cursor: laying a cable starts by choosing which
-                    dig it goes in, and picking the type from a menu at
-                    the top of the screen means naming the trench again
-                    with the mouse.
+                    It set the pen to a line type and left somebody to
+                    draw the run by hand along a trench that was already
+                    on the drawing. The items above lay it along that
+                    trench instead, which is what choosing a dig and a
+                    type was always for.
 
-                    Mains types in a mains trench and service types in a
-                    service trench, from the configured line types rather
-                    than a written list \u2014 a service cable in a mains
-                    trench is not a mistake the drawing should help
-                    somebody make. */}
-                {(() => {
-                  const key = ctx.feature.Attributes?.Line_Type ?? "";
-                  if (ctx.feature.Feature_Type !== "line") return null;
-                  if (!isTrenchType(key, lineTypes)) return null;
-                  const isService = /service/i.test(key);
-                  const lay = lineTypes.filter((t) => t.Layer_Key !== "trench"
-                    && /service/i.test(t.Type_Key) === isService);
-                  if (!lay.length) return null;
-                  return (
-                    <>
-                      <div className="gc-sep" />
-                      {lay.map((t) => (
-                        <button key={t.Type_Key} className="gc-item"
-                          onClick={() => { drawAs(t.Type_Key); setCtx(null); }}>
-                          {`Lay ${t.Label}`}
-                        </button>
-                      ))}
-                      <div className="gc-sep" />
-                    </>
-                  );
-                })()}
+                    Its rule survives there: mains types in a mains
+                    trench and service types in a service trench. A
+                    service cable in a mains trench is not a mistake the
+                    drawing should help somebody make. */}
 
                 {/* Only where the object belongs to one, and only on the
                     electric layer — that is where circuits live, and the
@@ -26319,7 +26364,17 @@ export default function GISCanvasPage() {
                         ["elec_main", "LV Cable"],
                         ["elec_service", "Service Cable"],
                         ["gas_main", "Gas Pipe"],
-                        ["water_main", "Water Pipe"]].map(([key, label]) => {
+                        ["water_main", "Water Pipe"]]
+                        /* ── Mains in a mains dig, services in a service dig ──
+
+                           Carried over from the "Lay X" items this
+                           replaced. A service cable in a mains trench is
+                           not a mistake the drawing should help somebody
+                           make, and the trench already says which kind
+                           it is. */
+                        .filter(([key]) => /service/i.test(key)
+                          === /service/i.test(String(ctx.feature.Attributes?.Line_Type ?? "")))
+                        .map(([key, label]) => {
                         /* From the types this project has: a scheme with
                            no gas layer has no gas pipe to lay, and a
                            button for one is a button that fails. */

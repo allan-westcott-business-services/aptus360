@@ -4221,12 +4221,77 @@ not be set at all.
      yet. A check pinned the old behaviour in place and was corrected
      rather than weakened.
 
+128. **Knowing which trench was existing was not enough.** The tee was
+     chosen with
+
+         nearestMains(boundary, ourMains.length ? ourMains : existingMains)
+
+     which falls back to the incumbent's network wherever we have no
+     main of our own. So services were still cut into a trench marked
+     Existing even once `isExistingFeature` was right about which trench
+     that was — **the split was correct and the caller ignored it.**
+
+     Our mains alone now. Where there is none the plot is skipped with a
+     reason, which the code above already arranged: a skipped plot is a
+     line somebody reads, where a service run off the incumbent's main
+     is a drawing that looks finished and is wrong.
+
+     **The SELF-LAY tee still uses the existing network, and should** —
+     that connection is the developer's own arrangement with the
+     incumbent, not work this job is pricing. Both remaining uses of
+     `existingMains` are guarded by `slpUtils`, and the check asserts
+     they stay.
+
+     **A fix to a predicate does not fix a caller that has its own
+     opinion.** Two rounds on one symptom for that reason.
+
 **Auto Lay Service will not tee into a mains trench marked Existing.**
 `isExistingFeature` asked only the LINE TYPE —
 `trench_main_existing`, the incumbent's main drawn in. A mains trench
 somebody marked Existing by its BUILD STATUS is equally in the ground
 before this job starts: not dug by us, not on our bill, not a dig to tee
 a new service into. Either says the same thing, so either counts now.
+
+**The levels export now names the service cable.** A blank cut-out
+column is honest — a service that drops nothing and one nobody has
+specified must not read alike — but it cannot say WHICH, and a reader
+has no way to tell a finished sheet from an unfinished catalogue.
+
+129. **And the catalogue was fine all along.** I told the user twice
+     that Single Phase Service CNE 35 had no `Loop_Impedance_Ohm` and no
+     `Volt_Drop_Base`. A screenshot of Electric Specs showed **0.9785
+     and 3094** against that row.
+
+     The service lookup read `VD_Cable_Size_ID` alone:
+
+         const svcId = found.service?.Attributes?.VD_Cable_Size_ID
+
+     Every service on both drawings is sized BY HAND — the size sits in
+     `Manual_VD_Cable_Size_ID` and the calculated field is empty. So the
+     lookup found nothing, `serviceVoltDrop` returned
+     `missingSpec: !cable`, and the cut-out columns went blank on a
+     complete catalogue.
+
+     `cableIdOf` is the one rule and now decides here too.
+
+     **`missingSpec` means two different things and reports them the
+     same way.** `!cable` is "there is no cable"; the other is "the
+     cable has no figures". Reading the second where the first was true
+     sent two mornings after a data problem that did not exist \u2014 mine,
+     twice, and both times I said "found it".
+
+     A flag whose name states one cause and whose value has two is worth
+     splitting; until it is, "no figures" must never be reported without
+     checking a cable was found at all.
+
+The new column reads `Single Phase Service CNE 35 — no figures in the
+catalogue`, named with `cableMenuName` so the sheet and the screen call
+one cable the same thing. The blanks stay blank: a service that
+genuinely drops nothing must not be given a figure to make the column
+look complete.
+
+Still an Admin fix, not a code one: **Electric Specs → cable sizes →
+`Loop Z Ω/km` and `VD base`.**
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

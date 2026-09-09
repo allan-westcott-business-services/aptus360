@@ -109,6 +109,29 @@ const body = at < 0 ? "" : canvas.slice(at, canvas.indexOf("\n  async function",
   if (!/isTrenchType\(ctx\.feature\.Attributes\?\.Line_Type, lineTypes\)/.test(canvas)) {
     fail("the branch is not limited to trenches, so it is offered on cables too");
   }
+
+  /* ── Reachable ──
+
+     The items were first written into a
+     `Feature_Type === "line" && isTrenchType(...)` arm placed AFTER the
+     plain `Feature_Type === "line"` arm. A trench is a line, so the
+     wider test won every time and the narrower one could never be
+     reached. It read correctly and did nothing.
+
+     A chain of ternaries is decided by the first condition that holds,
+     so a narrower case after a wider one is dead however right it
+     looks. Checked by position: the items must sit INSIDE the branch a
+     line takes, not after it. */
+  const lineArm = canvas.indexOf('{ctx.feature.Feature_Type === "line" ? (');
+  if (lineArm < 0) fail("the line branch has moved; this check cannot find it");
+  else if (!(menu > lineArm && menu - lineArm < 4000)) {
+    fail("the items sit outside the branch a line takes, so a trench reaches "
+      + "the earlier arm and never sees them");
+  }
+  if (/\) : \(ctx\.feature\.Feature_Type === "line"\s*\n?\s*&& isTrenchType/.test(canvas)) {
+    fail("a trench-only arm sits after the plain line arm, where nothing can "
+      + "reach it");
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

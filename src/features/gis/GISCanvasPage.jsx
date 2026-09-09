@@ -26301,6 +26301,38 @@ export default function GISCanvasPage() {
 
                 {ctx.feature.Feature_Type === "line" ? (
                   <>
+                    {/* ── Lay a run along this dig ──
+
+                        Inside the line branch, not after it. A trench IS
+                        a line, so it takes this branch and never reached
+                        a later one \u2014 the items were written into a
+                        `Feature_Type === "line" && isTrenchType(...)`
+                        arm that nothing could ever match, because the
+                        plain line test above it had already won.
+
+                        A chain of ternaries is decided by the FIRST
+                        condition that holds, and a narrower case placed
+                        after a wider one is unreachable however right it
+                        looks. */}
+                    {isTrenchType(ctx.feature.Attributes?.Line_Type, lineTypes)
+                      && [["elec_hv", "HV Cable"],
+                        ["elec_main", "LV Cable"],
+                        ["elec_service", "Service Cable"],
+                        ["gas_main", "Gas Pipe"],
+                        ["water_main", "Water Pipe"]].map(([key, label]) => {
+                        /* From the types this project has: a scheme with
+                           no gas layer has no gas pipe to lay, and a
+                           button for one is a button that fails. */
+                        const t = lineTypes.find((x) => x.Type_Key === key);
+                        if (!t) return null;
+                        const f = ctx.feature;
+                        return (
+                          <button key={key} className="gc-item" disabled={!!busy}
+                            onClick={() => { setCtx(null); layInTrench(f, key); }}>
+                            {`Lay ${label} in this trench`}
+                          </button>
+                        );
+                      })}
                     <button className="gc-item" disabled={!!busy} onClick={() => {
                       breakLineAt(ctx.feature, ctx.atM); setCtx(null);
                     }}>Break here</button>
@@ -26345,37 +26377,6 @@ export default function GISCanvasPage() {
                     setCtx(null);
                     setTimeout(() => runFullTrace(), 0);
                   }}>Full Trace from Here</button>
-                ) : (ctx.feature.Feature_Type === "line"
-                     && isTrenchType(ctx.feature.Attributes?.Line_Type, lineTypes)) ? (
-                  /* ── Lay something along this dig ──
-
-                      The trench is already the route: it was dug where
-                      the run has to go and it is the length the run
-                      will be. Drawing the same shape by hand is copying
-                      a line that is on the drawing, and the copy is
-                      never quite the same shape.
-
-                      Offered from the types this project has rather
-                      than a fixed list: a scheme with no gas layer has
-                      no gas pipe to lay, and a button for one is a
-                      button that fails. */
-                  <>
-                    {[["elec_hv", "HV Cable"],
-                      ["elec_main", "LV Cable"],
-                      ["elec_service", "Service Cable"],
-                      ["gas_main", "Gas Pipe"],
-                      ["water_main", "Water Pipe"]].map(([key, label]) => {
-                      const t = lineTypes.find((x) => x.Type_Key === key);
-                      if (!t) return null;
-                      const f = ctx.feature;
-                      return (
-                        <button key={key} className="gc-item" disabled={!!busy}
-                          onClick={() => { setCtx(null); layInTrench(f, key); }}>
-                          {`Lay ${label} in this trench`}
-                        </button>
-                      );
-                    })}
-                  </>
                 ) : null}
 
                 <div className="gc-sep" />

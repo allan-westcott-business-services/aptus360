@@ -4155,6 +4155,24 @@ The menu is built from the types the PROJECT has, not a fixed five: a
 scheme with no gas layer has no gas pipe to lay, and a button for one is
 a button that fails.
 
+124. **The menu items were written into a branch nothing could
+     reach.** They went into a
+     `Feature_Type === "line" && isTrenchType(...)` arm placed AFTER the
+     plain `Feature_Type === "line"` arm of the same ternary chain. **A
+     trench IS a line**, so the wider test won every time and the
+     narrower one was dead. The code read correctly, built, passed a
+     check that matched its text, and did nothing at all.
+
+     A chain of ternaries is decided by the FIRST condition that holds,
+     so a narrower case placed after a wider one is unreachable however
+     right it looks.
+
+     The check now tests POSITION rather than presence: the items must
+     sit inside the branch a line takes, and it fails outright if a
+     trench-only arm appears after the plain line arm. **A check that
+     greps for the code it wants cannot tell whether that code ever
+     runs.**
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

@@ -159,6 +159,10 @@ caught a fault that had already shipped at least once.
 | `node checkdeletekey.mjs` | Delete removes the selection, live and not stale |
 | `node checknumberremoved.mjs` | The old numbering pass stays out of the client |
 | `node checkmsdblink.mjs` | Board-to-board links: stamped, ordered, routed past |
+| `node checkisolation.mjs` | A trench that refuses LV is not walked across |
+| `node checkbulkfields.mjs` | Bulk edit offers only what the selection shares |
+| `node checkcablelevels.mjs` | Changing a cable changes the levels below it |
+| `node checkbuildblockers.mjs` | The build refuses a drawing it cannot build from |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
@@ -3200,6 +3204,754 @@ On the reported drawing: 9 m + 22.7 m + 9 m = **0.831%** at 6.6 kVA.
     returned before making them, so the second board had no figure on
     the levels path and no route on the build path. Found separately,
     an hour apart, in two functions with the same shape.
+
+92. **A new kind of part poisoning the whole circuit's context.** The
+    levels take the transformer, the working voltage, the upstream drop
+    and the undeclared-POC test from `parts.find((x) => !x.error)`.
+
+    That was fine while every part began at the substation. A part
+    rooted at an MSDB does not: its model's origin is the BOARD, which
+    has no transformer and no declared output voltage — so
+    `originMissing` reports it as undeclared, the loop hits `continue`,
+    and **every feeder point on that circuit loses its level at once.**
+
+    Named now rather than found: the origin or the trunk part, and
+    nothing else may stand in for it. **Adding a part changed what "the
+    first part" means**, and nothing about the change said so.
+
+93. **One default field serving two voltages.** `Default_Main_Cable_Size_ID`
+    on the scope is stamped on every hand-drawn electric main — and it
+    serves both `elec_main` and `elec_hv`. A scheme whose default is an
+    HV cable put that HV cable on every LV main somebody drew.
+
+    On the reported drawing the hand-drawn link between two boards came
+    out carrying cable 55, the same size the HV routes use, while all
+    eight built LV mains beside it carried cable 1. The build works its
+    own size out and never consults the default, which is why only
+    hand-drawn runs were affected and why it went unnoticed.
+
+    The default is now checked against the run's own voltage, the same
+    rule the dropdown applies. Where it does not suit, **nothing is
+    stamped**: an empty size is a question the panel already asks
+    plainly, and the wrong cable is a wrong answer nobody is prompted to
+    check. A cable with no rating recorded is still allowed, because a
+    catalogue with an empty column stamping nothing on anything is a
+    worse day than a wrong size.
+
+94. **One part-maker, two callers wanting different shapes.** The
+    levels want LEGS, which `spanTrace` gives. The build wants SECTIONS
+    — the cable it is about to lay — which only `feederSections` gives.
+
+    `msdbLinkParts` used `spanTrace` for both, so on the build path the
+    part rooted at the second board **reached the meters beyond it and
+    laid nothing**: one leg, no sections, no cable on the drawing past
+    MSDB 2. Nothing errored; the part was simply the wrong shape and
+    the build had nothing to write.
+
+    The walker now comes from the caller, exactly as `rootFeature` is
+    how a link box output is walked on each path. Measured on the
+    reported drawing: **22.5 m of cable in seven points** where there
+    was none.
+
+    **A shared helper serving two callers has to be told which one is
+    asking**, and "it works on the path I tested" is not the same as
+    "it works".
+
+95. **Two feeder end points at one cable end.** Marks are deduped by
+    node INDEX, which is right while the far end of a part is the same
+    node the end-of-line pass found. A part rooted at a board has its
+    own node numbering, so the two landed 0.88 m apart and both were
+    kept — B4 and B5 on top of each other on the reported drawing.
+
+    Deduped by position within a part — and that was not where it
+    showed. `seen`, the ACROSS-parts test, keyed on the exact
+    centimetre, which dedupes a mark two parts found at the same NODE
+    and nothing else. A part rooted at a board walks its own trench with
+    its own numbering, so its far end and the trunk's end-of-line landed
+    near one cable end without being the same point: **0.88 m apart on
+    one drawing, 2.39 m on the next.** Raising a within-part threshold
+    could never have fixed it, and my first attempt did exactly that.
+
+    Both tests are by distance now, the across-parts one at 2.5 m. Two
+    stops that close together on one circuit is not a design: a span is
+    tens of metres.
+
+    **It was never only about boards.** On the same drawing A3 and A6
+    are 2.36 m apart on circuit 1, which has no MSDB — and only A6 has a
+    cable ending on it. The duplication predates the link work; the
+    board part just made it happen often enough to notice.
+
+**Service joints are a different feature.** `autoLayServices` /
+`layServicesThenTee` place them, and neither knows anything about parts
+or boards — they work from the drawing. Plots past a board are not
+excluded by anything in the MSDB work; the drawing simply had no
+service cables on it at all, so **Auto Lay Service Cable has to be run**
+after the feeder is built.
+
+96. **A part rooted at a board was marked by nobody.** Every other
+    part's root is already a stop by the time it is walked: a link box
+    is marked by the trunk arriving at it, and the origin is the origin.
+    **Nothing arrives at the far side of a board-to-board link** — that
+    is the whole point of it — so MSDB 2's root had no mark, and with no
+    mark there is no feeder point, no figure, and no levels for its
+    flats.
+
+    The root is marked now, stamped with the board it stands on so the
+    drag carries it and the editor can find its figure. On the reported
+    drawing the root node sits exactly on the board, and the nearest
+    other stop is fourteen metres away, so it survives the 2.5 m dedupe
+    comfortably.
+
+    **Three rounds on one board, each a different thing that assumed
+    something arrives from upstream.** The routing assumed the trench
+    reached it; the levels assumed a leg ended on it; the marks assumed
+    somebody else had already numbered it.
+
+97. **Every figure came from a leg's END.** That is right for a trunk
+    and for a link box output: their roots are already stops that
+    something else arrived at, and the arriving leg set the figure.
+
+    A part rooted at the far side of a board-to-board link has no such
+    leg — nothing arrives there, which is the whole point. So even with
+    a feeder point standing on MSDB 2, **no figure was ever written
+    against it**, and every flat on it showed a dash.
+
+    The board's own stop now takes the part's STARTING figure: the first
+    board's level carried across the link. Measured end to end with the
+    stop the build places: MSDB 1 at 3.500%, MSDB 2 at **4.331%** —
+    0.831% for the riser, the link and the run back down.
+
+    **Four rounds on one board, four different things that assumed
+    something arrives from upstream:** the trench, a leg, a mark, and
+    now a figure. Each was necessary; none was sufficient. When a new
+    kind of thing enters a model that has only ever had one shape, the
+    question to ask is not "does this work" but "what does everything
+    here assume about how a part begins".
+
+98. **Two functions of one name, and only the wrong one was asked.**
+    `networkFrom` in `electric.js` declares a LOCAL `carries` that asks
+    which LAYER a line is on. The module `trenchCarries.js` exports a
+    `carries` that asks what a trench has been told to hold. Every
+    distance on the drawing went through the local one.
+
+    So a trench with `Carries_LV` off — deliberate isolation, two
+    circuits drawn to meet nowhere — was walked straight across by
+    everything that measured anything. **11 of circuit 1's meters were
+    measured back through circuit 2's dig.** The routing had always
+    honoured the flag, which is why no cable was ever laid across it and
+    why this went unseen: the drawing looked right and the numbers were
+    from another network.
+
+    Imported as `carriesUtility` now, because a name that shadows
+    another answering a different question is the fault itself, not an
+    accident of it. A CABLE is still a way through whatever a trench
+    says: a cable that exists is a fact, and the flag is about where
+    cable may be LAID.
+
+    Verified both ways on the live drawing: each circuit still reaches
+    all of its own meters from its own substation, and neither reaches
+    the other's.
+
+**Bulk edit offers what the selection shares, and only that.**
+`fieldsForMany` already intersected the classes correctly; what was
+wrong was what the classes themselves offered.
+
+**Circuit was missing entirely** — the field somebody opens this panel
+for. It is on every electric feature now, cables and fittings and
+meters alike, but not on a trench: a dig belongs to no circuit, and two
+circuits commonly share one.
+
+**A circuit carries its name and letter**, for the same reason a line
+type carries its layer. Writing the id alone leaves a run numbered 3 and
+still called Circuit 2 on every sheet that names it. Taken from whatever
+is already on that circuit, since there is no circuits table.
+
+**Line type is off the bulk panel entirely.** *"Reclassifies every one
+of them"* was the warning it carried, and it was the right warning:
+turning forty cables into trenches, or a run of gas main into water, is
+not an edit somebody makes to a selection — it is a mistake somebody
+makes to a selection. What a line IS was decided when it was drawn, and
+changing it moves the feature to another layer, another catalogue and
+another set of rules.
+
+It stays on the single-feature editor, where one line at a time can be
+reclassified deliberately and its own panel redraws around it. The
+control and the layer-carrying rule in `planBulkEditOn` are kept rather
+than deleted — both are correct, and reinstating the field is one line
+if a deliberate bulk reclassify is ever wanted.
+
+**Name and Depth are off cables and pipes.** Forty cables sharing one
+label says nothing anybody wants to read — the drawing tells them apart
+by circuit, size and where they run. And a cable's depth is the depth of
+the trench it lies in: setting it on the cable as well is two places to
+say one thing, disagreeing the moment either is edited. A TRENCH keeps
+both, being a thing on a programme and the thing that is dug.
+
+Two rules in `checkbulkedit` expected Label to survive every mix and had
+to be corrected rather than weakened — they were right about the old
+behaviour and this is a deliberate change to it.
+
+99. **A refusal that cost more than the fault it prevented.** A mains
+    run's cable size is held twice — on the run, and on the point it
+    feeds, because the volt drop sum reads it from the point. Writing
+    one without the other leaves the cable saying 300 and the sum saying
+    95. So the bulk panel refused the edit: *"Cable size is set on the
+    run itself, not here."*
+
+    **Sizing a run is the commonest bulk edit there is.** The refusal
+    sent somebody to open forty editors instead — where the drift is
+    just as possible and nobody is watching for it. The guard protected
+    the data by making the job worse.
+
+    The cure was already written: `syncNodeCables`, the routine behind
+    "N nodes out of step with their cables — fix", pairs every cable
+    with the point that copies it. It now runs after a bulk cable edit,
+    from the drawing AS SAVED rather than from state that has not caught
+    up — reading state there would put the old sizes back.
+
+    Only where a cable size was part of the edit. A sync nobody asked
+    for is a second write to explain.
+
+    **When a guard exists because two things must move together, the
+    answer is to move them, not to forbid the move.**
+
+100. **And removing the refusal dropped mains into the service
+     branch.** The dropdown was hard-coded to `usage: "service"`, which
+     was true while the only cable field reaching it was a service —
+     mains were turned away above with a message. With the message gone
+     they fell through to it, and two LV feeder mains were offered
+     **service cables**, under a note about the tail each customer is
+     fed through: the wrong list, described as the wrong thing.
+
+     `f.usage` had been on the field the whole time and was ignored.
+     The note follows it too.
+
+     **Deleting a branch moves everything it caught into the branch
+     below**, and what that branch assumed about its input was written
+     down nowhere except in the branch that no longer runs.
+
+101. **An HV run is not an LV main, here as in the cable editor.** Both
+     are "Mains" by usage, so a field carrying usage alone offers LV
+     cable for eleven kilovolts. The voltage now rides on the field and
+     `fieldsForMany` compares it alongside kind and usage — so a
+     selection holding both is offered NEITHER, which is right: there is
+     no one size that suits both.
+
+102. **A trench with nothing in it is still a trench.** Surface, build
+     status and duration sat inside the "In this trench" block, which
+     draws only where something is LAID in it. Two of the three do
+     follow from the contents — the surface multiplies the dig, the
+     duration is computed from what is being laid — which is why they
+     were grouped there, and the note beside them says so.
+
+     But they are facts about the trench, and a trench exists before
+     anything is in it. **On a fresh dig, which is exactly when somebody
+     sets the stage, the whole group vanished.**
+
+     Lifted into a block guarded on `isTrench` alone, kept after the
+     contents so the reading order the original note argued for
+     survives.
+
+**A trench between two boards is the simpler answer**, and the link
+machinery now stands down when it sees one.
+
+A link part exists because the second board's dig is an ISLAND: the
+trench stops at the first board and starts again at the second, with
+only a cable between them. Dig a mains trench between the two and there
+is no island — the ordinary routing reaches the second board by itself,
+and a link part on top of that would lay a second cable over the first
+and stand a second stop beside its stop.
+
+Reachability is measured over TRENCHES alone, because that is what the
+routing walks. Measuring over cables as well would call every board
+reachable the moment somebody drew the link, which is the case the whole
+mechanism exists for.
+
+The stamping, ordering and level-chaining stay: a hand-drawn link
+through a building where no trench can go is still a real case, and the
+guard is what lets both approaches sit on one drawing.
+
+103. **A mains trench drawn between two boards was stamped as a link.**
+     `"trench_main"` matches `/main/`, and `stampLink` is given geometry
+     and a list of boards — what KIND of line it is has to be decided by
+     the caller, and was not. So the trench came back carrying
+     `MSDB_Link_A_ID` and a **circuit**, which a dig never has.
+
+     The build then had a link to route around a dig that had already
+     joined the two boards, and laid the whole run a second time: **B5
+     covered B2 and B3 end to end, 83 m of duplicate cable on circuit
+     2.**
+
+     Two guards now. The stamp is not written on a trench, and
+     `linkEnds` refuses one — so a drawing already carrying the bad
+     stamp stops acting on it rather than needing the stamp cleared by
+     hand.
+
+     **A predicate that matches on a substring will eventually match
+     something it was never meant to.** `/main/` catching `trench_main`
+     is the second time today one word inside another has cost a
+     rebuild.
+
+104. **And the stray circuit was still being LABELLED.** Fixing the
+     write does nothing for a drawing that already carries the bad
+     value: the trench went on showing "Circuit B · 30.2 m" because the
+     label read `Circuit_Letter` from whatever was on the feature.
+
+     A dig belongs to no circuit — two circuits commonly share one
+     trench, so a trench naming one is saying something untrue about the
+     other. The label now refuses at the point of DRAWING, so a drawing
+     that already has one stops showing it without anybody editing the
+     trench.
+
+     **A bad value has two lives: the writing of it and the reading of
+     it.** Stopping the write leaves every drawing made before the fix
+     still displaying it as fact.
+
+**Existing plant is off the bill of materials.** Migration
+`0208_bom_no_existing.sql` — **NOT YET RUN**, and it must go after 0207.
+
+A bill lists what somebody has to buy and lay. Something already in the
+ground is neither: it is a fact about the site, drawn so the design can
+avoid it, tee off it, or record that it is there. Counting it puts cable
+on the take-off nobody will order and trench on it nobody will dig — and
+the error is invisible, because an existing main looks exactly like a
+new one on a bill that does not say which is which.
+
+**One rule catches both ways of being existing.** `Build_Status =
+'existing'` is the field somebody sets; the line types ending
+`_existing` default to that status when drawn, so a feature drawn as an
+existing main already carries it.
+
+**`remove` stays ON the bill.** Taking a main out is work somebody
+prices.
+
+**COALESCE, not a bare comparison.** `Build_Status` is NULL on every
+feature never given a status — 89 of 130 on the drawing this was written
+against — and `NULL <> 'existing'` is NULL rather than true, which would
+drop them all. Same fault as the NRS exclusion, same fix.
+
+Applied to all THREE feature reads: lines, points and the MSDB tails.
+The body is 0207's, copied and added to — `checkbomroles` diffs the two
+functions and fails if 0208 differs by more than the new rule, because
+0205 lost nine columns to being reconstructed from memory.
+
+**An existing trench: no dig, and laying only for what is new.** The
+dig and the setup were already zero — a hole somebody else opened is not
+dug twice, and the machine is not moved for it.
+
+The LAYING was kept whatever the trench held, on the reasoning that a
+pipe goes in whether or not this job made the trench. That is right for
+a new run through an old route. It is wrong for a run already in the
+ground: an existing trench holding an existing cable was charged an hour
+to lay a cable that is lying there, while the bill — which drops
+existing features altogether once 0208 runs — said nothing of the sort.
+
+Each content now answers for itself, which is what keeps the reuse case
+working: the new cable in the old trench is laid, the old one beside it
+is not.
+
+105. **The bulk cable field wrote the size the build recalculates.**
+     Every electric line carries two: `VD_Cable_Size_ID`, which Build LV
+     Network works out, and `Manual_VD_Cable_Size_ID`, which a designer
+     sets to overrule it. The single-feature editor has always written
+     the second.
+
+     The bulk panel wrote the FIRST. A change looked right on screen
+     until the next build recalculated the field and put its own answer
+     back — the size returned to what it had been, the levels never
+     moved, and **nothing said why**. On the reported drawing every
+     cable was still size 1 with no override anywhere.
+
+     Now the same field as the one-at-a-time editor, so the two agree
+     about what "set the cable" means, and the calculated size is left
+     alone so the build's own answer survives for everything not
+     overridden.
+
+     **Two fields for one idea, and the two editors picked different
+     ones.** The one that looked like the answer was the one the build
+     owns.
+
+106. **The levels read the POINT's copy, and the wrong point was being
+     updated.** A cable's size is held twice — on the run, and on the
+     span point the volt drop sum reads it from.
+
+     `carryCableToNode` carries a changed cable to the node `nodesFedBy`
+     returns. That is not always the point the LEG uses: on the reported
+     drawing, changing cable 49627 on leg B0→B1 updated **B2**, the leg
+     went on being costed from B1's stale copy, and every figure stayed
+     exactly where it was.
+
+     Proved by setting the override on the cable alone (figures
+     unmoved: B1 0.187%) and then on the point as well (B1 0.060%).
+
+     `syncNodeCables` — the routine behind "N nodes out of step with
+     their cables — fix" — pairs every cable with the point that copies
+     it by ONE rule, and the bulk save already ran it. The single-feature
+     save now runs it too.
+
+     **Two mechanisms for one job, and the older one paired things
+     differently.** The symptom was not "the sync is broken" but "the
+     number never moves", which points at the calculation rather than at
+     a copy nobody mentions.
+
+107. **The sync paired the cable with the wrong point.** Which point a
+     cable feeds was decided by `nodeFedBy`, from where the cable's ends
+     lie relative to the substation. That is a guess, and where two
+     points sit close together it picks the wrong one.
+
+     On the reported drawing, cable **"B1" — the section leaving the
+     substation — was paired with point B2**. Changing it moved B2's
+     figure and left B1's exactly where it was, which is "the levels do
+     not change when I change the cable that leaves the substation".
+
+     **The build already states the pairing.** It labels each section it
+     lays after the point that section runs to, so cable B1 feeds point
+     B1 — no inference and no two points to choose between. The
+     geometric rule stays for anything unlabelled, since a hand-drawn
+     cable has only its ends to go on.
+
+     Measured before and after: every point on the circuit now improves
+     when the first cable is made bigger (B1 0.187% → 0.060%, B3 0.771%
+     → 0.645%).
+
+     **Three rounds on one symptom**, each a different link: the bulk
+     panel wrote the field the build recalculates; the single save
+     synced only one point; and the pairing itself was wrong. The first
+     two were mine from today.
+
+     **`checkcablelevels` has a weakness worth knowing.** Its
+     arithmetic half emulates the pairing rather than calling the app's
+     own sync, which lives inside the React component and writes through
+     the API. It locks the expected figures and the structural rules,
+     but it would not catch the app diverging from the emulation.
+
+108. **And the drift detector could not see an override at all.**
+     `cablesOutOfStep` compared `VD_Cable_Size_ID` on each side —
+     the CALCULATED field, on both the cable and the point. A cable set
+     by hand changes `Manual_VD_Cable_Size_ID` and leaves the calculated
+     one alone, so drift caused by an override was invisible: no
+     warning, no "fix" button, and the levels went on being costed from
+     the point's old size.
+
+     Measured on the reported drawing: overriding one cable reported
+     **0 nodes out of step** comparing the calculated size, and **1**
+     comparing both.
+
+     **The one number a designer sets by hand was the one number this
+     could not see.** The sync had always written both fields; only the
+     detector read one.
+
+     Four rounds on this symptom now, each a different link: the field
+     the bulk panel wrote, the point the single save synced, the pairing
+     rule, and the drift check. Every one of them looked correct in
+     isolation.
+
+109. **A board was marked as a stop and never broke the cable.**
+     `isBreak` was the origin, a fork, or an end. A board sitting
+     mid-run has exactly one child, so it was none of those and the
+     cable ran straight THROUGH it: **one 60.6 m section from B1 past
+     both MSDBs to B4**, where the ground holds three cables with a
+     board between each pair.
+
+     `jointMarks` has treated a board as a stop since the day it was
+     added — one cable arrives, one leaves, everything the block draws
+     is taken off in between. So the point was placed and the cable was
+     not cut at it, and the note directly above `isBreak` says those two
+     are meant to be the same place.
+
+     A STRAIGHT JOINT was in the same position: marked as a stop, never
+     breaking a section. Both break now.
+
+     Measured on the reported drawing: three sections became five —
+     8.4, 41.9, 11.2, 30.2, 19.3 m — ending B1→MSDB 1, MSDB 1→MSDB 2,
+     MSDB 2→B4.
+
+     **The comment beside the fault described the fault.** "A section
+     end and a span node are meant to be the same place" had been true
+     of forks and ends only, and nothing checked the other half.
+
+110. **The root, after five rounds of patching around it.** The volt
+     drop is settled from a part's SPAN NODES, and each of those took
+     its cable from `cableIdOf(feature)` — the copy stored on the point.
+     So changing a cable moved the legs and left every figure exactly
+     where it was, and the only thing that ever helped was writing the
+     copy as well.
+
+     The legs had always preferred the run, and said why in a comment
+     directly above: *"the run is where the cable actually lives; the
+     node's copy is fault 13 waiting to be read."* **The span nodes
+     beside them never learnt it.**
+
+     A span node now takes the cable of the leg ARRIVING at it, worked
+     out from the run. The copy remains the fallback, for a stop no leg
+     reached.
+
+     Measured with no sync, no copy written and no rebuild — the cable
+     alone: B1 0.000% → 0.060%, B3 0.585% → 0.645%.
+
+     **Five fixes, four of them patching a copy nobody should have been
+     reading.** Each was a real fault and each made the copy more
+     correct; none of them asked why the calculation read a copy at all.
+     When a fix has to be made repeatedly in different places, the thing
+     being fixed is usually not the fault.
+
+     Two of the checks written along the way asserted on that copy
+     mechanism. One has been cut back to its structural half, because
+     testing an emulation of a mechanism the answer no longer depends on
+     is testing nothing.
+
+**`spanNodes` is now `stops`.** The field had not held a span node
+since feeder points took over as the measuring points: `stopRole` picks
+`feederpoint` on any drawing that has them, and falls back to span nodes
+only for drawings older than that.
+
+A span node belongs to the TRENCH; a feeder point belongs to the cable,
+and the volt drop is settled at the cable's points. `stops` is what
+`isStopFeature` and `stopRole` already called them.
+
+Renamed across `feeder.js`, `voltDrop.js`, `scenario.js`,
+`GISCanvasPage.jsx` and seven checks. **Two things deliberately left
+alone:** the `spanNodes.js` MODULE, which is correctly named and does
+concern the trench; and `CallOffsTab`, whose own `spanNodes` state
+genuinely holds span nodes.
+
+`checkcablelevels` now fails if any of the four files uses the old name
+outside a comment, and if the stops list ever contains a span node on a
+drawing that has feeder points.
+
+**Three names cost real time in one session** — `/main/` matching
+`trench_main`, two separate functions called `carries`, and this. A name
+that was true when it was written and is not true now is worse than a
+bad name, because it reads as documentation.
+
+111. **The levels could not see a board's flats at all.** They walked
+     the raw drawing, where a board is one point with nothing hanging
+     off it — its flats live in `MSDB_Plot_IDs` and are not meters on
+     the canvas. So their kVA was absent from every figure UPSTREAM of
+     the board: the cable arriving at it was costed for whatever lay
+     beyond it and nothing else.
+
+     `withAssumedMeters` is what the BUILD has always used for exactly
+     this. The levels use it now.
+
+112. **And what LEAVES the board must not carry them.** The flats are
+     taken off at the board; the run back down to ground carries only
+     what is fed onward. `ampsThrough` was unambiguous while a flat was
+     not a feature on the drawing — the moment 111 put an assumed meter
+     at the board for each flat, "through" at that very stop became a
+     question about how the model counts a meter standing on a node
+     rather than a fact.
+
+     The board's own flats are subtracted outright now, floored at
+     zero. Two ways of saying the same thing agreeing is worth more
+     than either alone, and this is the one somebody can check by hand.
+
+     **The fix for one of these made the other one wrong.** 111 changed
+     what "through" means, and 112 is the correction — worth remembering
+     as a pair rather than two entries.
+
+113. **The run-down never reached the cascade, because it was looked
+     for on the wrong feature.** `cumulativeToNode` already added a
+     board's run-down to everything past it — the code and its note
+     were written and correct. It read `MSDB_Down_M` from
+     `sn.feature.Attributes`, and **a stop at a board is a FEEDER
+     POINT**: the board is a separate feature standing in the same
+     place, and the point carries `At_Joint_ID` naming it rather than
+     the board's own fields.
+
+     So the lookup found nothing on every drawing and added nothing. B4
+     read 0.08% from B3 while B3's own panel said 0.17% leaving.
+
+     The stop now carries `downM`, resolved in `spanTrace` from the
+     board the point names — falling back to position for points that
+     predate the stamp. Measured: at the board unchanged, beyond it
+     9.282% → 10.117%.
+
+     **A feature and the point standing on it are not the same
+     feature**, and this is the third time that pair has been confused
+     today — the board's own figure, the levels' pairing, and now this.
+
+114. **The panel and the cascade costed the run down from different
+     loads.** The invariant somebody spotted from the screen: if 0.17%
+     leaves the board, a stop downstream cannot read 0.10%.
+
+     It held only if both used the same load, and they did not. The
+     cascade used `ampsThrough` — the load at whichever node the CALL
+     was measuring — so the same riser cost a different amount depending
+     on which stop was being asked about. The panel used a third figure
+     again.
+
+     The cascade now uses `cumKva` at the next node on the path. That is
+     the load leaving the board, arrived at without subtracting
+     anything: cumulative load flows downstream, so the child's figure
+     already excludes the flats metered at the board. It equals the
+     panel's `through − flats` exactly, and the check asserts they
+     agree rather than trusting that they do.
+
+     **Three routes to one quantity, no two the same.** The fix is not
+     a better formula; it is one number with two readers.
+
+     **The first check written for this passed under both rules.** A
+     three-node model made "the load at the target" and "the load
+     leaving the board" the same number, so either rule gave the same
+     answer; and the downstream-is-worse invariant held either way once
+     the leg drops were added. The test that works varies each load
+     separately: change the load at the FAR END and the riser must not
+     care, change what leaves the board and it must. **A check that
+     cannot fail is worth less than no check**, because it is read as
+     cover.
+
+**A note worth keeping:** on the reported drawing the run-down correctly
+adds NOTHING, because the flats are the only load and they come off AT
+the board. Nothing travels the cable back down, so nothing drops along
+it. Once "leaving the board" stops counting the flats (112), the panel
+and the canvas agree at 0.08%. The two fixes together are what make that
+true; either alone leaves them disagreeing.
+
+115. **The build fed itself: three lots of cable on one circuit.** A
+     link is a feeder somebody drew BY HAND through a building where no
+     trench goes. Once the dig reached both boards, the build laid its
+     own sections between them — and those sections END on two boards,
+     so `linkEnds` matched them.
+
+     Each rebuild then made a link part for every cable the previous
+     rebuild had laid, and laid the run again. Three runs, eleven
+     sections where five belong, with 19.3, 30.2 and 53.0 m each
+     appearing three times.
+
+     `Generated` is what the build stamps on everything it lays, and it
+     is already the discriminator the rebuild uses to know what is its.
+     `linkEnds` refuses it now. A hand-drawn cable between two boards is
+     still a link, which is the case the mechanism exists for.
+
+     **The deletion was working the whole time.** A rebuild would have
+     removed all sixteen generated mains; the extras were made WITHIN
+     each run, from the output of the run before. "It is not deleting"
+     and "it is creating too many" look identical from the drawing.
+
+116. **The export said what the code could not: `Leg charged (m)`
+     equalled the drawn length on every leg.** B3→B4 read 18.4 m with
+     MSDB 2's nine-metre run down nowhere in it.
+
+     That showed the fix was the wrong SHAPE, not just misplaced. It
+     added an extra ohms-and-percent to the total, which moved the
+     figure while the charged length still read 18.4 \u2014 a run that is
+     27.4 m of conductor. **A number that changes with nothing on the
+     sheet to explain it is worse than one that is wrong**, because it
+     cannot be argued with.
+
+     The run down is charged as METRES on the leg leaving the board:
+     `legLenM` starts at the riser length instead of zero. Length,
+     impedance, drop and the export now agree, and the load is right
+     without being chosen \u2014 the leg leaving a board carries what leaves
+     the board, by construction.
+
+     That also deleted three things the earlier attempt needed:
+     `onwardKva`, `downPct` and the separate drop. **A fix that needs
+     new fields to explain itself is usually being made in the wrong
+     place.**
+
+**The cut-out columns are blank because the service cable has no
+electrical figures.** All sixteen services are Single Phase Service CNE
+35 (size 51) — the catalogue row exists and is named, so it is the
+FIGURES that are absent, not the row.
+
+Fill in under **Admin → Electric Specs → cable sizes**: `Loop Z Ω/km`
+and `VD base` are the two the volt drop sum reads. Nothing else is
+needed and no rebuild is required — the columns fill on the next levels
+run.
+
+The panel already says so: the warnings line under the levels head
+carries "N with no cable figures" whenever `missingSpec` fires. Worth
+knowing it is there, because the export's blank cells say the same thing
+silently.
+
+**The cut-out columns are blank because cable 51 has no electrical
+figures.** All sixteen services use it, and `missingSpec` fires when a
+cable has neither `Loop_Impedance_Ohm` nor `Volt_Drop_Base`. The blank
+is deliberate: a service that contributes nothing must not read like one
+that genuinely drops nothing. Fixed in Admin, not in code.
+
+117. **The seam closed: "leaving the board" is now READ, not
+     recomputed.** The panel worked the figure out itself — its own
+     load, its own cable, its own arithmetic. It could be made to AGREE
+     with the cascade and never guaranteed to, and for a while it did
+     not: 0.17% in the panel against 0.10% at the stop beyond.
+
+     The cascade charges the run down as the first metres of the leg
+     leaving the board, so **its share of that leg's drop is its share
+     of that leg's length**. Taken as a proportion rather than
+     recomputed — no second choice of load, no second cable lookup,
+     nothing to drift — and attached to the board's own figure, which
+     the panel reads.
+
+     `outputDrop` is no longer called from the panel. One number, two
+     readers.
+
+     **The panel's 0.17% was wrong on two counts, and B4's 0.10% was
+     nearly right.** It costed the nine metres with `msdbTailCable` —
+     the 35 mm tail that feeds a flat — where the run down carries the
+     outgoing FEEDER, 95 mm. And it counted the flats' load, which comes
+     off at the board. Together: 0.087% claimed over nine metres where
+     the feeder drops 0.0078%, an eleven-fold overstatement.
+
+     From the export's own figures — the B3→B4 leg drops 0.0160% over
+     18.4 m at 4.3 A — the honest numbers are **leaving 0.091%, B4
+     0.107%**. The invariant holds, and it was the 0.17% that had to
+     move, not B4.
+
+     Reading the figure from the cascade fixes both faults at once: the
+     leg's own cable and the leg's own load, because it IS the leg.
+
+118. **And charging it revealed a fault in charging it.** Setting
+     `legLenM` to the riser length at every board charged those metres
+     to the BOARD's own figure when the board was the target: the walk
+     ends there and the leftover counts as a remainder past the last
+     stop. B3 read **0.821% against B4's 0.771%** — the board worse than
+     the stop beyond it, which cannot happen.
+
+     Set only where the walk carries on. At the board the run down has
+     not been travelled, which is what "at the board" means.
+
+     **A hand-built model hid this and the real pipeline showed it in
+     one run.** Three times today a synthetic `model` object gave a
+     confident wrong answer because its `cum`, `parent` and `cumKva`
+     were not consistent with each other. Test through
+     `circuitTraceParts` on a real drawing.
+
+**Build LV Network refuses a drawing it cannot build from.** Two things
+it cannot invent, and neither of which it used to mention:
+
+A meter with **no `Circuit_ID`** belongs to no circuit, so no walk
+reaches it and no cable is run toward it. A meter with **no service
+trench** has nothing for its tail to run along. The build said nothing
+about either — the plot was simply not there as far as it was concerned.
+That is how "why is there no cable between node 2 and node 5" came to be
+a question: three plots past node 5 had no circuit, and the trench
+joining them was perfectly good.
+
+**Refused, not warned.** A build that runs on a drawing that is not
+ready produces a network somebody then has to un-believe, and the
+drawing looks finished either way. `opts.anyway` is the escape hatch if
+one is ever wanted; nothing passes it today.
+
+**Flats on a board are exempt.** A flat is fed from its board's tails,
+recorded in the board's own table and never drawn as a trench. Asking
+for one would be asking somebody to draw a thing that does not exist.
+
+119. **The first version of this cried wolf.** A service trench dug by
+     Auto Lay Service names the seed it was dug for, and that link is
+     exact where proximity is a guess. But a trench somebody DREW
+     carries no stamp, and neither does a meter placed some other way —
+     on the reported drawing **not one meter had a
+     `Seed_Feature_ID`**, so the stamp-only rule flagged ten plots,
+     including ones with a service trench plainly running to them.
+
+     Stamp where there is one, ground where there is not. **A blocker
+     that cries wolf is worse than no blocker: it is the one everybody
+     learns to click past.** Measured on the drawing: 4 with no circuit
+     (49, 50, 51, 57) and 1 with no service (62), the six flats
+     correctly excluded.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

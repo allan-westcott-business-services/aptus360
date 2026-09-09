@@ -576,3 +576,106 @@ export function linkOrder(ends, distanceTo) {
     ? { first: ends.a, second: ends.b, firstM: da, secondM: db }
     : { first: ends.b, second: ends.a, firstM: db, secondM: da };
 }
+
+/* ── What has to be settled before the network is built ──
+
+   Build LV Network lays cable to the meters a circuit owns, along the
+   trenches somebody has dug. Two things it cannot invent, and neither
+   of which it complains about:
+
+   A meter with no `Circuit_ID` belongs to no circuit, so no walk ever
+   reaches it and no cable is run toward it. The build says nothing —
+   the plot simply is not there as far as it is concerned, and the first
+   anybody knows is a stretch of drawing with no cable on it. That is
+   how "why is there no cable between node 2 and node 5" came to be a
+   question: three plots past node 5 had no circuit, and the trench
+   joining them was fine.
+
+   A meter with no service trench has nothing for its tail to run along.
+   The main can still be laid past it, so this one is quieter still: the
+   feeder looks right and the plot is not connected to it.
+
+   ── Except a flat on a board ──
+
+   A flat is fed from its board's tails, which are recorded in the
+   board's own table and never drawn as a trench. Asking for one would
+   be asking somebody to draw a thing that does not exist. */
+export function buildBlockers(features = [], opts = {}) {
+  const { plotLabel = (id) => String(id) } = opts;
+
+  const meters = features.filter((f) => f.Feature_Role === "meter"
+    && f.Layer_Key === "electric");
+
+  /* Flats sit on a board's table, by plot id. */
+  const onABoard = new Set();
+  for (const b of features) {
+    if (b.Feature_Role !== "msdb") continue;
+    for (const id of b.Attributes?.MSDB_Plot_IDs || []) onABoard.add(Number(id));
+  }
+
+  /* ── Which plots have a service trench ──
+
+     A trench dug by Auto Lay Service names the seed it was dug for, and
+     that link is exact where proximity is a guess: two plots on one
+     drive are metres apart and either trench is "near" both.
+
+     But a trench somebody DREW carries no stamp, and neither does a
+     meter that was never placed by the same pass. On the reported
+     drawing not one meter had a `Seed_Feature_ID`, so a rule built on
+     the stamp alone flagged every plot on the site \u2014 including ten with
+     a service trench plainly running to them.
+
+     So the stamp where there is one and the ground where there is not.
+     A blocker that cries wolf is worse than no blocker: it is the one
+     everybody learns to click past. */
+  const serviceLines = features.filter((f) => f.Feature_Type === "line"
+    && /service/i.test(String(f.Attributes?.Line_Type ?? ""))
+    && (f.Geometry || []).length > 1);
+
+  const servedSeeds = new Set();
+  for (const t of serviceLines) {
+    const sid = t.Attributes?.Seed_Feature_ID;
+    if (sid != null) servedSeeds.add(Number(sid));
+  }
+
+  const SERVICE_REACH_M = 2;
+  const nearAService = (at) => {
+    if (!Array.isArray(at)) return false;
+    for (const t of serviceLines) {
+      const g = t.Geometry;
+      for (let i = 1; i < g.length; i++) {
+        const [ax, ay] = g[i - 1];
+        const [bx, by] = g[i];
+        const vx = bx - ax; const vy = by - ay;
+        const l2 = vx * vx + vy * vy;
+        let u = l2 ? ((at[0] - ax) * vx + (at[1] - ay) * vy) / l2 : 0;
+        u = Math.max(0, Math.min(1, u));
+        if (Math.hypot(at[0] - (ax + vx * u), at[1] - (ay + vy * u)) <= SERVICE_REACH_M) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  const noCircuit = [];
+  const noService = [];
+  for (const m of meters) {
+    const plot = m.Plot_ID ?? m.Attributes?.Plot_ID ?? null;
+    /* An NRS supply is not a plot and has no plot number to show. */
+    if (plot == null && m.Attributes?.NRS_ID == null) continue;
+
+    if (m.Attributes?.Circuit_ID == null) {
+      noCircuit.push({ id: m.Feature_ID, plot, label: plotLabel(plot) });
+    }
+
+    if (plot != null && onABoard.has(Number(plot))) continue;
+    const seed = m.Attributes?.Seed_Feature_ID;
+    const served = seed != null
+      ? servedSeeds.has(Number(seed))
+      : nearAService(m.Geometry?.[0]);
+    if (!served) noService.push({ id: m.Feature_ID, plot, label: plotLabel(plot) });
+  }
+
+  return { noCircuit, noService, ok: !noCircuit.length && !noService.length };
+}

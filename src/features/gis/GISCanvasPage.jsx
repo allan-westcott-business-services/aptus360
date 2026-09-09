@@ -111,7 +111,7 @@ import {
 import { alpha } from "../../lib/colour.js";
 import PrintModal from "./PrintModal.jsx";
 import {
-  withAssumedMeters, servedFlats, flatsFromPlots, apartmentLoad,
+  withAssumedMeters, servedFlats, flatsFromPlots, apartmentLoad, buildBlockers,
   apartmentLevels, worstApartment, riserDrop, stampLink, linkEnds, linkOrder,
   msdbLoad,
 } from "./msdb.js";
@@ -15738,6 +15738,44 @@ export default function GISCanvasPage() {
   }
 
   async function buildLvNetwork(opts = {}) {
+    /* ── Two things the build cannot invent ──
+
+       A meter with no circuit belongs to no circuit, so no walk reaches
+       it and no cable is run toward it. A meter with no service trench
+       has nothing for its tail to run along.
+
+       Neither is reported by the build: the plot is simply not there as
+       far as it is concerned. That is how "why is there no cable
+       between node 2 and node 5" came to be a question \u2014 three plots
+       past node 5 had no circuit, and the trench joining them was
+       perfectly good.
+
+       Refused rather than warned. A build that runs on a drawing that
+       is not ready produces a network somebody then has to un-believe,
+       and the drawing looks finished either way. */
+    const blockers = buildBlockers(features, {
+      plotLabel: (id) => plotList.find((p) => p.plot_id === id)?.plot_number ?? id,
+    });
+    if (!blockers.ok && !opts.anyway) {
+      const say = (list) => list.map((x) => x.label).join(", ");
+      setError(
+        [
+          blockers.noCircuit.length
+            ? `${blockers.noCircuit.length} plot${blockers.noCircuit.length === 1 ? "" : "s"}`
+              + ` not on a circuit: ${say(blockers.noCircuit)}.`
+            : "",
+          blockers.noService.length
+            ? `${blockers.noService.length} plot${blockers.noService.length === 1 ? "" : "s"}`
+              + ` with no service trench: ${say(blockers.noService)}.`
+            : "",
+          "Build LV Network lays cable to the plots a circuit owns, along the"
+            + " trenches that are drawn \u2014 it cannot reach these. Flats fed from"
+            + " an MSDB are not counted; their tails are on the board.",
+        ].filter(Boolean).join(" "),
+      );
+      return;
+    }
+
     /* Points the walk wanted and did not find. See below: the build no
        longer creates span nodes. */
     let missingNodes = 0;

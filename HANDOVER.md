@@ -4025,6 +4025,32 @@ knowing that the levels still treat it as the whole run from the stop on
 the ground to the board: if it is now read as one floor's worth, a board
 three floors up needs the sum, not the last leg.
 
+121. **The blocker cried wolf within a day of being warned about it.**
+     Four plots with service trenches plainly on the drawing were
+     refused. Two faults, both mine:
+
+     **A seed stamp that matches nothing was read as proof there is no
+     trench.** A meter stamped by one pass and a trench drawn by hand,
+     or by an older pass, or re-dug after the meter moved, leaves a
+     stamp that pairs with nothing while the trench sits there. The
+     stamp is evidence FOR and never against: it can prove a plot served
+     and cannot prove it unserved, so anything it does not settle falls
+     to the ground. Written as an OR rather than a ternary — the ternary
+     consulted the ground only where there was no stamp at all.
+
+     **And two metres was too tight.** A service trench commonly stops
+     at the plot boundary with the meter several metres inside it. Eight
+     now, and deliberately generous: **the two ways of being wrong are
+     not equal.** A plot wrongly let through gets a build somebody can
+     see and re-run; a plot wrongly flagged stops the work and teaches
+     everybody to distrust the message.
+
+     I wrote "a blocker that cries wolf is worse than no blocker" into
+     this file yesterday and then shipped one. The lesson that survives
+     is narrower and more useful: **when a guard refuses work, every
+     input it consults must be a positive signal.** Absence of a
+     matching stamp is not a fact about the ground.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

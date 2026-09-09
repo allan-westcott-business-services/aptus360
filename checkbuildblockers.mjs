@@ -56,6 +56,43 @@ const f = raw.features;
       + "service trench, one by stamp and one by position");
   }
 
+  /* ── A stamp that pairs with nothing is not evidence of absence ──
+
+     A meter stamped by one pass and a trench drawn by hand, or by an
+     older pass, or re-dug after the meter moved, leaves a stamp that
+     matches nothing while a service trench runs to the plot in plain
+     sight. Reading that as "no trench" flagged four plots whose
+     trenches were on the drawing. */
+  const mismatched = buildBlockers([
+    meter(9, 9, { Circuit_ID: 2, Seed_Feature_ID: 999 }),
+    { ...service(90), Attributes: { Line_Type: "trench_service" } },
+  ]);
+  if (mismatched.noService.length) {
+    fail("a meter whose seed stamp matches no trench is reported unserved "
+      + "even with a service trench beside it");
+  }
+
+  /* ── And near enough to be the plot's own ──
+
+     A service trench commonly stops at the plot boundary with the meter
+     several metres inside. A tight radius condemns plots whose trench
+     is plainly there; the two ways of being wrong are not equal. */
+  const away = (d) => buildBlockers([
+    { Feature_ID: 40, Feature_Role: "meter", Layer_Key: "electric", Plot_ID: 40,
+      Geometry: [[0, d]], Attributes: { Circuit_ID: 2 } },
+    { Feature_ID: 41, Feature_Type: "line", Layer_Key: "trench",
+      Attributes: { Line_Type: "trench_service" }, Geometry: [[-5, 0], [5, 0]] },
+  ]);
+  if (away(5).noService.length) {
+    fail("a meter five metres from its service trench is reported unserved, "
+      + "which is how a plot inside its own boundary looks");
+  }
+  /* But not so generous that another plot's trench counts. */
+  if (!away(25).noService.length) {
+    fail("a meter twenty-five metres from the nearest service trench is "
+      + "counted as served, so the check would pass a plot with none");
+  }
+
   /* Take the trench away and the plot is reported. */
   const bare = buildBlockers(world.filter((x) => x.Feature_ID !== 930));
   if (!bare.noService.some((x) => Number(x.plot) === 3)) {
@@ -130,10 +167,15 @@ const f = raw.features;
 //    trench plainly running to them.
 {
   const src = readFileSync("./src/features/gis/msdb.js", "utf8");
-  if (!/const served = seed != null\s*\n?\s*\? servedSeeds\.has\(Number\(seed\)\)\s*\n?\s*: nearAService/
+  /* The stamp proves a plot served and cannot prove it unserved: a
+     mismatch says nothing, so anything the stamp does not settle falls
+     to the ground. Written as an OR for that reason \u2014 the earlier
+     ternary consulted the ground only where there was no stamp at all,
+     and condemned every meter whose stamp paired with nothing. */
+  if (!/const served = \(seed != null && servedSeeds\.has\(Number\(seed\)\)\)\s*\n?\s*\|\| nearAService/
     .test(src)) {
-    fail("the service check does not fall back to the ground where a meter "
-      + "carries no seed stamp, so it flags plots that are plainly served");
+    fail("a seed stamp that matches no trench is treated as proof there is "
+      + "none, so plots with a trench beside them are flagged");
   }
   /* A blocker that cries wolf is the one everybody learns to click
      past: on this drawing the stamp-only rule would have flagged ten. */

@@ -638,7 +638,18 @@ export function buildBlockers(features = [], opts = {}) {
     if (sid != null) servedSeeds.add(Number(sid));
   }
 
-  const SERVICE_REACH_M = 2;
+  /* ── How near counts as served ──
+
+     A service trench commonly stops at the plot boundary with the meter
+     several metres inside it, so a tight radius condemns plots whose
+     trench is plainly there. Two metres flagged four of them.
+
+     Eight, and deliberately generous. This blocker exists to catch the
+     OBVIOUS omission \u2014 a plot with no service dug at all \u2014 and the two
+     ways of being wrong are not equal: a plot wrongly let through gets
+     a build somebody can see and re-run, while a plot wrongly flagged
+     stops the work and teaches everybody to distrust the message. */
+  const SERVICE_REACH_M = 8;
   const nearAService = (at) => {
     if (!Array.isArray(at)) return false;
     for (const t of serviceLines) {
@@ -670,10 +681,25 @@ export function buildBlockers(features = [], opts = {}) {
     }
 
     if (plot != null && onABoard.has(Number(plot))) continue;
+    /* ── The stamp is evidence FOR, never against ──
+
+       A trench dug by Auto Lay Service names the seed it was dug for,
+       and where that matches there is nothing more to ask.
+
+       Where it does NOT match, it says nothing at all. A meter stamped
+       by one pass and a trench drawn by hand, or by an older pass, or
+       re-dug after the meter moved \u2014 all leave a stamp that pairs with
+       nothing while a service trench runs to the plot in plain sight.
+       Reading a mismatch as "no trench" flagged four plots whose
+       trenches were on the drawing, which is the blocker crying wolf:
+       the one everybody learns to click past.
+
+       So: the stamp can prove a plot served and cannot prove it
+       unserved. Anything the stamp does not settle falls to the
+       ground. */
     const seed = m.Attributes?.Seed_Feature_ID;
-    const served = seed != null
-      ? servedSeeds.has(Number(seed))
-      : nearAService(m.Geometry?.[0]);
+    const served = (seed != null && servedSeeds.has(Number(seed)))
+      || nearAService(m.Geometry?.[0]);
     if (!served) noService.push({ id: m.Feature_ID, plot, label: plotLabel(plot) });
   }
 

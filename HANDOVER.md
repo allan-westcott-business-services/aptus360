@@ -162,6 +162,7 @@ caught a fault that had already shipped at least once.
 | `node checkisolation.mjs` | A trench that refuses LV is not walked across |
 | `node checkbulkfields.mjs` | Bulk edit offers only what the selection shares |
 | `node checkcablelevels.mjs` | Changing a cable changes the levels below it |
+| `node checkbuildblockers.mjs` | The build refuses a drawing it cannot build from |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
@@ -3917,6 +3918,85 @@ that genuinely drops nothing. Fixed in Admin, not in code.
      confident wrong answer because its `cum`, `parent` and `cumKva`
      were not consistent with each other. Test through
      `circuitTraceParts` on a real drawing.
+
+**Build LV Network refuses a drawing it cannot build from.** Two things
+it cannot invent, and neither of which it used to mention:
+
+A meter with **no `Circuit_ID`** belongs to no circuit, so no walk
+reaches it and no cable is run toward it. A meter with **no service
+trench** has nothing for its tail to run along. The build said nothing
+about either — the plot was simply not there as far as it was concerned.
+That is how "why is there no cable between node 2 and node 5" came to be
+a question: three plots past node 5 had no circuit, and the trench
+joining them was perfectly good.
+
+**Refused, not warned.** A build that runs on a drawing that is not
+ready produces a network somebody then has to un-believe, and the
+drawing looks finished either way. `opts.anyway` is the escape hatch if
+one is ever wanted; nothing passes it today.
+
+**Flats on a board are exempt.** A flat is fed from its board's tails,
+recorded in the board's own table and never drawn as a trench. Asking
+for one would be asking somebody to draw a thing that does not exist.
+
+119. **The first version of this cried wolf.** A service trench dug by
+     Auto Lay Service names the seed it was dug for, and that link is
+     exact where proximity is a guess. But a trench somebody DREW
+     carries no stamp, and neither does a meter placed some other way —
+     on the reported drawing **not one meter had a
+     `Seed_Feature_ID`**, so the stamp-only rule flagged ten plots,
+     including ones with a service trench plainly running to them.
+
+     Stamp where there is one, ground where there is not. **A blocker
+     that cries wolf is worse than no blocker: it is the one everybody
+     learns to click past.** Measured on the drawing: 4 with no circuit
+     (49, 50, 51, 57) and 1 with no service (62), the six flats
+     correctly excluded.
+
+120. **And the check I wrote for it asserted those plot numbers.** It
+     compared the result against `[49, 50, 51, 57]` and `[62]` — a
+     snapshot of one afternoon's drawing, not the rule.
+
+     Fixtures are refreshed from whatever somebody was working on, and
+     three were replaced today alone. The next refresh fails such a
+     check for no fault; and whoever edits the numbers to make it pass
+     has quietly stopped testing anything, because the expectation now
+     comes from the output.
+
+     The rule is asserted on features built in the check: one meter on a
+     circuit and served, one on no circuit, one served by a trench that
+     names no seed, one flat on a board. The fixture still runs, but it
+     asserts RELATIONSHIPS — every meter reported as circuitless has no
+     circuit, every meter with none is reported, no flat is asked for a
+     trench — none of which mention a plot number.
+
+     **A check that names the data is a check that will be edited to
+     match the data.**
+
+**Auto Lay Service writes its trenches as `existing`.** On this scheme
+the developer digs the service trenches and we lay in them, so they are
+in the ground before the job starts: no excavation, no machine setup,
+and off the bill of materials. That is what `existing` already means
+everywhere else, so nothing new had to be invented.
+
+**Not the same as SELF-LAY.** That row was already written as
+`existing`, and it means somebody else lays the CABLE as well —
+`Self_Lay: true`, and the cable leaves the bill with the trench. Here
+the trench is the developer's and **the cable is ours**, so `Self_Lay`
+is not written and our cable stays on the bill.
+
+`Developer_Dug: true` records why the status was set. `Build_Status` can
+be edited by hand, and a status with nothing saying why it is there is
+one somebody changes back.
+
+**This is a scheme-wide assumption, not a setting.** If a project ever
+digs its own service trenches, this needs a switch — as it stands every
+Auto Lay Service run on every project writes them as existing, and
+sixteen service digs leaving a bill is quiet. The `Developer_Dug` flag
+is the hook to build that on.
+
+**Requires migration 0208 for the bill half.** The dig is skipped by
+`digRate` today; the trenches stay ON the bill until 0208 runs.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

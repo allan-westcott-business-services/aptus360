@@ -20183,8 +20183,25 @@ export default function GISCanvasPage() {
            A mixed plot gets both — ours to our main, theirs to the
            incumbent's — from the same seed. They are different digs to
            different mains and each is measured on its own. */
+        /* ── The developer digs the service trenches ──
+
+           A service trench is dug by the developer and laid in by us.
+           It is in the ground before this job starts, so it is not
+           excavated and not billed \u2014 which is exactly what `existing`
+           already means everywhere else: no dig, no machine setup, and
+           off the bill of materials.
+
+           Distinct from SELF-LAY, which is on the second row and means
+           somebody else lays the cable as well. Here the trench is the
+           developer's and the cable is ours: our cable stays on the
+           bill, and `Self_Lay` is not written.
+
+           Marked `Developer_Dug` so the reason survives. `Build_Status`
+           can be edited by hand afterwards, and a status with nothing
+           saying why it was set is a status somebody changes back. */
         const digs = [
-          { route: plan.trench, status: null, existing: false },
+          { route: plan.trench, status: "existing", existing: false,
+            developerDug: true },
           { route: plan.slpTrench || [], status: "existing", existing: true },
         ].filter((d) => d.route.length);
 
@@ -20196,7 +20213,7 @@ export default function GISCanvasPage() {
               Feature_Type: "line",
               Geometry: run.geometry,
               Label: `Service trench ${plan.seed.Label ?? ""}`.trim()
-                + (dig.existing ? " (developer)" : ""),
+                + (dig.existing || dig.developerDug ? " (developer)" : ""),
               Plot_ID: plan.seed.Plot_ID ?? null,
               Attributes: {
                 Line_Type: "trench_service",
@@ -20212,6 +20229,10 @@ export default function GISCanvasPage() {
                    inferring it from the status. Build_Status can be
                    edited by hand; this says why it was set. */
                 ...(dig.existing ? { Self_Lay: true } : {}),
+                /* Dug by the developer, laid in by us. Not `Self_Lay`:
+                   that says the cable is somebody else's too, and this
+                   cable is ours and stays on the bill. */
+                ...(dig.developerDug ? { Developer_Dug: true } : {}),
               },
             }));
             trenchCount++;

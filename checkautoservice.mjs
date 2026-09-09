@@ -687,6 +687,51 @@ const utils = () => ["electric"];
   }
 }
 
+/* ── The developer digs the service trenches ──
+
+   A service trench is dug by the developer and laid in by us. It is in
+   the ground before this job starts, so it is not excavated and not
+   billed — which is what `existing` already means everywhere else: no
+   dig, no machine setup, and off the bill of materials.
+
+   Distinct from SELF-LAY, which means somebody else lays the CABLE as
+   well. Here the trench is the developer's and the cable is ours, so
+   `Self_Lay` must not be written on it — that would take our cable off
+   the bill with the trench. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("const digs = [");
+  const digs = at < 0 ? "" : canvas.slice(at, canvas.indexOf("].filter(", at));
+
+  if (!digs) fail("the trench-writing block has moved; this check cannot find it");
+  else {
+    if (!/route: plan\.trench, status: "existing"/.test(digs)) {
+      fail("a service trench Auto Lay Service digs is not written as existing, "
+        + "so it is excavated and billed for a hole the developer dug");
+    }
+    /* Marked, so the reason survives a hand edit of the status. */
+    if (!/developerDug: true/.test(digs)) {
+      fail("nothing records WHY the status was set, so a status somebody "
+        + "changes back has nothing to argue with");
+    }
+    /* And not confused with self-lay, which is the row below. */
+    if (/route: plan\.trench[^}]*existing: true/.test(digs)) {
+      fail("our own route is marked self-lay, which would take our cable off "
+        + "the bill along with the trench");
+    }
+  }
+
+  const writes = canvas.slice(canvas.indexOf("Line_Type: \"trench_service\""),
+    canvas.indexOf("Line_Type: \"trench_service\"") + 1400);
+  if (!/\.\.\.\(dig\.developerDug \? \{ Developer_Dug: true \} : \{\}\)/.test(writes)) {
+    fail("Developer_Dug is decided and never written");
+  }
+  /* Self_Lay stays on the self-lay route and only there. */
+  if (!/\.\.\.\(dig\.existing \? \{ Self_Lay: true \} : \{\}\)/.test(writes)) {
+    fail("Self_Lay is no longer written on the self-lay route");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Auto Service behaves (the cable follows the dig it is laid in).");
 process.exit(bad ? 1 : 0);

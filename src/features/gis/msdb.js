@@ -679,3 +679,43 @@ export function buildBlockers(features = [], opts = {}) {
 
   return { noCircuit, noService, ok: !noCircuit.length && !noService.length };
 }
+
+/* ── A plot number belongs to a seed or to a flat, never both ──
+
+   A seed is a plot on the ground with its own service; a flat is a
+   dwelling fed from a board's tails. The same plot cannot be both, and
+   nothing stopped somebody allocating it twice: the MSDB editor offered
+   every flat-typed plot on the project, and Place Plots offered every
+   plot number that was not already a seed.
+
+   Allocated twice, the load is counted twice \\u2014 once at the seed and
+   once on the board \\u2014 and the two are metres apart on the drawing.
+
+   One function, so the two lists cannot disagree about who owns what:
+   whichever screen is asked, a plot already spoken for is not on
+   offer. */
+export function plotsOnBoards(features = [], opts = {}) {
+  const { except = null } = opts;
+  const out = new Set();
+  for (const b of features) {
+    if (b.Feature_Role !== "msdb") continue;
+    /* The board being edited is excluded, so its own flats stay in its
+       own list \\u2014 otherwise opening the editor would empty it. */
+    if (except != null && Number(b.Feature_ID) === Number(except)) continue;
+    for (const id of b.Attributes?.MSDB_Plot_IDs || []) out.add(Number(id));
+  }
+  return out;
+}
+
+/* The plots already placed as a seed on the drawing. A seed carries its
+   Plot_ID; a meter placed on one carries the same. */
+export function plotsAsSeeds(features = []) {
+  const out = new Set();
+  for (const f of features) {
+    const role = String(f.Feature_Role ?? "");
+    if (role !== "seed" && role !== "plot" && role !== "meter") continue;
+    const id = f.Plot_ID ?? f.Attributes?.Plot_ID ?? null;
+    if (id != null) out.add(Number(id));
+  }
+  return out;
+}

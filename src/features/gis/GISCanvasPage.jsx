@@ -112,6 +112,7 @@ import { alpha } from "../../lib/colour.js";
 import PrintModal from "./PrintModal.jsx";
 import {
   withAssumedMeters, servedFlats, flatsFromPlots, apartmentLoad, buildBlockers,
+  plotsOnBoards,
   apartmentLevels, worstApartment, riserDrop, stampLink, linkEnds, linkOrder,
   msdbLoad,
 } from "./msdb.js";
@@ -24645,7 +24646,20 @@ export default function GISCanvasPage() {
           it should be. */}
       {addOpen && projectId && (
         <AddPlotsModal
-          existing={plotList}
+          /* ── A plot already on a board is not a seed to place ──
+
+             A flat is fed from its board's tails; a seed is a plot on
+             the ground with its own service. Offering a plot here after
+             it has been put on a board lets somebody allocate it twice,
+             and the load is then counted once in each place, metres
+             apart on the drawing.
+
+             Marked placed rather than removed from the list: somebody
+             typing a range gets told the number is spoken for, where a
+             silently shorter list reads as a range that did not
+             parse. */
+          existing={plotList.map((p) => (plotsOnBoards(features).has(Number(p.plot_id))
+            ? { ...p, placed: true, onBoard: true } : p))}
           lookups={lookups}
           developers={developers}
           contractNumber={project?.Contract_Number}

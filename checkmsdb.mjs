@@ -1105,8 +1105,12 @@ const served = (b) => servedFlats(b, flats);
 
   /* And the field is asked for, under the name it was asked for. */
   const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
-  if (!/Ground to MSDB \(m\)/.test(editor)) {
-    fail("the run up is still headed Boundary to MSDB");
+  /* Headed for where the cable comes FROM. It was "Boundary to MSDB",
+     then "Ground to MSDB", now "Previous floor to MSDB" — the field has
+     always been the length of the run arriving at the board, and only
+     the wording of where it starts has moved. */
+  if (!/Previous floor to MSDB \(m\)/.test(editor)) {
+    fail("the run up is not headed Previous floor to MSDB");
   }
   if (!/MSDB to ground \(m\)/.test(editor)) fail("there is no field for the run down");
   if (!/MSDB_Down_M/.test(editor)) fail("the run down is not recorded");

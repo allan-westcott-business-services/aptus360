@@ -26,6 +26,7 @@ import { servedPlots, JOINT_KINDS, straightJointWarning,
   jointCables, cableEndsAt, servicesAt } from "./joints.js";
 import {
   FLOORS, msdbLoad, apartmentLevels, worstApartment, flatsFromPlots,
+  plotsAsSeeds, plotsOnBoards,
   servedFlats, riserDrop, outputDrop, msdbSupply,
 } from "./msdb.js";
 import { bedColour } from "../../lib/bedColours.js";
@@ -702,14 +703,31 @@ export default function FeatureEditor({
      each of those sees. Read from the DRAFT, not the saved feature: the
      panel edits `f`, and reading `feature` here made every change
      invisible \u2014 Add flat appeared to do nothing at all. */
-  const msdbFlats = useMemo(() => flatsFromPlots({
-    plotList,
+  /* ── A plot already placed as a seed is not on offer ──
+
+     A seed is a plot on the ground with its own service; a flat is fed
+     from this board's tails. The same plot cannot be both, and offering
+     it here after it has been placed lets somebody allocate it twice \u2014
+     the load counted once at the seed and once on the board, metres
+     apart on the drawing.
+
+     The flats THIS board already holds stay listed whatever else is
+     true: they are the rows somebody is looking at, and removing them
+     would empty the table on open. */
+  const msdbFlats = useMemo(() => {
+    const mine = new Set((f.Attributes?.MSDB_Plot_IDs || []).map(Number));
+    const taken = plotsAsSeeds(allFeatures);
+    const onOther = plotsOnBoards(allFeatures, { except: f.Feature_ID });
+    return flatsFromPlots({
+      plotList: (plotList || []).filter((p) => mine.has(Number(p.plot_id))
+        || (!taken.has(Number(p.plot_id)) && !onOther.has(Number(p.plot_id)))),
     /* `propertyConfigs` is what the lookups call it \u2014 the same list the
        Plots tab is given. A guess with a fallback would have worked and
        hidden which one was real. */
     configs: lookups?.propertyConfigs || [],
-    propertyTypes: lookups?.propertyTypes || [],
-  }), [plotList, lookups]);
+      propertyTypes: lookups?.propertyTypes || [],
+    });
+  }, [plotList, lookups, allFeatures, f]);
 
   /* The circuits on this drawing, and the link box on the one chosen.
      Both read from the features rather than held on the board: a copy
@@ -1609,7 +1627,7 @@ export default function FeatureEditor({
 
               <div className="fe-row">
                 <div className="fld">
-                  <label htmlFor="fe-msdb-riser">Ground to MSDB (m)</label>
+                  <label htmlFor="fe-msdb-riser">Previous floor to MSDB (m)</label>
                   {/* The drawing stops at the boundary. A board on the
                       fourth floor is fifteen metres further on, up a
                       riser nobody has drawn and nobody can \u2014 and that
@@ -1654,7 +1672,7 @@ export default function FeatureEditor({
                           <strong>{msdbAt.pct.toFixed(2)}%</strong>
                           {msdbAt.riserPct > 0 && (
                             <span className="hint">
-                              {" "}including {msdbAt.riserPct.toFixed(2)}% up from the ground
+                              {" "}including {msdbAt.riserPct.toFixed(2)}% up the riser
                             </span>
                           )}
                         </>

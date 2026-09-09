@@ -154,7 +154,18 @@ export default function AddPlotsModal({
                     <strong>{total}</strong> plot{total === 1 ? "" : "s"} to place
                     {toCreate.length > 0 && <> &middot; {toCreate.length} newly created</>}
                     {alreadyPlaced.length > 0 && (
-                      <span className="ap-note"> &middot; {alreadyPlaced.length} already on the canvas</span>
+                      /* Said apart from "on the canvas": a plot on a
+                         board is not on the canvas as a seed, and
+                         telling somebody it is would send them looking
+                         for a marker that is not there. */
+                      <span className="ap-note"> &middot; {
+                        alreadyPlaced.filter((n) => known[n]?.onBoard).length
+                          ? `${alreadyPlaced.filter((n) => known[n]?.onBoard).length} on an MSDB`
+                            + (alreadyPlaced.filter((n) => !known[n]?.onBoard).length
+                              ? `, ${alreadyPlaced.filter((n) => !known[n]?.onBoard).length} already on the canvas`
+                              : "")
+                          : `${alreadyPlaced.length} already on the canvas`
+                      }</span>
                     )}
                   </p>
                   <div className="ap-chips">

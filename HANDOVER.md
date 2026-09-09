@@ -3998,6 +3998,33 @@ is the hook to build that on.
 **Requires migration 0208 for the bill half.** The dig is skipped by
 `digRate` today; the trenches stay ON the bill until 0208 runs.
 
+**A plot number belongs to a seed or to a flat, never both.** A seed is
+a plot on the ground with its own service; a flat is fed from a board's
+tails. Nothing stopped somebody allocating one twice — the MSDB editor
+offered every flat-typed plot on the project, and Place Plots offered
+every number that was not already a seed.
+
+Allocated twice, **the load is counted twice**: once at the seed and
+once on the board, metres apart on the drawing. On the reported drawing
+all six flats were in exactly that state.
+
+`plotsOnBoards` and `plotsAsSeeds` answer it, and both screens ask the
+same function so they cannot disagree about who owns what. The board
+being EDITED is excluded from its own filter, or opening its editor
+would empty its table.
+
+Place Plots MARKS them rather than dropping them, and says "on an MSDB"
+rather than "already on the canvas" — a plot on a board has no marker to
+go and look for, and a silently shorter list reads as a range that did
+not parse.
+
+**GROUND TO MSDB is now PREVIOUS FLOOR TO MSDB.** The field has always
+been the length of the run arriving at the board; only the wording of
+where it starts has moved — it was BOUNDARY TO MSDB before that. Worth
+knowing that the levels still treat it as the whole run from the stop on
+the ground to the board: if it is now read as one floor's worth, a board
+three floors up needs the sum, not the last leg.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

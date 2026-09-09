@@ -4793,6 +4793,53 @@ export default function GISCanvasPage() {
                circle on top of it. */
             return;
           }
+          if (f.Feature_Role === "hdcutout") {
+            /* ── A heavy duty cut-out ──
+
+               A rectangle lying ALONG the cable with two fuse ways in
+               it. Turned to the run because it is a fitting in the
+               ground: unlike a board, which is a thing in a building
+               and stays upright, this one leans with the trench.
+
+               Drawn white-filled so the cable does not show through
+               it and the symbol reads as a body the conductor enters
+               and leaves \u2014 which is what it is. The cable is NOT broken
+               here; the drawing says "through", and so does every rule
+               that decides where a run ends.
+
+               #1d4ed8 when selected, like everything else in this
+               routine. Never a CSS variable: assigning one to
+               strokeStyle is silently ignored and the symbol keeps
+               whatever colour was last set. */
+            const deg = Number(f.Attributes?.Angle_Deg);
+            const wHalf = Math.max(9, ps.symbolPx * 1.5);
+            const hHalf = Math.max(6, ps.symbolPx * 1.0);
+            const r = Math.max(2.2, ps.symbolPx * 0.34);
+
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            if (Number.isFinite(deg)) ctx.rotate((deg * Math.PI) / 180);
+            ctx.lineWidth = on ? 2.4 : 1.6;
+            ctx.strokeStyle = on ? "#1d4ed8" : "#0f172a";
+            ctx.fillStyle = "#fff";
+
+            ctx.beginPath();
+            ctx.rect(-wHalf, -hHalf, wHalf * 2, hHalf * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            /* Two ways, spaced off centre so the pair reads as fuses
+               rather than one circle drawn twice. */
+            for (const dx of [-wHalf * 0.42, wHalf * 0.42]) {
+              ctx.beginPath();
+              ctx.arc(dx, 0, r, 0, Math.PI * 2);
+              ctx.stroke();
+            }
+            ctx.restore();
+            /* Nothing else to draw: the rectangle is the symbol, and
+               falling through would put a circle on top of it. */
+            return;
+          }
           if (f.Feature_Role === "msdb") {
             /* ── A square with DB in it ──
 
@@ -11472,6 +11519,26 @@ export default function GISCanvasPage() {
      (the offset preserves vertices, so index and t carry across). The
      snap point returned is on the TRUE route, because the box stands
      in the trench \u2014 only the choosing follows the drawing. */
+  /* ── An LV feeder, and only that ──
+
+     `drawnMainAt` takes anything whose line type contains "main", which
+     is right for a link box: HV never reaches one and a service is not
+     a main. A cut-out is spliced into an LV FEEDER, so it says so
+     rather than relying on what happens not to match \u2014 `elec_hv` does
+     not contain "main" today and a line type somebody adds tomorrow
+     might.
+
+     Named types rather than a substring, for the reason `/main/`
+     matching `trench_main` cost a rebuild: a rule that matches on part
+     of a word eventually matches a word nobody meant. */
+  function lvFeederAt(pointWorld) {
+    const hit = drawnMainAt(pointWorld);
+    if (!hit) return null;
+    const t = String(hit.line?.Attributes?.Line_Type ?? "");
+    if (t !== "elec_main") return null;
+    return hit;
+  }
+
   function drawnMainAt(pointWorld) {
     const clickPx = toPx(pointWorld);
     let hit = null;
@@ -11513,6 +11580,77 @@ export default function GISCanvasPage() {
        Ways and fuses are the editor's to fill in: 2 way seeds one
        empty fuse way, 4 way three, and the ratings on offer live in
        one place there. */
+    /* ── A heavy duty cut-out, spliced into an LV feeder ──
+
+       The cable runs THROUGH it: no loss, no break in the run, and no
+       feeder end point at its position. None of that needs writing,
+       because every rule that makes a fitting matter to the network
+       names the roles it acts on \u2014 `jointMarks` for a stop, `isBreak`
+       for a section end \u2014 and none of them mentions this one.
+
+       Placed only on an LV feeder. Not HV, which is a different
+       conductor at a different voltage, and not a service, which has a
+       cut-out of its own at the plot. */
+    if (role === "hdcutout") {
+      const hit = lvFeederAt(point);
+      if (!hit) {
+        setError("A heavy duty cut-out goes on an LV feeder cable \u2014 click on"
+          + " one. Not an HV cable, and not a service.");
+        setPlantPlace(null);
+        return;
+      }
+
+      /* ── Where on the run ──
+
+         Wherever it was clicked, moved onto the cable itself: a fitting
+         a metre off the line reads as a second thing beside the cable
+         rather than one on it. `hit.q` is the point on the run nearest
+         the click, which is a midpoint, a vertex or an end depending on
+         where somebody aimed \u2014 all three are allowed and none needs
+         telling apart. */
+      const at = hit.q;
+
+      /* Turned to lie along the cable. The segment it landed on, not
+         the whole run: a feeder bends, and the angle that matters is
+         the one under the symbol. */
+      const g = hit.line.Geometry || [];
+      const a = g[hit.index - 1];
+      const b = g[hit.index];
+      const angle = (a && b && Math.hypot(b[0] - a[0], b[1] - a[1]))
+        ? (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI
+        : null;
+
+      try {
+        await addFeature({
+          Layer_Key: "electric",
+          Feature_Type: "point",
+          Feature_Role: "hdcutout",
+          Geometry: [at],
+          Label: "",
+          Attributes: {
+            Angle_Deg: angle,
+            /* The run it sits on, stated rather than worked out later
+               from whatever happens to be nearest. */
+            On_Cable_ID: hit.line.Feature_ID,
+            /* Its circuit is the cable's: a fitting on a run belongs to
+               the run, and reading it off the cable keeps the two from
+               disagreeing when one is edited. */
+            ...(hit.line.Attributes?.Circuit_ID != null ? {
+              Circuit_ID: hit.line.Attributes.Circuit_ID,
+              Circuit_Name: hit.line.Attributes.Circuit_Name ?? null,
+              Circuit_Letter: hit.line.Attributes.Circuit_Letter ?? null,
+            } : {}),
+          },
+        });
+        await load(projectId);
+        setStatus(`Heavy duty cut-out placed on ${hit.line.Attributes?.Circuit_Name
+          ?? "the feeder"}`);
+        setTimeout(() => setStatus(""), 4000);
+      } catch (e) { setError(e.message); }
+      setPlantPlace(null);
+      return;
+    }
+
     if (role === "linkbox") {
       const ways = armed?.ways === 4 ? 4 : 2;
       const hit = drawnMainAt(point);
@@ -22795,6 +22933,16 @@ export default function GISCanvasPage() {
                           disabled={!projectId}
                           onClick={() => placeNode("linkbox", "electric", { ways: 4 })} />
                       </MenuBranch>
+
+                      {/* A cut-out spliced into a feeder. Beside the
+                          link box because that is what somebody is
+                          choosing between: both are placed by pointing
+                          at a run, and the difference is whether the
+                          cable breaks there. */}
+                      <MenuItem label="Heavy Duty Cut Out"
+                        hint="Spliced into an LV feeder — the cable runs through it"
+                        disabled={!projectId}
+                        onClick={() => placeNode("hdcutout", "electric")} />
 
                       <MenuBranch label="Joint"
                         hint="The fittings on a feeder — one at a time, or read off the routed network">

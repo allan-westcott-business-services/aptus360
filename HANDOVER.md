@@ -163,6 +163,7 @@ caught a fault that had already shipped at least once.
 | `node checkbulkfields.mjs` | Bulk edit offers only what the selection shares |
 | `node checkcablelevels.mjs` | Changing a cable changes the levels below it |
 | `node checkbuildblockers.mjs` | The build refuses a drawing it cannot build from |
+| `node checkhdcutout.mjs` | The cut-out stays passive, LV-only and aligned |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
@@ -4050,6 +4051,37 @@ three floors up needs the sum, not the last leg.
      is narrower and more useful: **when a guard refuses work, every
      input it consults must be a positive signal.** Absence of a
      matching stamp is not a fact about the ground.
+
+**Heavy duty cut-out.** A cut-out spliced into an LV feeder so a supply
+can be taken from it. The cable runs THROUGH it: no loss, no break in
+the run, no feeder end point at its position.
+
+**Almost none of that is written anywhere, and that is the point.**
+Every rule that makes a fitting matter to the network names the roles it
+acts on — `jointMarks` for a stop, `isBreak` for a section end,
+`cumulativeToNode` for a drop — so a role none of them mentions is
+passive by construction rather than by a flag somebody has to remember.
+`checkhdcutout` holds that silence: it fails if any of those files
+learns the role.
+
+**A role, not a joint with a type.** A straight joint carries
+`Joint_Type` and DOES break the cable. Sharing the role would put a
+passive fitting one typo away from cutting a run in half, and every rule
+reading `Feature_Role === "joint"` would need the exception.
+
+**LV only**, by the type's name and not a substring — `elec_main`
+exactly. `/main/` matching `trench_main` cost a rebuild today; a rule
+that matches part of a word eventually matches a word nobody meant. HV
+is a different conductor, and a service has its own cut-out at the plot.
+
+**Turned to the SEGMENT it lands on**, not the whole run: a feeder
+bends, and the angle that matters is the one under the symbol. Unlike a
+board, which is a thing in a building and stays upright.
+
+**Migration `0209_hdcutout_role.sql`, NOT YET RUN.** The constraint is
+rewritten whole, so the check asserts every previously allowed role
+survives — one left out is every feature of that kind refused on its
+next save.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

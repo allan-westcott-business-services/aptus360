@@ -106,6 +106,7 @@ const ROLES = [
      everything else. A role the canvas draws and this list omits is a
      thing nobody can restyle, which is what checkboundarystyle catches. */
   ["msdb", "MSDB"],
+  ["hdcutout", "Heavy duty cut-out"],
   ["column", "Lighting column"],
   ["shape", "Shape"],
 ];

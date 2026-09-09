@@ -4074,6 +4074,33 @@ exactly. `/main/` matching `trench_main` cost a rebuild today; a rule
 that matches part of a word eventually matches a word nobody meant. HV
 is a different conductor, and a service has its own cut-out at the plot.
 
+**Snapped to a midpoint, a vertex or an end** of the cable it is
+spliced into — the three places a fitting belongs — using the same
+`snapTargets` the drawing tools use, restricted to that one cable.
+Snapping to the whole drawing would take the vertex of a trench that
+happens to cross there, and the symbol would sit on a line it is not
+spliced into. With nothing in reach it falls back to the point on the
+run nearest the click, so a long straight span still takes it where it
+was aimed.
+
+122. **The green snap circle never appeared while arming a fitting.**
+     The mousemove handler showed the snap for drawing, for aiming a
+     joint and for tracing — and `placing` is the PLOT QUEUE, not a
+     plant placement. Arming a cut-out sets `plantPlace`, which the
+     condition did not mention, so the one mode where somebody is
+     trying to land a symbol exactly on a cable was the mode with no
+     indicator.
+
+123. **And the first attempt at the snap read the wrong fields.** A
+     target carries `point`; read as `x` and `y` they came back
+     undefined, every distance was `NaN`, and `NaN < NaN` is false — so
+     the FIRST candidate won by default, which is the cable's start
+     wherever somebody had clicked. It would have looked like a snap
+     that always jumped to the far end of the run.
+
+     **A comparison against NaN does not throw and does not warn; it
+     quietly picks whatever came first.**
+
 **Turned to the SEGMENT it lands on**, not the whole run: a feeder
 bends, and the angle that matters is the one under the symbol. Unlike a
 board, which is a thing in a building and stays upright.

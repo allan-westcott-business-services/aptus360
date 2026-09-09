@@ -118,6 +118,51 @@ const migration = readFileSync("./supabase/migrations/0209_hdcutout_role.sql", "
   }
 }
 
+// 5. It snaps to a midpoint, a vertex or an end, and says so.
+//
+//    Those are the three places a fitting belongs on a run. The green
+//    circle under the pointer is what tells somebody which one is about
+//    to be taken, and it never appeared: the mousemove handler showed
+//    the snap while drawing, or aiming a joint, or tracing — and
+//    `placing` is the PLOT QUEUE, not a plant placement. Arming a
+//    cut-out sets `plantPlace`, which it did not mention.
+{
+  if (!/if \(drawing \|\| placing \|\| jointFor \|\| traceFrom \|\| plantPlace\) \{/.test(canvas)) {
+    fail("the snap indicator is not shown while a fitting is armed, so "
+      + "nothing says where the symbol will land");
+  }
+
+  const at = canvas.indexOf('if (role === "hdcutout") {');
+  const body = at < 0 ? "" : canvas.slice(at, at + 3600);
+  if (!/snapTargets\(\[hit\.line\], \{ includeMidpoints: true \}\)/.test(body)) {
+    fail("the cut-out lands wherever the click did rather than on a midpoint, "
+      + "vertex or end");
+  }
+  /* Its own cable only: snapping to the whole drawing would take the
+     vertex of a trench that happens to cross here, and the symbol would
+     sit on a line it is not spliced into. */
+  if (/snapTargets\(visible/.test(body) || /snapTargets\(features/.test(body)) {
+    fail("it snaps to the whole drawing, so it can land on a line it is not "
+      + "spliced into");
+  }
+  /* A target carries `point`. Read as x and y it came back undefined,
+     every distance was NaN, and the first candidate won by default —
+     the cable's start, wherever somebody had clicked. */
+  if (/t\.x - point\[0\]/.test(body)) {
+    fail("the candidate's coordinates are read as x and y, which are "
+      + "undefined \u2014 every distance is NaN and the first candidate wins");
+  }
+  if (!/const q = t\.point;/.test(body)) {
+    fail("the candidate's point is not read from `point`");
+  }
+  /* And a long straight span with no vertex near the pointer still
+     takes the fitting where it was aimed. */
+  if (!/: hit\.q;/.test(body)) {
+    fail("with no candidate in reach the placement has no fallback, so a "
+      + "click mid-span lands nowhere");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The heavy duty cut-out behaves (LV only, turned to the cable, passive).");
 process.exit(bad ? 1 : 0);

@@ -8482,7 +8482,14 @@ export default function GISCanvasPage() {
       }
     } else if (plotTip) setPlotTip(null);
 
-    if (drawing || placing || jointFor || traceFrom) {
+    /* ── Armed to place a fitting counts as aiming ──
+
+       `placing` is the plot queue, not a plant placement. Arming a
+       cut-out sets `plantPlace`, which this did not mention \u2014 so the
+       snap ran for a joint and a trace and not for the one mode where
+       somebody is trying to land a symbol exactly on a cable, and the
+       green circle that says "on the line" never appeared. */
+    if (drawing || placing || jointFor || traceFrom || plantPlace) {
       /* Armed to place a joint on a cable, the snap is what makes the
          cable say ON LINE under the pointer \u2014 which is the whole
          instruction for this mode. */
@@ -11602,13 +11609,33 @@ export default function GISCanvasPage() {
 
       /* ── Where on the run ──
 
-         Wherever it was clicked, moved onto the cable itself: a fitting
-         a metre off the line reads as a second thing beside the cable
-         rather than one on it. `hit.q` is the point on the run nearest
-         the click, which is a midpoint, a vertex or an end depending on
-         where somebody aimed \u2014 all three are allowed and none needs
-         telling apart. */
-      const at = hit.q;
+         A midpoint, a vertex or an end of the cable \u2014 the three places
+         a fitting belongs \u2014 rather than wherever on the segment the
+         click happened to land. `snapTargets` is the same list the
+         drawing tools snap to, and the green circle under the pointer
+         has been showing which one is about to be taken.
+
+         Its own cable only. Snapping to the whole drawing would put a
+         cut-out on the vertex of a trench that happens to cross here,
+         and the symbol would sit on a line it is not spliced into.
+
+         Falls back to the point on the run nearest the click, so a long
+         straight span with no vertex near the pointer still takes the
+         fitting where it was aimed. */
+      const onThis = snapTargets([hit.line], { includeMidpoints: true });
+      let best = null;
+      for (const t of onThis) {
+        /* A target carries `point`, not x and y. Read as x/y it came
+           back undefined, every distance was NaN, and the first
+           candidate won by default \u2014 the cable's start, wherever
+           somebody had clicked. */
+        const q = t.point;
+        if (!Array.isArray(q)) continue;
+        const d = Math.hypot(q[0] - point[0], q[1] - point[1]);
+        if (best == null || d < best.d) best = { d, q };
+      }
+      const reachM = SNAP_PX / (view.scale || 1);
+      const at = (best && best.d <= reachM) ? [best.q[0], best.q[1]] : hit.q;
 
       /* Turned to lie along the cable. The segment it landed on, not
          the whole run: a feeder bends, and the angle that matters is

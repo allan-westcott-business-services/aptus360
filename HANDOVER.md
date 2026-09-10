@@ -4563,6 +4563,48 @@ clear of the board, not the ring closing. A ring genuinely closing is
 caught by the double feed (every station reached from both directions)
 or by meeting a *different* primary along the last line.
 
+## A flat on a board has no seed
+
+Reported with the drawing: **"Place the plot seeds first — 0 seed(s)
+for 65 plot(s)"** on a project whose every dwelling is a flat on one of
+four MSDBs.
+
+`electricSteps` counted the whole plot schedule and wanted a seed for
+each. A flat fed from a board has none and must not: the dwellings are
+a TABLE on the board (0205/0206), their meters are assumed for the
+length of a build, and there is nothing on the ground to seed. The
+build was refused for not doing something it is not supposed to do.
+
+The seeds step now measures against the plots that still want one —
+the schedule less every flat a board has claimed, via `plotsOnBoards`,
+which is the same reader `buildBlockers` uses, so the two cannot
+disagree about which dwellings are on a board. Where none want one the
+step is done, and the detail SAYS why: "every plot is a flat on an
+MSDB — 65 need no seed". A silent subtraction reading "0 of 0" with 65
+plots on the project is a fault report of its own.
+
+**And the same fault one step along.** A service is dug to a seed, so
+a drawing whose dwellings are all on boards has nothing to run one to;
+`service` had no `enough` at all, which makes it a hard block, and it
+would have been the next thing hit after the seeds were fixed. It is
+now done when there is genuinely nothing on the ground to serve — no
+plot seeds and no `nrs` supplies. One seed with no service is still a
+step in progress and still says so.
+
+Worth noticing as a pattern rather than as two bugs: **every gate in
+the electric flow was written when a plot meant a house with a seed
+on the ground.** A flats-only design walks through those gates and
+each one refuses it for a different reason — the circuit lasso (no
+seeds to draw round), the build blockers (no service trench), and now
+these two. If another flats-only refusal turns up, look for the same
+assumption rather than treating it as new.
+
+Note also that steps carrying no `enough` block hard by construction
+(`allows` refuses anything not `enough`): `mains`, `nodes` and `build`
+are still in that position. That is correct for `mains` — no dig, no
+route — and worth a thought for the others if a drawing ever legitimately
+has none.
+
 ## A cut-out at the end of the line
 
 0209 gave the heavy duty cut-out one behaviour and defended it: a

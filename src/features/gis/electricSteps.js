@@ -27,6 +27,8 @@
    Saying "the meters are not on circuits yet" is the thing that
    actually helps. */
 
+import { plotsOnBoards } from "./msdb.js";
+
 const has = (features, test) => features.some(test);
 const count = (features, test) => features.filter(test).length;
 
@@ -96,6 +98,21 @@ export function electricSteps({
 
   const sized = plots.filter((p) => hasHouseType(p) && hasHeatSource(p));
 
+  /* Which plots still want a seed on the ground: the schedule less
+     every flat a board has claimed. `plotsOnBoards` is the same reader
+     the build's blockers use, so the two cannot disagree about which
+     dwellings are on a board. */
+  const onBoard = plotsOnBoards(features);
+  const wantSeeds = plots.filter((p) =>
+    !onBoard.has(Number(p.plot_id ?? p.Plot_ID)));
+  const onBoards = plots.length - wantSeeds.length;
+
+  /* And what there is to run a service to at all: plot seeds and
+     non-residential supplies, both of which stand on the ground and
+     take a service. A board takes a feeder, not a service. */
+  const servable = count(features, (f) => f.Feature_Role === "plot")
+    + count(features, (f) => f.Feature_Role === "nrs");
+
   const steps = [
     {
       key: "plots",
@@ -119,15 +136,36 @@ export function electricSteps({
         ? "No site boundary drawn"
         : `${devAreas.length} developer area(s) for ${developers.length} developer(s)`,
     },
+    /* ── A flat on a board has no seed, and must not ──
+
+       This counted every plot in the schedule and wanted a seed for
+       each. A block of flats fed from an MSDB has none: the dwellings
+       are a TABLE on the board, their meters are assumed for the
+       length of a build, and there is nothing on the ground to seed.
+       So a drawing of 65 flats read as "0 seed(s) for 65 plot(s)" and
+       the build was refused for not doing something it must not do.
+
+       Measured against the plots that still want one — the schedule
+       less the flats every board has claimed — and where none do, the
+       step is done because there is nothing to place. The count is
+       said out loud rather than quietly subtracted: "0 of 0" with 65
+       plots on the project reads as a fault, and the reason belongs on
+       screen where somebody is looking for it. */
     {
       key: "seeds",
       title: "Place the plot seeds",
       hint: "Puts the meters and the property boundary point on each plot",
-      done: plots.length > 0
-        && count(features, (f) => f.Feature_Role === "plot") >= plots.length,
-      enough: count(features, (f) => f.Feature_Role === "plot") > 0,
-      detail: `${count(features, (f) => f.Feature_Role === "plot")} seed(s) `
-        + `for ${plots.length} plot(s)`,
+      done: wantSeeds.length === 0
+        || count(features, (f) => f.Feature_Role === "plot") >= wantSeeds.length,
+      enough: wantSeeds.length === 0
+        || count(features, (f) => f.Feature_Role === "plot") > 0,
+      detail: wantSeeds.length === 0
+        ? (onBoards
+          ? `every plot is a flat on an MSDB \u2014 ${onBoards} need no seed`
+          : "no plots to seed")
+        : `${count(features, (f) => f.Feature_Role === "plot")} seed(s) `
+          + `for ${wantSeeds.length} plot(s)`
+          + (onBoards ? ` (${onBoards} more are flats on an MSDB)` : ""),
     },
     {
       key: "mains",
@@ -136,12 +174,26 @@ export function electricSteps({
       done: mains.length > 0,
       detail: `${mains.length} mains trench(es) drawn`,
     },
+    /* ── And nothing to service is not a step left undone ──
+
+       The same fault one step along, and it would have been the next
+       thing hit: a service is dug to a SEED, so a drawing whose
+       dwellings are all on boards has nothing to run one to. Their
+       tails are inside the building and the board's own editor works
+       them out.
+
+       Only where there is genuinely nothing on the ground to serve —
+       no plot seeds and no non-residential supplies. One seed with no
+       service is still a step in progress and still says so. */
     {
       key: "service",
       title: "Auto Service",
       hint: "Draws the service trench and the service cables and pipes",
-      done: services.length > 0,
-      detail: `${services.length} service trench(es) drawn`,
+      done: services.length > 0 || servable === 0,
+      enough: services.length > 0 || servable === 0,
+      detail: servable === 0
+        ? "nothing on the ground to service \u2014 flats are fed from their board"
+        : `${services.length} service trench(es) drawn`,
     },
     {
       key: "nodes",

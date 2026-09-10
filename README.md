@@ -1,3 +1,34 @@
+# A flat on a board has no seed — 10 Sep 2026
+
+Reported from the same flats-and-supplies drawing: **"Place the plot
+seeds first — 0 seed(s) for 65 plot(s)"**. The step counted every plot
+in the schedule and wanted a seed on the ground for each. A flat fed
+from an MSDB has none by design — its meter is a row on the board's
+table, assumed for the length of a build — so the LV build was refused
+for not doing something it must not do.
+
+- The seeds step now measures against the plots that still want one:
+  the schedule less every flat a board has claimed, through
+  `plotsOnBoards`, the same reader the build's blockers use. Where none
+  do, the step is done because there is nothing to place, and it says
+  why: "every plot is a flat on an MSDB — 65 need no seed". A count of
+  "0 of 0" against 65 plots on the project would read as a fault of its
+  own.
+- **The same fault one step along** would have been the next thing
+  hit: a service is dug to a seed, so a drawing whose dwellings are all
+  on boards has nothing to run one to. Auto Service is now done when
+  there is genuinely nothing on the ground to serve — no plot seeds and
+  no non-residential supplies. One seed with no service is still a step
+  in progress and still says so.
+- An ordinary house among the flats still wants its seed, a supply on
+  the ground is still something to service, and neither exemption
+  touches the schedule.
+
+No migration. `checkelectricsteps.mjs` carries the reported drawing's
+shape, the mixed case, and the supply case. Suite 130 of 149.
+
+---
+
 # A cut-out at the end of the line — 10 Sep 2026
 
 0209's heavy duty cut-out is spliced into a feeder that already

@@ -298,6 +298,84 @@ const pt = (role, attrs = {}, id = 1) => ({
   }
 }
 
+/* ── A flat on a board has no seed, and must not ──
+
+   Reported from a drawing of 65 flats on four MSDBs and two
+   non-residential supplies: **"Place the plot seeds first — 0 seed(s)
+   for 65 plot(s)"**. The step counted every plot in the schedule and
+   wanted a seed for each, so the build was refused for not doing
+   something it must not do — a flat's meter is a row on the board's
+   table, and there is nothing on the ground to seed. */
+{
+  const board = (plotIds, id = 400) => ({
+    Feature_ID: id, Feature_Type: "point", Feature_Role: "msdb",
+    Layer_Key: "electric", Geometry: [[5, 5]],
+    Attributes: { Circuit_ID: 1, MSDB_Plot_IDs: plotIds },
+  });
+  const flats = Array.from({ length: 65 }, (_, i) => (
+    { plot_id: i + 1, Property_Config_ID: 1, Heat_Source_ID: 2 }));
+  const world = [
+    poly(),
+    board(flats.map((p) => p.plot_id)),
+    line("trench_main"),
+    pt("spannode", {}, 500),
+    pt("meter", { Circuit_ID: 1 }, 501),
+  ];
+
+  const r = electricSteps({ plots: flats, features: world, lineTypes: LT });
+  const seeds = r.steps.find((x) => x.key === "seeds");
+  if (!seeds.done) {
+    fail(`a drawing whose every plot is a flat on a board is told to seed `
+      + `them: "${seeds.detail}"`);
+  }
+  if (!/MSDB|board/i.test(seeds.detail)) {
+    fail("the step does not say WHY no seeds are wanted, so \"0 of 0\" with "
+      + "65 plots on the project reads as a fault");
+  }
+  /* And the build is not refused for it. */
+  const build = r.allows("build");
+  if (!build.ok) fail(`the LV build is still refused: ${build.why}`);
+
+  /* Nothing on the ground to service either \u2014 the same fault one step
+     along, which would have been the next thing hit. */
+  const svc = r.steps.find((x) => x.key === "service");
+  if (!svc.done) {
+    fail(`a drawing with nothing to run a service to is told to Auto Service: `
+      + `"${svc.detail}"`);
+  }
+
+  /* ── And a plot NOT on a board still wants its seed ──
+
+     The exemption is the flats a board has claimed, not the schedule.
+     One ordinary house among them and the step is a step again. */
+  const mixed = [...flats, { plot_id: 900, Property_Config_ID: 1, Heat_Source_ID: 2 }];
+  const r2 = electricSteps({ plots: mixed, features: world, lineTypes: LT });
+  const seeds2 = r2.steps.find((x) => x.key === "seeds");
+  if (seeds2.done) {
+    fail("a house that is not on any board is not asked for a seed");
+  }
+  if (!/1 plot/.test(seeds2.detail)) {
+    fail(`the shortfall counts the flats as well: "${seeds2.detail}"`);
+  }
+  /* Started but unfinished warns rather than blocks, as ever \u2014 but
+     with no seed at all and a plot wanting one, it blocks. */
+  if (r2.allows("build").ok) {
+    fail("a plot with no seed does not hold the build back at all");
+  }
+
+  /* A supply on the ground is something to service, so that step is a
+     step again too. */
+  const withNrs = electricSteps({
+    plots: flats,
+    features: [...world, pt("nrs", { NRS_ID: 9 }, 600)],
+    lineTypes: LT,
+  });
+  if (withNrs.steps.find((x) => x.key === "service").done) {
+    fail("a non-residential supply on the ground is not counted as something "
+      + "to run a service to");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Electric build order behaves (read from the drawing, refused with a reason).");
 process.exit(bad ? 1 : 0);

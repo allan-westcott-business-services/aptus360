@@ -71,31 +71,54 @@ export function nextCircuitId(features = []) {
   return n;
 }
 
-/* ── The name a circuit is born with ──
+/* ── The next number in SEQUENCE ──
 
-   "Circuit N", where N starts at the circuit's own id and walks past
-   any name already spoken for. Starting at the id keeps name, number
-   and letter agreeing — circuitLetter's rule, the drawing's letter and
-   the schedule's number have to agree, and a circuit called "Circuit
-   4" wearing letter B would put a third spelling beside them. Walking
-   past clashes is for the drawing where somebody has renamed a circuit
-   BY HAND to a number that is not its own: their name stands (a rename
-   is a decision), and the newborn takes the next free one rather than
-   arriving as a duplicate told apart by nothing.
+   Not the lowest free one. `nextCircuitId` fills gaps deliberately —
+   deleting circuit 2 of 3 frees the number rather than leaving a gap
+   that grows for ever — and that is right for the lasso, where the
+   number is machinery.
 
-   On an unrenamed drawing the two rules are one rule: circuits 1 and 2
-   exist, the next id is 3, "Circuit 3" is free, and that is its name.
+   It is wrong for a circuit somebody starts by hand on a board they
+   are reading. With Circuit 2 and Circuit 3 on the drawing, the gap
+   rule names the new one **Circuit 1** and puts it under them on the
+   list: a row that reads as though it has always been there, and as
+   though the board is being counted backwards. What somebody pressing
+   the button expects is the next one along.
+
+   So a way-born circuit takes max + 1 across every number in use —
+   members, way allocations, and any "Circuit N" name — which is
+   always free, so the id, the name and the letter can be the same
+   number. That agreement is the point: the drawing's letter and the
+   schedule's number have to match, and a circuit called "Circuit 4"
+   wearing letter A would put a third spelling beside them.
 
    `extraNames` is for names that exist only on a draft — a second
    circuit started before the first was saved lives nowhere else. */
-export function nextCircuitName(id, features = [], extraNames = []) {
-  const taken = new Set(
-    [...circuitChoices(features).map((c) => c.name), ...extraNames]
-      .filter(Boolean).map((s) => String(s).trim().toLowerCase()),
-  );
-  let n = Math.max(1, Number(id) || 1);
-  while (taken.has(`circuit ${n}`)) n++;
-  return `Circuit ${n}`;
+export function nextCircuitNumber(features = [], extraNames = []) {
+  let top = 0;
+  const seen = (n) => {
+    const v = Number(n);
+    if (Number.isFinite(v) && v > top) top = v;
+  };
+  for (const f of features) {
+    seen(f?.Attributes?.Circuit_ID);
+    const ways = f?.Attributes?.Way_Circuits;
+    if (ways && typeof ways === "object") for (const v of Object.values(ways)) seen(v);
+    const names = f?.Attributes?.Circuit_Names;
+    if (names && typeof names === "object") {
+      for (const s of Object.values(names)) {
+        const m = /^\s*circuit\s+(\d+)\s*$/i.exec(String(s ?? ""));
+        if (m) seen(m[1]);
+      }
+    }
+    const nm = /^\s*circuit\s+(\d+)\s*$/i.exec(String(f?.Attributes?.Circuit_Name ?? ""));
+    if (nm) seen(nm[1]);
+  }
+  for (const s of extraNames) {
+    const m = /^\s*circuit\s+(\d+)\s*$/i.exec(String(s ?? ""));
+    if (m) seen(m[1]);
+  }
+  return top + 1;
 }
 
 /* ── Every circuit somebody could put a member on ──

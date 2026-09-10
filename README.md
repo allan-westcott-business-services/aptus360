@@ -10,15 +10,22 @@ picker was empty.
   board grows **+ New circuit** on every spare row. It writes the way
   map on the draft (like the free button beside it, and for the same
   reason) and the circuit exists from the save — holding nothing, on
-  the way it will occupy, **carrying the next sequential name from the
-  moment it exists**: circuits 1 and 2 on the drawing make it
-  "Circuit 3". `nextCircuitName` starts at the circuit's own id (so
-  name, number and letter agree) and walks past any name a hand
-  rename has already spoken for; the name lives in a `Circuit_Names`
-  map on the substation — a memberless circuit has no member to carry
-  it — is editable in the way row, travels onto the board at
-  membership, and clears with the way. `nextCircuitId` now counts way
-  allocations, so the number cannot be reissued to the next lasso.
+  the way it will occupy, **carrying its name from the moment it
+  exists**. `nextCircuitNumber` gives the next number in SEQUENCE
+  (max + 1 across ids, way allocations and "Circuit N" names), not the
+  lowest free gap `nextCircuitId` hands the lasso: with Circuit 2 and
+  Circuit 3 on the drawing the gap rule named the new one Circuit 1
+  and listed it underneath them. One number serves as id, name and
+  letter, so the drawing's letter and the schedule's number agree. The
+  name lives in a `Circuit_Names` map on the substation — a memberless
+  circuit has no member to carry it — is editable in the way row,
+  travels onto the board at membership, and clears with the way.
+  `nextCircuitId` now counts way allocations, so a number in use
+  cannot be reissued to the next lasso. The way row's name box keeps a
+  110px floor and the row wraps: a memberless circuit puts "nothing
+  linked" and "Clear this way" in the same cell, and the input — the
+  only shrinkable thing there — used to collapse to thirty pixels, so
+  a newborn circuit looked as though it had no name.
 - **Membered by the board**: the board's Circuit picker reads
   `circuitChoices` — the membered circuits plus every way-only one,
   each way-only entry naming its way and the origin whose board holds

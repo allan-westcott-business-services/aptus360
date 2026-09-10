@@ -15,7 +15,7 @@
    because on a two-origin drawing that IS the answer to "fed from". */
 import { readFileSync } from "node:fs";
 import {
-  circuitsFrom, circuitChoices, nextCircuitId, nextCircuitName,
+  circuitsFrom, circuitChoices, nextCircuitId, nextCircuitNumber,
 } from "./src/features/gis/electric.js";
 import { withAssumedMeters, boardFlatCount } from "./src/features/gis/msdb.js";
 
@@ -116,37 +116,58 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
 // 4b. Born named, and named in sequence.
 {
   nid = 1;
-  /* Circuits 1 and 2 exist; the next id is 3 and its name is Circuit 3 —
-     the two rules are one rule on an unrenamed drawing. */
+  /* The stated rule: Circuit 1 and Circuit 2 exist, so the new one is
+     Circuit 3 — and the id, the name and the letter are one number. */
   const world = [meter(1, 1), meter(2, 2)];
-  const id = nextCircuitId(world);
-  if (id !== 3) fail("with circuits 1 and 2, the next id is not 3");
-  if (nextCircuitName(id, world) !== "Circuit 3") {
+  if (nextCircuitNumber(world) !== 3) {
     fail("with Circuit 1 and Circuit 2 on the drawing, the newborn is not Circuit 3");
   }
 
-  /* A hand rename stands, and the newborn walks past it rather than
-     arriving as a duplicate: id 3 is free, but somebody has called
-     another circuit "Circuit 3", so the name moves on to Circuit 4. */
-  const renamed = [meter(1, 1), meter(2, 2)];
-  renamed[1].Attributes.Circuit_Name = "Circuit 3";
-  if (nextCircuitName(nextCircuitId(renamed), renamed) !== "Circuit 4") {
-    fail("a newborn arrives wearing a name somebody already gave another circuit");
+  /* The screenshot's drawing: Circuit 2 and Circuit 3 in use, 1 free.
+     The gap rule would name this Circuit 1 and list it UNDER them; the
+     sequence rule gives Circuit 4. This is the fault the sequence rule
+     exists to fix, so it is named here rather than left implied. */
+  nid = 1;
+  const gappy = [
+    sub({ Way_Circuits: { 1: 2 } }),
+    meter(2, 7),
+    board({ Circuit_ID: 3 }),
+  ];
+  if (nextCircuitId(gappy) !== 1) {
+    fail("the lasso's gap-filling rule has changed, which was not intended");
+  }
+  if (nextCircuitNumber(gappy) !== 4) {
+    fail("with circuits 2 and 3 in use the newborn is not Circuit 4 \u2014 "
+      + "the gap rule would call it Circuit 1 and list it underneath them");
   }
 
-  /* A custom name frees nothing and blocks nothing: "Front Street" on
-     circuit 1 leaves the numbers alone. */
-  const custom = [meter(1, 1), meter(2, 2)];
+  /* A number claimed only by a NAME counts too: a circuit renamed by
+     hand to "Circuit 9" pushes the next one to 10, so no newborn
+     arrives wearing a name already on the drawing. */
+  nid = 1;
+  const renamed = [meter(1, 1)];
+  renamed[0].Attributes.Circuit_Name = "Circuit 9";
+  if (nextCircuitNumber(renamed) !== 10) {
+    fail("a hand rename to a higher number does not push the sequence past it");
+  }
+
+  /* A custom name claims no number: "Front Street" on circuit 1 leaves
+     the sequence at 2. */
+  nid = 1;
+  const custom = [meter(1, 1)];
   custom[0].Attributes.Circuit_Name = "Front Street";
-  if (nextCircuitName(nextCircuitId(custom), custom) !== "Circuit 3") {
+  if (nextCircuitNumber(custom) !== 2) {
     fail("a custom name disturbs the sequence");
   }
 
   /* Two circuits started before one save: the draft's unsaved names
-     ride along as extras, so they cannot share a name. */
-  if (nextCircuitName(4, world, ["Circuit 3", "Circuit 4"]) !== "Circuit 5") {
-    fail("a second unsaved newborn shares the first one's name");
+     ride along, so they cannot collide. */
+  if (nextCircuitNumber(world, ["Circuit 3"]) !== 4) {
+    fail("a second unsaved newborn collides with the first");
   }
+
+  /* An empty drawing starts at 1. */
+  if (nextCircuitNumber([]) !== 1) fail("the first circuit is not Circuit 1");
 
   /* The substation stores the birth name, and the picker reads it —
      a memberless circuit has no member to carry its name. */
@@ -161,6 +182,10 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
   const r = circuitChoices([s]).find((x) => x.id === 3);
   if (!r || r.name !== "Block A risers") {
     fail("renaming a memberless circuit on the board does not reach the picker");
+  }
+  /* The name and the letter agree, because they are one number. */
+  if (r.letter !== "C") {
+    fail("the way-only circuit's letter does not follow its number");
   }
 }
 
@@ -237,7 +262,7 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
   if (!/\+ New circuit/.test(editor)) {
     fail("the substation editor offers no way to start a circuit on a spare way");
   }
-  if (!/nextCircuitName\(id,/.test(editor)) {
+  if (!/nextCircuitNumber\(/.test(editor)) {
     fail("the newborn is not named at birth, so it arrives as a bare number");
   }
   if (!/Circuit_Names: \{\s*\n?\s*\.\.\.\(prev\.Attributes\.Circuit_Names \|\| \{\}\),\s*\n?\s*\[id\]: name,/.test(editor)) {
@@ -246,6 +271,27 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
   if (!/flats \+= boardFlatCount\(b\)/.test(editor)) {
     fail("the way rows count flats their own way instead of the board's way, "
       + "which is how a board of picked plots read 0 meters against a real kVA");
+  }
+
+  /* ── The name box has to be wide enough to read ──
+
+     A memberless circuit puts "nothing linked" and "Clear this way"
+     in the same flex cell as the name input. With `width: 100%` and
+     nothing to stop it shrinking, the input was the only thing that
+     could give — and it collapsed to about thirty pixels, so a
+     newborn circuit looked as though it had no name at all. The value
+     was right the whole time; the box was too narrow to show it.
+
+     Held here because it is not visible in any test that reads
+     values: jsdom computes no layout, and the harness that clicked
+     the button reported "Circuit 4" from a box nobody could read. */
+  if (!/\.fe-cname \{[^}]*min-width:/.test(editor)) {
+    fail("the circuit name box can be crushed to nothing by the memberless "
+      + "extras beside it, which reads as a circuit with no name");
+  }
+  if (!/\.fe-cwrap \{[^}]*flex-wrap: wrap/.test(editor)) {
+    fail("the way row cannot wrap, so anything added beside the name box "
+      + "comes out of the name box's width");
   }
   if (!/choices\.map\(\(c\) => \(/.test(editor)) {
     fail("the board's picker still reads only membered circuits, so a newborn one cannot be assigned");

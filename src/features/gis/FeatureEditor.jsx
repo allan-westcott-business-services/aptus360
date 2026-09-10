@@ -33,7 +33,7 @@ import { bedColour } from "../../lib/bedColours.js";
 import { kvaOf } from "./voltDrop.js";
 import {
   pocUnit, circuitLetter, circuitsFrom, circuitChoices, nextCircuitId,
-  nextCircuitName,
+  nextCircuitNumber,
   SUB_DEFAULTS, ampsFor,
   moveCircuitToWay, compactWays,
 } from "./electric.js";
@@ -2862,22 +2862,23 @@ export default function FeatureEditor({
                               title={"Start a circuit on this way \u2014 for a block "
                                 + "of flats on an MSDB, which has no seeds to lasso"}
                               onClick={() => {
-                                const id = nextCircuitId([
-                                  ...(allFeatures || []),
-                                  { Attributes: f.Attributes },
-                                ]);
-                                /* Named the moment it exists, and
-                                   sequentially: circuits 1 and 2 on the
-                                   drawing make this one Circuit 3. The
-                                   draft's own unsaved names ride along
-                                   as extras, so two circuits started
-                                   before one save cannot share a name.
+                                /* One number for the id, the name and
+                                   the letter — the next in sequence,
+                                   not the lowest free gap. With Circuit
+                                   2 and Circuit 3 on the drawing this
+                                   is Circuit 4; the gap rule would have
+                                   made it Circuit 1 and listed it under
+                                   them. The draft's own unsaved names
+                                   ride along, so two circuits started
+                                   before one save cannot collide.
+
                                    Both maps in one update — a way with
                                    no name is the state this exists to
                                    remove. */
-                                const name = nextCircuitName(id,
-                                  allFeatures || [],
+                                const id = nextCircuitNumber(
+                                  [...(allFeatures || []), { Attributes: f.Attributes }],
                                   Object.values(f.Attributes.Circuit_Names || {}));
+                                const name = `Circuit ${id}`;
                                 setF((prev) => ({ ...prev, Attributes: {
                                   ...prev.Attributes,
                                   Way_Circuits: {
@@ -4319,9 +4320,29 @@ const CSS = `
 .fe-board-r.spare { opacity: .55; }
 .fe-way-n { display: inline-grid; place-items: center; width: 22px; height: 22px;
   border-radius: 50%; background: var(--bg); font: 700 11px inherit; }
+/* ── The name box holds its width ──
+
+   The cell is a flex row, and the name input used to be width 100%
+   with nothing to stop it shrinking. That was fine while the cell
+   held the input alone. A circuit with no members puts two more
+   things in the same cell — "nothing linked" (which will not wrap)
+   and "Clear this way" — and the input, being the only shrinkable
+   thing there, collapsed to about thirty pixels: a name box too narrow
+   to show one character of the name inside it.
+
+   Invisible until a MEMBERLESS circuit became ordinary. It used to
+   happen only when somebody emptied one; a circuit started on a spare
+   way for a block of flats is memberless from birth, so this is now
+   the first thing seen after pressing the button — and it read as
+   "the circuit has no name".
+
+   So the row wraps rather than crushes: the input keeps a floor of
+   110px and takes the space it can, and the two extras drop onto a
+   second line when they no longer fit beside it. */
 .fe-cname { border: 1px solid var(--border); border-radius: 6px; font: 600 12px inherit;
-  padding: 4px 8px; width: 100%; }
-.fe-cwrap { flex: 1; display: flex; align-items: center; gap: 7px; }
+  padding: 4px 8px; flex: 1 1 130px; min-width: 110px; width: auto; }
+.fe-cwrap { flex: 1; display: flex; flex-wrap: wrap; align-items: center;
+  gap: 7px 7px; min-width: 0; }
 .fe-board-hint { display: flex; align-items: center; gap: 10px; }
 .fe-board-hint > span { flex: 1; }
 .fe-way-sel { border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
@@ -4330,7 +4351,11 @@ const CSS = `
 .fe-angle input { flex: 1; min-width: 0; }
 .fe-warn { margin: 5px 0 0; font-size: 10.5px; font-weight: 600; color: #b45309; }
 .fe-free { background: none; border: 1px solid var(--border); border-radius: 5px;
-  cursor: pointer; font: 600 10px inherit; padding: 2px 7px; color: var(--accent); }
+  cursor: pointer; font: 600 10px inherit; padding: 2px 7px; color: var(--accent);
+  /* "Clear this way" came out on three lines in a squeezed cell. A
+     button whose label breaks mid-phrase reads as three broken
+     buttons. */
+  white-space: nowrap; }
 .fe-free:hover { border-color: var(--accent); background: var(--bg); }
 .fe-empty { font-size: 10px; font-weight: 600; color: #b45309; white-space: nowrap; }
 .fe-spare { font-size: 11.5px; color: var(--muted); }

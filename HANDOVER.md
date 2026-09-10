@@ -4580,15 +4580,51 @@ The flow now, in the order somebody uses it:
    the reason recorded there: written straight to the database the row
    does not move, and Save puts the old map back. The circuit exists
    from the save, holding nothing, on the way it will occupy — **and
-   named from the moment it exists**: `nextCircuitName` gives the next
-   sequential "Circuit N" (circuits 1 and 2 make it Circuit 3),
-   starting at the circuit's own id so name, number and letter agree,
-   and walking past any name a hand rename has spoken for so a newborn
-   never arrives as a duplicate. The name lives in a `Circuit_Names`
-   map on the substation's attributes, because a memberless circuit
-   has no member to carry it and `renameCircuits` writes members; the
-   way row edits it, `circuitChoices` reads it, the board pick carries
-   it onto the first member, and clearing the way clears it too.
+   named from the moment it exists**.
+
+   The number is `nextCircuitNumber`: max + 1 across every number in
+   use (member ids, way allocations, and any "Circuit N" name), NOT
+   `nextCircuitId`'s lowest free gap. The gap rule is right for the
+   lasso, where the number is machinery and reusing a freed one keeps
+   the numbering tight. It is wrong for a button somebody presses
+   while reading a board: on a drawing carrying Circuit 2 and Circuit
+   3 it named the new one **Circuit 1** and listed it under them —
+   a row that reads as though the board were being counted backwards.
+   Reported from the screenshots, and the reason this rule is separate
+   from that one rather than a change to it.
+
+   One number serves as id, name and letter, which is the point of
+   taking max + 1: it is always free, so `Circuit_ID`, "Circuit N" and
+   `circuitLetter(N)` cannot drift apart, and the cable labels that
+   read way-then-letter still agree with the schedule.
+
+   The name lives in a `Circuit_Names` map on the substation's
+   attributes, because a memberless circuit has no member to carry it
+   and `renameCircuits` writes members; the way row edits it,
+   `circuitChoices` reads it, the board pick carries it onto the first
+   member, and clearing the way clears it too.
+
+   **And the name box has to be wide enough to read it in.** Reported
+   as "the name still isn't appearing", and it was there the whole
+   time: `.fe-cwrap` is a flex row, `.fe-cname` was `width: 100%` with
+   nothing to stop it shrinking, and a MEMBERLESS circuit puts two
+   more things in that cell — "nothing linked" and "Clear this way".
+   The input was the only shrinkable thing there, so it collapsed to
+   about thirty pixels and showed no character of the name. The cell
+   wraps now and the input keeps a 110px floor.
+
+   Worth reading twice, because the fault survived three rounds of
+   looking for it in the logic: a value test cannot see this. The
+   jsdom harness that clicked the button reported the box's value as
+   "Circuit 4" — correct, and unreadable on screen. jsdom computes no
+   layout, so **a check that reads values will pass while the screen
+   is wrong**; the guard is a style assertion, which is what
+   `checkboardcircuit` now carries.
+
+   It was invisible until a memberless circuit became ordinary. One
+   only existed before when somebody emptied a circuit; a circuit born
+   on a spare way is memberless from birth, so this became the first
+   thing seen after pressing the button.
 2. **The board's Circuit picker** reads `circuitChoices(features)`:
    `circuitsFrom` plus every way allocation on an electric origin that
    no member answers to. A way-only entry names its way and the origin

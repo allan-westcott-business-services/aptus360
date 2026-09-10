@@ -1,3 +1,37 @@
+# One circuit's cut-out is not every circuit's — 10 Sep 2026
+
+Reported from the drawing: two heavy duty cut-outs, both set to
+Circuit 2, with **two LV cables laid to each** — one per circuit — and
+two feeder end points at each (A8/A9 and B8/B9).
+
+The cause was older and wider than the cut-outs. `buildFeederModel`
+takes `msdbIds` and `hdcoIds` and reads absent as "count every one of
+them"; the build never passed either — it passes `circuitId`. So every
+circuit's walk counted every board and every cut-out on the drawing,
+and two circuits over one dig produced two identical sets of runs, each
+carrying the other's boards. The cut-outs are simply where it became
+visible.
+
+- The model now derives both sets from `circuitId` when the caller
+  hands in neither. An explicit set still wins unchanged, because the
+  link box walk narrows by output as well and that is a judgement the
+  circuit alone cannot express; absent both, everything counts, which
+  is what a whole-drawing trace means. On the reported drawing circuit
+  1 goes from nine runs to five and touches neither cut-out; circuit 2
+  keeps three and reaches both.
+- **Levels at the cut-out**: its editor now shows "At the cut-out" —
+  the volt drop and the loop impedance — resolved the way the board's
+  figure is, by reach to the stop the walk numbered a metre or so away
+  on the trench end. Blank with "Run the levels check" until one has
+  run, rather than a zero: an uncomputed figure and a genuine nought
+  read the same on screen and are not the same thing.
+
+No migration. `checkhdcoterminal.mjs` carries the two-circuit case and
+fails with the reported symptom when the fix is removed, proved by
+removing it. Suite 130 of 149.
+
+---
+
 # A flat on a board has no seed — 10 Sep 2026
 
 Reported from the same flats-and-supplies drawing: **"Place the plot

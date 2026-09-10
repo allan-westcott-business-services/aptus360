@@ -221,6 +221,93 @@ const reaches = (sections, x) => sections.some((s) =>
   }
 }
 
+/* ── One circuit's cut-out is not every circuit's ──
+
+   Reported from a real drawing: two cut-outs, both set to Circuit 2,
+   and TWO cables laid to each — one per circuit — with two feeder end
+   points at each, A8/A9 and B8/B9.
+
+   The cause was older and wider than the cut-outs. `buildFeederModel`
+   takes `msdbIds` and `hdcoIds` and treats absent as "count every one
+   of them", and the BUILD never passed either: it passes `circuitId`.
+   So every circuit's walk counted every board and every cut-out on the
+   drawing, and two circuits over one dig came out as two identical
+   sets of runs. The cut-outs are where it became visible. */
+{
+  const twoCircuits = () => {
+    nid = 1;
+    return [
+      { Feature_ID: nid++, Feature_Type: "point", Feature_Role: "substation",
+        Layer_Key: "electric", Geometry: [[0, 0]], Attributes: {} },
+      { Feature_ID: nid++, Feature_Type: "line", Feature_Role: "shape",
+        Layer_Key: "trench", Geometry: [[0, 0], [30, 0], [60, 0], [200, 0]],
+        Attributes: { Line_Type: "trench_main" } },
+      /* One plot on each circuit, so both have something to route. */
+      { Feature_ID: nid++, Feature_Type: "point", Feature_Role: "plot",
+        Layer_Key: "plot", Plot_ID: 5, Geometry: [[60, 0]], Attributes: {} },
+      { Feature_ID: nid++, Feature_Type: "point", Feature_Role: "meter",
+        Layer_Key: "electric", Plot_ID: 5, Geometry: [[60, 0]],
+        Attributes: { Circuit_ID: 1 } },
+      { Feature_ID: nid++, Feature_Type: "point", Feature_Role: "plot",
+        Layer_Key: "plot", Plot_ID: 6, Geometry: [[30, 0]], Attributes: {} },
+      { Feature_ID: nid++, Feature_Type: "point", Feature_Role: "meter",
+        Layer_Key: "electric", Plot_ID: 6, Geometry: [[30, 0]],
+        Attributes: { Circuit_ID: 2 } },
+      /* The cut-out at the far end, set to circuit 2 and nobody else. */
+      cutout([200, 0], { Circuit_ID: 2 }),
+    ];
+  };
+
+  const runFor = (fs, cid) => feederSections(fs, {
+    plotById: () => ({ kva_load: 5 }),
+    circuitId: cid,
+    meterIds: new Set(fs.filter((f) => f.Feature_Role === "meter"
+      && Number(f.Attributes?.Circuit_ID) === cid).map((f) => f.Feature_ID)),
+    seedIds: new Set(fs.filter((f) => f.Feature_Role === "plot"
+      && fs.some((m) => m.Feature_Role === "meter"
+        && Number(m.Plot_ID) === Number(f.Plot_ID)
+        && Number(m.Attributes?.Circuit_ID) === cid)).map((f) => f.Feature_ID)),
+    /* Deliberately NOT passing hdcoIds — the build does not, and that
+       is the whole fault. The circuit is what it passes. */
+  });
+
+  const fs = twoCircuits();
+  const c1 = runFor(fs, 1);
+  const c2 = runFor(fs, 2);
+  if (reaches(c1.sections || [], 200)) {
+    fail("circuit 1 lays its own cable to a cut-out set to circuit 2 \u2014 two "
+      + "cables in the ground where the design has one");
+  }
+  if (!reaches(c2.sections || [], 200)) {
+    fail("the circuit the cut-out names does not reach it");
+  }
+
+  /* The same defaulting covers boards, which is where it came from:
+     a board on circuit 2 is not circuit 1's load. */
+  const withBoard = [...twoCircuits(), { Feature_ID: 400, Feature_Type: "point",
+    Feature_Role: "msdb", Layer_Key: "electric", Geometry: [[200, 0]],
+    Attributes: { Circuit_ID: 2, MSDB_Plot_IDs: [11, 12], MSDB_Total_kVA: 8 } }];
+  const b1 = buildFeederModel(withBoard, {
+    plotById: () => ({ kva_load: 5 }), circuitId: 1,
+    meterIds: new Set([4]), seedIds: new Set([3]),
+  });
+  if (Math.round(b1.cumKva[b1.S] * 10) / 10 !== 5) {
+    fail(`circuit 1 carries another circuit's board: ${b1.cumKva[b1.S]} kVA `
+      + "where only its own plot's 5 was expected");
+  }
+
+  /* And an explicit set still wins: the link box walk narrows by
+     output as well, which the circuit alone cannot express. */
+  const named = buildFeederModel(withBoard, {
+    plotById: () => ({ kva_load: 5 }), circuitId: 2,
+    meterIds: new Set([6]), seedIds: new Set([5]),
+    msdbIds: new Set(),
+  });
+  if (Math.round(named.cumKva[named.S] * 10) / 10 !== 5) {
+    fail("an explicitly empty board set is overruled by the circuit default");
+  }
+}
+
 // 9. The pieces are wired in, not just written.
 {
   const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
@@ -242,6 +329,16 @@ const reaches = (sections, x) => sections.some((s) =>
   }
   if (!/fe-hdco-kva/.test(editor)) {
     fail("a cut-out cannot be given the supply it was agreed");
+  }
+  /* The level at the cut-out, which is the point of terminating a run
+     in one: what the supply taken from it will see. */
+  if (!/At the cut-out/.test(editor)) {
+    fail("the cut-out shows no level, so the figure it exists to carry "
+      + "cannot be read anywhere");
+  }
+  if (!/\["msdb", "hdcutout"\]\.includes\(editing\?\.Feature_Role\)/.test(canvas)) {
+    fail("the canvas never hands the cut-out its figure, so the panel has "
+      + "nothing to show");
   }
 }
 

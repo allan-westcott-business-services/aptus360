@@ -273,8 +273,39 @@ export function buildFeederModel(features = [], opts = {}) {
        membership for the same reason a board does — and for the same
        reason it is decided outside the model rather than in it. */
     hdcoIds = null,
+    /* ── The circuit this walk is for ──
+
+       Membership is decided outside the model and handed in, which is
+       right: the caller knows about link box outputs and the model does
+       not. But `msdbIds` and `hdcoIds` absent means "count every one of
+       them", and the BUILD never passed either — it passes `circuitId`
+       and nothing else.
+
+       So every circuit's walk counted every board and every cut-out on
+       the drawing. Two circuits over one dig came out as two identical
+       sets of runs, each carrying the other's boards, each running its
+       own cable to both cut-outs: the ground holding two cables where
+       the design has one. Reported as "two LV cables to each HDCO",
+       which is the visible corner of it.
+
+       Named here rather than at the call site, because there are two
+       call sites and only one of them had been told. Where the caller
+       DOES hand in a set it is used unchanged — the link box walk
+       narrows by output as well, and that is a judgement this cannot
+       make. */
+    circuitId = null,
     eps = CONNECT_EPS, tol = SNAP_TOL, fallbackKva = 0,
   } = opts;
+
+  /* Given a circuit and no explicit set, the circuit decides. Given
+     neither, every one of them counts — which is what a trace of the
+     whole drawing means and what these defaults were written for. */
+  const ownBoards = msdbIds ?? (circuitId == null ? null : new Set(features
+    .filter((f) => f.Feature_Role === "msdb"
+      && Number(f.Attributes?.Circuit_ID) === Number(circuitId))
+    .map((f) => Number(f.Feature_ID))));
+  const ownCutouts = hdcoIds ?? (circuitId == null ? null
+    : new Set(hdCutoutsOn(features, circuitId).map((f) => Number(f.Feature_ID))));
 
   const nodes = [];
   const adj = new Map();
@@ -798,7 +829,7 @@ export function buildFeederModel(features = [], opts = {}) {
        `msdbIds` is the set of boards this trace should count. Absent,
        every board is counted, which is right for a trace of the whole
        drawing and never happens on a circuit walk. */
-    if (msdbIds && !msdbIds.has(Number(b.Feature_ID))) continue;
+    if (ownBoards && !ownBoards.has(Number(b.Feature_ID))) continue;
     const flats = (b.Attributes?.MSDB_Plot_IDs || []).length;
     if (!flats) continue;
     const at = b.Attributes?.Span_Anchor ?? (b.Geometry || [])[0];
@@ -846,7 +877,7 @@ export function buildFeederModel(features = [], opts = {}) {
      for its service cable. */
   const hdcos = [];
   for (const h of hdCutoutsOn(features)) {
-    if (hdcoIds && !hdcoIds.has(Number(h.Feature_ID))) continue;
+    if (ownCutouts && !ownCutouts.has(Number(h.Feature_ID))) continue;
     const at = hdcoAt(h);
     if (!Array.isArray(at)) continue;
     const nn = nearest(at);

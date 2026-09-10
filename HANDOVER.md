@@ -4563,6 +4563,49 @@ clear of the board, not the ring closing. A ring genuinely closing is
 caught by the double feed (every station reached from both directions)
 or by meeting a *different* primary along the last line.
 
+## One circuit's cut-out is not every circuit's
+
+Reported with the drawing: two heavy duty cut-outs, both set to
+Circuit 2, **two LV cables to each** and two feeder end points at each
+(A8/A9 from circuit 1, B8/B9 from circuit 2).
+
+The cut-outs made it visible; the fault is older and wider.
+`buildFeederModel` takes `msdbIds` and `hdcoIds`, and absent means
+"count every one of them" — which is right for a whole-drawing trace
+and was never true of a build. **The build has never passed either.**
+It passes `circuitId`, and only `spanTrace` derives the sets. So every
+circuit's walk counted every board and every cut-out on the drawing:
+two circuits over one dig came out as two identical sets of nine runs,
+each carrying the other's boards.
+
+Worth sitting with, because it had been shipping for a while and
+looked like a working feature. Two circuits over separate digs never
+show it — each walk only reaches its own trenches, so the extra
+membership costs nothing. It needs a shared dig to become visible, and
+then it shows up as duplicated geometry that reads as a routing quirk
+rather than as membership.
+
+The model now derives both sets from `circuitId` when the caller hands
+in neither. An explicit set still wins: the link box walk narrows by
+output as well, which the circuit alone cannot express. Absent both,
+everything counts, which is what the defaults were written for.
+
+On the reported drawing: circuit 1 drops from nine runs to five and
+touches neither cut-out; circuit 2 keeps three and reaches both.
+
+**Levels at the cut-out.** Its editor shows "At the cut-out" — volt
+drop and loop impedance — through `levelsAtBoard`, which is named for
+the board because that is what wanted it first and is exactly the same
+rule: a fitting standing on the run reads the figure of the stop it
+stands on, resolved by reach because the stop is a separate feature a
+metre or so away at the trench end. Blank with "Run the levels check"
+until one has run, never a zero: an uncomputed figure and a genuine
+nought read the same on screen.
+
+The trace already handles a load-less terminal — `spanTrace` keeps a
+branch that holds a STOP even when it carries no load, for the span
+node case — so no change was needed there.
+
 ## A flat on a board has no seed
 
 Reported with the drawing: **"Place the plot seeds first — 0 seed(s)

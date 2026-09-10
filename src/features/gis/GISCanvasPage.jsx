@@ -2076,6 +2076,11 @@ export default function GISCanvasPage() {
     return worst ? { pct: worst.pct, label: worst.ref || "flat" } : null;
   }, [features, plotList, lookups, elecLevelsAt, scopeServiceCableId]);
 
+  /* Named for the board because that is what wanted it first, and used
+     by the cut-out for the same reason and by the same rule: a fitting
+     standing on the run reads the figure of the stop it stands on. The
+     stop is a separate feature a metre or so away — the point the walk
+     numbered — so this is a reach rather than a lookup by id. */
   const levelsAtBoard = useCallback((board) => {
     if (!elecLevelsAt || !board) return null;
     const at = board.Attributes?.Span_Anchor ?? board.Geometry?.[0];
@@ -25105,7 +25110,11 @@ export default function GISCanvasPage() {
 
              Two objects, one position, and the id of one is not the id
              of the other. */
-          levelsAt={editing?.Feature_Role === "msdb"
+          /* The cut-out reads its own figure the same way the board
+             does: both stand on a stop the walk numbered, and both are
+             asked "what is the level here" by somebody looking at the
+             fitting rather than at the point beside it. */
+          levelsAt={["msdb", "hdcutout"].includes(editing?.Feature_Role)
             ? levelsAtBoard(editing)
             : null}
           msdbTailCable={editing?.Feature_Role === "msdb"

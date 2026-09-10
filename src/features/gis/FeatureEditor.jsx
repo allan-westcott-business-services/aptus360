@@ -2705,6 +2705,38 @@ export default function FeatureEditor({
                 </p>
               </div>
 
+              {/* ── The level at the cut-out ──
+
+                  The whole point of terminating a run in one: what the
+                  supply taken from it will see. The figure belongs to
+                  the stop the walk numbered, which stands a metre or so
+                  away on the trench end — the canvas resolves that by
+                  reach and hands the figure in, exactly as it does for
+                  a board.
+
+                  Blank until the levels check has run, and it says so
+                  rather than showing a zero: a figure nobody has
+                  computed and a genuine nought read the same on screen
+                  and are not the same thing at all. */}
+              <div className="fe-row">
+                <div className="fld">
+                  <span className="fe-lab">At the cut-out</span>
+                  <div className="fe-msdb-at">
+                    {levelsAt?.pct == null
+                      ? <span className="fe-msdb-none">Run the levels check</span>
+                      : <strong>{Number(levelsAt.pct).toFixed(2)}%</strong>}
+                  </div>
+                </div>
+                <div className="fld">
+                  <span className="fe-lab">Loop impedance</span>
+                  <div className="fe-msdb-at">
+                    {levelsAt?.ohms == null
+                      ? <span className="fe-msdb-none">&mdash;</span>
+                      : <strong>{Number(levelsAt.ohms).toFixed(3)} \u03a9</strong>}
+                  </div>
+                </div>
+              </div>
+
               {/* Load, where somebody has agreed one. Zero otherwise,
                   and deliberately: a termination is not a customer, and
                   a figure invented here would size the cable to it for

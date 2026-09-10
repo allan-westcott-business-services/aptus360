@@ -124,6 +124,14 @@ export function bulkDeleteCategories(features = [], opts = {}) {
         ["feederpoint", "feeder end points", role("feederpoint")],
         ["poc", "POC", role("poc")],
         ["substation", "substations", role("substation")],
+        /* The HV ring's plant, each on its own. They are placed for
+           different reasons — the primary is the feed, the ring
+           substations are the chain, the open point is the split —
+           and redoing where the split is should not take the primary
+           with it. */
+        ["primary", "primary substations", role("primary")],
+        ["ringsub", "ring substations (HV chain)", role("ringsub")],
+        ["openpoint", "normally open points", role("openpoint")],
       ],
       gas: [
         ["main", "mains pipe", isMain],
@@ -222,6 +230,12 @@ export function bulkDeleteCategories(features = [], opts = {}) {
     (f) => isLine(f) && typeOf(f).includes("_service") && !isTrench(f, lineTypes), "Lines");
   add("hv", "All HV cables",
     (f) => isLine(f) && typeOf(f) === "elec_hv", "Lines");
+  /* Its own entry, not folded into the one above. One is ours to lay
+     and the other is a record of the incumbent's circuit; clearing
+     "All HV cables" to redraw the incomer should not take the ring
+     the drawing exists to show. */
+  add("hvexisting", "All existing HV circuit (incumbent)",
+    (f) => isLine(f) && typeOf(f) === "elec_hv_existing", "Lines");
   /* Only what the router drew. A cable someone drew by hand is a
      decision, and rebuilding is not the same as discarding. */
   add("generated", "All generated LV feeders",

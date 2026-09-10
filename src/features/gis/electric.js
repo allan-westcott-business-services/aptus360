@@ -55,10 +55,62 @@ export function nextCircuitId(features = []) {
   for (const f of features) {
     const id = f.Attributes?.Circuit_ID;
     if (id != null) used.add(Number(id));
+    /* A way allocation is a claim on the number too. A circuit started
+       on a spare way has no member yet — that is the point of starting
+       it there — and issuing its id again to the next lasso would put
+       two circuits behind one number, told apart by nothing. */
+    const ways = f.Attributes?.Way_Circuits;
+    if (ways && typeof ways === "object") {
+      for (const v of Object.values(ways)) {
+        if (v != null) used.add(Number(v));
+      }
+    }
   }
   let n = 1;
   while (used.has(n)) n++;
   return n;
+}
+
+/* ── Every circuit somebody could put a member on ──
+
+   circuitsFrom lists circuits by their members, which is right for
+   everything that reads a circuit — the build, the report, the menu
+   gate all want circuits that HOLD something. It is wrong for the one
+   moment a circuit has to be offered before it holds anything: just
+   born on a spare way of the substation, waiting for its first board
+   or meter.
+
+   So the pickers read this instead: the membered circuits, plus every
+   way allocation on an electric origin that no member answers to.
+   A way-only entry carries `wayOnly`, the way it sits on and the
+   origin that holds it — the origin because, on a drawing with more
+   than one, whichever origin's board the way was taken on IS the
+   answer to "fed from", and asking again would invite a different
+   one. */
+export function circuitChoices(features = []) {
+  const out = circuitsFrom(features);
+  const have = new Set(out.map((c) => Number(c.id)));
+  for (const o of lvOrigins(features)) {
+    const ways = o.Attributes?.Way_Circuits;
+    if (!ways || typeof ways !== "object") continue;
+    for (const [way, v] of Object.entries(ways)) {
+      if (v == null) continue;
+      const id = Number(v);
+      if (have.has(id)) continue;
+      have.add(id);
+      out.push({
+        id,
+        name: `Circuit ${id}`,
+        letter: circuitLetter(id),
+        meters: [],
+        boards: [],
+        wayOnly: true,
+        way: Number(way),
+        originId: Number(o.Feature_ID),
+      });
+    }
+  }
+  return out.sort((a, b) => a.id - b.id);
 }
 
 /* Plots the circuit will serve: seeds inside the drawn ring that have an
@@ -267,20 +319,46 @@ export function releaseWays(substation, circuitId) {
    to fall out of step. */
 export function circuitsFrom(features = []) {
   const out = new Map();
+  const entry = (key, name, letter) => {
+    if (!out.has(key)) {
+      out.set(key, {
+        id: key,
+        name: name || `Circuit ${key}`,
+        letter: letter || circuitLetter(key),
+        meters: [],
+        /* Boards are members too — see below. Always present, so a
+           reader can count them without asking whether the field
+           exists. */
+        boards: [],
+      });
+    }
+    return out.get(key);
+  };
   for (const m of features) {
     if (m.Feature_Role !== "meter" || m.Layer_Key !== "electric") continue;
     const id = m.Attributes?.Circuit_ID;
     if (id == null) continue;
-    const key = Number(id);
-    if (!out.has(key)) {
-      out.set(key, {
-        id: key,
-        name: m.Attributes.Circuit_Name || `Circuit ${key}`,
-        letter: m.Attributes.Circuit_Letter || circuitLetter(key),
-        meters: [],
-      });
-    }
-    out.get(key).meters.push(m);
+    entry(Number(id), m.Attributes.Circuit_Name, m.Attributes.Circuit_Letter)
+      .meters.push(m);
+  }
+  /* ── A board is a member in its own right ──
+
+     A block of flats has no seeds on the drawing and no drawn meters:
+     the dwellings are a table on the MSDB, and their meters are
+     ASSUMED for the length of a build. So on a flats-only design the
+     circuit's only member is the board — and a rule that counted
+     meters alone made that circuit not exist: the build stayed gated
+     off, every picker was empty, and there was nothing to lasso to
+     change it.
+
+     Boards after meters, so a circuit with both keeps the name its
+     meters carry — one fact, first spelling wins, same as the walk. */
+  for (const b of features) {
+    if (b.Feature_Role !== "msdb") continue;
+    const id = b.Attributes?.Circuit_ID;
+    if (id == null) continue;
+    entry(Number(id), b.Attributes.Circuit_Name, b.Attributes.Circuit_Letter)
+      .boards.push(b);
   }
   return [...out.values()].sort((a, b) => a.id - b.id);
 }

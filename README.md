@@ -1,3 +1,96 @@
+# A circuit without a lasso — 10 Sep 2026
+
+A block of flats fed from an MSDB has no seeds on the drawing and no
+drawn meters — the dwellings are a table on the board — so there was
+nothing for Link to Circuit to draw round, and a flats-only design
+could not make a circuit at all: the build stayed gated off and every
+picker was empty.
+
+- **Born on a spare way**: the substation editor's board grows
+  **+ New circuit** on every spare row. It writes the way map on the
+  draft (like the free button beside it, and for the same reason) and
+  the circuit exists from the save — holding nothing, on the way it
+  will occupy. `nextCircuitId` now counts way allocations, so the
+  number cannot be reissued to the next lasso.
+- **Membered by the board**: the board's Circuit picker reads
+  `circuitChoices` — the membered circuits plus every way-only one,
+  each way-only entry naming its way and the origin whose board holds
+  it (written as `Circuit_Origin_ID` on a two-origin drawing, because
+  that IS the answer to "fed from"). Saving the board is the
+  membership: `circuitsFrom` counts a board as a member in its own
+  right, so the circuit persists, the build gate opens, and
+  `withAssumedMeters` carries the flats in as meters exactly as
+  before.
+- **Completed on save**: saving a board onto a circuit ensures the
+  canvas's half — node A0 on the origin and the LV way booked
+  (`assignWay` reuses one already held, so joining takes no second
+  way) — the same two acts the lasso performs, ensured rather than
+  assumed so a board joining a lasso-born circuit changes nothing.
+- The substation's way rows count the load honestly: a way's figure
+  adds each board's `MSDB_Total_kVA` and says "N flats" beside the
+  meters, and a lasso joining a board-borne circuit counts the board
+  in the way figure too.
+
+No migration. `checkboardcircuit.mjs` drives the birth, the offer, the
+membership and the assumed-meter carry-through, and holds the editor
+and the save to their halves. Suite 129 of 148; the same nineteen
+standing failures as before the change.
+
+---
+
+# The HV ring — 10 Sep 2026
+
+The drawing stopped at the POC. Upstream of it, the standard UK
+arrangement is the one the model could not say: the substation is not
+on a dedicated way at the primary — it is looped in and out of a
+shared 11 kV (sometimes 6.6 kV) circuit, one of several substations in
+series on one way's cable, the far end running back to a second way
+with a normally open point along the route. The ring switches at each
+RMU are load-break switches, so a cable fault anywhere on the chain
+trips the way's breaker at the primary and takes every substation on
+it; supply comes back by sectionalising and closing the open point.
+
+- **Placing**: the electric menu grows an **HV Ring** branch — Primary
+  Substation, Ring Substation, Normally Open Point, and Manually add
+  Existing HV Cable (`elec_hv_existing`, dashed, the incumbent's). The
+  ring substation and the open point snap onto the HV run; the open
+  point takes the cable's bearing and draws as an open switch blade
+  with "NO" beside it. All three go down `Build_Status: existing` —
+  they are the incumbent's plant and the circuit's operating state,
+  and 0208 (once recovered and run) keeps them off the bill.
+- **Recording**: the primary carries `Feed_Way` and `Return_Way` (the
+  feed way's breaker is what protects the whole chain); the site's
+  substation — and any ring substation — carries `HV_Connection`
+  (looped / teed / dedicated) and, when looped or teed, the
+  transformer tee protection and fuse rating, because the tee's own
+  device is the one whose operation takes out that substation alone.
+- **Reading**: `hvRing.js` walks the chain from each primary, in cable
+  order, stopping at the open point. The editor says the result out
+  loud on every station: fed from which primary and way, how many
+  substations up the chain, how many share the leg when the cable
+  faults, and back-feed via the open point. Findings for a ring drawn
+  closed, a chain with no primary, a substation the run does not pass,
+  and an open point standing on nothing. Two lengths drawn TO the
+  substation symbol rather than to each other chain through it — the
+  RMU is the splice. The network trace can start at a primary.
+- Model support: `hvRingModel`, `feedSummary`, `faultCompany`,
+  `HV_LINE_TYPES`, `HV_CONNECTIONS`, `RMU_TEE_PROTECTION`. Bulk delete
+  gains the three plant kinds and the existing HV cable, each on its
+  own so redoing the split does not take the primary with it.
+
+`checkhvring.mjs` drives the walk with the standard arrangement —
+moving the open point flips the feed direction, the closed ring is
+called closed, the dedicated-way substation is left alone — and holds
+the canvas, editor, migration and bulk delete to their parts. Suite
+128 of 147, one not run; the nineteen failures all predate the session
+(checked against a stashed baseline, which fails the same nineteen
+plus the two this session greens). **One migration to run:
+`0211_hv_ring.sql`**, after 0209
+(`0209_hdcutout_role.sql` was found in `supabase/` and moved into
+`supabase/migrations/` this session, which un-crashed `checkhdcutout`).
+
+---
+
 # Link box output routing — 3 Sep 2026
 
 A link box is the remedial answer to high losses: break the run, split

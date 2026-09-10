@@ -32,9 +32,14 @@ import {
 import { bedColour } from "../../lib/bedColours.js";
 import { kvaOf } from "./voltDrop.js";
 import {
-  pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS, ampsFor,
+  pocUnit, circuitLetter, circuitsFrom, circuitChoices, nextCircuitId,
+  SUB_DEFAULTS, ampsFor,
   moveCircuitToWay, compactWays,
 } from "./electric.js";
+import {
+  hvRingModel, feedSummary, faultCompany,
+  HV_CONNECTIONS, RMU_TEE_PROTECTION,
+} from "./hvRing.js";
 
 /* Editing whatever you right-clicked.
 
@@ -490,6 +495,34 @@ export default function FeatureEditor({
      holds — the count is what tells one circuit from another when the
      names are all "Circuit 1", "Circuit 2". */
   const circuits = useMemo(() => circuitsFrom(allFeatures || []), [allFeatures]);
+  /* And the ones a member could be PUT on, which is the membered list
+     plus any circuit just started on a spare way and holding nothing
+     yet. Pickers read this; everything that reads a circuit's contents
+     keeps reading `circuits`. */
+  const choices = useMemo(() => circuitChoices(allFeatures || []), [allFeatures]);
+
+  /* ── The chain, read whole ──
+
+     Which primary feeds this substation, how many stand between, and
+     what the drawing of an open ring is missing — worked out by the
+     model rather than here, so the words the panel says are the words
+     the check tests. Only for the plant that stands on the ring: the
+     walk is a whole-drawing pass, and a plot seed's editor has no
+     business paying for it. */
+  const onHvRing = ["primary", "ringsub", "openpoint", "substation"]
+    .includes(feature.Feature_Role);
+  const hvModel = useMemo(
+    () => (onHvRing ? hvRingModel(allFeatures || []) : null),
+    [onHvRing, allFeatures],
+  );
+  const hvFeed = useMemo(
+    () => (hvModel ? feedSummary(hvModel, feature.Feature_ID) : null),
+    [hvModel, feature.Feature_ID],
+  );
+  const hvCompany = useMemo(
+    () => (hvModel ? faultCompany(hvModel, feature.Feature_ID) : null),
+    [hvModel, feature.Feature_ID],
+  );
 
   /* Circuits sitting on ways beyond the count now typed.
 
@@ -554,14 +587,30 @@ export default function FeatureEditor({
   const wayLoad = (cid) => {
     const c = circuits.find((x) => Number(x.id) === Number(cid));
     if (!c) return null;
-    const kva = c.meters.reduce((t, m) => {
+    let kva = c.meters.reduce((t, m) => {
       const p = plotList.find((x) => x.plot_id === m.Plot_ID);
       const v = p?.kva_load ?? p?.KVA_Load;
       return t + (v != null && v !== "" ? Number(v) : 0);
     }, 0);
+    /* And the boards. A circuit for a block of flats has no drawn
+       meters at all — the board is its member, and leaving its load
+       out showed a way feeding forty-five flats as carrying nothing,
+       which is wrong in the one direction nobody checks.
+
+       MSDB_Total_kVA is the figure the board's own editor keeps on the
+       board (summed from its flats against the consumption table), so
+       this reads the fact rather than working it out a second way. */
+    let flats = 0;
+    for (const b of c.boards || []) {
+      kva += Number(b.Attributes?.MSDB_Total_kVA) || 0;
+      flats += Array.isArray(b.Attributes?.MSDB_Apartments)
+        ? b.Attributes.MSDB_Apartments.length : 0;
+    }
     const amps = ampsFor(kva, outputV);
     return {
       meters: c.meters.length,
+      boards: (c.boards || []).length,
+      flats,
       kva: Math.round(kva * 10) / 10,
       amps: Math.round(amps),
       pct: wayFuse > 0 ? Math.round((amps / wayFuse) * 100) : 0,
@@ -955,6 +1004,12 @@ export default function FeatureEditor({
     : feature.Feature_Role === "hvtt"
       ? (feature.Attributes?.Tee_Kind === "junction"
         ? "Main tee" : "High volume top tee")
+    /* The chain's own words. "Point" for the thing that decides which
+       way every substation on the ring is fed would bury the one fact
+       somebody opened it for. */
+    : feature.Feature_Role === "primary" ? "Primary substation"
+    : feature.Feature_Role === "ringsub" ? "HV substation (on the ring)"
+    : feature.Feature_Role === "openpoint" ? "Normally open point"
     : isPoly ? "Area"
     : isLine ? (classLabel(f, lineTypes) || "Line")
     : "Point";
@@ -1582,24 +1637,57 @@ export default function FeatureEditor({
                     value={f.Attributes?.Circuit_ID ?? ""}
                     onChange={(e) => {
                       const id = e.target.value === "" ? null : Number(e.target.value);
-                      const c = circuits.find((x) => x.id === id);
+                      const c = choices.find((x) => x.id === id);
                       /* Name and letter travel with the id: the flats'
                          meters carry all three, exactly as a drawn
                          meter does, and a circuit named in one place
                          and numbered in another is two answers. */
+                      /* A circuit started on a spare way carries its
+                         origin too, where the drawing has more than
+                         one: whichever substation's board the way was
+                         taken on IS the answer to "fed from", and the
+                         build reads Circuit_Origin_ID before anything
+                         else. On a one-origin drawing nothing is
+                         written, same as the lasso. */
+                      const originWrite = c?.wayOnly
+                        && lvOrigins(allFeatures || []).length > 1
+                        ? { Circuit_Origin_ID: c.originId } : {};
                       setF((prev) => ({ ...prev, Attributes: {
                         ...prev.Attributes,
                         Circuit_ID: id,
                         Circuit_Name: c?.name ?? null,
                         Circuit_Letter: c?.letter ?? null,
+                        ...originWrite,
                         ...(id == null ? { Link_Box_ID: null, Link_Way: null } : {}),
                       } }));
                     }}>
                     <option value="">Not set</option>
-                    {circuits.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
+                    {choices.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                        {c.wayOnly ? ` \u2014 new, on LV way ${c.way}` : ""}
+                      </option>
                     ))}
                   </select>
+                  {/* The road in, said where somebody is stuck. A
+                      flats-only design has nothing to lasso, so an
+                      empty list here used to be a dead end with no
+                      door out of it. */}
+                  {choices.length === 0 && (
+                    <p className="hint">
+                      No circuits yet. Start one on a spare LV way in the
+                      substation&rsquo;s editor (+ New circuit), save it, and it
+                      appears here &mdash; or use Electric &rsaquo; Link to
+                      Circuit where there are plot seeds to draw round.
+                    </p>
+                  )}
+                  {f.Attributes?.Circuit_ID != null
+                    && f.Attributes.Circuit_ID !== feature.Attributes?.Circuit_ID && (
+                    <p className="hint">
+                      The flats join the circuit when this board is saved.
+                      Rebuild the LV network afterwards, so the cable reaches it.
+                    </p>
+                  )}
                 </div>
                 {msdbBox && (
                   <div className="fld">
@@ -2440,6 +2528,148 @@ export default function FeatureEditor({
             </div>
           )}
 
+          {/* ── How this substation hangs off the HV network ──
+
+              The standard arrangement, and the one worth recording:
+              looped in and out of a shared circuit through an RMU,
+              several substations in series on one way's cable. The
+              ring switches either side are load-break switches — a
+              cable fault anywhere on the chain trips the way at the
+              primary and takes every substation on it — so the tee's
+              own protection is the one device whose operation takes
+              out this substation alone, and it is named here.
+
+              On the ring substations too: they are the same object,
+              somebody else's, and "what is between us and the
+              primary" is made of their answers as much as ours. */}
+          {(feature.Feature_Role === "substation"
+            || feature.Feature_Role === "ringsub") && (
+            <>
+              <div className="fld">
+                <label htmlFor="fe-hvconn">HV connection</label>
+                <select id="fe-hvconn" value={f.Attributes.HV_Connection ?? ""}
+                  onChange={(e) => setAttr("HV_Connection")(e.target.value || null)}>
+                  <option value="">&mdash; not recorded &mdash;</option>
+                  {HV_CONNECTIONS.map((c) => (
+                    <option key={c.key} value={c.key}>{c.label}</option>
+                  ))}
+                </select>
+                <p className="hint">
+                  Looped in and out is the usual arrangement: this substation
+                  shares one way&rsquo;s circuit with the others on the chain.
+                </p>
+              </div>
+              {["looped", "teed"].includes(String(f.Attributes.HV_Connection ?? "")) && (
+                <div className="fe-row">
+                  <div className="fld">
+                    <label htmlFor="fe-teeprot">Transformer tee protection</label>
+                    <select id="fe-teeprot"
+                      value={f.Attributes.RMU_Tee_Protection ?? ""}
+                      onChange={(e) => setAttr("RMU_Tee_Protection")(e.target.value || null)}>
+                      <option value="">&mdash; not recorded &mdash;</option>
+                      {RMU_TEE_PROTECTION.map((c) => (
+                        <option key={c.key} value={c.key}>{c.label}</option>
+                      ))}
+                    </select>
+                    <p className="hint">
+                      The ring switches cannot clear a fault; this is the one
+                      device that takes out this substation alone.
+                    </p>
+                  </div>
+                  <div className="fld">
+                    <label htmlFor="fe-teefuse">Tee fuse / setting (A)</label>
+                    <input id="fe-teefuse" type="number" step="1" min="0"
+                      value={f.Attributes.RMU_Tee_Fuse_A ?? ""}
+                      onChange={(e) => setAttr("RMU_Tee_Fuse_A")(e.target.value)} />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* The feed, read off the drawing rather than typed in
+              beside it: from which primary, which way, how far up the
+              chain, and what shares the exposure. Shown on any plant
+              the walk feeds, so a ring substation answers the same
+              question the site's own does. */}
+          {onHvRing && hvFeed && (
+            <p className="hint">
+              {hvFeed}
+              {hvCompany != null && hvCompany > 0 && (
+                ` A cable fault on this leg takes ${hvCompany} other`
+                + ` substation${hvCompany === 1 ? "" : "s"} with it \u2014 the`
+                + " way's breaker at the primary clears it, not the ring"
+                + " switches.")}
+            </p>
+          )}
+          {onHvRing && (hvModel?.findings || [])
+            .filter((x) => x.level === "warn")
+            .map((x, i) => (
+              <p className="fe-warn" key={i}>{x.text}</p>
+            ))}
+
+          {feature.Feature_Role === "primary" && (
+            <>
+              <div className="fe-row">
+                <div className="fld">
+                  <label htmlFor="fe-prim-hv">Circuit voltage (kV)</label>
+                  <select id="fe-prim-hv" value={f.Attributes.HV_Voltage_kV ?? ""}
+                    onChange={(e) => setAttr("HV_Voltage_kV")(
+                      e.target.value ? Number(e.target.value) : null)}>
+                    <option value="">&mdash; not set &mdash;</option>
+                    <option value="11">11</option>
+                    <option value="6.6">6.6</option>
+                  </select>
+                </div>
+                <div className="fld">
+                  <label htmlFor="fe-prim-grid">Fed at (kV)</label>
+                  <input id="fe-prim-grid" type="number" step="1" min="0"
+                    placeholder="33"
+                    value={f.Attributes.Grid_Voltage_kV ?? ""}
+                    onChange={(e) => setAttr("Grid_Voltage_kV")(e.target.value)} />
+                </div>
+              </div>
+              <div className="fe-row">
+                <div className="fld">
+                  <label htmlFor="fe-prim-feed">Feed way</label>
+                  <input id="fe-prim-feed" type="number" step="1" min="1"
+                    value={f.Attributes.Feed_Way ?? ""}
+                    onChange={(e) => setAttr("Feed_Way")(e.target.value)} />
+                  <p className="hint">
+                    The way whose breaker protects the whole chain of cable.
+                  </p>
+                </div>
+                <div className="fld">
+                  <label htmlFor="fe-prim-ret">Return way</label>
+                  <input id="fe-prim-ret" type="number" step="1" min="1"
+                    value={f.Attributes.Return_Way ?? ""}
+                    onChange={(e) => setAttr("Return_Way")(e.target.value)} />
+                  <p className="hint">
+                    Where the ring comes back. Blank where it returns to a
+                    different primary &mdash; place that one too.
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+
+          {feature.Feature_Role === "openpoint" && (
+            <div className="fld">
+              <label htmlFor="fe-nop-a">Angle (&deg;)</label>
+              <input id="fe-nop-a" type="number" step="1"
+                value={f.Attributes.Angle_Deg ?? ""}
+                onChange={(e) => setAttr("Angle_Deg")(
+                  e.target.value === "" ? null : Number(e.target.value))} />
+              <p className="hint">
+                The split the ring runs at in normal running. Everything
+                before it is fed from one end of the chain; closing it
+                back-feeds the rest from the other. The symbol turns with
+                the cable it was placed on &mdash; set the angle here if it
+                was placed in open ground.
+              </p>
+            </div>
+          )}
+
           {feature.Feature_Role === "poc" && (
             <div className="fe-row">
               <div className="fld">
@@ -2530,7 +2760,9 @@ export default function FeatureEditor({
               </div>
               <p className="hint fe-board-hint">
                 <span>
-                  One circuit per way. Defining a circuit takes the next free one.
+                  One circuit per way. Defining a circuit takes the next free
+                  one &mdash; or start one on a spare way here for a block of
+                  flats on an MSDB, and assign it on the board&rsquo;s editor.
                 </span>
                 {/* Closing the gaps in one press.
 
@@ -2602,7 +2834,43 @@ export default function FeatureEditor({
                         </select>
                       )}
                       {cid == null
-                        ? <span className="fe-spare">Spare</span>
+                        ? (
+                          <span className="fe-cwrap">
+                            <span className="fe-spare">Spare</span>
+                            {/* ── A circuit born with no members ──
+
+                                The lasso needs plot seeds with meters,
+                                and a block of flats has none: the
+                                dwellings are a table on an MSDB. So a
+                                circuit for a board starts HERE, on the
+                                way it will occupy, holding nothing —
+                                and the board's own editor then assigns
+                                it, which is the membership.
+
+                                On the draft, like the free button
+                                beside it and for the same reason:
+                                written straight to the database the row
+                                would not move, and Save would put the
+                                old map back over it. Until this board
+                                is saved the circuit does not exist
+                                anywhere. */}
+                            <button type="button" className="fe-free"
+                              title={"Start a circuit on this way \u2014 for a block "
+                                + "of flats on an MSDB, which has no seeds to lasso"}
+                              onClick={() => {
+                                const id = nextCircuitId([
+                                  ...(allFeatures || []),
+                                  { Attributes: f.Attributes },
+                                ]);
+                                setAttr("Way_Circuits")({
+                                  ...(f.Attributes.Way_Circuits || {}),
+                                  [way]: id,
+                                });
+                              }}>
+                              + New circuit
+                            </button>
+                          </span>
+                        )
                         : (
                           <span className="fe-cwrap">
                             <input className="fe-cname"
@@ -2688,7 +2956,14 @@ export default function FeatureEditor({
                               }} />
                             </span>
                             <span className="fe-meters">
-                              &#9889; {load.meters} meter{load.meters === 1 ? "" : "s"}
+                              &#9889; {load.flats > 0
+                                ? <>
+                                    {load.meters > 0
+                                      ? `${load.meters} meter${load.meters === 1 ? "" : "s"} + `
+                                      : ""}
+                                    {load.flats} flat{load.flats === 1 ? "" : "s"}
+                                  </>
+                                : <>{load.meters} meter{load.meters === 1 ? "" : "s"}</>}
                               {" \u00B7 "}{load.kva} kVA
                             </span>
                           </span>

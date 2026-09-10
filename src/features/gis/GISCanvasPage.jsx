@@ -130,6 +130,7 @@ import {
   apartmentLevels, worstApartment, riserDrop, stampLink, linkEnds, linkOrder,
   msdbLoad,
 } from "./msdb.js";
+import { HV_LINE_TYPES } from "./hvRing.js";
 import { printView, drawnBounds } from "./printSheet.js";
 import { inLightingView } from "./lightingView.js";
 import { utilityMenuPress, utilityTint } from "./utilityMenu.js";
@@ -4854,6 +4855,104 @@ export default function GISCanvasPage() {
                falling through would put a circle on top of it. */
             return;
           }
+          if (f.Feature_Role === "primary") {
+            /* ── A square with a square in it ──
+
+               The map convention for a primary: the outer square is
+               the compound, the inset the transformer. Upright like
+               the board, because it is a building and a building does
+               not lean with the cable. Slate rather than the electric
+               layer's colour — it is the incumbent's, and the greys
+               are how this drawing says "not ours" (0197's dashes
+               make the same claim about lines). */
+            const half = Math.max(9, ps.symbolPx * 1.05);
+            ctx.save();
+            ctx.lineWidth = on ? 2.4 : 1.8;
+            ctx.strokeStyle = on ? "#1d4ed8" : (ps.colour ?? "#334155");
+            ctx.fillStyle = "#fff";
+            ctx.beginPath();
+            ctx.rect(p.x - half, p.y - half, half * 2, half * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = on ? "#1d4ed8" : (ps.colour ?? "#334155");
+            const inner = half * 0.45;
+            ctx.beginPath();
+            ctx.rect(p.x - inner, p.y - inner, inner * 2, inner * 2);
+            ctx.fill();
+            ctx.restore();
+            /* The square is the symbol; the circle below would sit on
+               top of it. */
+            return;
+          }
+          if (f.Feature_Role === "ringsub") {
+            /* ── Another substation on the chain ──
+
+               A square like the site's own substation, but dashed and
+               grey: the same object, somebody else's. Drawn so the
+               chain reads — "two substations up from the primary" is
+               a fact about where a cable fault leaves this site, and
+               it belongs on the drawing rather than in a note. */
+            const half = Math.max(7, ps.symbolPx * 0.95);
+            ctx.save();
+            ctx.lineWidth = on ? 2.4 : 1.6;
+            ctx.strokeStyle = on ? "#1d4ed8" : (ps.colour ?? "#64748b");
+            ctx.fillStyle = "#fff";
+            ctx.setLineDash([4, 3]);
+            ctx.beginPath();
+            ctx.rect(p.x - half, p.y - half, half * 2, half * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+            return;
+          }
+          if (f.Feature_Role === "openpoint") {
+            /* ── An open switch, drawn open ──
+
+               Two terminals on the cable's axis and the blade lifted
+               off the far one — the schematic symbol for the split,
+               turned to the run the way the cut-out is, because the
+               thing it says is about THIS cable. A white disc behind
+               it so the dashes of the circuit do not run through the
+               symbol and close the switch by eye. "NO" beside it with
+               zoom, which is what the arrangement is called on every
+               HV schematic. */
+            const deg = Number(f.Attributes?.Angle_Deg);
+            const r0 = Math.max(7, ps.symbolPx);
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            if (Number.isFinite(deg)) ctx.rotate((deg * Math.PI) / 180);
+            ctx.fillStyle = "#fff";
+            ctx.beginPath();
+            ctx.arc(0, 0, r0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = on ? "#1d4ed8" : (ps.colour ?? "#334155");
+            ctx.fillStyle = on ? "#1d4ed8" : (ps.colour ?? "#334155");
+            ctx.lineWidth = on ? 2.2 : 1.8;
+            const term = Math.max(1.8, r0 * 0.24);
+            for (const dx of [-r0 * 0.62, r0 * 0.62]) {
+              ctx.beginPath();
+              ctx.arc(dx, 0, term, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.beginPath();
+            ctx.moveTo(-r0 * 0.62, 0);
+            ctx.lineTo(r0 * 0.55, -r0 * 0.78);
+            ctx.stroke();
+            if (vs > 1.5) {
+              ctx.rotate(Number.isFinite(deg) ? -(deg * Math.PI) / 180 : 0);
+              ctx.font = "700 10px ui-sans-serif, system-ui, sans-serif";
+              ctx.textAlign = "left";
+              ctx.textBaseline = "middle";
+              ctx.fillText("NO", r0 + 3, 0);
+              ctx.textAlign = "left";
+              ctx.textBaseline = "alphabetic";
+            }
+            ctx.restore();
+            /* The switch is the symbol; the circle below would close
+               it. */
+            return;
+          }
           if (f.Feature_Role === "msdb") {
             /* ── A square with DB in it ──
 
@@ -9405,7 +9504,11 @@ export default function GISCanvasPage() {
 
   const traceSources = useCallback((layerKey, kind) => {
     if (kind === "trench") return [];
-    const roles = new Set(["poc", "substation", "source", "governor"]);
+    /* And a primary: the trace token running the HV ring from the
+       board that feeds it is exactly what somebody placing the chain
+       wants to watch. Not `ringsub` or `openpoint` — a station on the
+       circuit is not a source of it. */
+    const roles = new Set(["poc", "substation", "source", "governor", "primary"]);
     return features
       .filter((f) => f.Feature_Type === "point" && f.Layer_Key === layerKey
         && roles.has(f.Feature_Role))
@@ -11341,6 +11444,75 @@ export default function GISCanvasPage() {
            line about span nodes would be noise on every cable edit. */
         await syncNodeCables({ silent: true, srcFeatures: src });
       }
+
+      /* ── Saving a board onto a circuit completes the circuit ──
+
+         Membership is the editor's write; the origin node and the LV
+         way are the canvas's, exactly as they are when the lasso makes
+         a circuit — createCircuitFrom books the way and stands node A0
+         on the origin the moment membership is written. A circuit
+         started on a spare way of the substation has neither member
+         nor node until its first board saves, so this is that moment,
+         and both halves are ensured here.
+
+         Ensured, not made: a board joining a lasso-born circuit finds
+         the node and the way already there and this does nothing. The
+         way's booking reuses the one the circuit holds (assignWay
+         looks before allocating), so no second way is taken. */
+      const savedCid = before?.Feature_Role === "msdb"
+        ? changes?.Attributes?.Circuit_ID ?? null : null;
+      if (savedCid != null) {
+        const world = features.map((x) => (x.Feature_ID === id ? after : x));
+        const cid = Number(savedCid);
+        const letter = after.Attributes?.Circuit_Letter || circuitLetter(cid);
+        const name = after.Attributes?.Circuit_Name || `Circuit ${cid}`;
+        /* The origin the circuit names, else the drawing's first — the
+           same order the build reads them in. */
+        const origins = lvOrigins(world);
+        const named = after.Attributes?.Circuit_Origin_ID;
+        const origin = (named != null
+          ? origins.find((o) => Number(o.Feature_ID) === Number(named))
+          : null) ?? origins[0] ?? null;
+
+        if (origin) {
+          const wayHeld = origins.some((o) =>
+            Object.values(o.Attributes?.Way_Circuits || {})
+              .some((v) => Number(v) === cid));
+          if (!wayHeld) {
+            const kva = Number(after.Attributes?.MSDB_Total_kVA) || 0;
+            const way = assignWay(origin, cid, kva);
+            if (way.full) {
+              setStatus(`${name}: all ${way.ways} LV ways are taken \u2014 `
+                + "add a way on the substation, or free one.");
+              setTimeout(() => setStatus(""), 8000);
+            } else if (way.changed) {
+              await updateFeature(projectId, origin.Feature_ID, {
+                Attributes: { ...origin.Attributes, Way_Circuits: way.map },
+              });
+            }
+          }
+          if (!originNodeFor(world, cid)) {
+            await addFeature({
+              Layer_Key: "electric",
+              Feature_Type: "point",
+              Feature_Role: "spannode",
+              Geometry: [origin.Geometry[0]],
+              Label: `Point ${spanLabel(letter, 0)}`,
+              Attributes: {
+                Circuit_ID: cid, Circuit_Name: name, Circuit_Letter: letter,
+                Span_Seq: 0, Span_Label: spanLabel(letter, 0),
+                Connects: [origin.Feature_ID],
+              },
+            });
+            await load(projectId);
+            setStatus(`${name} (${letter}): the board's flats are its members `
+              + `\u2014 node ${spanLabel(letter, 0)} stands at the `
+              + `${origin.Feature_Role === "substation" ? "substation" : "POC"}. `
+              + "Run Build LV Network to route the cable to the board.");
+            setTimeout(() => setStatus(""), 10000);
+          }
+        }
+      }
     }
     catch (e) { setError(e.message); await load(projectId); throw e; }
   }
@@ -11502,7 +11674,10 @@ export default function GISCanvasPage() {
           : role === "pumping" ? "the pumping station"
             : role === "feederpoint" ? "the feeder end point"
               : role === "linkbox" ? "the link box"
-                : "the POC";
+                : role === "primary" ? "the primary substation"
+                  : role === "ringsub" ? "the ring substation"
+                    : role === "openpoint" ? "the normally open point"
+                      : "the POC";
     setStatus(`Click where ${what} goes \u2014 on the main to sit on it, `
       + "Esc to cancel");
   }
@@ -11895,6 +12070,70 @@ export default function GISCanvasPage() {
             ? `, and ${ins.writes.length} point(s) beyond it moved up.`
             : "."));
         setTimeout(() => setStatus(""), 8000);
+        setError("");
+      } catch (e) { setError(e.message); }
+      return;
+    }
+
+    /* ── The HV ring's plant ──
+
+       A primary goes where the primary is — usually off the site
+       entirely — so it places at the click and snaps to nothing. A
+       ring substation and the open point stand ON the circuit, so
+       they snap to an HV run within a click's reach, and the open
+       point takes the cable's bearing the way a valve does, because
+       an open switch drawn across nothing in particular reads as a
+       dot rather than a split.
+
+       All three go down as EXISTING. They are the incumbent's plant
+       and the circuit's operating state — facts the design connects
+       to, not things anybody prices — and Build_Status is the field
+       0208 reads to keep them off the bill. In open ground the ring
+       plant still places, said out loud, because the chain can be
+       recorded before its route is drawn. */
+    if (role === "primary" || role === "ringsub" || role === "openpoint") {
+      let angle = null;
+      if (role !== "primary") {
+        const reach = Math.max(0.5, SNAP_PX / (view.scale || 1));
+        let best = null;
+        for (const t of visible) {
+          if (t.Feature_Type !== "line" || t.Layer_Key !== "electric") continue;
+          if (!HV_LINE_TYPES.includes(String(t.Attributes?.Line_Type ?? ""))) continue;
+          const r = nearestOnPolyline(point, t.Geometry || []);
+          if (r && r.d <= reach && (!best || r.d < best.d)) best = { ...r, line: t };
+        }
+        if (best) {
+          point = best.q;
+          note = ` on ${best.line.Label ?? "the HV run"}`;
+          const g = best.line.Geometry || [];
+          const a = g[best.index - 1];
+          const b = g[best.index];
+          if (a && b) {
+            const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+            if (d) angle = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+          }
+        } else {
+          note = " \u2014 not on an HV run yet, draw the circuit through it later";
+        }
+      }
+      const count = features.filter((f) => f.Feature_Role === role).length + 1;
+      const label = role === "primary" ? `Primary ${count}`
+        : role === "ringsub" ? `HV Substation ${count}`
+          : `NOP ${count}`;
+      try {
+        await addFeature({
+          Layer_Key: "electric",
+          Feature_Type: "point",
+          Feature_Role: role,
+          Geometry: [point],
+          Label: label,
+          Attributes: role === "openpoint"
+            ? { Build_Status: "existing", Angle_Deg: angle }
+            : { Build_Status: "existing" },
+        });
+        await load(projectId);
+        setStatus(`${label} placed${note}`);
+        setTimeout(() => setStatus(""), 7000);
         setError("");
       } catch (e) { setError(e.message); }
       return;
@@ -12339,7 +12578,8 @@ export default function GISCanvasPage() {
        circuit half-named two ways would be decided by scan order. On a
        one-origin site none of this exists and nothing is written. */
     const namedNow = existing
-      ? (existing.meters.map((m) => m.Attributes?.Circuit_Origin_ID)
+      ? ([...existing.meters, ...(existing.boards || [])]
+        .map((m) => m.Attributes?.Circuit_Origin_ID)
         .find((x) => x != null) ?? null)
       : null;
     let origin = sub;
@@ -12369,8 +12609,16 @@ export default function GISCanvasPage() {
       ? [...existing.meters.filter((m) =>
         !meters.some((x) => Number(x.Feature_ID) === Number(m.Feature_ID))), ...meters]
       : meters;
-    const kva = circuitKva(onCircuit, (id) => plotList.find((p) => p.plot_id === id), 0,
-      (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null);
+    /* And the boards already on it. A circuit born for a block of
+       flats holds its load on the board, not on drawn meters, and a
+       way figure that left it out would say a circuit gaining two
+       plots draws what two plots draw. */
+    const boardKva = (existing?.boards || [])
+      .reduce((t, b) => t + (Number(b.Attributes?.MSDB_Total_kVA) || 0), 0);
+    const kva = Math.round((circuitKva(onCircuit,
+      (id) => plotList.find((p) => p.plot_id === id), 0,
+      (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null)
+      + boardKva) * 100) / 100;
     /* Reuses the way the circuit already holds — assignWay looks for it
        before allocating — so joining does not consume a second one. */
     const way = assignWay(origin, circuitId, kva);
@@ -23045,6 +23293,47 @@ export default function GISCanvasPage() {
                           : "No trench drawn yet to route along"}
                         disabled={!!busy || !projectId || !hasTrench}
                         onClick={routeSupply} />
+
+                      {/* ── The chain the substation hangs off ──
+
+                          Upstream of the POC. The standard arrangement
+                          is not a dedicated way: the substation is
+                          looped in and out of a shared 11 kV circuit,
+                          several substations in series on one way's
+                          cable, the ring returning to a second way with
+                          a normally open point along it. These place
+                          the record of that — the primary, the other
+                          substations on the chain, the split — and the
+                          incumbent's cable to draw the route with. All
+                          of it goes down as existing: it is theirs, and
+                          nothing here is bought. */}
+                      <MenuBranch label="HV Ring"
+                        hint="How the substation is fed \u2014 the shared circuit upstream of the POC">
+                        <MenuItem label="+ Primary Substation" indent
+                          hint="The 33/11 kV primary whose way feeds the chain"
+                          disabled={!projectId}
+                          onClick={() => placeNode("primary", "electric")} />
+                        <MenuItem label="+ Ring Substation" indent
+                          hint="Another substation looped into the same circuit \u2014 click on the HV run to sit on it"
+                          disabled={!projectId}
+                          onClick={() => placeNode("ringsub", "electric")} />
+                        <MenuItem label="+ Normally Open Point" indent
+                          hint="Where the ring runs split \u2014 click on the HV run"
+                          disabled={!projectId}
+                          onClick={() => placeNode("openpoint", "electric")} />
+                        {[["elec_hv_existing", "Manually add Existing HV Cable"]]
+                          .map(([key, label]) => {
+                            /* From lineTypes like the feeder menu, so a
+                               database that has not run 0211 renders no
+                               button rather than a drawing tool that
+                               writes a type nothing styles. */
+                            const t = lineTypes.find((x) => x.Type_Key === key);
+                            return t ? (
+                              <MenuItem key={key} label={label} indent
+                                active={isDrawing(key)} onClick={() => drawAs(key)} />
+                            ) : null;
+                          })}
+                      </MenuBranch>
 
                       <MenuBranch label="Feeder Cable"
                         hint="Drawn by hand, or routed along the trenches">

@@ -1,13 +1,40 @@
 # Aptus360 — handover notes
 
-The migrations folder now runs to **0203**. The line here said 0195 and
-0196-not-yet-run, which was true when it was written; 0196 to 0203 have
-landed since, and **0198 is absent** — `checkdevelopers` reads it and
-throws. Whether 0196 onwards have been pasted into Supabase is not
-something this file can know, since there is no migration runner: check
-the SQL editor's history before assuming the schema matches the folder.
+The migrations folder now runs to **0211**. Three numbers are absent
+and READ or REQUIRED by something: **0198** (`checkdevelopers` reads it
+and throws), and **0208 / 0210** — both written and described in this
+file, both "not yet run" at the time, and neither committed. 0209 was
+found sitting in `supabase/` rather than `supabase/migrations/` and
+moved in (which is what was crashing `checkhdcutout`); `checkmigrations`
+now names all three absences. Recover them from the live project rather
+than rewriting them — 0208 is the whole existing-plant bill rule and
+0210 carries it verbatim plus the HDCO naming. Whether anything from
+0196 onwards has been pasted into Supabase is not something this file
+can know, since there is no migration runner: check the SQL editor's
+history before assuming the schema matches the folder.
 
-**Last session was a GIS session.** Three faults in Build LV Network
+**Last session added the HV ring, then circuits without a lasso.** The
+HV ring is how the substation is actually fed, upstream of the POC:
+looped in and out of a shared 11 kV circuit, several substations in
+series on one way's cable, a normally open point splitting the ring in
+normal running. Three new roles (`primary`, `ringsub`, `openpoint`),
+one new line type (`elec_hv_existing`), RMU facts on the substation,
+and a pure chain-walk in `hvRing.js` the editor reads out loud. See
+the README's entries and **The HV ring** below. **Migration 0211 to
+run**, after 0209. Nothing in the LV build changed; the new roles are
+in none of the walks' role lists, so the chain is a record the LV
+network sits under, not a participant in it.
+
+The second half is for a design that is just flats on an MSDB, which
+had nothing to lasso and so no way to make a circuit: a circuit can
+now be **born on a spare LV way** in the substation editor and
+**membered by the board** — `circuitsFrom` counts a board as a member,
+`circuitChoices` offers the newborn way-only circuit to the board's
+picker, and saving the board ensures node A0 and the way booking, the
+same two acts the lasso performs. **No migration for this half.** See
+**Circuits without a lasso** below.
+
+**The session before was a GIS session.** Three faults in Build LV Network
 and the link box are fixed and written up as recurring faults 28, 29
 and 30: cable size overrides lost on every rebuild, a link box's label
 and sequence not following the walk, and a `Span_Anchor` left behind
@@ -16,7 +43,7 @@ in the process — `feederPoints.js` and `anchorFollow.js` — because in
 both cases the rule could not be tested where it lived. Three checks
 were added. Nothing in the schema changed; no migration was written.
 
-**The session before was a test-suite session**, not a feature one. `npm test`
+**Before that was a test-suite session**, not a feature one. `npm test`
 now runs — it did not before, and this file used to record that as a
 standing fact. See **Testing** for what changed and what still fails.
 Four faults it uncovered are fixed: the `reducer` feature role (0187),
@@ -167,6 +194,8 @@ caught a fault that had already shipped at least once.
 | `node checklayintrench.mjs` | Laying a run along a trench: whole, own shape, allowed |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
+| `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checkboardcircuit.mjs` | A circuit born on a spare way, membered by a board |
 | `node checktrace.mjs` | One token to the fork, two after it |
 | `node checkdupes.mjs` | One dialog and one producer per piece of state |
 | `node checkbomroles.mjs` | The bill counts what is bought, not the markers |
@@ -4459,6 +4488,135 @@ on screen rather than leaving it absent: a run's size is held again on
 the span node that feeds the volt drop sum, which is fault 13, and only
 the canvas can write both.
 
+## The HV ring
+
+How the substation is fed, upstream of the POC. The standard
+arrangement is not a dedicated way at the primary: the substation is
+**looped in and out of a shared 11 kV circuit** through its RMU, one of
+several substations in series on one way's cable, the far end running
+back to a second way of the same primary (or another) with a
+**normally open point** along the route. In normal running the ring is
+split at that point, so each substation sits on a radial chain. The
+RMU's ring switches are load-break switches and cannot clear a cable
+fault — only the feed way's breaker at the primary can, and it takes
+every substation on the chain when it does. Supply comes back by
+sectionalising and closing the open point.
+
+Each fact has its own feature, and the split of duties is the same as
+everywhere else on the canvas:
+
+- **`primary`** — the 33/11 kV primary. `Feed_Way` and `Return_Way` on
+  its attributes name the ways of its board this circuit uses. Placed
+  flat at the click, usually off the site entirely.
+- **`ringsub`** — another secondary substation on the same circuit.
+  Snaps onto the HV run; drawn as a dashed grey square, because it is
+  the same object as the site's substation and somebody else's.
+- **`openpoint`** — the split. Snaps onto the HV run and takes the
+  cable's bearing (an `Angle_Deg` like the valve's); drawn as an open
+  switch blade with "NO" beside it, on a white disc so the circuit's
+  dashes do not close it by eye.
+- **`elec_hv_existing`** — the incumbent's circuit cable, dashed, in
+  the 0197 family: the `_existing` suffix defaults `Build_Status` to
+  `existing`, digEstimate charges nothing, `mainsOnLayer` never offers
+  it a joint, and 0208 (once recovered and run) keeps it off the bill.
+  The site's own loop-in tails stay `elec_hv`.
+- The site's substation (and any `ringsub`) carries **`HV_Connection`**
+  — looped / teed / dedicated — and, when looped or teed,
+  `RMU_Tee_Protection` (fuse switch or circuit breaker) and
+  `RMU_Tee_Fuse_A`: the one device whose operation takes out that
+  substation alone.
+
+All three plant roles are written with `Build_Status: "existing"` at
+placement, which is the field 0208 reads. **They are in none of the LV
+walks' role lists** — not an origin, not a fitting, not a trace source
+except `primary`, which was added to `traceSources` so the token can
+run the ring — so the chain is a record the LV network sits under, not
+a participant in it. `metredSeedsInside`, `buildFeederModel` and the
+bill know nothing of them, deliberately.
+
+**`hvRing.js` is the model**, pure and tested where it lives:
+`hvRingModel` attaches plant to the runs (five metres, the upstream.js
+rule for a symbol placed beside a cable), stitches lengths end to end
+(three quarters of a metre) **and through shared plant** — two lengths
+drawn TO the substation symbol rather than to each other are one
+circuit, because the RMU is the splice — then walks from each primary
+in cable order, stopping at an open point or another primary.
+`feedSummary` says the result: fed from which primary and way, how far
+up the chain, back-feed via the open point. `faultCompany` counts what
+shares the leg. Findings: a ring drawn closed (fed from both
+directions with no open point placed), HV cable with no primary, a
+substation the run does not pass (unless `HV_Connection` is
+`dedicated`, which is the one arrangement where being off the chain is
+the point), an open point standing on no cable, a feed way nobody
+recorded, and a branch in what should be a chain.
+
+The editor reads the model rather than working the feed out for
+itself — the words the panel says are the words `checkhvring.mjs`
+tests. The walk is only computed when the opened feature is HV plant
+or the substation, because it is a whole-drawing pass.
+
+One wrinkle earned in the walk: a leg **skips its own starting
+primary**. The in and out cables both stand on the primary, so a walk
+hopping between them passes its own start — which is the walk getting
+clear of the board, not the ring closing. A ring genuinely closing is
+caught by the double feed (every station reached from both directions)
+or by meeting a *different* primary along the last line.
+
+## Circuits without a lasso
+
+Link to Circuit works by drawing round plot seeds that carry meters,
+and membership is written on those meters. A design that is just flats
+fed from an MSDB has neither: the dwellings are a TABLE on the board
+(0205/0206), their meters are ASSUMED for the length of a build by
+`withAssumedMeters`, and `circuitsFrom` counted drawn meters alone —
+so on a flats-only drawing no circuit could ever exist. The build
+stayed gated off ("No circuits yet — draw round the plot seeds"), the
+board's Circuit picker was empty, and there was no door out.
+
+The flow now, in the order somebody uses it:
+
+1. **Substation editor, spare way row → + New circuit.** Writes the
+   way map on the DRAFT — like the "free" button beside it, and for
+   the reason recorded there: written straight to the database the row
+   does not move, and Save puts the old map back. The circuit exists
+   from the save, holding nothing, on the way it will occupy.
+2. **The board's Circuit picker** reads `circuitChoices(features)`:
+   `circuitsFrom` plus every way allocation on an electric origin that
+   no member answers to. A way-only entry names its way and the origin
+   whose board holds it; picking it on a drawing with more than one
+   origin writes `Circuit_Origin_ID`, because whichever substation's
+   board the way was taken on IS the answer to "fed from".
+3. **Saving the board is the membership.** `circuitsFrom` now counts
+   an msdb carrying `Circuit_ID` as a member in its own right (a
+   `boards` array beside `meters`, meters first so a named circuit
+   keeps its name). Everything downstream follows from that one
+   change: the menu gate opens, the report lists it, and
+   `withAssumedMeters` turns the flats into meters on the circuit for
+   the build exactly as before.
+4. **The save completes the canvas's half.** `saveFeature` on a board
+   with a circuit ensures node A0 stands on the origin and the LV way
+   is booked — the same two acts `createCircuitFrom` performs when the
+   lasso makes a circuit, ENSURED rather than made, so a board joining
+   a lasso-born circuit finds both there and changes nothing.
+   `assignWay` reuses a way the circuit already holds, so no second
+   way is taken.
+
+Honest numbers where they were silently short: the substation's way
+rows add each board's `MSDB_Total_kVA` and read "⚡ 2 meters + 45
+flats · N kVA"; a lasso joining a board-borne circuit counts the
+board's load in the way figure; and `nextCircuitId` counts way
+allocations, so the number a newborn circuit holds cannot be reissued
+to the next lasso — two circuits behind one id, told apart by nothing,
+is the fault that rule prevents.
+
+What was deliberately NOT done: memberless way-only circuits are
+invisible to `circuitsFrom` on purpose — the build, the report and the
+gate all want circuits that hold something, and only the pickers read
+`circuitChoices`. A way-only circuit that never gains a member shows
+on the substation board as "nothing linked" with the existing free
+button, which is the honest state of it. No migration: everything
+here is attributes the schema already carries.
+
 ## What's built
 
 26 screens across 8 areas.
@@ -4474,7 +4632,8 @@ Plus the **GIS Canvas**: basemap import and calibration, drawing with
 snapping, vertex editing, plot seeds with per-plot meters, joints,
 network tracing, undo/redo, trenching and routing, auto-service, feeder
 cables, gas and water networks, span nodes, volt drop, BOM, circuit
-report, bulk edit and delete.
+report, bulk edit and delete, and the HV ring (primary, chain
+substations, normally open point, existing HV cable).
 
 **Operations** — Call-offs (phases, team assignment, work days,
 energisation per utility), Planning (timeline, dependencies, lag,

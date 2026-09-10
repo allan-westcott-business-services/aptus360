@@ -71,6 +71,33 @@ export function nextCircuitId(features = []) {
   return n;
 }
 
+/* ── The name a circuit is born with ──
+
+   "Circuit N", where N starts at the circuit's own id and walks past
+   any name already spoken for. Starting at the id keeps name, number
+   and letter agreeing — circuitLetter's rule, the drawing's letter and
+   the schedule's number have to agree, and a circuit called "Circuit
+   4" wearing letter B would put a third spelling beside them. Walking
+   past clashes is for the drawing where somebody has renamed a circuit
+   BY HAND to a number that is not its own: their name stands (a rename
+   is a decision), and the newborn takes the next free one rather than
+   arriving as a duplicate told apart by nothing.
+
+   On an unrenamed drawing the two rules are one rule: circuits 1 and 2
+   exist, the next id is 3, "Circuit 3" is free, and that is its name.
+
+   `extraNames` is for names that exist only on a draft — a second
+   circuit started before the first was saved lives nowhere else. */
+export function nextCircuitName(id, features = [], extraNames = []) {
+  const taken = new Set(
+    [...circuitChoices(features).map((c) => c.name), ...extraNames]
+      .filter(Boolean).map((s) => String(s).trim().toLowerCase()),
+  );
+  let n = Math.max(1, Number(id) || 1);
+  while (taken.has(`circuit ${n}`)) n++;
+  return `Circuit ${n}`;
+}
+
 /* ── Every circuit somebody could put a member on ──
 
    circuitsFrom lists circuits by their members, which is right for
@@ -98,9 +125,14 @@ export function circuitChoices(features = []) {
       const id = Number(v);
       if (have.has(id)) continue;
       have.add(id);
+      /* The name the circuit was born with, held on the origin whose
+         way it occupies — a memberless circuit has no member to carry
+         its name, and deriving `Circuit ${id}` here would un-name one
+         born as Circuit 3 onto a reused lower id. Falls back to the
+         derivation only for allocations older than the map. */
       out.push({
         id,
-        name: `Circuit ${id}`,
+        name: (o.Attributes?.Circuit_Names || {})[id] || `Circuit ${id}`,
         letter: circuitLetter(id),
         meters: [],
         boards: [],

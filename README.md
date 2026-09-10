@@ -6,12 +6,19 @@ nothing for Link to Circuit to draw round, and a flats-only design
 could not make a circuit at all: the build stayed gated off and every
 picker was empty.
 
-- **Born on a spare way**: the substation editor's board grows
-  **+ New circuit** on every spare row. It writes the way map on the
-  draft (like the free button beside it, and for the same reason) and
-  the circuit exists from the save — holding nothing, on the way it
-  will occupy. `nextCircuitId` now counts way allocations, so the
-  number cannot be reissued to the next lasso.
+- **Born on a spare way, and born named**: the substation editor's
+  board grows **+ New circuit** on every spare row. It writes the way
+  map on the draft (like the free button beside it, and for the same
+  reason) and the circuit exists from the save — holding nothing, on
+  the way it will occupy, **carrying the next sequential name from the
+  moment it exists**: circuits 1 and 2 on the drawing make it
+  "Circuit 3". `nextCircuitName` starts at the circuit's own id (so
+  name, number and letter agree) and walks past any name a hand
+  rename has already spoken for; the name lives in a `Circuit_Names`
+  map on the substation — a memberless circuit has no member to carry
+  it — is editable in the way row, travels onto the board at
+  membership, and clears with the way. `nextCircuitId` now counts way
+  allocations, so the number cannot be reissued to the next lasso.
 - **Membered by the board**: the board's Circuit picker reads
   `circuitChoices` — the membered circuits plus every way-only one,
   each way-only entry naming its way and the origin whose board holds
@@ -29,7 +36,11 @@ picker was empty.
 - The substation's way rows count the load honestly: a way's figure
   adds each board's `MSDB_Total_kVA` and says "N flats" beside the
   meters, and a lasso joining a board-borne circuit counts the board
-  in the way figure too.
+  in the way figure too. The flat count reads `boardFlatCount` — the
+  picked plots (`MSDB_Plot_IDs`, the current mechanism) first, the
+  manual apartment table as fallback — because counting the table
+  alone read "0 meters" on a way carrying a real board kVA, a count
+  and a figure disagreeing about the same object on the same line.
 
 No migration. `checkboardcircuit.mjs` drives the birth, the offer, the
 membership and the assumed-meter carry-through, and holds the editor

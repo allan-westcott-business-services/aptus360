@@ -35,6 +35,26 @@ export const FLOORS = [
    past which somebody has probably meant two boards. */
 export const TYPICAL_MAX = 45;
 
+/* ── How many dwellings a board serves ──
+
+   One answer, because the board has held its flats two ways: as plots
+   PICKED onto it (`MSDB_Plot_IDs`, the current mechanism — the flats
+   are rows on the Plots tab, ticked on in the board's editor) and as
+   a manual table (`MSDB_Apartments`, the original one). The picked
+   plots win where both exist, since they are what the load, the
+   levels and the bill are worked from.
+
+   Written for the substation's way rows, which counted the flats from
+   the manual table alone — so a way feeding a board of picked plots
+   read "0 meters" while carrying the board's whole kVA, a count and a
+   figure disagreeing about the same object on the same line. */
+export function boardFlatCount(feature) {
+  const picked = feature?.Attributes?.MSDB_Plot_IDs;
+  if (Array.isArray(picked) && picked.length) return picked.length;
+  const rows = feature?.Attributes?.MSDB_Apartments;
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
 export function apartmentRows(feature) {
   const raw = feature?.Attributes?.MSDB_Apartments;
   if (!Array.isArray(raw)) return [];

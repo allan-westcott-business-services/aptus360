@@ -4579,7 +4579,16 @@ The flow now, in the order somebody uses it:
    way map on the DRAFT — like the "free" button beside it, and for
    the reason recorded there: written straight to the database the row
    does not move, and Save puts the old map back. The circuit exists
-   from the save, holding nothing, on the way it will occupy.
+   from the save, holding nothing, on the way it will occupy — **and
+   named from the moment it exists**: `nextCircuitName` gives the next
+   sequential "Circuit N" (circuits 1 and 2 make it Circuit 3),
+   starting at the circuit's own id so name, number and letter agree,
+   and walking past any name a hand rename has spoken for so a newborn
+   never arrives as a duplicate. The name lives in a `Circuit_Names`
+   map on the substation's attributes, because a memberless circuit
+   has no member to carry it and `renameCircuits` writes members; the
+   way row edits it, `circuitChoices` reads it, the board pick carries
+   it onto the first member, and clearing the way clears it too.
 2. **The board's Circuit picker** reads `circuitChoices(features)`:
    `circuitsFrom` plus every way allocation on an electric origin that
    no member answers to. A way-only entry names its way and the origin
@@ -4603,8 +4612,12 @@ The flow now, in the order somebody uses it:
 
 Honest numbers where they were silently short: the substation's way
 rows add each board's `MSDB_Total_kVA` and read "⚡ 2 meters + 45
-flats · N kVA"; a lasso joining a board-borne circuit counts the
-board's load in the way figure; and `nextCircuitId` counts way
+flats · N kVA" — the count through `boardFlatCount`, which reads the
+picked plots (`MSDB_Plot_IDs`) first and the manual apartment table as
+fallback, because the first cut counted the table alone and a board of
+one picked plot showed "0 meters" against its real 1.5 kVA on the same
+line; a lasso joining a board-borne circuit counts the board's load in
+the way figure; and `nextCircuitId` counts way
 allocations, so the number a newborn circuit holds cannot be reissued
 to the next lasso — two circuits behind one id, told apart by nothing,
 is the fault that rule prevents.

@@ -26,13 +26,14 @@ import { servedPlots, JOINT_KINDS, straightJointWarning,
   jointCables, cableEndsAt, servicesAt } from "./joints.js";
 import {
   FLOORS, msdbLoad, apartmentLevels, worstApartment, flatsFromPlots,
-  plotsAsSeeds, plotsOnBoards,
+  plotsAsSeeds, plotsOnBoards, boardFlatCount,
   servedFlats, riserDrop, outputDrop, msdbSupply,
 } from "./msdb.js";
 import { bedColour } from "../../lib/bedColours.js";
 import { kvaOf } from "./voltDrop.js";
 import {
   pocUnit, circuitLetter, circuitsFrom, circuitChoices, nextCircuitId,
+  nextCircuitName,
   SUB_DEFAULTS, ampsFor,
   moveCircuitToWay, compactWays,
 } from "./electric.js";
@@ -599,12 +600,15 @@ export default function FeatureEditor({
 
        MSDB_Total_kVA is the figure the board's own editor keeps on the
        board (summed from its flats against the consumption table), so
-       this reads the fact rather than working it out a second way. */
+       this reads the fact rather than working it out a second way.
+       The count comes from boardFlatCount for the same reason: the
+       flats are picked plots on the current mechanism and a manual
+       table on the original one, and counting only the table read
+       "0 meters" against a real kVA on the same line. */
     let flats = 0;
     for (const b of c.boards || []) {
       kva += Number(b.Attributes?.MSDB_Total_kVA) || 0;
-      flats += Array.isArray(b.Attributes?.MSDB_Apartments)
-        ? b.Attributes.MSDB_Apartments.length : 0;
+      flats += boardFlatCount(b);
     }
     const amps = ampsFor(kva, outputV);
     return {
@@ -2862,10 +2866,29 @@ export default function FeatureEditor({
                                   ...(allFeatures || []),
                                   { Attributes: f.Attributes },
                                 ]);
-                                setAttr("Way_Circuits")({
-                                  ...(f.Attributes.Way_Circuits || {}),
-                                  [way]: id,
-                                });
+                                /* Named the moment it exists, and
+                                   sequentially: circuits 1 and 2 on the
+                                   drawing make this one Circuit 3. The
+                                   draft's own unsaved names ride along
+                                   as extras, so two circuits started
+                                   before one save cannot share a name.
+                                   Both maps in one update — a way with
+                                   no name is the state this exists to
+                                   remove. */
+                                const name = nextCircuitName(id,
+                                  allFeatures || [],
+                                  Object.values(f.Attributes.Circuit_Names || {}));
+                                setF((prev) => ({ ...prev, Attributes: {
+                                  ...prev.Attributes,
+                                  Way_Circuits: {
+                                    ...(prev.Attributes.Way_Circuits || {}),
+                                    [way]: id,
+                                  },
+                                  Circuit_Names: {
+                                    ...(prev.Attributes.Circuit_Names || {}),
+                                    [id]: name,
+                                  },
+                                } }));
                               }}>
                               + New circuit
                             </button>
@@ -2875,8 +2898,23 @@ export default function FeatureEditor({
                           <span className="fe-cwrap">
                             <input className="fe-cname"
                               aria-label={`Name of the circuit on way ${way}`}
-                              value={circuitNames[cid] ?? circuit?.name ?? `Circuit ${cid}`}
-                              onChange={(e) => setCircuitName(cid, e.target.value)} />
+                              value={circuitNames[cid] ?? circuit?.name
+                                ?? (f.Attributes.Circuit_Names || {})[cid]
+                                ?? `Circuit ${cid}`}
+                              onChange={(e) => {
+                                setCircuitName(cid, e.target.value);
+                                /* A memberless circuit has no member to
+                                   carry a rename — renameCircuits writes
+                                   members and would touch nothing — so
+                                   its name lives on this board's map
+                                   until the first member takes it on. */
+                                if (!circuit) {
+                                  setAttr("Circuit_Names")({
+                                    ...(f.Attributes.Circuit_Names || {}),
+                                    [cid]: e.target.value,
+                                  });
+                                }
+                              }} />
                             {/* A way allocated to a circuit that has no
                                 meters on it.
 
@@ -2935,7 +2973,19 @@ export default function FeatureEditor({
                                     for (const k of Object.keys(map)) {
                                       if (Number(map[k]) === Number(cid)) delete map[k];
                                     }
-                                    setAttr("Way_Circuits")(map);
+                                    /* And the name it was born with:
+                                       left behind, a later circuit
+                                       reusing the id would arrive
+                                       wearing this one's name. One
+                                       update, so a cancel puts both
+                                       back together. */
+                                    const names = { ...(f.Attributes.Circuit_Names || {}) };
+                                    delete names[cid];
+                                    setF((prev) => ({ ...prev, Attributes: {
+                                      ...prev.Attributes,
+                                      Way_Circuits: map,
+                                      Circuit_Names: names,
+                                    } }));
                                   }}>
                                   Clear this way
                                 </button>

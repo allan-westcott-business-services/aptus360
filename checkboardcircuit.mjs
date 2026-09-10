@@ -15,9 +15,9 @@
    because on a two-origin drawing that IS the answer to "fed from". */
 import { readFileSync } from "node:fs";
 import {
-  circuitsFrom, circuitChoices, nextCircuitId,
+  circuitsFrom, circuitChoices, nextCircuitId, nextCircuitName,
 } from "./src/features/gis/electric.js";
-import { withAssumedMeters } from "./src/features/gis/msdb.js";
+import { withAssumedMeters, boardFlatCount } from "./src/features/gis/msdb.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -113,6 +113,57 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
   }
 }
 
+// 4b. Born named, and named in sequence.
+{
+  nid = 1;
+  /* Circuits 1 and 2 exist; the next id is 3 and its name is Circuit 3 —
+     the two rules are one rule on an unrenamed drawing. */
+  const world = [meter(1, 1), meter(2, 2)];
+  const id = nextCircuitId(world);
+  if (id !== 3) fail("with circuits 1 and 2, the next id is not 3");
+  if (nextCircuitName(id, world) !== "Circuit 3") {
+    fail("with Circuit 1 and Circuit 2 on the drawing, the newborn is not Circuit 3");
+  }
+
+  /* A hand rename stands, and the newborn walks past it rather than
+     arriving as a duplicate: id 3 is free, but somebody has called
+     another circuit "Circuit 3", so the name moves on to Circuit 4. */
+  const renamed = [meter(1, 1), meter(2, 2)];
+  renamed[1].Attributes.Circuit_Name = "Circuit 3";
+  if (nextCircuitName(nextCircuitId(renamed), renamed) !== "Circuit 4") {
+    fail("a newborn arrives wearing a name somebody already gave another circuit");
+  }
+
+  /* A custom name frees nothing and blocks nothing: "Front Street" on
+     circuit 1 leaves the numbers alone. */
+  const custom = [meter(1, 1), meter(2, 2)];
+  custom[0].Attributes.Circuit_Name = "Front Street";
+  if (nextCircuitName(nextCircuitId(custom), custom) !== "Circuit 3") {
+    fail("a custom name disturbs the sequence");
+  }
+
+  /* Two circuits started before one save: the draft's unsaved names
+     ride along as extras, so they cannot share a name. */
+  if (nextCircuitName(4, world, ["Circuit 3", "Circuit 4"]) !== "Circuit 5") {
+    fail("a second unsaved newborn shares the first one's name");
+  }
+
+  /* The substation stores the birth name, and the picker reads it —
+     a memberless circuit has no member to carry its name. */
+  nid = 1;
+  const s = sub({ Way_Circuits: { 1: 3 }, Circuit_Names: { 3: "Circuit 3" } });
+  const c = circuitChoices([s]).find((x) => x.id === 3);
+  if (!c || c.name !== "Circuit 3") {
+    fail("the stored birth name is not the name the picker offers");
+  }
+  /* And a stored rename travels the same road. */
+  s.Attributes.Circuit_Names[3] = "Block A risers";
+  const r = circuitChoices([s]).find((x) => x.id === 3);
+  if (!r || r.name !== "Block A risers") {
+    fail("renaming a memberless circuit on the board does not reach the picker");
+  }
+}
+
 // 5. The board's flats reach the build as meters on the circuit — the
 //    membership means what membership means.
 {
@@ -148,6 +199,36 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
   }
 }
 
+// 5b. The way row's flat count reads the board the way the board reads
+//     itself. The screenshot that caught this: a board of one PICKED
+//     plot on Circuit 3, its 1.5 kVA arriving on the way while the
+//     count beside it read "0 meters" — the count was taken from the
+//     manual apartment table alone, and this board keeps its flats as
+//     picked plots.
+{
+  const picked = { Attributes: { MSDB_Plot_IDs: [19], MSDB_Total_kVA: 1.5 } };
+  if (boardFlatCount(picked) !== 1) {
+    fail("a board of one picked plot does not count as one flat");
+  }
+  const table = { Attributes: { MSDB_Apartments: [
+    { id: "a1" }, { id: "a2" }, { id: "a3" },
+  ] } };
+  if (boardFlatCount(table) !== 3) {
+    fail("a board on the original manual table loses its count");
+  }
+  /* Both present: the picked plots win, because they are what the
+     load, the levels and the bill are worked from. */
+  const both = { Attributes: {
+    MSDB_Plot_IDs: [19, 20], MSDB_Apartments: [{ id: "a1" }],
+  } };
+  if (boardFlatCount(both) !== 2) {
+    fail("with both mechanisms present the count does not follow the picked plots");
+  }
+  if (boardFlatCount({ Attributes: {} }) !== 0) {
+    fail("an empty board does not count zero");
+  }
+}
+
 // 6. The pieces are wired in, not just written.
 {
   const editor = readFileSync("src/features/gis/FeatureEditor.jsx", "utf8");
@@ -155,6 +236,16 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
 
   if (!/\+ New circuit/.test(editor)) {
     fail("the substation editor offers no way to start a circuit on a spare way");
+  }
+  if (!/nextCircuitName\(id,/.test(editor)) {
+    fail("the newborn is not named at birth, so it arrives as a bare number");
+  }
+  if (!/Circuit_Names: \{\s*\n?\s*\.\.\.\(prev\.Attributes\.Circuit_Names \|\| \{\}\),\s*\n?\s*\[id\]: name,/.test(editor)) {
+    fail("the birth name is not stored on the substation's map, so it has no home until a member carries it");
+  }
+  if (!/flats \+= boardFlatCount\(b\)/.test(editor)) {
+    fail("the way rows count flats their own way instead of the board's way, "
+      + "which is how a board of picked plots read 0 meters against a real kVA");
   }
   if (!/choices\.map\(\(c\) => \(/.test(editor)) {
     fail("the board's picker still reads only membered circuits, so a newborn one cannot be assigned");
@@ -164,8 +255,9 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
   }
   /* The spare-way button writes the DRAFT, like the free button beside
      it: written straight to the database the row would not move, and
-     Save would put the old map back over it. */
-  if (!/setAttr\("Way_Circuits"\)\(\{\s*\n?\s*\.\.\.\(f\.Attributes\.Way_Circuits \|\| \{\}\),\s*\n?\s*\[way\]: id,/.test(editor)) {
+     Save would put the old map back over it. Way and name land in one
+     update — a way with no name is the state this exists to remove. */
+  if (!/Way_Circuits: \{\s*\n?\s*\.\.\.\(prev\.Attributes\.Way_Circuits \|\| \{\}\),\s*\n?\s*\[way\]: id,/.test(editor)) {
     fail("the new circuit is not written to the draft's way map");
   }
   /* Saving the board completes the circuit: node A0 and the LV way are

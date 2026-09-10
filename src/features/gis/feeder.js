@@ -2530,8 +2530,23 @@ export function spanTrace(features = [], nodeId, opts = {}) {
        with different figures, and the table showed one leg twice.
 
        So the exception is for a circuit's walk. An output's walk goes
-       where its own plots are. */
-    if (cum[i] <= 0 && (rootFeature || !hasSpanNode.has(i))) continue;
+       where its own plots are.
+
+       ── And a branch the cable is laid down carries the walk ──
+
+       `cum` is load, and a run terminating in a heavy duty cut-out has
+       none: the cut-out demands a cable without being a customer. The
+       stop exception did not save it either — the stop stands at the
+       FAR end, and the eighteen nodes between the origin and it hold
+       no load and no stop, so the walk was cut at the first of them
+       and the whole leg vanished. One leg of 11.9 m came back for a
+       circuit with two supplies and two cut-outs on it, and the levels
+       report showed the circuit not at all.
+
+       Demand is per-walk, so this is safe for an output: a cut-out on
+       another output is not in this walk's set and its branch is not
+       demanded here. */
+    if (!carriesCable(M, i) && (rootFeature || !hasSpanNode.has(i))) continue;
     if (!kids.has(parent[i])) kids.set(parent[i], []);
     kids.get(parent[i]).push(i);
   }

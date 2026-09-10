@@ -1,3 +1,33 @@
+# Levels at the cut-out, and a circuit fed through boards — 10 Sep 2026
+
+Two faults, both in the levels check, both reported from one drawing:
+four MSDBs on Circuit 1, two supplies and two heavy duty cut-outs on
+Circuit 2. Circuit 1 was refused — "Circuit 1 has no supplies on it —
+nothing to trace" — and Circuit 2 did not appear at all.
+
+- **The check walked the raw drawing.** A board's flats are not meters
+  on the canvas, so a circuit whose only members are boards had no
+  members at all here. `withAssumedMeters` is what the build and the
+  node labels have always used; `runLevelsCheck` was the third reader
+  of the same drawing and the one nobody had told. Circuit 1 now
+  traces five legs.
+- **The trace pruned the run to the cut-out.** It drops branches
+  carrying no load, keeping one that holds a STOP — which saves a span
+  node at the end of a dead trench, and did not save this: a cut-out's
+  stop is at the FAR end, and the nodes between the origin and it hold
+  neither load nor a stop, so the walk was cut at the first of them.
+  One leg of 11.9 m came back for a circuit with two supplies and two
+  cut-outs. The walk reads `carriesCable` now, the same rule the build
+  uses, and Circuit 2 traces three legs — B1, and B2 and B3 at the two
+  cut-outs.
+
+No migration. `checkhdcoterminal.mjs` carries both, and the levels case
+needed a fixture with bare ground between the last plot and the
+cut-out: an earlier one ran straight from plot to cut-out and passed
+with the fix removed. Suite 130 of 149.
+
+---
+
 # One circuit's cut-out is not every circuit's — 10 Sep 2026
 
 Reported from the drawing: two heavy duty cut-outs, both set to

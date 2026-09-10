@@ -15,7 +15,7 @@
 import { readFileSync } from "node:fs";
 import {
   buildFeederModel, feederSections, endOfLineNodes, junctionNodes,
-  carriesCable,
+  carriesCable, spanTrace,
 } from "./src/features/gis/feeder.js";
 import {
   hdCutoutsOn, hdcoKva, hdcoAt, isTerminal,
@@ -308,6 +308,63 @@ const reaches = (sections, x) => sections.some((s) =>
   }
 }
 
+/* ── The levels have to REACH the cut-out ──
+
+   Reported: no levels at either cut-out, and the circuit carrying them
+   missing from the Run Levels Check report altogether — one leg of
+   11.9 m for a circuit with two supplies and two cut-outs on it.
+
+   The trace walks the same tree the build does, and prunes branches
+   carrying no load. It keeps one that holds a STOP, which is what
+   saves a span node at the end of a dead trench. Neither saved a run
+   to a cut-out: the cut-out's stop stands at the FAR end, and the
+   nodes between the origin and it hold no load and no stop, so the
+   walk was cut at the first of them and the whole leg disappeared.
+
+   The build knew about demand; the trace did not. Same tree, two
+   readers, one told. */
+{
+  const fs = world([cutout([200, 0], { Circuit_ID: 1 })]);
+  /* ── Bare ground between the last load and the cut-out ──
+
+     The trench needs vertices along it that hold neither load nor a
+     stop, because those are what the walk was cut at. Without them the
+     cut-out's own stop is the very next node and the old rule saves
+     the branch by accident: an earlier version of this fixture ran
+     straight from the plot to the cut-out and passed with the fix
+     removed, proving nothing. */
+  const dig = fs.find((f) => f.Feature_Type === "line");
+  dig.Geometry = [[0, 0], [30, 0], [60, 0], [100, 0], [140, 0], [170, 0], [200, 0]];
+  /* The stop the build would have placed at the cut-out. */
+  fs.push({ Feature_ID: 95, Feature_Type: "point", Feature_Role: "feederpoint",
+    Layer_Key: "electric", Geometry: [[200, 0]], Label: "Point A2",
+    Attributes: { Circuit_ID: 1, Span_Seq: 2, Span_Label: "A2" } });
+  /* And the origin stop the walk starts from. */
+  fs.push({ Feature_ID: 96, Feature_Type: "point", Feature_Role: "feederpoint",
+    Layer_Key: "electric", Geometry: [[0, 0]], Label: "Point A0",
+    Attributes: { Circuit_ID: 1, Span_Seq: 0, Span_Label: "A0" } });
+  /* A stop at the plot, so the circuit has an ordinary leg as well. */
+  fs.push({ Feature_ID: 97, Feature_Type: "point", Feature_Role: "feederpoint",
+    Layer_Key: "electric", Geometry: [[60, 0]], Label: "Point A1",
+    Attributes: { Circuit_ID: 1, Span_Seq: 1, Span_Label: "A1" } });
+
+  const r = spanTrace(fs, 96, {
+    circuitId: 1,
+    plotById: () => ({ kva_load: 5 }),
+    nrsById: () => null,
+    stopAt: "spannodes",
+  });
+  if (r.error) fail(`the levels trace refused the circuit: ${r.error}`);
+  const stops = (r.legs || []).map((l) => Number(l.stopId));
+  if (!stops.includes(95)) {
+    fail("the levels trace never reaches the cut-out, so it has no figure to "
+      + `show \u2014 legs stopped at ${JSON.stringify(stops)}`);
+  }
+  if (!stops.includes(97)) {
+    fail("reaching the cut-out has cost the ordinary leg to the plot");
+  }
+}
+
 // 9. The pieces are wired in, not just written.
 {
   const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
@@ -339,6 +396,15 @@ const reaches = (sections, x) => sections.some((s) =>
   if (!/\["msdb", "hdcutout"\]\.includes\(editing\?\.Feature_Role\)/.test(canvas)) {
     fail("the canvas never hands the cut-out its figure, so the panel has "
       + "nothing to show");
+  }
+  /* And the levels CHECK reads the drawing the way the build and the
+     labels do: a circuit whose only members are boards has no members
+     at all on the raw drawing, and was refused as having no supplies. */
+  const lv = canvas.slice(canvas.indexOf("function runLevelsCheck"),
+    canvas.indexOf("function runLevelsCheck") + 2000);
+  if (!/withAssumedMeters/.test(lv)) {
+    fail("the levels check walks the raw drawing, so a circuit fed through "
+      + "MSDBs reads as having no supplies on it");
   }
 }
 

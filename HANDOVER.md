@@ -4563,6 +4563,55 @@ clear of the board, not the ring closing. A ring genuinely closing is
 caught by the double feed (every station reached from both directions)
 or by meeting a *different* primary along the last line.
 
+## Levels at the cut-out, and a circuit fed through boards
+
+Reported with the drawing: no levels at either cut-out, **"Circuit 1
+has no supplies on it — nothing to trace"** about a circuit feeding 65
+flats through four MSDBs, and Circuit 2 absent from the report
+entirely. Two faults, both in the levels check.
+
+**`runLevelsCheck` walked the raw drawing.** A board's flats live in
+`MSDB_Plot_IDs` and are not meters on the canvas, so `circuitMembership`
+found nothing for a circuit whose only members are boards, and the
+trace refused it. `withAssumedMeters` is what the BUILD has always used
+and what the node labels use; this was the third reader of the same
+drawing and the one that had not been told — **recurring fault 27
+exactly**, and the third instance of it in this file. The reader that
+was not told sees a circuit with fewer things on it and says so with
+confidence.
+
+**And the trace pruned the run to a cut-out.** `spanTrace` drops
+branches carrying no load, with one exception: a branch holding a STOP
+is kept, which is what saves a span node at the end of a dead trench.
+Neither saved this. A cut-out's stop stands at the FAR end of the run,
+and the nodes between the origin and it hold no load and no stop — so
+the walk was cut at the first of them and the whole leg vanished. One
+leg of 11.9 m for a circuit with two supplies and two cut-outs on it,
+and no figure at either cut-out.
+
+The walk now asks `carriesCable`, which is the rule the build's own
+walk uses. Demand is per-walk, so an output of a link box is unaffected:
+a cut-out on another output is not in this walk's set and its branch is
+not demanded here.
+
+**The build knew about demand and the trace did not — same tree, two
+readers, one told.** That is the second time in this session's work on
+the cut-out that a rule was taught to the router and not to the thing
+that reports on it; `carriesCable` exists precisely so there is one
+place to teach, and both these faults are readers that were not routed
+through it. If a third turns up, look for a `cum[i] > 0` that should be
+`carriesCable`.
+
+**A fixture that proved nothing, again.** The first levels case ran the
+trench straight from the plot to the cut-out, so the cut-out's own stop
+was the very next node and the stop exception saved the branch by
+accident: the case passed with the fix removed. It now has bare
+vertices between the last load and the cut-out, which is what the real
+drawing has eighteen of. Second time this session — see the cut-out
+section for the first — and the same lesson: **when a fixture is
+simpler than the drawing, the rule it tests is not the rule that
+broke.**
+
 ## One circuit's cut-out is not every circuit's
 
 Reported with the drawing: two heavy duty cut-outs, both set to

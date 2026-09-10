@@ -21688,7 +21688,27 @@ export default function GISCanvasPage() {
   function runLevelsCheck(opts = {}) {
     const { srcFeatures = null, stopAt = "spannodes" } =
       (opts && opts.nativeEvent) ? {} : opts;
-    const src = srcFeatures || features;
+    /* ── The flats on a board are load like any other ──
+
+       This walked the raw drawing, where a board is one point with
+       nothing hanging off it: its flats live in `MSDB_Plot_IDs` and are
+       not meters on the canvas. So a circuit whose only members are
+       boards had no members at all here, and the check refused it —
+       "Circuit 1 has no supplies on it — nothing to trace" — about a
+       circuit feeding sixty-five flats through four boards.
+
+       `withAssumedMeters` is what the BUILD has always used for this,
+       and what the labels beside each node use. This was the third
+       reader of the same drawing and the one that had not been told,
+       which is recurring fault 27 exactly: the reader that was not told
+       sees a circuit with fewer things on it and says so with
+       confidence. */
+    const src = withAssumedMeters(srcFeatures || features, {
+      plotList,
+      configs: lookups?.propertyConfigs || [],
+      propertyTypes: lookups?.propertyTypes || [],
+      consumption: lookups?.houseTypeConsumption || [],
+    });
 
     const circuits = circuitsFrom(src);
     if (!circuits.length) {

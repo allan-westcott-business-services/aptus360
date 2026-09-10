@@ -11735,6 +11735,37 @@ export default function GISCanvasPage() {
     return hit;
   }
 
+  /* ── The mains dig under a click ──
+
+     For a fitting placed before any cable exists: a heavy duty cut-out
+     at the end of a mains trench, which the build then runs out to.
+
+     Mains only. A service trench is a plot's own spur and a cut-out on
+     one is the plot's cut-out, which is a different thing with a
+     different symbol; and the router lays feeders along the mains dig,
+     so a cut-out on a service would ask for a cable down a trench the
+     feeder walk does not use. */
+  function mainsTrenchAt(pointWorld) {
+    const clickPx = toPx(pointWorld);
+    let hit = null;
+    for (const t of visible) {
+      if (t.Feature_Type !== "line") continue;
+      if (!isTrenchType(t.Attributes?.Line_Type, lineTypes)) continue;
+      if (/service/i.test(String(t.Attributes?.Line_Type ?? ""))) continue;
+      const g = t.Geometry || [];
+      if (g.length < 2) continue;
+      const pxLine = g.map((m) => toPx(m)).map((q) => [q.x, q.y]);
+      const r = nearestOnPolyline([clickPx.x, clickPx.y], pxLine);
+      if (r && r.d <= SNAP_PX && (!hit || r.d < hit.d)) {
+        const a = g[r.index - 1];
+        const b = g[r.index];
+        hit = { d: r.d, line: t, index: r.index,
+          q: [a[0] + (b[0] - a[0]) * r.t, a[1] + (b[1] - a[1]) * r.t] };
+      }
+    }
+    return hit;
+  }
+
   function drawnMainAt(pointWorld) {
     const clickPx = toPx(pointWorld);
     let hit = null;
@@ -11788,13 +11819,31 @@ export default function GISCanvasPage() {
        conductor at a different voltage, and not a service, which has a
        cut-out of its own at the plot. */
     if (role === "hdcutout") {
+      /* ── Two places a cut-out belongs ──
+
+         Spliced into an LV feeder that already exists, which is what
+         0209 built: the cable runs through it, no break, no point.
+
+         Or at the END of a mains trench, before any cable is drawn —
+         the thing the run terminates in. Nothing is assigned to it, so
+         the router had no reason to come: a branch with no load is
+         worth nothing to a walk that follows load. It is worth a cable
+         now, and the cut-out says so by standing there.
+
+         The feeder is tried first. A cut-out clicked onto a drawn
+         cable is being spliced into that cable, and the trench under
+         it is the same ground — reading the trench first would take
+         the through-run case away from somebody who has one. */
       const hit = lvFeederAt(point);
-      if (!hit) {
-        setError("A heavy duty cut-out goes on an LV feeder cable \u2014 click on"
-          + " one. Not an HV cable, and not a service.");
+      const dig = hit ? null : mainsTrenchAt(point);
+      if (!hit && !dig) {
+        setError("A heavy duty cut-out goes on an LV feeder cable, or on the "
+          + "end of a mains trench for the network to run out to \u2014 click on "
+          + "one. Not an HV cable, and not a service.");
         setPlantPlace(null);
         return;
       }
+      const onLine = hit ?? dig;
 
       /* ── Where on the run ──
 
@@ -11811,7 +11860,7 @@ export default function GISCanvasPage() {
          Falls back to the point on the run nearest the click, so a long
          straight span with no vertex near the pointer still takes the
          fitting where it was aimed. */
-      const onThis = snapTargets([hit.line], { includeMidpoints: true });
+      const onThis = snapTargets([onLine.line], { includeMidpoints: true });
       let best = null;
       for (const t of onThis) {
         /* A target carries `point`, not x and y. Read as x/y it came
@@ -11824,14 +11873,15 @@ export default function GISCanvasPage() {
         if (best == null || d < best.d) best = { d, q };
       }
       const reachM = SNAP_PX / (view.scale || 1);
-      const at = (best && best.d <= reachM) ? [best.q[0], best.q[1]] : hit.q;
+      const at = (best && best.d <= reachM) ? [best.q[0], best.q[1]] : onLine.q;
 
-      /* Turned to lie along the cable. The segment it landed on, not
-         the whole run: a feeder bends, and the angle that matters is
-         the one under the symbol. */
-      const g = hit.line.Geometry || [];
-      const a = g[hit.index - 1];
-      const b = g[hit.index];
+      /* Turned to lie along the cable, or along the dig where there is
+         no cable yet. The segment it landed on, not the whole run: a
+         feeder bends, and the angle that matters is the one under the
+         symbol. */
+      const g = onLine.line.Geometry || [];
+      const a = g[onLine.index - 1];
+      const b = g[onLine.index];
       const angle = (a && b && Math.hypot(b[0] - a[0], b[1] - a[1]))
         ? (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI
         : null;
@@ -11846,12 +11896,21 @@ export default function GISCanvasPage() {
           Attributes: {
             Angle_Deg: angle,
             /* The run it sits on, stated rather than worked out later
-               from whatever happens to be nearest. */
-            On_Cable_ID: hit.line.Feature_ID,
+               from whatever happens to be nearest. Only where there IS
+               a cable: on a bare trench this is the cut-out the cable
+               will be built OUT to, and naming a trench as the cable
+               it is spliced into would be a lie the next reader has no
+               way to catch. */
+            ...(hit ? { On_Cable_ID: hit.line.Feature_ID } : {}),
             /* Its circuit is the cable's: a fitting on a run belongs to
                the run, and reading it off the cable keeps the two from
-               disagreeing when one is edited. */
-            ...(hit.line.Attributes?.Circuit_ID != null ? {
+               disagreeing when one is edited.
+
+               A cut-out on a bare trench has no cable to read it from,
+               so it is left unset and its editor asks. The build says
+               so plainly rather than guessing: a cut-out on no circuit
+               is reached by nobody, the same as a meter on none. */
+            ...(hit?.line.Attributes?.Circuit_ID != null ? {
               Circuit_ID: hit.line.Attributes.Circuit_ID,
               Circuit_Name: hit.line.Attributes.Circuit_Name ?? null,
               Circuit_Letter: hit.line.Attributes.Circuit_Letter ?? null,
@@ -11859,9 +11918,13 @@ export default function GISCanvasPage() {
           },
         });
         await load(projectId);
-        setStatus(`Heavy duty cut-out placed on ${hit.line.Attributes?.Circuit_Name
-          ?? "the feeder"}`);
-        setTimeout(() => setStatus(""), 4000);
+        setStatus(hit
+          ? `Heavy duty cut-out placed on ${hit.line.Attributes?.Circuit_Name
+            ?? "the feeder"}`
+          : "Heavy duty cut-out placed on the mains trench \u2014 give it a "
+            + "circuit in its editor, then Auto Build LV Network runs the "
+            + "cable out to it and puts a feeder end point on it.");
+        setTimeout(() => setStatus(""), hit ? 4000 : 9000);
       } catch (e) { setError(e.message); }
       setPlantPlace(null);
       return;
@@ -16270,16 +16333,34 @@ export default function GISCanvasPage() {
       plotLabel: (id) => plotList.find((p) => p.plot_id === id)?.plot_number ?? id,
     });
     if (!blockers.ok && !opts.anyway) {
-      const say = (list) => list.map((x) => x.label).join(", ");
+      const say = (list) => list.map((x) => x.label).filter(Boolean).join(", ");
+      /* ── Called what they are ──
+
+         "2 plots with no service trench: , ." is what this said about
+         two EV charge points: a supply has no plot number, so the
+         labels came out empty, and it was calling them plots on top of
+         that. A message naming nothing is a message somebody has to go
+         and find the answer to themselves.
+
+         So the two kinds are counted apart and each is named as its
+         own kind. Where a list is all supplies the word "plot" does
+         not appear in it at all. */
+      const kindOf = (list) => {
+        const supplies = list.filter((x) => x.isSupply).length;
+        const plots = list.length - supplies;
+        const bit = (n, one, many) => (n ? `${n} ${n === 1 ? one : many}` : "");
+        return [bit(plots, "plot", "plots"),
+          bit(supplies, "supply", "supplies")].filter(Boolean).join(" and ");
+      };
       setError(
         [
           blockers.noCircuit.length
-            ? `${blockers.noCircuit.length} plot${blockers.noCircuit.length === 1 ? "" : "s"}`
-              + ` not on a circuit: ${say(blockers.noCircuit)}.`
+            ? `${kindOf(blockers.noCircuit)} not on a circuit: `
+              + `${say(blockers.noCircuit)}.`
             : "",
           blockers.noService.length
-            ? `${blockers.noService.length} plot${blockers.noService.length === 1 ? "" : "s"}`
-              + ` with no service trench: ${say(blockers.noService)}.`
+            ? `${kindOf(blockers.noService)} with no service trench: `
+              + `${say(blockers.noService)}.`
             : "",
           "Build LV Network lays cable to the plots a circuit owns, along the"
             + " trenches that are drawn \u2014 it cannot reach these. Flats fed from"

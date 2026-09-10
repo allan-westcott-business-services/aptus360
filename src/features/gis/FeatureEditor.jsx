@@ -1011,6 +1011,7 @@ export default function FeatureEditor({
     /* The chain's own words. "Point" for the thing that decides which
        way every substation on the ring is fed would bury the one fact
        somebody opened it for. */
+    : feature.Feature_Role === "hdcutout" ? "Heavy duty cut-out"
     : feature.Feature_Role === "primary" ? "Primary substation"
     : feature.Feature_Role === "ringsub" ? "HV substation (on the ring)"
     : feature.Feature_Role === "openpoint" ? "Normally open point"
@@ -2653,6 +2654,71 @@ export default function FeatureEditor({
                     different primary &mdash; place that one too.
                   </p>
                 </div>
+              </div>
+            </>
+          )}
+
+          {feature.Feature_Role === "hdcutout" && (
+            <>
+              {/* ── Which circuit runs out to it ──
+
+                  A cut-out spliced into a feeder took the cable's
+                  circuit when it was placed, and this shows it. One
+                  placed on a bare mains trench has no cable to read it
+                  from, and until it names a circuit the build has no
+                  reason to come: the router walks a circuit, and a
+                  fitting on none is reached by nobody.
+
+                  `choices` rather than `circuits`, so a circuit just
+                  started on a spare LV way can be picked here too — a
+                  terminal on a run of its own is exactly the case with
+                  no members to have made one. */}
+              <div className="fld">
+                <label htmlFor="fe-hdco-circuit">Circuit</label>
+                <select id="fe-hdco-circuit"
+                  value={f.Attributes.Circuit_ID ?? ""}
+                  onChange={(e) => {
+                    const id = e.target.value === "" ? null : Number(e.target.value);
+                    const c = choices.find((x) => x.id === id);
+                    setF((prev) => ({ ...prev, Attributes: {
+                      ...prev.Attributes,
+                      Circuit_ID: id,
+                      Circuit_Name: c?.name ?? null,
+                      Circuit_Letter: c?.letter ?? null,
+                    } }));
+                  }}>
+                  <option value="">&mdash; not on a circuit &mdash;</option>
+                  {choices.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                      {c.wayOnly ? ` \u2014 new, on LV way ${c.way}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="hint">
+                  {f.Attributes.On_Cable_ID != null
+                    ? "Spliced into this circuit\u2019s feeder \u2014 the cable runs "
+                      + "through it, so it ends no run and takes no point."
+                    : "On the dig, with no cable through it yet. Build LV Network "
+                      + "runs this circuit\u2019s cable out to it and puts a feeder "
+                      + "end point on it."}
+                </p>
+              </div>
+
+              {/* Load, where somebody has agreed one. Zero otherwise,
+                  and deliberately: a termination is not a customer, and
+                  a figure invented here would size the cable to it for
+                  a supply nobody has asked for. Stated, it is load like
+                  any other and the run is sized for it. */}
+              <div className="fld">
+                <label htmlFor="fe-hdco-kva">Supply (kVA)</label>
+                <input id="fe-hdco-kva" type="number" step="0.1" min="0"
+                  value={f.Attributes.Supply_kVA ?? ""}
+                  onChange={(e) => setAttr("Supply_kVA")(e.target.value)} />
+                <p className="hint">
+                  What is taken from it, if anything has been agreed. Left
+                  blank the cable still runs to it, sized for what it passes.
+                </p>
               </div>
             </>
           )}

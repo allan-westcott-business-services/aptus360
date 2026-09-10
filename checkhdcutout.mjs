@@ -3,16 +3,39 @@
    The cable runs THROUGH it: no loss, no break in the run, and no
    feeder end point at its position.
 
-   None of that is written anywhere, and that is the point. Every rule
-   that makes a fitting matter to the network names the roles it acts
-   on — `jointMarks` for a stop, `isBreak` for a section end — so a role
-   none of them mentions is passive by construction rather than by a
-   flag somebody has to remember to set. This check holds that silence
-   in place: it fails if any of those rules learns the role. */
+   That was originally true because nothing anywhere knew the role —
+   passive by construction rather than by a flag somebody has to
+   remember. The silence is no longer total: `feeder.js` knows a
+   cut-out as a DESTINATION, so a run can be built out to one standing
+   at the end of a mains trench with nothing assigned to it
+   (checkhdcoterminal drives that half).
+
+   The promise this check holds is the one that matters and is easy to
+   lose by accident: knowing where a cut-out is must not make the cable
+   stop at one it is spliced into. So the passivity is now asserted
+   where it lives rather than as a blanket absence — no break, no
+   point, no loss — and the model may know the role only as demand. */
 import { readFileSync } from "node:fs";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
+
+/* ── The placement branch, whole ──
+
+   This used to be `canvas.slice(at, at + 3000)`: a fixed window from
+   the start of the branch. Adding comments to the branch pushed the
+   code it was testing past the 3000th character, and four assertions
+   failed at once for no fault in the code — the check reporting that
+   its own window was too small in the voice of a broken cut-out.
+
+   A window sized to the thing rather than to a guess: from the branch
+   to its closing `return;`. */
+function branchBody(src, opener) {
+  const at = src.indexOf(opener);
+  if (at < 0) return "";
+  const end = src.indexOf("\n      return;\n    }", at);
+  return end < 0 ? src.slice(at) : src.slice(at, end);
+}
 const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
 const feeder = readFileSync("./src/features/gis/feeder.js", "utf8");
 const points = readFileSync("./src/features/gis/feederPoints.js", "utf8");
@@ -35,6 +58,23 @@ const migration = readFileSync("./supabase/migrations/0209_hdcutout_role.sql", "
   /* And nothing in the volt drop: it introduces no loss. */
   const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
   if (/hdcutout/.test(vd)) fail("the volt drop knows the role, so it costs something");
+
+  /* ── The model may want to REACH one, and may not stop at one ──
+
+     `demand` is how a cut-out pulls a cable down a branch carrying no
+     load. It must not leak into the rule that ends a section: a
+     cut-out spliced into a run is exactly the case where load flows
+     straight past it, and the ground holds one cable either side.
+
+     Asserted on the break block itself, which is where such a leak
+     would have to be written. An earlier version of this sliced from
+     the `demand` declaration to `cablesAt` and caught sixteen thousand
+     characters of unrelated code — a window big enough to fail on
+     anything. */
+  if (/demand/i.test(breakBlock)) {
+    fail("the break rule reads demand, so reaching a cut-out has been wired "
+      + "to stopping at one \u2014 a spliced cut-out would cut its own cable");
+  }
 }
 
 // 2. On an LV feeder, and only that.
@@ -54,7 +94,7 @@ const migration = readFileSync("./supabase/migrations/0209_hdcutout_role.sql", "
   const at = canvas.indexOf('if (role === "hdcutout") {');
   if (at < 0) fail("nothing places a cut-out");
   else {
-    const body = canvas.slice(at, at + 3000);
+    const body = branchBody(canvas, 'if (role === "hdcutout") {');
     if (!/const hit = lvFeederAt\(point\);/.test(body)) {
       fail("the placement does not use the LV-only test");
     }
@@ -69,14 +109,17 @@ const migration = readFileSync("./supabase/migrations/0209_hdcutout_role.sql", "
 //    A fitting in the ground leans with the trench, unlike a board,
 //    which is a thing in a building and stays upright.
 {
-  const at = canvas.indexOf('if (role === "hdcutout") {');
-  const body = at < 0 ? "" : canvas.slice(at, at + 3000);
+  const body = branchBody(canvas, 'if (role === "hdcutout") {');
   if (!/Math\.atan2\(b\[1\] - a\[1\], b\[0\] - a\[0\]\)/.test(body)) {
     fail("the cut-out is not turned to the cable it sits on");
   }
   /* The segment it landed on, not the whole run: a feeder bends, and
      the angle that matters is the one under the symbol. */
-  if (!/const a = g\[hit\.index - 1\];/.test(body)) {
+  /* By what it reads rather than by what the variable is called: the
+     line it landed on is now `onLine`, because the same code serves a
+     cable and a bare trench, and an assertion spelling out `hit` failed
+     on the rename while the rule it cared about was untouched. */
+  if (!/const a = g\[\w+\.index - 1\];/.test(body)) {
     fail("the angle comes from the whole run rather than the segment under it");
   }
   /* And the drawing turns it. */
@@ -132,9 +175,8 @@ const migration = readFileSync("./supabase/migrations/0209_hdcutout_role.sql", "
       + "nothing says where the symbol will land");
   }
 
-  const at = canvas.indexOf('if (role === "hdcutout") {');
-  const body = at < 0 ? "" : canvas.slice(at, at + 3600);
-  if (!/snapTargets\(\[hit\.line\], \{ includeMidpoints: true \}\)/.test(body)) {
+  const body = branchBody(canvas, 'if (role === "hdcutout") {');
+  if (!/snapTargets\(\[\w+\.line\], \{ includeMidpoints: true \}\)/.test(body)) {
     fail("the cut-out lands wherever the click did rather than on a midpoint, "
       + "vertex or end");
   }
@@ -157,7 +199,7 @@ const migration = readFileSync("./supabase/migrations/0209_hdcutout_role.sql", "
   }
   /* And a long straight span with no vertex near the pointer still
      takes the fitting where it was aimed. */
-  if (!/: hit\.q;/.test(body)) {
+  if (!/: \w+\.q;/.test(body)) {
     fail("with no candidate in reach the placement has no fallback, so a "
       + "click mid-span lands nowhere");
   }

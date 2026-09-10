@@ -196,6 +196,7 @@ caught a fault that had already shipped at least once.
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
 | `node checkboardcircuit.mjs` | A circuit born on a spare way, membered by a board |
+| `node checkhdcoterminal.mjs` | The build runs out to a cut-out at the end of the dig |
 | `node checktrace.mjs` | One token to the fork, two after it |
 | `node checkdupes.mjs` | One dialog and one producer per piece of state |
 | `node checkbomroles.mjs` | The bill counts what is bought, not the markers |
@@ -4561,6 +4562,132 @@ hopping between them passes its own start — which is the walk getting
 clear of the board, not the ring closing. A ring genuinely closing is
 caught by the double feed (every station reached from both directions)
 or by meeting a *different* primary along the last line.
+
+## A cut-out at the end of the line
+
+0209 gave the heavy duty cut-out one behaviour and defended it: a
+fitting spliced into an LV feeder, the conductor continuous through
+it, ending no section and creating no feeder end point. `checkhdcutout`
+holds that silence.
+
+It is half of what a cut-out is for. The other half is one placed at
+the **end of a mains trench** — before any cable exists — as the thing
+the run terminates in. **Nothing is assigned to it**, and that is
+exactly why the build could not see it: the router follows load, a
+branch with no meters is worth nothing, and the cable stopped at the
+last plot with the trench past it empty.
+
+**The rule added is one idea.** A branch holding a cut-out is worth
+cabling even with no load on it. The cut-out *demands* a cable; it
+does not pretend to be load. `demand` sits beside `meterCount` and
+`meterKva` in the model, accumulates upward as `cumDemand`, and is
+deliberately NOT folded in as a phantom meter — every figure those two
+feed (cable counts, way loading, the bill, the levels, the service-tail
+walk) would then be reporting a customer that does not exist.
+
+**`carriesCable` is one rule with one name**, because three readers ask
+it: the section walk, `junctionNodes` and `endOfLineNodes`. Three
+separate spellings of `cum[i] > 0` is how a branch would come to be
+cabled by the router and then ignored by the thing that numbers its
+stops. It tolerates a model built before demand existed — an absent
+array reads as no demand, which is what those models meant.
+
+**The feeder end point is not special-cased.** At the end of a dig the
+cut-out is the last node the walk reaches, so the section ends there,
+so the end-of-line pass marks it, so a point lands on it: the same
+three steps as any other end. The only extra is `cablesAt`, a floor of
+one cable on a demanded run — `cablesFor(0)` is none, and a section
+carrying zero cables is a route the build walks and lays nothing along.
+
+**What must not change, and how it is held.** A cut-out spliced
+mid-run stays passive. Nothing adds the role to `breakAt`, and that is
+a decision rather than an omission: 0209's passivity is a promise
+about a fitting a cable runs through, and reaching one must never
+become a second way of saying "stop here". `checkhdcoterminal` case 5
+holds it, and it was proved by wiring the leak in (`|| cumDemand[u] >
+0` on `isBreak`) and watching the case fail.
+
+**Two faults in the check itself, worth reading.** The first pass at
+that proof passed while testing nothing: the spliced cut-out stood
+thirty metres from the nearest trench vertex, so the model never
+attached it, and a fitting that is skipped breaks nothing whatever the
+rule says. The fixture now puts a vertex under it and the case asserts
+the attachment before asserting the behaviour. **A passivity test on
+an object the model never saw is a green light for anything.**
+
+And `checkhdcutout` needed repairing on the way through. It extracted
+the placement branch as `canvas.slice(at, at + 3000)` — a fixed window
+— so adding comments to that branch pushed the code past the 3,000th
+character and four assertions failed at once with nothing wrong: the
+check reporting its own window in the voice of a broken cut-out. It
+now slices to the branch's own end. Three more assertions were pinned
+to the variable name `hit`, which had to become `onLine` when the same
+code learned to serve a bare trench as well as a cable; they match the
+rule now. **That is the third brittle assertion of this kind this
+session** — see the blocker section — and they share a shape: a check
+written against the text of an implementation rather than against what
+it does.
+
+**Placement and editing.** `mainsTrenchAt` finds the dig under a
+click; the LV feeder is tried first so splicing still wins where there
+is a cable, and service trenches are excluded (a cut-out on one is the
+plot's own, and feeders are not routed down service spurs). A
+trench-placed cut-out gets no `On_Cable_ID` — naming a trench as the
+cable it is spliced into would be a lie the next reader cannot catch —
+and no circuit, so its editor asks: Circuit (offering the way-only
+circuits, since a terminal on a run of its own is exactly the case
+with no members to have made one) and Supply (kVA), zero by default
+and counted as load when stated.
+
+**No migration.** 0209's role and style already cover the feature; the
+new facts are attributes.
+
+## The build refused a drawing it could build
+
+Reported with the drawing attached: three MSDBs of flats, four
+non-residential supplies, no ordinary plots to speak of, and Auto
+Build LV Network refusing with **"2 plots with no service trench: ,
+."** — a count, a comma, and nothing else.
+
+Two separate faults behind one line, and both are worth keeping:
+
+**The rule was wrong for a supply in the mains dig.** The two flagged
+features were EV charge points drawn ON the mains route, 0.1 m off it.
+`buildBlockers` asked only whether a *service* trench was within eight
+metres; a supply teed off the main where it already runs has no
+service trench to find, and never will have. Running the drawing
+through `buildFeederModel` settled it: both meters attached, nothing
+skipped — **the build could have run**. That is the blocker crying
+wolf, which its own notes call the worst way for it to be wrong.
+
+It now also passes a meter standing in the mains dig, at two metres
+rather than eight: in it, not beside it. The two facts are different —
+a service trench near a plot is somebody's intent to serve it, a mains
+trench passing nearby is not — and the check holds that line with a
+plot six metres off the mains route still being refused.
+
+**A supply is not a plot, and the message could not name one.** Labels
+came through `plotLabel(plot)` with `plot` null, so the list rendered
+as two commas. `buildBlockers` now names a supply from its `nrs` seed,
+or from the meter's own label less the "Electric Meter" prefix it is
+built from, and marks it `isSupply`; the canvas counts plots and
+supplies apart so neither is called the other. The comment saying "an
+NRS supply is not a plot and has no plot number to show" was already
+in the file, one line above the code that labelled it as a plot
+anyway.
+
+**A brittle assertion, fixed while passing through.**
+`checkbuildblockers` pinned the message-building line by its exact
+text and failed the moment a `.filter(Boolean)` was added to it. An
+assertion that tests the spelling of a line rather than what it does
+fails for no fault, and whoever edits it to pass has quietly stopped
+testing anything — it now matches the rule.
+
+**Noticed, not touched:** `src/features/gis/checkbuildblockers.mjs` is
+a stale duplicate of the root check and differs from it. `checkall`
+reads the root directory only, so it never runs — the same shape as
+fault 22, left alone because deleting somebody's file is not this
+session's business.
 
 ## Circuits without a lasso
 

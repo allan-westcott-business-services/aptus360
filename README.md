@@ -1,3 +1,78 @@
+# A cut-out at the end of the line — 10 Sep 2026
+
+0209's heavy duty cut-out is spliced into a feeder that already
+exists: the cable runs THROUGH it, no break, no point. That is half of
+what one is for. The other half is a cut-out placed at the **end of a
+mains trench**, before any cable is drawn, as the thing the run
+terminates in — nothing assigned to it, no plots behind it. The
+router walks toward load, so a branch worth no meters was never
+cabled and the cut-out sat on an empty trench.
+
+- **One idea**: a branch holding a cut-out is worth cabling even with
+  no load on it. The cut-out DEMANDS a cable; it does not pretend to
+  be load. `demand` accumulates up the tree as `cumDemand` beside the
+  meter counts, and one shared rule — `carriesCable` — answers "is a
+  cable laid beyond this node" for the section walk, the junction pass
+  and the end-of-line pass alike. Three spellings of `cum[i] > 0` is
+  how a branch came to be cabled by the router and then ignored by the
+  thing that numbers its stops.
+- **The feeder end point falls out**: at the end of a dig the cut-out
+  is the last node the walk reaches, so the section ends there, so the
+  end-of-line pass marks it, so a point lands on it. The same three
+  steps that put a point at any other end. Cable counts get a floor of
+  one on a demanded run, because `cablesFor(0)` is none — a route the
+  build walks and lays nothing along.
+- **Placing**: click a bare mains trench (service trenches excluded).
+  The LV feeder is tried first, so splicing still wins where there is
+  a cable. A trench-placed cut-out has no cable to inherit a circuit
+  from, so its editor asks — Circuit (offering way-only circuits too)
+  and an optional Supply (kVA), which is zero by default and counted
+  as load when stated.
+- **Unchanged, deliberately**: a cut-out spliced mid-run stays passive
+  — no break, no point, no loss. `checkhdcoterminal` fails if that
+  stops being true, proved by wiring the leak in and watching it fail.
+
+No migration: 0209's role and style already cover it, and everything
+new is attributes. `checkhdcutout` needed two repairs while passing
+through — it sliced a fixed 3,000 characters from the placement branch
+(so adding comments to the branch failed four assertions at once) and
+pinned three assertions to a variable name that had to change. Suite
+130 of 149; the same nineteen standing failures.
+
+---
+
+# The build refused a drawing it could build — 10 Sep 2026
+
+Reported from a flats-and-supplies drawing: three MSDBs, four
+non-residential supplies, and Auto Build LV Network refusing with
+
+> 2 plots with no service trench: , .
+
+Two EV charge points, drawn ON the mains route. The model attached
+both and skipped nothing — the build could have run.
+
+- **A supply standing in the mains dig needs no service trench.** The
+  cable tees where it already runs. `buildBlockers` asked only whether
+  a *service* trench was near, so a supply 0.1 m from the mains trench
+  read as unreachable. It now also accepts standing in the mains dig
+  (2 m — in it, not beside it), which is the build's own question. An
+  ordinary plot several metres off the mains route still wants its own
+  service, so the omission the blocker exists for is still caught.
+- **A supply is not a plot and has no plot number.** The labels came
+  from `plotLabel(null)`, which is why the list was two commas. A
+  supply is now named from its seed, or from its meter's label with
+  the "Electric Meter" prefix taken off, and carries `isSupply` so the
+  message counts plots and supplies apart and never calls one the
+  other.
+
+No migration. `checkbuildblockers.mjs` carries both cases from the
+reported drawing, plus the plot-beside-the-mains case that must still
+be refused. One assertion in it was pinned to the exact text of a line
+rather than to what the line does, and failed on a `.filter(Boolean)`;
+it now tests the rule.
+
+---
+
 # A circuit without a lasso — 10 Sep 2026
 
 A block of flats fed from an MSDB has no seeds on the drawing and no

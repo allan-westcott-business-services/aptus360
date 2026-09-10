@@ -201,8 +201,12 @@ const f = raw.features;
     fail("the build carries on regardless of what the check found");
   }
   /* Named, not counted: "4 plots not on a circuit" sends somebody
-     hunting; "57, 49, 50, 51" sends them to the plots. */
-  if (!/const say = \(list\) => list\.map\(\(x\) => x\.label\)\.join\(", "\);/.test(canvas)) {
+     hunting; "57, 49, 50, 51" sends them to the plots.
+
+     By what it does rather than by its exact text: pinning the line
+     verbatim failed the day a `.filter(Boolean)` was added to it, which
+     is the assertion testing the spelling instead of the rule. */
+  if (!/const say = \(list\) => list\.map\(\(x\) => x\.label\)/.test(canvas)) {
     fail("the message counts the plots without naming them");
   }
 }
@@ -257,6 +261,73 @@ const f = raw.features;
   }
 }
 
+/* ── A non-residential supply is not a plot ──
+
+   Reported from a real drawing: two EV charge points drawn ON the
+   mains route, both attached by the model with nothing skipped, and
+   the build refused with
+
+     "2 plots with no service trench: , ."
+
+   Two faults in one line. A supply has no Plot_ID, so `plotLabel(null)`
+   named nothing and the list came out as two commas; and it was
+   calling supplies plots while doing it. */
+{
+  const supply = (id, nrs, at) => ({ Feature_ID: id, Feature_Role: "meter",
+    Layer_Key: "electric", Plot_ID: null, Label: `Electric Meter ${nrs}`,
+    Geometry: [at], Attributes: { NRS_ID: id, Circuit_ID: 2 } });
+  const seed = (id, nrs, at) => ({ Feature_ID: 500 + id, Feature_Role: "nrs",
+    Layer_Key: "plot", Label: nrs, Geometry: [at], Attributes: { NRS_ID: id } });
+  const mains = { Feature_ID: 800, Feature_Type: "line", Layer_Key: "trench",
+    Attributes: { Line_Type: "trench_main" }, Geometry: [[0, 0], [200, 0]] };
+
+  /* Standing in the mains dig: the cable tees where it already runs,
+     so there is no service trench to want and nothing to refuse. */
+  const on = buildBlockers([supply(12, "EVC 1", [140, 0.1]),
+    seed(12, "EVC 1", [140, 0]), mains]);
+  if (on.noService.length) {
+    fail("a supply standing in the mains trench is refused a build the "
+      + "model attaches it from \u2014 the blocker crying wolf");
+  }
+
+  /* Off in a field with no trench at all: still refused, and now it
+     says which supply and calls it a supply. */
+  const off = buildBlockers([supply(26, "EVC 2", [140, 400]),
+    seed(26, "EVC 2", [140, 400.2]), mains]);
+  if (off.noService.length !== 1) {
+    fail("a supply nowhere near any trench is not reported");
+  } else {
+    const x = off.noService[0];
+    if (x.label !== "EVC 2") {
+      fail(`the supply is reported as ${JSON.stringify(x.label)} rather than `
+        + "its own name \u2014 which is how the message came out as \", .\"");
+    }
+    if (!x.isSupply) {
+      fail("the supply is not marked as one, so the message calls it a plot");
+    }
+  }
+
+  /* Named from the meter where the drawing carries no seed, and the
+     "Electric Meter " it is built from is not repeated in a list of
+     meters. */
+  const noSeed = buildBlockers([supply(26, "EVC 2", [140, 400]), mains]);
+  if (noSeed.noService[0]?.label !== "EVC 2") {
+    fail(`without a seed the supply is named ${JSON.stringify(noSeed.noService[0]?.label)}`);
+  }
+
+  /* An ordinary plot beside the mains trench still wants its own
+     service: two metres is standing IN the dig, not near it. */
+  const plotBeside = buildBlockers([
+    { Feature_ID: 7, Feature_Role: "meter", Layer_Key: "electric", Plot_ID: 7,
+      Geometry: [[100, 6]], Attributes: { Circuit_ID: 2 } },
+    mains,
+  ]);
+  if (!plotBeside.noService.length) {
+    fail("a plot six metres off the mains trench is let through, so the "
+      + "blocker no longer catches the omission it exists for");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
-  : "The build refuses a drawing it cannot build from (and says which plots).");
+  : "The build refuses a drawing it cannot build from (and names the plots and supplies).");
 process.exit(bad ? 1 : 0);

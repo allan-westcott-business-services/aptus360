@@ -652,6 +652,28 @@ export function buildBlockers(features = [], opts = {}) {
     && /service/i.test(String(f.Attributes?.Line_Type ?? ""))
     && (f.Geometry || []).length > 1);
 
+  /* ── And the dig it can reach without one ──
+
+     A supply standing IN the mains trench needs no service trench of
+     its own: the cable is teed where it already runs, and the build
+     walks the trench graph to it exactly as it walks to anything else.
+     Two EV charge points drawn on the mains route — 0.1 m off it —
+     were flagged as unreachable on a drawing the model attached them
+     both from, skipping nothing. That is the blocker crying wolf, and
+     its own note above says why that is the worst way for it to be
+     wrong.
+
+     So the second question is the BUILD's question, at the build's own
+     tolerance: is this meter on the trench network at all. Mains
+     trenches are read at MAINS_REACH_M rather than the eight metres a
+     service line gets, because the two facts are different — a
+     service trench near a plot is somebody's intent to serve it, while
+     a mains trench merely passing nearby is not. Standing on it is. */
+  const mainsTrenches = features.filter((f) => f.Feature_Type === "line"
+    && /trench/i.test(String(f.Attributes?.Line_Type ?? ""))
+    && !/service/i.test(String(f.Attributes?.Line_Type ?? ""))
+    && (f.Geometry || []).length > 1);
+
   const servedSeeds = new Set();
   for (const t of serviceLines) {
     const sid = t.Attributes?.Seed_Feature_ID;
@@ -670,9 +692,13 @@ export function buildBlockers(features = [], opts = {}) {
      a build somebody can see and re-run, while a plot wrongly flagged
      stops the work and teaches everybody to distrust the message. */
   const SERVICE_REACH_M = 8;
-  const nearAService = (at) => {
+  /* Standing in the dig, not merely beside it. Two metres is a symbol
+     dropped on a trench somebody drew, and narrower than the gap to
+     the next trench along on any layout this has been read against. */
+  const MAINS_REACH_M = 2;
+  const within = (at, lines, reach) => {
     if (!Array.isArray(at)) return false;
-    for (const t of serviceLines) {
+    for (const t of lines) {
       const g = t.Geometry;
       for (let i = 1; i < g.length; i++) {
         const [ax, ay] = g[i - 1];
@@ -681,23 +707,53 @@ export function buildBlockers(features = [], opts = {}) {
         const l2 = vx * vx + vy * vy;
         let u = l2 ? ((at[0] - ax) * vx + (at[1] - ay) * vy) / l2 : 0;
         u = Math.max(0, Math.min(1, u));
-        if (Math.hypot(at[0] - (ax + vx * u), at[1] - (ay + vy * u)) <= SERVICE_REACH_M) {
+        if (Math.hypot(at[0] - (ax + vx * u), at[1] - (ay + vy * u)) <= reach) {
           return true;
         }
       }
     }
     return false;
   };
+  const nearAService = (at) => within(at, serviceLines, SERVICE_REACH_M);
+  const inTheMainsDig = (at) => within(at, mainsTrenches, MAINS_REACH_M);
 
   const noCircuit = [];
   const noService = [];
+  /* ── What to call a thing that has no plot number ──
+
+     A non-residential supply is not a plot: no Plot_ID, no dwelling
+     behind it, and nothing for plotLabel to turn into a number. It was
+     still labelled through plotLabel(null), so the message came out as
+     "2 plots with no service trench: , ." — two commas where the names
+     should be, naming nothing and calling them the wrong kind of thing
+     into the bargain.
+
+     The supply's own name, from its seed where the drawing has one and
+     from the meter's label otherwise. `isSupply` travels with it so
+     the message can say "supply" rather than "plot". */
+  const supplyName = (m) => {
+    const nrs = m.Attributes?.NRS_ID;
+    if (nrs != null) {
+      const seed = features.find((f) => f.Feature_Role === "nrs"
+        && Number(f.Attributes?.NRS_ID) === Number(nrs));
+      if (seed?.Label) return String(seed.Label);
+    }
+    /* The meter's label less the "Electric Meter " it is built from,
+       so a supply drawn before seeds carried names still says EVC 1
+       rather than "Electric Meter EVC 1" in a list of things that are
+       all meters. */
+    const own = String(m.Label ?? "").replace(/^\s*(electric\s+)?meter\s+/i, "");
+    return own || (nrs != null ? `Supply ${nrs}` : "");
+  };
   for (const m of meters) {
     const plot = m.Plot_ID ?? m.Attributes?.Plot_ID ?? null;
     /* An NRS supply is not a plot and has no plot number to show. */
     if (plot == null && m.Attributes?.NRS_ID == null) continue;
+    const isSupply = plot == null;
+    const label = isSupply ? supplyName(m) : plotLabel(plot);
 
     if (m.Attributes?.Circuit_ID == null) {
-      noCircuit.push({ id: m.Feature_ID, plot, label: plotLabel(plot) });
+      noCircuit.push({ id: m.Feature_ID, plot, label, isSupply });
     }
 
     if (plot != null && onABoard.has(Number(plot))) continue;
@@ -719,8 +775,9 @@ export function buildBlockers(features = [], opts = {}) {
        ground. */
     const seed = m.Attributes?.Seed_Feature_ID;
     const served = (seed != null && servedSeeds.has(Number(seed)))
-      || nearAService(m.Geometry?.[0]);
-    if (!served) noService.push({ id: m.Feature_ID, plot, label: plotLabel(plot) });
+      || nearAService(m.Geometry?.[0])
+      || inTheMainsDig(m.Geometry?.[0]);
+    if (!served) noService.push({ id: m.Feature_ID, plot, label, isSupply });
   }
 
   return { noCircuit, noService, ok: !noCircuit.length && !noService.length };

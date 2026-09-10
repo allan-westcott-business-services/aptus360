@@ -30,6 +30,7 @@
 /* Two vertices this close are the same point. The original's value, in
    the same units — drawing coordinates, so metres here. */
 import { carries } from "./trenchCarries.js";
+import { hdCutoutsOn, hdcoAt, hdcoKva } from "./hdCutout.js";
 
 export const CONNECT_EPS = 0.5;
 
@@ -267,6 +268,11 @@ export function buildFeederModel(features = [], opts = {}) {
        meters, so the board needs its own membership \u2014 the same shape as
        meterIds, for the same reason. */
     msdbIds = null,
+    /* Which heavy duty cut-outs this walk should reach, by Feature_ID.
+       A cut-out demands a cable without being load, so it needs its own
+       membership for the same reason a board does — and for the same
+       reason it is decided outside the model rather than in it. */
+    hdcoIds = null,
     eps = CONNECT_EPS, tol = SNAP_TOL, fallbackKva = 0,
   } = opts;
 
@@ -661,6 +667,20 @@ export function buildFeederModel(features = [], opts = {}) {
      anchor; the meter is the fallback for a meter with no seed. */
   const meterCount = new Array(nodes.length).fill(0);
   const meterKva = new Array(nodes.length).fill(0);
+  /* ── Cable wanted here, whether or not load is ──
+
+     A heavy duty cut-out at the end of a dig is a termination with
+     nothing assigned to it: no plots, no flats, and by default no
+     kVA. The walk runs toward load, so a branch worth nothing was
+     never cabled and the cut-out sat on an empty trench.
+
+     Demand is that branch saying "a cable belongs here" without
+     claiming to be a customer. Kept apart from meterCount and
+     meterKva rather than folded in as a phantom meter, because every
+     figure those two feed — the cable count, the way loading, the
+     bill, the levels — would then be reporting a customer that does
+     not exist. */
+  const demand = new Array(nodes.length).fill(0);
   /* WHICH meters landed on each node, not just how many.
 
      The counts above answer "how much load is here"; this answers "whose
@@ -812,7 +832,35 @@ export function buildFeederModel(features = [], opts = {}) {
     attached.push(b.Feature_ID);
   }
 
-  if (!attached.length) {
+  /* ── And the cut-outs the run has to reach ──
+
+     After the boards, and by the same shape of rule, because it is the
+     same question asked of a different fitting: where does it stand on
+     the dig, and is it this walk's to reach.
+
+     What it leaves behind is a demand rather than a load. A cut-out
+     with a stated Supply_kVA also contributes that, and it goes into
+     meterKva — a figure somebody has agreed IS load, and the cable to
+     it should be sized for it — while the meter COUNT is untouched,
+     because a cut-out is not a customer and nothing should go looking
+     for its service cable. */
+  const hdcos = [];
+  for (const h of hdCutoutsOn(features)) {
+    if (hdcoIds && !hdcoIds.has(Number(h.Feature_ID))) continue;
+    const at = hdcoAt(h);
+    if (!Array.isArray(at)) continue;
+    const nn = nearest(at);
+    if (nn.i < 0 || nn.d > tol) {
+      skipped.push({ id: h.Feature_ID,
+        label: h.Label || "Heavy duty cut-out", plotId: null });
+      continue;
+    }
+    demand[nn.i] += 1;
+    meterKva[nn.i] += hdcoKva(h);
+    hdcos.push({ id: h.Feature_ID, index: nn.i });
+  }
+
+  if (!attached.length && !hdcos.length) {
     return { error: "No electric meters sit on the trench network \u2014 nothing to route." };
   }
 
@@ -840,11 +888,13 @@ export function buildFeederModel(features = [], opts = {}) {
      everything beyond it has been. */
   const cum = meterCount.slice();
   const cumKva = meterKva.slice();
+  const cumDemand = demand.slice();
   for (let i = order.length - 1; i >= 0; i--) {
     const u = order[i];
     if (parent[u] >= 0) {
       cum[parent[u]] += cum[u];
       cumKva[parent[u]] += cumKva[u];
+      cumDemand[parent[u]] += cumDemand[u];
     }
   }
 
@@ -857,6 +907,10 @@ export function buildFeederModel(features = [], opts = {}) {
 
   return {
     nodes, parent, parSvc, cum, cumKva, meterCount, meterKva, metersAt,
+    /* Cable wanted beyond each node, without load behind it: the
+       cut-outs. Every reader that asks "is this branch cabled" asks
+       cum OR this, through `carriesCable`. */
+    demand, cumDemand, hdcos,
     S, order, attached, skipped, mBetween,
     /* How the origin was decided \u2014 "named", "only", "nearest" or
        "first" \u2014 and who lost where a rule had to choose, so a build
@@ -870,6 +924,19 @@ export function buildFeederModel(features = [], opts = {}) {
     origin: sub,
   };
 }
+
+/* ── Is a cable laid beyond this node ──
+
+   Meters past it, or a cut-out past it. One rule with one name,
+   because three readers ask it — the section walk, the junction pass
+   and the end-of-line pass — and three spellings of "cum[i] > 0" is
+   how a branch came to be cabled by the router and then ignored by the
+   thing that numbers its stops.
+
+   Tolerant of a model built before demand existed: an absent array
+   reads as no demand, which is exactly what those models meant. */
+export const carriesCable = (model, i) =>
+  ((model?.cum?.[i] || 0) > 0) || ((model?.cumDemand?.[i] || 0) > 0);
 
 export const cablesFor = (meters, perCable = METERS_PER_CABLE) =>
   Math.ceil(Math.max(0, meters) / perCable);
@@ -958,7 +1025,10 @@ export function feederSections(features = [], opts = {}) {
   if (M.error) return { error: M.error };
 
   const perCable = opts.perCable || METERS_PER_CABLE;
-  const { nodes, parent, parSvc, cum, cumKva, S } = M;
+  /* `cumDemand` is what the cut-outs leave behind: cable wanted beyond
+     a node with no load behind it. Defaulted, so a model built by
+     something that has not been taught about it still destructures. */
+  const { nodes, parent, parSvc, cum, cumKva, S, cumDemand = [] } = M;
 
   const children = new Map();
   for (let i = 0; i < nodes.length; i++) {
@@ -982,7 +1052,18 @@ export function feederSections(features = [], opts = {}) {
      also what junctionNodes already does when placing span nodes, so the
      two now agree about where a run divides — they must, because a
      section end and a span node are meant to be the same place. */
-  const loadChildren = (u) => mainsChildren(u).filter((c) => cum[c] > 0);
+  /* Meters beyond it, or a cut-out beyond it — see carriesCable. A
+     branch ending in a heavy duty cut-out carries no load at all, and
+     the cable still goes down it: that is what the cut-out is for. */
+  const carriesTo = (c) => cum[c] > 0 || cumDemand[c] > 0;
+  const loadChildren = (u) => mainsChildren(u).filter(carriesTo);
+
+  /* How many cables a run needs. At least one wherever the run exists
+     at all: `cablesFor(0)` is none, so a demanded run with no meters
+     on it came out as a section carrying zero cables — a route the
+     build walks and lays nothing along. */
+  const cablesAt = (i) =>
+    Math.max(cumDemand[i] > 0 ? 1 : 0, cablesFor(cum[i], perCable));
 
   /* ── A board breaks the run, like a straight joint ──
 
@@ -1034,14 +1115,14 @@ export function feederSections(features = [], opts = {}) {
       let upNode = u;
       let meters = cum[first];
       let kva = kvaAt(first);
-      let cables = cablesFor(cum[first], perCable);
+      let cables = cablesAt(first);
 
       while (!isBreak(cur)) {
         const mc = loadChildren(cur);
         if (mc.length !== 1) break;
         const next = mc[0];
 
-        const nextCables = cablesFor(cum[next], perCable);
+        const nextCables = cablesAt(next);
         if (nextCables !== cables) {
           /* The count changed, so the run ends here and another starts.
              This is the reason a run can break in the middle of a drawn
@@ -1254,10 +1335,13 @@ export function digEndBeyond(model, from) {
    junction span node, and they are worth having whether or not anyone
    runs a trace. */
 export function junctionNodes(model) {
-  const { nodes, parent, parSvc, cum, S } = model;
+  const { nodes, parent, parSvc, S } = model;
   const children = new Map();
   for (let i = 0; i < nodes.length; i++) {
-    if (parent[i] < 0 || parSvc[i] || cum[i] <= 0) continue;
+    /* Cabled beyond, by meters or by a cut-out. Asking cum alone made
+       a fork feeding a terminal invisible: the router laid the cable
+       down it and nothing numbered the stop at the far end. */
+    if (parent[i] < 0 || parSvc[i] || !carriesCable(model, i)) continue;
     if (!children.has(parent[i])) children.set(parent[i], []);
     children.get(parent[i]).push(i);
   }
@@ -1856,7 +1940,7 @@ export function endOfLineNodes(model) {
 
   const mainsKids = new Map();
   for (let i = 0; i < nodes.length; i++) {
-    if (parent[i] < 0 || parSvc[i] || cum[i] <= 0) continue;
+    if (parent[i] < 0 || parSvc[i] || !carriesCable(model, i)) continue;
     if (!mainsKids.has(parent[i])) mainsKids.set(parent[i], []);
     mainsKids.get(parent[i]).push(i);
   }
@@ -1864,7 +1948,11 @@ export function endOfLineNodes(model) {
   const out = [];
   for (let i = 0; i < nodes.length; i++) {
     if (i === S) continue;
-    if (cum[i] <= 0) continue;
+    /* An end the cable reaches, which now includes one it reaches for
+       a cut-out and no load. That IS the end of the line: the run
+       terminates in the cut-out, and the point marking it is the
+       figure every level on the leg is quoted at. */
+    if (!carriesCable(model, i)) continue;
     if (parent[i] < 0) continue;
     /* Reached along a service spur, so it is a plot connection rather
        than the end of the feeder. */
@@ -2276,8 +2364,16 @@ export function spanTrace(features = [], nodeId, opts = {}) {
         || Number(f.Attributes.Link_Way) === Number(linkWay)))
     .map((f) => Number(f.Feature_ID)));
 
+  /* ── And the cut-outs it terminates in ──
+
+     Same question, same answer: a cut-out names its circuit, and where
+     an output is being traced, its output too. Decided here, where
+     both are known, rather than inside the model. */
+  const hdcoIds = new Set(hdCutoutsOn(features, wantedCircuit, linkWay)
+    .map((f) => Number(f.Feature_ID)));
+
   const M = buildFeederModel(features, {
-    lineTypes, plotById, nrsById, seedIds, meterIds, msdbIds,
+    lineTypes, plotById, nrsById, seedIds, meterIds, msdbIds, hdcoIds,
     /* Rooted at the box where one is given: an output's cable begins
        there and knows nothing of the POC behind it. */
     ...(rootFeature ? { rootFeature } : {}),

@@ -40,7 +40,7 @@ import { resolveStyle, appearance, subjectOf, symbolPath, markerPositions, STROK
 import { splitByBoundary, boundaryPolygons, pointInAny, pointInPolygon, surfaceFor,
   planClassification, ON_SITE, OFF_SITE } from "./boundary.js";
 import {
-  planAutoService, mainsTrenches, teeIntoMains, nearestOnPolyline,
+  planAutoService, mainsTrenches, serviceMoved, teeIntoMains, nearestOnPolyline,
   isServed, meterHasService, layServices, isExistingFeature, skipSummary,
 } from "./autoService.js";
 import { originMissing,
@@ -20478,6 +20478,47 @@ export default function GISCanvasPage() {
       if (wrong.length) mismatched.set(Number(sd.Feature_ID), { seed: sd, mine, wrong });
     }
 
+    /* ── And whether the ground it was dug for has moved ──
+
+       A seed with a service trench is skipped as done, which is right
+       the second time a site is run and wrong the moment somebody
+       MOVES something. Drag the property boundary point, or the end of
+       the trench, or re-route the mains the service tees off, and the
+       drawn dig no longer goes where the drawing says it should — and
+       the run skipped it as already serviced, so the stale trench
+       stayed until somebody deleted it by hand.
+
+       Judged by `serviceMoved`, which compares the drawn dig against
+       the three facts its route is built from rather than against a
+       freshly planned one: re-planning follows the dig that is there,
+       so a plan would agree with the drawing by construction and
+       nothing would ever look changed.
+
+       Re-laid through the same door as a self-lay change, because it
+       is the same act — the old trench and its cables are deleted and
+       the seed goes back to the planner. The reason is kept so the
+       summary can say which of them moved rather than reporting a
+       re-lay nobody asked for. */
+    for (const sd of seeds) {
+      const sid = Number(sd.Feature_ID);
+      if (!alreadyLaid.has(sid) || mismatched.has(sid)) continue;
+      const mine = stampedTo(sd);
+      const trench = world.find((f) => f.Feature_Type === "line"
+        && Number(f.Attributes?.Seed_Feature_ID) === sid
+        && isTrenchType(f.Attributes?.Line_Type, lineTypes));
+      if (!trench) continue;
+      /* Which mains the planner would measure to: a plot that is
+         self-lay throughout tees off the incumbent's, and asking the
+         wrong list would call every self-lay plot moved. */
+      const utils = utilitiesFor(sd) || [];
+      const allSelfLay = utils.length > 0 && utils.every((u) =>
+        isSelfLayFor(sd, u.layer_key, { slp: slpSet, slpNrs: slpNrsSet, layers }));
+      const why = serviceMoved(sd, trench, trenches, { selfLayOnly: allSelfLay });
+      if (why) {
+        mismatched.set(sid, { seed: sd, mine: [...mine, trench], wrong: [], why });
+      }
+    }
+
     /* Done means laid AND still correct.
 
        Split from alreadyLaid above because the mismatch test needs
@@ -21061,8 +21102,23 @@ export default function GISCanvasPage() {
            because its self-lay setting changed had a trench and a cable
            deleted to make room, and somebody watching the count of
            trenches go up needs to know some went down first. */
-        + (mismatched.size
-          ? `, ${mismatched.size} re-laid (self-lay changed)` : "")
+        /* Why each was re-laid, counted by reason. "Re-laid" alone
+           reads as the run having done something unasked for; the
+           reason is what tells somebody it followed a change they
+           made. Self-lay changes carry no `why`, so they group
+           under the wording that has always described them. */
+        + ((() => {
+          if (!mismatched.size) return "";
+          const byWhy = new Map();
+          for (const m of mismatched.values()) {
+            const k = m.why || "self-lay changed";
+            byWhy.set(k, (byWhy.get(k) || 0) + 1);
+          }
+          const parts = [...byWhy.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .map(([k, n]) => `${n} ${k}`);
+          return `, ${mismatched.size} re-laid (${parts.join("; ")})`;
+        })())
         + (skipped.length ? `, ${skipped.length} skipped` : "")
         /* Plots with no boundary point, dug to their furthest meter
            instead. Said rather than left to be noticed: the two shapes

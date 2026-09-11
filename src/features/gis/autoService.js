@@ -619,6 +619,113 @@ export function planAutoService(seeds = [], trenches = [], utilitiesFor = () => 
   return { plans, skipped };
 }
 
+/* ── Has anything about this plot's dig actually changed ──
+
+   A seed with a service trench is skipped as done. That is right the
+   second time a site is run and wrong the moment somebody MOVES
+   something: drag the property boundary point, or the end of the
+   trench, or re-route the mains the service tees off, and the drawn
+   dig no longer goes where the drawing now says it should. Auto
+   Service skipped it as already serviced, so the stale trench stayed
+   and the only way to correct it was to delete it by hand.
+
+   The question this answers is the narrow one: given the drawing as it
+   is NOW, would the dig for this seed be laid somewhere else? It
+   compares the three facts the route is built from, in the order they
+   are decided:
+
+     the tee    the foot on the nearest mains to the boundary point,
+                which moves when the mains is re-routed or when the
+                boundary point moves along it
+     the stop   where the dig ends — `Trench_End_At` if the seed
+                carries one, else the boundary point
+     the bend   the boundary point itself, which is a vertex on the
+                route and is where the on-site and off-site lengths are
+                split
+
+   Compared against the ENDS AND VERTICES of the trench that is drawn,
+   not against a freshly planned route. Re-planning would follow the
+   drawn service — `onService` exists so a cable is laid in the dig
+   that is there — so the plan would agree with the drawing by
+   construction and nothing would ever look changed.
+
+   ── The tolerance ──
+
+   Geometry read back from the database has been through a round trip,
+   so nothing lands on exactly the number it left as. `tol` is the
+   slack: a change smaller than this is the same point, and the default
+   is a centimetre, which is finer than anything anybody drags and
+   coarser than any rounding.
+
+   Returns null where nothing moved, and otherwise the reason, so a
+   caller can say WHICH of the three changed rather than reporting an
+   unexplained re-lay. */
+export function serviceMoved(seed, drawnTrench, trenches = [], opts = {}) {
+  const tol = Number(opts.tol ?? 0.01);
+  const g = (drawnTrench?.Geometry || []).filter((p) => Array.isArray(p));
+  if (g.length < 2) return null;   /* nothing to compare it against */
+
+  const near = (a, b) => Array.isArray(a) && Array.isArray(b)
+    && Math.hypot(a[0] - b[0], a[1] - b[1]) <= tol;
+
+  const at = seed?.Attributes?.Boundary_At;
+  const boundary = Array.isArray(at) && at.length === 2
+    && Number.isFinite(Number(at[0])) && Number.isFinite(Number(at[1]))
+    ? [Number(at[0]), Number(at[1])] : null;
+  /* No boundary point means the planner would refuse the seed outright
+     rather than lay it somewhere else. Not this function's refusal to
+     make. */
+  if (!boundary) return null;
+
+  const endAt = seed?.Attributes?.Trench_End_At;
+  const trenchEnd = Array.isArray(endAt) && endAt.length === 2
+    && Number.isFinite(Number(endAt[0])) && Number.isFinite(Number(endAt[1]))
+    ? [Number(endAt[0]), Number(endAt[1])] : null;
+  const stop = trenchEnd || boundary;
+
+  /* Either way round. The planner writes [foot, ...via, stop], but a
+     dig that has been split, reversed or redrawn can arrive the other
+     way, and an end-swap is not a move. */
+  const head = g[0];
+  const tail = g[g.length - 1];
+  const forwards = near(tail, stop) || !near(head, stop);
+  const drawnStop = forwards ? tail : head;
+  const drawnFoot = forwards ? head : tail;
+
+  if (!near(drawnStop, stop)) {
+    return trenchEnd ? "the end of the trench has moved"
+      : "the property boundary point has moved";
+  }
+
+  /* The tee, asked exactly as the planner asks it: nearest to the
+     BOUNDARY, and of the same set of mains the planner would use. A
+     self-lay plot tees off the incumbent's main, so which list applies
+     is the caller's to say — it knows the plot's utilities and this
+     does not. */
+  const { ours, existing } = splitExisting(trenches);
+  const useExisting = !!opts.selfLayOnly;
+  const pick = useExisting ? existing : (ours.length ? ours : existing);
+  const tee = nearestMains(boundary, pick);
+  if (tee && !near(drawnFoot, tee.foot)) {
+    return "the mains it tees off has moved";
+  }
+
+  /* And the bend. A boundary that has moved along a straight route
+     shows up at neither end, but the vertex it left behind is wrong —
+     the on-site and off-site split would be measured in the wrong
+     place. Only checked where the drawn dig HAS a middle vertex: a
+     route whose boundary coincides with the tee or the stop was drawn
+     without one, deliberately, and its absence is not a move. */
+  if (g.length > 2) {
+    const bends = g.slice(1, -1);
+    if (!bends.some((v) => near(v, boundary))) {
+      return "the property boundary point has moved";
+    }
+  }
+
+  return null;
+}
+
 /* Mains first, anything else only if there are no mains — the original's
    fallback, kept because a plan part-way through being drawn often has
    trenches that haven't been typed yet. */

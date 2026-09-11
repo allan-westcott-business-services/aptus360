@@ -197,6 +197,7 @@ caught a fault that had already shipped at least once.
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
 | `node checkboardcircuit.mjs` | A circuit born on a spare way, membered by a board |
 | `node checkhdcoterminal.mjs` | The build runs out to a cut-out at the end of the dig |
+| `node checkservicemoved.mjs` | Auto Service re-lays the plots whose ground moved, and only those |
 | `node checktrace.mjs` | One token to the fork, two after it |
 | `node checkdupes.mjs` | One dialog and one producer per piece of state |
 | `node checkbomroles.mjs` | The bill counts what is bought, not the markers |
@@ -4562,6 +4563,64 @@ hopping between them passes its own start — which is the walk getting
 clear of the board, not the ring closing. A ring genuinely closing is
 caught by the double feed (every station reached from both directions)
 or by meeting a *different* primary along the last line.
+
+## Auto Service re-lays only what moved
+
+Asked for: run Auto Lay Service Trench and have it skip the plots
+nothing has changed about, laying only the new and the moved.
+
+The machinery was half there. `alreadyLaid` skips a seed that has a
+service trench; `mismatched` re-lays one whose self-lay flag no longer
+matches what is drawn; `refill` puts back a cable that was deleted
+from a trench that survived. What none of them asked was whether the
+GEOMETRY still agreed — so a boundary point dragged after the service
+was laid left a stale trench that every subsequent run skipped as done.
+
+**It applies to every plot that has a service trench**, self-lay or
+not. The only gate is `alreadyLaid`. `selfLayOnly` chooses which MAINS
+the tee is measured to — a self-lay plot tees off the incumbent's, so
+measuring to ours would call every one of them moved — and is not a
+test of whether to ask the question. That distinction was easy to
+misread from the code, so `checkservicemoved` states it twice: an
+ordinary-plot case with no self-lay anywhere on the fixture, and a
+guard on the loop that fails if a self-lay test ever becomes the thing
+deciding whether to ask. Proved by adding `if (!allSelfLay) continue;`
+and watching it go red.
+
+`serviceMoved` (pure, in autoService.js) answers the narrow question:
+given the drawing as it is now, would this seed's dig be laid
+somewhere else? It compares the drawn trench against the three facts
+the route is built from, in the order `planSeed` decides them — the
+tee foot on the nearest mains TO THE BOUNDARY, the stop
+(`Trench_End_At` where the seed carries one, else the boundary point),
+and the boundary vertex, which matters on its own because it is where
+the on-site and off-site lengths are split.
+
+**Compared against the drawn geometry, not against a fresh plan.**
+That is the trap worth remembering: `planSeed` follows an existing
+service trench where one is there (`onService`, so a cable is laid in
+the dig rather than across it), so a re-plan agrees with the drawing by
+construction and nothing would ever look changed. The comparison has
+to be against the facts, not against the planner's output.
+
+**The hard half is not re-laying.** A test that says "changed" too
+readily re-digs the site on every run: it churns geometry somebody has
+adjusted by hand and makes the summary meaningless. Four cases exist
+only to hold that line, and each states why the thing it describes is
+not a move:
+
+- a dig drawn from the plot back to the main (an end swap)
+- a round trip through the database (hence `tol`, a centimetre —
+  finer than anything anybody drags, coarser than any rounding)
+- a route with no middle vertex because the boundary IS the stop,
+  which the planner drops deliberately
+- a self-lay plot, which tees off the incumbent's main — asking the
+  wrong list of mains would call every one of them moved, so the
+  caller passes `selfLayOnly` after checking the plot's utilities
+
+The tolerance and the end-swap guards were proved by removing them one
+at a time and watching the suite fail. Both are the kind of thing that
+looks like defensive noise until it is deleted.
 
 ## Levels at the cut-out, and a circuit fed through boards
 

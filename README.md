@@ -1,3 +1,42 @@
+# Auto Service re-lays only what moved — 10 Sep 2026
+
+A seed with a service trench was skipped as already done. Right the
+second time a site is run, wrong the moment somebody MOVES something:
+drag the property boundary point, or the end of the trench, or
+re-route the mains the service tees off, and the drawn dig no longer
+goes where the drawing says it should — and the run skipped it, so the
+stale trench stayed until somebody deleted it by hand.
+
+- **Every plot with a service trench**, not just self-lay ones. The
+  only gate is that something was already laid to the seed;
+  `selfLayOnly` decides which MAINS the tee is measured to (yours or
+  the incumbent's) and nothing else. A case states this and a guard
+  fails if the check is ever narrowed to self-lay.
+- `serviceMoved` compares the drawn dig against the three facts its
+  route is built from: the tee foot on the nearest mains to the
+  boundary, the stop (`Trench_End_At` or the boundary point), and the
+  boundary vertex where the on-site and off-site lengths are split.
+  Against the DRAWN geometry, not a fresh plan — re-planning follows
+  the dig that is already there, so a plan agrees with the drawing by
+  construction and nothing would ever look changed.
+- A moved service is re-laid through the same door as a self-lay
+  change: old trench and cables deleted, seed back to the planner.
+- The run now says WHY: "3 re-laid (2 the property boundary point has
+  moved; 1 the mains it tees off has moved)". "Re-laid" alone reads as
+  the run doing something unasked for.
+- **Most of the work is in NOT re-laying.** A test that says "changed"
+  too readily re-digs the whole site every run, which is worse than
+  the fault. A dig drawn back-to-front, a round trip through the
+  database, a route whose boundary coincides with its stop (the
+  planner drops that vertex deliberately), and a self-lay plot teed
+  off the incumbent's main all come back unchanged — each has a case,
+  and the tolerance and end-swap guards were proved by removing them
+  and watching the suite fail.
+
+No migration. `checkservicemoved.mjs`, twelve cases. Suite 131 of 150.
+
+---
+
 # Levels at the cut-out, and a circuit fed through boards — 10 Sep 2026
 
 Two faults, both in the levels check, both reported from one drawing:

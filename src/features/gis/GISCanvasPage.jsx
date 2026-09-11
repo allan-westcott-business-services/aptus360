@@ -25332,8 +25332,8 @@ export default function GISCanvasPage() {
                   {breakAsk.canBreak ? "Leave the cable whole" : "Place it here"}
                 </span>
                 <span className="cpick-n">
-                  One cable, with the joint held on it \u2014 it bends with the
-                  joint if you move it
+                  One cable, with the joint held on it &mdash; it bends with
+                  the joint if you move it
                 </span>
               </button>
             </div>

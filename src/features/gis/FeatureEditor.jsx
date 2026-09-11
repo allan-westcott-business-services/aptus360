@@ -2751,7 +2751,7 @@ export default function FeatureEditor({
                   <div className="fe-msdb-at">
                     {levelsAt?.ohms == null
                       ? <span className="fe-msdb-none">&mdash;</span>
-                      : <strong>{Number(levelsAt.ohms).toFixed(3)} \u03a9</strong>}
+                      : <strong>{Number(levelsAt.ohms).toFixed(3)} &#937;</strong>}
                   </div>
                 </div>
               </div>

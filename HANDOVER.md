@@ -200,6 +200,7 @@ caught a fault that had already shipped at least once.
 | `node checkservicemoved.mjs` | Auto Service re-lays the plots whose ground moved, and only those |
 | `node checkwayfuse.mjs` | Each LV way carries its own fuse rating |
 | `node checkbreechplace.mjs` | A breech is placed on a cable point, breaking it or not |
+| `node checkjsxescapes.mjs` | No \uXXXX escape is stranded in JSX text |
 | `node checktrace.mjs` | One token to the fork, two after it |
 | `node checkdupes.mjs` | One dialog and one producer per piece of state |
 | `node checkbomroles.mjs` | The bill counts what is bought, not the markers |
@@ -4602,6 +4603,37 @@ closed it mid-file — **second time this session**, same trap, same
 symptom (a parse error a hundred lines below the edit). If a build
 fails in the styles with "Expected ; but found", look for a backtick
 in a comment before anything else.
+
+## A \u2014 on screen
+
+Reported from a screenshot of the breech dialog: "One cable, with the
+joint held on it \u2014 it bends with the joint". A `\uXXXX` escape is
+an escape inside a JavaScript STRING. In JSX text it is six literal
+characters, and the build has nothing to say about it because the
+markup is valid either way.
+
+The trap is that the same sequence one line up, inside quotes, is
+correct and used everywhere in this file. The eye slides over it.
+
+Two instances, both from this session: the breech dialog and the ohm
+symbol in the cut-out's loop impedance. Both are HTML entities now
+(`&mdash;`, `&#937;`), and the fix was confirmed by rendering the
+editor and reading the text back — a real Ω, no backslash-u anywhere.
+
+**The scanner took three attempts, and that is the part worth
+keeping.** A per-line version reported 503 faults, because this
+codebase writes block comments without leading asterisks and every
+continuation line ABOUT an escape looked like markup. A
+character-level state machine over code/comment/string cut it to
+eleven — of which nine were `${ }` holes inside template literals,
+where the nested backtick read as the closing one. A stack for those
+holes leaves two, both real.
+
+A checker that cries wolf five hundred times is worse than no checker:
+it gets silenced, and it makes every future reader distrust the suite.
+**Getting the false positives to zero mattered more than finding the
+true ones**, and both intermediate versions would have "passed
+review" while being useless.
 
 ## The click that threw
 

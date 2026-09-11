@@ -1,3 +1,29 @@
+# A \u2014 on screen — 11 Sep 2026
+
+The breech dialog read "held on it \u2014 it bends with the joint".
+A `\uXXXX` escape only means something inside a JavaScript string; in
+JSX text it is six literal characters. Mine, and shipped.
+
+`checkjsxescapes.mjs` now scans every .jsx file for it. Two real
+instances, both from this session: the breech dialog, and the ohm
+symbol in the heavy duty cut-out's loop impedance. Both are HTML
+entities now, and the rendered output is checked to contain a real
+Ω and no backslash-u anywhere.
+
+The scanner itself needed two goes, which is the interesting part. A
+per-line version reported **503** faults: this codebase writes block
+comments without leading asterisks, so every continuation line
+discussing an escape looked like markup. A character-level state
+machine cut that to eleven — of which nine were nested template
+literals, `${...}` holes inside a template, where the inner backtick
+read as the closing one. With a stack for those holes: two, and both
+real. **A checker that cries wolf 500 times teaches people to ignore
+it, so the false positives mattered more than the true ones.**
+
+Suite 135 of 153.
+
+---
+
 # Placing a breech joint — 11 Sep 2026
 
 **The reason nothing happened: a typo of mine that threw.**

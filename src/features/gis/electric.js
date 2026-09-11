@@ -1395,18 +1395,65 @@ export function whyUnreached(features = [], rootId, featureId) {
 
   const net = networkFrom(features, rootId);
   if (!net) {
-    return "the origin is not on the network \u2014 no cable starts on the "
-      + "substation, so nothing on the drawing is reached from it";
+    return "The substation is not on the network: no cable or trench starts "
+      + "on it, so nothing on the drawing can be reached from it.";
   }
   const { dist, lines, key, idOf, onSegment } = net;
 
+  /* ── Named the way a drawing names them ──
+
+     This printed the type KEY: "trench_service #49998". That is the
+     database's word for it, and the person reading the report is
+     looking at a drawing where the same thing is called a service
+     trench. The id still goes on the end \u2014 it is how the thing is
+     found \u2014 but after the words, not instead of them. */
+  const WORDS = {
+    trench_main: "mains trench",
+    trench_service: "service trench",
+    elec_main: "LV feeder cable",
+    elec_service: "service cable",
+    elec_hv: "HV cable",
+    elec_hv_existing: "existing HV cable",
+    trench_main_existing: "existing mains trench",
+  };
   const nameOf = (l) => {
     const t = l.Attributes?.Line_Type ? String(l.Attributes.Line_Type) : null;
     const layer = l.Layer_Key ? String(l.Layer_Key) : null;
-    const what = t || (layer ? `${layer} line` : "line");
+    const what = (t && WORDS[t])
+      || (t ? t.replace(/_/g, " ") : (layer ? `${layer} line` : "line"));
     return `${what} #${l.Feature_ID}`;
   };
   const m = (v) => `${Math.round(v * 10) / 10} m`;
+  const list = (ls) => ls.map(nameOf).join(" and ");
+
+  /* ── The dig that is there and says no ──
+
+     `networkFrom` leaves out any trench whose Carries LV is off: that
+     flag is deliberate isolation and the routing honours it. So such a
+     trench is not in `net.lines` at all, and everything below \u2014 which
+     reasons about the lines that ARE there \u2014 describes a hole in the
+     drawing where the drawing is continuous.
+
+     Reported: two sections of trench not set to carry LV, and the
+     report blamed a geometric gap. The dig ran all the way to the
+     substation; electricity was simply not allowed along it. Those are
+     different faults with different fixes, and the wrong one sends
+     somebody looking for a break that is not there.
+
+     So these are gathered before anything else is said. */
+  const isTrenchLine = (l) => l.Layer_Key === "trench"
+    || /trench/i.test(String(l.Attributes?.Line_Type ?? ""));
+  const refusesLv = (l) => isTrenchLine(l)
+    && !carriesUtility(l, "electric", "lv");
+  const blockedNear = (point, within) => features.filter((l) =>
+    (l.Geometry || []).length >= 2 && refusesLv(l)
+    && (() => {
+      const g = l.Geometry;
+      for (let i = 1; i < g.length; i++) {
+        if (onSegment(point, g[i - 1], g[i]).d <= within) return true;
+      }
+      return false;
+    })());
 
   /* The line it joined, or would have: nearest point on the nearest
      line, the same way joinAt chooses. */
@@ -1420,10 +1467,20 @@ export function whyUnreached(features = [], rootId, featureId) {
     }
   }
   if (!nearest || nearest.d > reach) {
+    /* A trench IS there, and it refuses LV. Saying "nothing within
+       30 m" about a dig the meter is standing on is the report calling
+       a deliberate setting an absence. */
+    const shut = blockedNear(p, reach);
+    if (shut.length) {
+      return `Its ${list(shut)} ${shut.length === 1 ? "is" : "are"} not set to `
+        + "carry LV: the dig is there, but no electricity may run along it. "
+        + "Set Carries LV on it, or draw a trench that does.";
+    }
     return nearest
-      ? `no cable or trench within ${reach} m of it \u2014 the nearest is `
-        + `${nameOf(nearest.line)}, ${m(nearest.d)} away`
-      : "no cable or trench on the drawing at all";
+      ? `Nothing within ${reach} m of the meter: the nearest is `
+        + `${nameOf(nearest.line)}, ${m(nearest.d)} away. A service trench `
+        + "has to come within reach of the meter to feed it."
+      : "Nothing to connect to: there is no cable or trench on the drawing.";
   }
 
   /* Reached, in fact. Either the join settled (the caller asked about
@@ -1458,10 +1515,49 @@ export function whyUnreached(features = [], rootId, featureId) {
     }
   }
 
+  /* ── Or the route onward is shut ──
+
+     The island is joined up and simply does not reach. Before calling
+     that a gap, ask whether a trench that REFUSES LV touches it: if
+     one does, the dig continues and the setting is what stops the
+     electricity. That is the reported case \u2014 two sections not set to
+     carry LV \u2014 and it is the fault to name, because closing a gap
+     that is not there is a morning wasted.
+
+     Every end of every line in the island, against every refusing
+     trench, at the same CONNECT_M the graph joins with. */
+  const shut = [];
+  for (const a of island) {
+    for (const e of [a.Geometry[0], a.Geometry[a.Geometry.length - 1]]) {
+      for (const l of blockedNear(e, CONNECT_M)) {
+        if (!shut.includes(l)) shut.push(l);
+      }
+    }
+  }
+  /* The whole shut run, not just the section touching the island. Two
+     sections in a row is the reported case, and naming only the first
+     sends somebody to set one flag, rebuild, and find the same fault
+     one trench further on. */
+  for (let i = 0; i < shut.length; i++) {
+    for (const e of [shut[i].Geometry[0],
+      shut[i].Geometry[shut[i].Geometry.length - 1]]) {
+      for (const l of blockedNear(e, CONNECT_M)) {
+        if (!shut.includes(l)) shut.push(l);
+      }
+    }
+  }
+  if (shut.length) {
+    return `${list(shut)} ${shut.length === 1 ? "is" : "are"} not set to carry `
+      + `LV: the dig runs on from here, but no electricity may pass along `
+      + `${shut.length === 1 ? "it" : "them"}, so there is no continuous LV `
+      + "route back to the substation. Set Carries LV on "
+      + `${shut.length === 1 ? "it" : "them"}, or draw a trench that does.`;
+  }
+
   const live = lines.filter(isReached);
   if (!live.length) {
-    return "nothing on the drawing is reached from the origin \u2014 check the "
-      + "feeder starts on the substation";
+    return "Nothing on the drawing is reached from the substation: check that "
+      + "a feeder or trench starts exactly on it.";
   }
   let gap = null;
   for (const a of island) {
@@ -1475,13 +1571,25 @@ export function whyUnreached(features = [], rootId, featureId) {
     }
   }
 
-  const joined = nearest.d > CONNECT_M
-    ? `${nameOf(nearest.line)}, ${m(nearest.d)} from the meter,`
-    : `${nameOf(nearest.line)}`;
-  const size = island.size > 1 ? ` (${island.size} lines joined together)` : "";
-  return `${joined} runs back to nothing${size}: its nearest end stops `
-    + `${m(gap.d)} short of ${nameOf(gap.to)}, and a gap over ${CONNECT_M} m `
-    + "is not joined";
+  /* ── The fault first, the detail after ──
+
+     This read "trench_service #49998, 1.6 m from the meter, runs back
+     to nothing (2 lines joined together): its nearest end stops 0.4 m
+     short of trench_main #123, and a gap over 0.25 m is not joined."
+     True, and the point of it \u2014 that there is a gap, and how wide \u2014
+     arrived at the end of a sentence the column cut off after eight
+     words.
+
+     So the shape is inverted: what is wrong, then how far, then what
+     to join it to. The first six words are the diagnosis, which is
+     what survives any truncation, and the rest reads as detail rather
+     than as a preamble to it. */
+  const size = island.size > 1 ? `, with ${island.size} lines joined together,` : "";
+  const far = nearest.d > CONNECT_M
+    ? ` The meter itself sits ${m(nearest.d)} from that trench.` : "";
+  return `Gap of ${m(gap.d)} in the network: ${nameOf(nearest.line)}${size}`
+    + ` stops ${m(gap.d)} short of ${nameOf(gap.to)}, and anything over `
+    + `${CONNECT_M} m counts as not joined.${far}`;
 }
 
 /* ── Where the network starts ──

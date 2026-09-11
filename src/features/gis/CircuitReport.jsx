@@ -906,7 +906,16 @@ export default function CircuitReport({
                             exists to send somebody to the drawing and
                             a row with no reason sends them to all of
                             it. A self-lay plot has no fault to name. */}
-                        <td className="cr-gap">{m.selfLay ? "" : (m.why || "")}</td>
+                        {/* Wrapped, not clipped. The shared table
+                            truncates every cell with an ellipsis,
+                            which is right for a name and wrong for a
+                            sentence: the reason was cut off after
+                            eight words and the tooltip was the only
+                            way to read the rest. This is the one
+                            column that is prose. */}
+                        <td className="cr-gap cr-why">
+                          {m.selfLay ? "" : (m.why || "")}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -970,6 +979,12 @@ const CSS = `
   font-size: 14px; padding: 0 2px; }
 .cr-ink-x:hover { color: #dc2626; }
 .cr-fuse { white-space: nowrap; }
+/* The Why column is a sentence, so it wraps where every other cell
+   clips. Given a floor so the table does not squeeze it to one word
+   per line, and a ceiling so it cannot push the columns a reader
+   scans first off the side. */
+.dt.cr-tbl td.cr-why { white-space: normal; overflow: visible; text-overflow: clip;
+  min-width: 260px; max-width: 460px; line-height: 1.4; font-weight: 500; }
 .cr-fuse select { padding: 2px 6px; border: 1.5px solid #e2e8f0; border-radius: 6px;
   background: #fff; font: inherit; font-size: 12px; width: 100%; min-width: 150px; }
 .cr-fed { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; }

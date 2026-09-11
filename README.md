@@ -1,3 +1,68 @@
+# The dig that refuses LV — 11 Sep 2026
+
+Corrected from the report: the real reason a meter was not reached was
+that two sections of trench are not set to carry LV. The dig runs
+unbroken to the substation; only the flags stop the electricity.
+
+`networkFrom` leaves such a trench out of the graph entirely — that
+flag is deliberate isolation and the routing honours it. So the
+trench was not there to reason about, and the gap analysis, which
+reasons about the lines that ARE there, described a hole in a drawing
+that is continuous: "Gap of 40 m in the network", about a dig with no
+gap in it. Two faults with different fixes, and the wrong one sends
+somebody hunting for a break that does not exist.
+
+Now, before any gap is named:
+
+- A trench in reach of the meter that refuses LV is reported as
+  itself, rather than as "nothing within 30 m" — the meter is standing
+  on a dig, and calling a deliberate setting an absence is worse than
+  saying nothing.
+- A blocked route onward is reported with **every** section of the
+  blocked run named, not just the one touching the meter's spur:
+  naming one has somebody set a flag, rebuild, and meet the same fault
+  one trench further on.
+- Both say what to do: "Set Carries LV on them, or draw a trench that
+  does."
+
+`checkdistances` drives the reported shape — two sections in a row —
+and asserts the same drawing reaches once the flags are cleared, so
+the fixture is testing the flag and not the geometry. Disabling the
+new reason brings back "Gap of 40 m" and fails four cases.
+
+Suite 135 of 153.
+
+---
+
+# Why a meter is not reached, said readably — 11 Sep 2026
+
+Reported from a screenshot: the Why column read "trench_service
+#49998, 1.6 m from…" and the rest was cut off. Two faults in one cell.
+
+- **The sentence buried its point.** It led with the database's word
+  for the line and put the actual fault — that there is a gap, and how
+  wide — at the end, exactly where the truncation fell. It now leads
+  with the diagnosis: "Gap of 0.4 m in the network: service trench
+  #49998 stops 0.4 m short of mains trench #10, and anything over
+  0.25 m counts as not joined." The first six words survive any
+  truncation and are the ones that matter.
+- **It spoke in type keys.** `trench_service` is what the database
+  calls it; the person reading is looking at a drawing where it is a
+  service trench. Line types are named in words now, with the id kept
+  on the end because that is how the thing is found.
+- **The cell clipped.** The shared table sets nowrap and an ellipsis
+  on every cell, which is right for a name and wrong for prose. The
+  Why column wraps, with a floor so the table cannot squeeze it to one
+  word per line and a ceiling so it cannot push the columns a reader
+  scans first off the side.
+
+The other reasons got the same treatment: "Nothing within 30 m of the
+meter…", "The substation is not on the network…". Three assertions in
+`checkdistances` were pinned to the old keys and now test the meaning.
+Suite 135 of 153.
+
+---
+
 # A flat on a board is not a plot to place — 11 Sep 2026
 
 Reported from two screenshots: MSDB 2 holds plots 2, 19 and 20, and

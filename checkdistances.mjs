@@ -14,6 +14,7 @@
 
    Both now fall back to the geometry, which is the thing that is always
    there. */
+import { readFileSync } from "node:fs";
 import { distancesFrom, whyUnreached } from "./src/features/gis/electric.js";
 
 let bad = 0;
@@ -326,9 +327,20 @@ const METER = {
     fail("a service 0.6 m short of the main was read as joined to it");
   }
   const why = whyUnreached(all, 1, 4) || "";
-  if (!/elec_service #3/.test(why)) fail(`the reason does not name the line joined: "${why}"`);
-  if (!/0\.6 m short of elec_main #2/.test(why)) {
+  /* Names the line by its id, and says how far short of what. Not by
+     the type KEY: the reason now calls a `trench_service` a service
+     trench, which is what the drawing calls it, and these were pinned
+     to the database's word. The rule is that the row points at one
+     thing on the drawing \u2014 which it still does. */
+  if (!/#3\b/.test(why)) fail(`the reason does not name the line joined: "${why}"`);
+  if (!/0\.6 m short of [^#]*#2/.test(why)) {
     fail(`the reason does not say how far short, or of what: "${why}"`);
+  }
+  /* And the fault leads, because the column that shows this truncates:
+     the first words have to be the diagnosis. */
+  if (!/^Gap of 0\.6 m/.test(why)) {
+    fail(`the reason buries the fault at the end, where the column cuts `
+      + `it off: "${why}"`);
   }
 
   /* Nothing near it at all. */
@@ -345,8 +357,146 @@ const METER = {
   const m2 = { Feature_ID: 4, Feature_Role: "meter", Layer_Key: "electric",
     Geometry: [[100, 3]] };
   const origin = whyUnreached([SUB, off, m2], 1, 4) || "";
-  if (!/origin is not on the network/.test(origin)) {
+  /* By what it blames \u2014 the substation, not the meter \u2014 rather than
+     by the word "origin", which the sentence no longer uses because a
+     reader of the report is looking at a substation. */
+  if (!/substation is not on the network/i.test(origin)) {
     fail(`a feeder 3 m off the substation is blamed on the meter: "${origin}"`);
+  }
+}
+
+/* ── The reason has to be readable where it is shown ──
+
+   Reported from a screenshot: the Why column read "trench_service
+   #49998, 1.6 m from\u2026" and the rest was cut off. Two faults in one
+   cell.
+
+   The sentence led with the database's word for the line and put the
+   actual fault \u2014 that there is a gap, and how wide \u2014 at the end,
+   where the truncation fell. And the shared table clips every cell
+   with an ellipsis, which is right for a name and wrong for prose. */
+{
+  const sub = { Feature_ID: 1, Feature_Role: "substation", Layer_Key: "electric",
+    Geometry: [[0, 0]], Attributes: {} };
+  const main = { Feature_ID: 10, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[0, 0], [50, 0]], Attributes: { Line_Type: "trench_main" } };
+  const svc = { Feature_ID: 49998, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[20, 0.4], [20, 8]], Attributes: { Line_Type: "trench_service" } };
+  const meter = { Feature_ID: 99, Feature_Role: "meter", Layer_Key: "electric",
+    Geometry: [[20.05, 8]] };
+  const why = whyUnreached([sub, main, svc, meter], 1, 99) || "";
+
+  /* Said in the words the drawing uses. */
+  if (/trench_service|trench_main|elec_main|elec_service/.test(why)) {
+    fail(`the reason quotes a database type key at somebody reading a `
+      + `drawing: "${why}"`);
+  }
+  if (!/service trench #49998/.test(why)) {
+    fail(`the service trench is not named as one: "${why}"`);
+  }
+  if (!/mains trench #10/.test(why)) {
+    fail(`the trench it falls short of is not named as one: "${why}"`);
+  }
+
+  /* The first words carry the fault, because they are the ones that
+     survive a narrow column. */
+  /* Up to the colon. Splitting on a full stop too cut "0.4 m" in half
+     and tested "Gap of 0", which is the check finding its own bug. */
+  const firstWords = why.split(":")[0];
+  if (!/gap of/i.test(firstWords) || !/0\.4 m/.test(firstWords)) {
+    fail(`the first words do not say what is wrong and how far: "${firstWords}"`);
+  }
+
+  /* And the cell wraps rather than clipping. The shared table sets
+     nowrap and an ellipsis on every cell; this column overrides it,
+     and the override has to be more specific than the rule it beats
+     or nothing changes on screen. */
+  const report = readFileSync("./src/features/gis/CircuitReport.jsx", "utf8");
+  if (!/\.dt\.cr-tbl td\.cr-why \{[^}]*white-space: normal/.test(report)) {
+    fail("the Why column still clips its sentence with an ellipsis, so the "
+      + "reason can only be read through a tooltip");
+  }
+  if (!/className="cr-gap cr-why"/.test(report)) {
+    fail("the Why cell does not carry the class that lets it wrap");
+  }
+}
+
+/* ── A dig that is there and refuses LV ──
+
+   Reported, correcting an earlier answer of mine: "the actual reason
+   is that there is no continuous trench route to a substation \u2014 in
+   this case there are 2 sections of trench that are not configured to
+   carry LV."
+
+   `networkFrom` leaves out any trench with `Carries_LV` off, because
+   that flag is deliberate isolation and the routing honours it. So the
+   trench is not in the graph at all, and the gap analysis \u2014 which
+   reasons about the lines that ARE in it \u2014 described a hole in a
+   drawing that is continuous. Two faults with different fixes, and
+   the wrong one sends somebody hunting for a break that is not there.
+
+   The dig here runs unbroken from the substation to the meter's spur.
+   Only the flags stop it. */
+{
+  const sub = { Feature_ID: 1, Feature_Role: "substation", Layer_Key: "electric",
+    Geometry: [[0, 0]], Attributes: {} };
+  const t = (id, geometry, attrs = {}) => ({ Feature_ID: id, Feature_Type: "line",
+    Layer_Key: "trench", Geometry: geometry,
+    Attributes: { Line_Type: "trench_main", ...attrs } });
+  const near = t(10, [[0, 0], [20, 0]]);
+  const shutA = t(11, [[20, 0], [40, 0]], { Carries_LV: false });
+  const shutB = t(12, [[40, 0], [60, 0]], { Carries_LV: false });
+  const spur = t(13, [[60, 0], [60, 8]], { Line_Type: "trench_service" });
+  const meter = { Feature_ID: 99, Feature_Role: "meter", Layer_Key: "electric",
+    Geometry: [[60, 8]] };
+  const all = [sub, near, shutA, shutB, spur, meter];
+
+  /* It is genuinely unreachable \u2014 the flags do isolate it. */
+  if (distancesFrom(all, 1).get(99) != null) {
+    fail("a trench with Carries LV off is walked over by the distances");
+  }
+
+  const why = whyUnreached(all, 1, 99) || "";
+  if (!/not set to carry LV/i.test(why)) {
+    fail(`the reason does not say the trench refuses LV: "${why}"`);
+  }
+  /* No invented gap: the dig is continuous and saying otherwise sends
+     somebody to close a break that does not exist. */
+  if (/^Gap of/.test(why) || /stops .* short of/.test(why)) {
+    fail(`a continuous dig is reported as a gap: "${why}"`);
+  }
+  /* BOTH sections, not just the one touching the meter's spur.
+     Naming one has somebody set a flag, rebuild, and meet the same
+     fault one trench further on. */
+  if (!/#11/.test(why) || !/#12/.test(why)) {
+    fail(`only part of the blocked run is named: "${why}"`);
+  }
+  /* And what to do about it. */
+  if (!/Set Carries LV/i.test(why)) {
+    fail(`the reason does not say how to fix it: "${why}"`);
+  }
+
+  /* With the flags cleared, the same drawing reaches. */
+  const open = [sub, near, t(11, [[20, 0], [40, 0]]), t(12, [[40, 0], [60, 0]]),
+    spur, meter];
+  if (distancesFrom(open, 1).get(99) == null) {
+    fail("the same dig does not reach once the trenches carry LV, so the "
+      + "fixture is not testing the flag");
+  }
+  if (whyUnreached(open, 1, 99) != null) {
+    fail("a reachable meter is still given a reason");
+  }
+
+  /* And a meter whose ONLY trench in reach refuses LV: it is standing
+     on a dig, so "nothing within 30 m" would be the report calling a
+     deliberate setting an absence. */
+  const lone = { Feature_ID: 98, Feature_Role: "meter", Layer_Key: "electric",
+    Geometry: [[300, 8]] };
+  const far = t(20, [[300, 0], [300, 10]], { Carries_LV: false });
+  const w2 = whyUnreached([sub, near, far, lone], 1, 98) || "";
+  if (!/not set to carry LV/i.test(w2)) {
+    fail(`a meter standing on a trench that refuses LV is told there is `
+      + `nothing near it: "${w2}"`);
   }
 }
 

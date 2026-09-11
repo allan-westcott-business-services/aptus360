@@ -940,9 +940,28 @@ const served = (b) => servedFlats(b, flats);
       fail("a flat on the report has no plot number, so the column a reader "
         + "scans first is blank");
     }
-    if (flats.some((m) => m.houseType !== "Flat on MSDB")) {
-      fail("a flat does not say where it hangs from, so a reader looks for "
-        + "it on the drawing and cannot find it");
+    /* ── Where it hangs is said by the grouping, not by this column ──
+
+       This asserted the House Type column read "Flat on MSDB", so a
+       reader who could not find the plot on the drawing knew why. The
+       report now groups a board's flats under a heading carrying the
+       board's name, which says the same thing once for the whole
+       block and in the place somebody looks for it.
+
+       That frees the column to answer the question it asks. Every
+       other row gives a three-letter code, and a sentence in the
+       middle of a column being scanned for 2BF against 3BF is the
+       column lying about what it holds.
+
+       So the rule is now: the code here, and the board on the row for
+       the grouping to use. */
+    if (flats.some((m) => /MSDB/i.test(String(m.houseType ?? "")))) {
+      fail("a flat's house type still says where it hangs, in a column every "
+        + "other row answers with a three-letter code");
+    }
+    if (flats.some((m) => m.msdbId == null)) {
+      fail("a flat does not say which board it hangs from, so the report "
+        + "cannot group it under one and the reader is told nowhere");
     }
 
     /* ── Each flat's own distance ──

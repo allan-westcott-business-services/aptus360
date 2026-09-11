@@ -389,6 +389,7 @@ export default function CircuitReport({
                flats under its name. Decided by boardSections, which is
                pure and tested \u2014 see checkboardsections. */
             const items = boardSections(rows);
+
             /* The link boxes on this circuit, and where each row sits
                now \u2014 read off the meters, which is where the lasso and
                the build both read it. */
@@ -397,6 +398,28 @@ export default function CircuitReport({
               && Number(b.Attributes?.Circuit_ID) === Number(c.id));
             const wayValueOf = (m) => (m.linkBoxId != null && m.linkWay != null
               ? `${m.linkBoxId}:${m.linkWay}` : "off");
+
+            /* ── The heading spans the table, exactly ──
+
+               A colSpan larger than the table has columns leaves the
+               browser distributing width over columns that are not
+               there, and the whole table shrinks away from the one
+               above it \u2014 which is how a board heading made its
+               circuit's table narrower than every other.
+
+               Counted rather than guessed: the tick box, the three
+               sortable columns, the distance and the kVA, plus "Fed
+               from" only where there is more than one origin and the
+               fuse only where the circuit has a link box. The same two
+               conditions the header row uses, so the two cannot
+               disagree about how wide the table is.
+
+               Below `boxesHere`, because it reads it: declared above,
+               this threw "cannot access before initialization" the
+               moment any report opened. */
+            const colCount = 6
+              + (report.origins?.length > 1 ? 1 : 0)
+              + (boxesHere.length > 0 ? 1 : 0);
             /* ── Named output first ──
 
                The label read "Link Box 1 · output 2 (400 A)" and the
@@ -762,8 +785,11 @@ export default function CircuitReport({
                       </tr>
                     </thead>
                     <tbody>
+                      {/* The same column count as the board headings:
+                          this was a hard six, which is right only on a
+                          drawing with one origin and no link box. */}
                       {rows.length === 0 && (
-                        <tr><td colSpan={6} className="no-rows">
+                        <tr><td colSpan={colCount} className="no-rows">
                           Nothing matches that filter.
                         </td></tr>
                       )}
@@ -771,7 +797,7 @@ export default function CircuitReport({
                         /* The board's own line across the table, its
                            flats following under it. */
                         <tr key={`b${item.g.id}`} className="cr-board">
-                          <td colSpan={12}>
+                          <td colSpan={colCount}>
                             {item.g.name}
                             <span className="cr-board-n">
                               {" "}&middot; {item.g.rows.length} flat

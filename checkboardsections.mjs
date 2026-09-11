@@ -123,6 +123,49 @@ const shape = (items) => items
   }
 }
 
+/* ── A flat's house type is a house type ──
+
+   The column read "Flat on MSDB" on a flat's row. That is the column
+   answering a different question from the one it asks: every other
+   row gives the three-letter code, and a reader scanning for 2BF
+   against 3BF found a sentence in the middle of it. WHERE the flat
+   hangs is already said by the board's heading above its row, once
+   for the whole block. */
+{
+  const sub = { Feature_ID: 1, Feature_Role: "substation", Layer_Key: "electric",
+    Label: "Substation 1", Geometry: [[0, 0]], Attributes: {} };
+  const dig = { Feature_ID: 2, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[0, 0], [80, 0]], Attributes: { Line_Type: "trench_main" } };
+  const board = { Feature_ID: 50, Feature_Role: "msdb", Layer_Key: "electric",
+    Label: "MSDB 1", Geometry: [[40, 0]], Attributes: { Circuit_ID: 1 } };
+  const flat = { Feature_ID: 217, Feature_Role: "meter", Layer_Key: "electric",
+    Label: "Flat 17", Plot_ID: 17, Geometry: [[40, 0]],
+    Attributes: { Assumed: true, MSDB_ID: 50, Circuit_ID: 1,
+      Assumed_kVA: 1.5, Meter_Utility: "electric" } };
+
+  const r = circuitReport([sub, dig, board, flat], {
+    plotById: (id) => ({ plot_number: String(id), config_code: "2BF", kva_load: 1.5 }),
+  });
+  const m = r.circuits?.find((c) => Number(c.id) === 1)?.meters?.[0];
+  if (!m) fail("the flat is missing from its circuit");
+  else {
+    if (m.houseType !== "2BF") {
+      fail(`a flat's house type reads "${m.houseType}" rather than its code`);
+    }
+    if (/MSDB/i.test(String(m.houseType))) {
+      fail("the house type column says where the flat hangs, which the "
+        + "board's heading above it already says");
+    }
+  }
+  /* A flat whose plot row is missing gets a dash, as every other row
+     does \u2014 not an invented description. */
+  const none = circuitReport([sub, dig, board, flat], { plotById: () => null });
+  const m2 = none.circuits?.find((c) => Number(c.id) === 1)?.meters?.[0];
+  if (m2 && m2.houseType !== "\u2014") {
+    fail(`a flat with no plot row reads "${m2.houseType}", not a dash`);
+  }
+}
+
 // 8. Wired into the table.
 {
   const report = readFileSync("src/features/gis/CircuitReport.jsx", "utf8");
@@ -132,6 +175,30 @@ const shape = (items) => items
   }
   if (!/className="cr-board"/.test(report)) {
     fail("the board heading has no row of its own");
+  }
+  /* ── The heading spans the table, exactly ──
+
+     A colSpan wider than the table has columns leaves the browser
+     distributing width over columns that are not there, and the whole
+     table shrinks away from the one above it. Reported as the columns
+     getting much narrower wherever a board section appeared.
+
+     Counted from the same two conditions the header row uses, and
+     declared after `boxesHere` because it reads it \u2014 above it, the
+     report threw "cannot access before initialization" on open. */
+  if (/colSpan=\{\d+\}/.test(report)) {
+    fail("a board heading spans a guessed number of columns rather than the "
+      + "table's own count, which narrows the whole table");
+  }
+  if (!/const colCount = 6[\s\S]{0,160}boxesHere\.length > 0 \? 1 : 0\)/.test(report)) {
+    fail("the column count does not follow the same conditions as the header "
+      + "row, so the heading and the columns can disagree");
+  }
+  const boxesAt = report.indexOf("const boxesHere");
+  const countAt = report.indexOf("const colCount");
+  if (boxesAt < 0 || countAt < 0 || countAt < boxesAt) {
+    fail("the column count is declared before the link boxes it reads, which "
+      + "throws the moment a report is opened");
   }
   /* Grouped AFTER filtering and sorting: a search for a house type has
      to narrow the sections with everything else, not be undone by the

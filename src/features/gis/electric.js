@@ -1880,13 +1880,22 @@ export function circuitReport(features = [], opts = {}) {
       /* What it is, where there is no house type to give. A row reading
          "—" in every column but its name says nothing about why it has
          no plot; the supply type says it is not a dwelling. */
-      houseType: assumed
-        /* Says what it is and where it hangs from, because a reader
-           looking for a plot on the drawing will not find this one. */
-        ? "Flat on MSDB"
-        : (supply
-          ? (supply.Description || supply.Supply_Ref || "Non-residential")
-          : (plot?.config_code ?? plot?.Code ?? "\u2014")),
+      /* ── The house type, for a flat as for anything else ──
+
+         A flat's row used to read "Flat on MSDB" here. That was the
+         column answering a different question from the one it asks:
+         every other row gives the three-letter type, and a reader
+         scanning the column for 2BF against 3BF found a sentence in
+         the middle of it. WHERE the flat hangs is already said by the
+         board's heading above its row, which is the right place for
+         it and says it once for the whole block.
+
+         A flat is a plot like any other and has a config code, so it
+         gets the code. The fallback covers a flat whose plot row is
+         not in the list \u2014 a dash, as everywhere else. */
+      houseType: supply
+        ? (supply.Description || supply.Supply_Ref || "Non-residential")
+        : (plot?.config_code ?? plot?.Code ?? "\u2014"),
       kva: kva != null && kva !== "" ? Number(kva) : fallbackKva,
       /* Whether that figure was read off the plot or fallen back to.
          A plot with no load recorded and a plot genuinely drawing

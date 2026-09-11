@@ -1,5 +1,21 @@
 # A block's flats read as a block — 11 Sep 2026
 
+**Two follow-ups from the first cut.** The board heading spanned a
+guessed twelve columns; a colSpan wider than the table has columns
+leaves the browser distributing width over columns that are not there,
+and the whole table shrank away from the one above it. It is counted
+now, from the same two conditions the header row uses — and declared
+after `boxesHere`, which it reads: above it, the report threw "cannot
+access before initialization" the moment it opened. The
+"Nothing matches that filter" row had the same hard six and now uses
+the count too.
+
+And a flat's House Type read "Flat on MSDB", which is the column
+answering a different question from the one it asks. It gives the
+three-letter code like every other row; where the flat hangs is said
+once, by the heading above its block.
+
+
 In the Circuit Report, a circuit's flats now sit under a heading
 naming their MSDB, with the drawn meters above them:
 

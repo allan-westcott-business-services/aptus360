@@ -1,3 +1,35 @@
+# A block's flats read as a block — 11 Sep 2026
+
+In the Circuit Report, a circuit's flats now sit under a heading
+naming their MSDB, with the drawn meters above them:
+
+    Electric Meter 12   plot 12
+    …
+    MSDB 1 · 2 flats
+        Electric Meter 17   plot 17
+        Electric Meter 18   plot 18
+    MSDB 2 · 2 flats
+        …
+
+A flat's meter is assumed onto its board, and eight of them scattered
+through a list ordered by plot read as eight unrelated plots. On the
+drawing they are one object in one riser.
+
+- The row carries `msdbId` and the board's LABEL, so the heading reads
+  "MSDB 1" as the drawing calls it rather than an id.
+- Sections are ordered by name and numerically, so MSDB 10 follows
+  MSDB 2, and they do not reshuffle as rows are ticked.
+- Grouped after the filters, so a search narrows what is under each
+  board rather than being undone by the grouping.
+- A circuit with no boards is exactly the plain list it always was.
+
+`boardSections` is pure and tested rather than a loop inside the JSX:
+this session has already shipped one fault that a grep-of-the-call
+approved, and the shape of a table is worth being able to assert.
+Suite 136 of 154.
+
+---
+
 # The dig that refuses LV — 11 Sep 2026
 
 Corrected from the report: the real reason a meter was not reached was

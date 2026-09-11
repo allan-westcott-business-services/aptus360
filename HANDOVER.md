@@ -200,6 +200,7 @@ caught a fault that had already shipped at least once.
 | `node checkservicemoved.mjs` | Auto Service re-lays the plots whose ground moved, and only those |
 | `node checkwayfuse.mjs` | Each LV way carries its own fuse rating |
 | `node checkbreechplace.mjs` | A breech is placed on a cable point, breaking it or not |
+| `node checkboardsections.mjs` | A circuit's flats are grouped under their board |
 | `node checkjsxescapes.mjs` | No \uXXXX escape is stranded in JSX text |
 | `node checktrace.mjs` | One token to the fork, two after it |
 | `node checkdupes.mjs` | One dialog and one producer per piece of state |

@@ -1639,6 +1639,46 @@ export function lvOrigins(features = []) {
   ];
 }
 
+/* ── A block's flats read as a block ──
+
+   A flat's meter is assumed onto its MSDB, and a board of eight of
+   them scattered through a list ordered by plot reads as eight
+   unrelated plots. On the drawing they are one object in one riser,
+   and the fault or the figure that matters is nearly always the
+   board's rather than any one flat's.
+
+   So: the drawn meters keep the order they came in, and each board's
+   flats follow under a heading of the board's own name. Sorted by that
+   name so the sections do not reshuffle as rows are ticked, and by
+   number within the name so MSDB 2 follows MSDB 1 rather than MSDB 10.
+
+   Takes rows that have already been filtered and sorted, and returns
+   what to draw in order: this decides the SHAPE of the table and
+   nothing about its contents. Pure, and therefore testable \u2014 a
+   grouping written inline in the JSX could only ever be grepped. */
+export function boardSections(rows = []) {
+  const loose = [];
+  const boards = [];
+  for (const m of rows) {
+    if (m?.msdbId == null) { loose.push(m); continue; }
+    let g = boards.find((x) => Number(x.id) === Number(m.msdbId));
+    if (!g) {
+      g = { id: m.msdbId, name: m.msdbName || `MSDB ${m.msdbId}`, rows: [] };
+      boards.push(g);
+    }
+    g.rows.push(m);
+  }
+  boards.sort((a, b) => String(a.name)
+    .localeCompare(String(b.name), undefined, { numeric: true }));
+  return [
+    ...loose.map((m) => ({ kind: "row", m })),
+    ...boards.flatMap((g) => [
+      { kind: "board", g },
+      ...g.rows.map((m) => ({ kind: "row", m, onBoard: true })),
+    ]),
+  ];
+}
+
 export function circuitReport(features = [], opts = {}) {
   /* Both lookups in the options, travelling together.
 
@@ -1873,6 +1913,20 @@ export function circuitReport(features = [], opts = {}) {
          off a row is how the Fed from box showed "Build decides"
          whatever the database held, snapping back after every pick
          that had in fact saved. */
+      /* ── Which board it hangs from ──
+
+         A flat's meter is assumed onto its MSDB, and the board's id
+         travels on it. Carried onto the row so the report can gather
+         the flats of one board together under the board's name: a
+         block's meters read as a block on the drawing and should read
+         as one in the report, rather than as eight numbers scattered
+         through a list ordered by plot. */
+      msdbId: m.Attributes?.MSDB_ID ?? null,
+      msdbName: m.Attributes?.MSDB_ID != null
+        ? (features.find((x) =>
+          Number(x.Feature_ID) === Number(m.Attributes.MSDB_ID))?.Label
+          ?? `MSDB ${m.Attributes.MSDB_ID}`)
+        : null,
       circuitOriginId: m.Attributes?.Circuit_Origin_ID ?? null,
       /* Which link box output feeds this meter, for the report's Fuse
          column \u2014 read off the meter, the one place the lasso, the

@@ -2,6 +2,7 @@ import { useState } from "react";
 import * as XLSX from "xlsx";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import { parsePlotRange } from "./plotRange.js";
+import { boardSections } from "./electric.js";
 
 /* Circuit report — electric meters by feeder.
 
@@ -383,6 +384,11 @@ export default function CircuitReport({
             .filter((c) => onlyCircuit === "all" || String(c.id) === onlyCircuit)
             .map((c) => {
             const rows = sortRows(match(c.meters));
+
+            /* The shape of the table: drawn meters, then each board's
+               flats under its name. Decided by boardSections, which is
+               pure and tested \u2014 see checkboardsections. */
+            const items = boardSections(rows);
             /* The link boxes on this circuit, and where each row sits
                now \u2014 read off the meters, which is where the lasso and
                the build both read it. */
@@ -761,8 +767,23 @@ export default function CircuitReport({
                           Nothing matches that filter.
                         </td></tr>
                       )}
-                      {rows.map((m) => (
-                        <tr key={m.id} className={picked.includes(m.id) ? "cr-on" : ""}>
+                      {items.map((item) => (item.kind === "board" ? (
+                        /* The board's own line across the table, its
+                           flats following under it. */
+                        <tr key={`b${item.g.id}`} className="cr-board">
+                          <td colSpan={12}>
+                            {item.g.name}
+                            <span className="cr-board-n">
+                              {" "}&middot; {item.g.rows.length} flat
+                              {item.g.rows.length === 1 ? "" : "s"}
+                            </span>
+                          </td>
+                        </tr>
+                      ) : ((m) => (
+                        <tr key={m.id} className={[
+                          picked.includes(m.id) ? "cr-on" : "",
+                          item.onBoard ? "cr-flat" : "",
+                        ].filter(Boolean).join(" ")}>
                           {/* ── A self-lay meter cannot be ticked ──
 
                               Somebody else connects it. It draws nothing
@@ -866,7 +887,7 @@ export default function CircuitReport({
                             </td>
                           )}
                         </tr>
-                      ))}
+                      ))(item.m)))}
                     </tbody>
                   </table>
                 </div>
@@ -979,6 +1000,12 @@ const CSS = `
   font-size: 14px; padding: 0 2px; }
 .cr-ink-x:hover { color: #dc2626; }
 .cr-fuse { white-space: nowrap; }
+/* A board's line across the table, and its flats indented under it, so
+   a block reads as one thing rather than as eight unrelated plots. */
+.dt.cr-tbl tr.cr-board td { background: #dbeafe; font-weight: 700; font-size: 12px;
+  padding: 5px 10px; color: #1e3a5f; }
+.cr-board-n { font-weight: 500; color: #475569; }
+.dt.cr-tbl tr.cr-flat td:nth-child(2) { padding-left: 22px; }
 /* The Why column is a sentence, so it wraps where every other cell
    clips. Given a floor so the table does not squeeze it to one word
    per line, and a ceiling so it cannot push the columns a reader

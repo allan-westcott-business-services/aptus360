@@ -33,7 +33,7 @@ import { bedColour } from "../../lib/bedColours.js";
 import { kvaOf } from "./voltDrop.js";
 import {
   pocUnit, circuitLetter, circuitsFrom, circuitChoices, nextCircuitId,
-  nextCircuitNumber,
+  nextCircuitNumber, fuseForWay,
   SUB_DEFAULTS, ampsFor,
   moveCircuitToWay, compactWays,
 } from "./electric.js";
@@ -581,13 +581,21 @@ export default function FeatureEditor({
   /* What a way is carrying. Amps against its fuse, since that is what
      decides whether the way is viable, with the load and meter count
      behind it. */
+  /* The board's default. Each way's own rating is read per row through
+     `fuseForWay`, which falls back to this \u2014 see the Fuse column. */
   const wayFuse = Number(feature.Attributes?.Way_Fuse_A ?? SUB_DEFAULTS.Way_Fuse_A) || 0;
   const outputV = Number(feature.Attributes?.Output_V ?? SUB_DEFAULTS.Output_V) || 400;
   const rating = Number(feature.Attributes?.Rating_kVA ?? 0) || 0;
 
-  const wayLoad = (cid) => {
+  const wayLoad = (cid, way = null) => {
     const c = circuits.find((x) => Number(x.id) === Number(cid));
     if (!c) return null;
+    /* Judged against THIS way's fuse. A way feeding four flats and a
+       way feeding a street are not protected by the same one, so a
+       percentage against a board-wide rating was answering a question
+       nobody asked. Read off the draft, so a rating typed into the box
+       moves the bar under it before anything is saved. */
+    const fuse = way == null ? wayFuse : fuseForWay(f, way);
     let kva = c.meters.reduce((t, m) => {
       const p = plotList.find((x) => x.plot_id === m.Plot_ID);
       const v = p?.kva_load ?? p?.KVA_Load;
@@ -617,8 +625,9 @@ export default function FeatureEditor({
       flats,
       kva: Math.round(kva * 10) / 10,
       amps: Math.round(amps),
-      pct: wayFuse > 0 ? Math.round((amps / wayFuse) * 100) : 0,
-      over: wayFuse > 0 && amps > wayFuse,
+      fuse,
+      pct: fuse > 0 ? Math.round((amps / fuse) * 100) : 0,
+      over: fuse > 0 && amps > fuse,
     };
   };
 
@@ -2895,7 +2904,8 @@ export default function FeatureEditor({
                   colour that circuit is drawn in. */}
               <div className="fe-board">
                 <div className="fe-board-h">
-                  <span>Way</span><span>Circuit</span><span>Loading</span><span>Line</span>
+                  <span>Way</span><span>Circuit</span><span>Fuse</span>
+                  <span>Loading</span><span>Line</span>
                 </div>
                 {Array.from(
                   { length: Number(f.Attributes.Ways ?? SUB_DEFAULTS.Ways) || 0 },
@@ -2904,7 +2914,7 @@ export default function FeatureEditor({
                   const cid = (f.Attributes.Way_Circuits || {})[way];
                   const circuit = cid != null
                     ? circuits.find((c) => Number(c.id) === Number(cid)) : null;
-                  const load = cid != null ? wayLoad(cid) : null;
+                  const load = cid != null ? wayLoad(cid, way) : null;
                   return (
                     <div className={cid != null ? "fe-board-r" : "fe-board-r spare"} key={way}>
                       {/* The way number, and a way to change it.
@@ -3092,6 +3102,39 @@ export default function FeatureEditor({
                             )}
                           </span>
                         )}
+                      {/* ── The fuse protecting this way ──
+
+                          Per way, because a way feeding four flats and
+                          a way feeding a street of houses are not
+                          protected by the same one, and the schedule
+                          has to say so per way or it is not a
+                          schedule.
+
+                          Blank shows the board's default as its
+                          placeholder rather than as a value, so the
+                          row says "this follows the board" instead of
+                          claiming a rating of its own. Typing one
+                          overrides it for this way; clearing the box
+                          hands it back. Both are the draft, so the bar
+                          beside it moves as the number is typed.
+
+                          On a spare way too: a rating can be decided
+                          before the circuit that will sit on it
+                          exists, which is the order things happen in
+                          when a board is being planned. */}
+                      <span className="fe-fusecell">
+                        <input className="fe-fuse" type="number" min="0" step="1"
+                          aria-label={`Fuse rating for way ${way}`}
+                          placeholder={String(wayFuse || SUB_DEFAULTS.Way_Fuse_A)}
+                          value={(f.Attributes.Way_Fuses || {})[way] ?? ""}
+                          onChange={(e) => {
+                            const per = { ...(f.Attributes.Way_Fuses || {}) };
+                            if (e.target.value === "") delete per[way];
+                            else per[way] = e.target.value;
+                            setAttr("Way_Fuses")(per);
+                          }} />
+                        <span className="fe-fuse-a">A</span>
+                      </span>
                       {load
                         ? <span className="fe-load">
                             <span className={load.over ? "fe-amps over" : "fe-amps"}>
@@ -4410,7 +4453,7 @@ const CSS = `
 .fe-pump span { color: var(--muted); }
 .fe-pump strong { text-align: right; }
 .fe-board { display: grid; gap: 2px; margin: 6px 0; }
-.fe-board-h, .fe-board-r { display: grid; grid-template-columns: 34px 1fr 150px 40px;
+.fe-board-h, .fe-board-r { display: grid; grid-template-columns: 34px 1fr 74px 150px 40px;
   gap: 8px; align-items: center; }
 .fe-board-h { font: 700 10px inherit; text-transform: uppercase; letter-spacing: .05em;
   color: var(--muted); padding: 0 2px 4px; border-bottom: 1px solid var(--border); }
@@ -4437,6 +4480,14 @@ const CSS = `
    So the row wraps rather than crushes: the input keeps a floor of
    110px and takes the space it can, and the two extras drop onto a
    second line when they no longer fit beside it. */
+/* The per-way fuse box. Narrow, because three digits is the whole of
+   it, and the "A" outside the input so the number stays selectable and
+   the unit cannot be typed over. */
+.fe-fusecell { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.fe-fuse { border: 1px solid var(--border); border-radius: 6px; font: 600 12px inherit;
+  padding: 4px 6px; width: 52px; text-align: right; }
+.fe-fuse::placeholder { color: var(--muted); font-weight: 400; }
+.fe-fuse-a { font: 600 10px inherit; color: var(--muted); }
 .fe-cname { border: 1px solid var(--border); border-radius: 6px; font: 600 12px inherit;
   padding: 4px 8px; flex: 1 1 130px; min-width: 110px; width: auto; }
 .fe-cwrap { flex: 1; display: flex; flex-wrap: wrap; align-items: center;

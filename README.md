@@ -1,3 +1,61 @@
+# A fuse rating per way — 11 Sep 2026
+
+The substation's board carried one rating for all of its ways, which
+is only true where every circuit is the same size. A way feeding four
+flats and a way feeding a street of houses are not protected by the
+same fuse, so a loading percentage quoted against a board-wide rating
+was answering a question nobody had asked.
+
+- Each way row in the substation editor has a **Fuse** box. Typing a
+  rating sets it for that way; clearing the box hands it back to the
+  board. The board's rating shows as the placeholder rather than as a
+  value, so a row following the board reads as following it instead of
+  claiming a rating of its own.
+- The loading bar beside it is judged against **that way's** fuse, and
+  read off the draft, so the bar moves as the number is typed.
+- Settable on a spare way too: a rating can be decided before the
+  circuit that will sit on it exists, which is the order things happen
+  in when a board is planned.
+- `fuseForWay(substation, way)` is the one rule — way, then board,
+  then the built-in default. A cleared box, an empty string, a null
+  and a zero all mean "follow the board", never "no fuse".
+
+Existing drawings are untouched: none has a `Way_Fuses` map, so every
+way reads its board's rating exactly as before. That case is the first
+one in the check, because on the day this ships it is the only one
+that applies. No migration — the map is an attribute. Suite 133 of
+151.
+
+---
+
+# Checks live at the root — 11 Sep 2026
+
+Five `check*.mjs` files were sitting in `src/features/gis`. `checkall`
+reads the repo root only, so none of them had run since being put
+there — and none of them could: their imports are written for the root
+(`./src/features/gis/feeder.js`), so they crash where they live.
+
+Four were older, smaller generations of a root check with the same
+name; the root versions cover the same rules with their own newer
+fixtures. The fifth was different. **`checkoverridecarry` had been
+fixed on 9 September in the stranded copy** — the fixed
+30,000-character window replaced with a slice to the end of the
+function, its comment calling it the fifth outing of fault 33 — and
+the root copy kept the old window and kept failing. The repair existed
+and had never once run.
+
+- The fix is now in the root copy and `checkoverridecarry` passes.
+  Standing failures go from nineteen to eighteen.
+- The five strays are deleted (tracked in git, so recoverable).
+- `checkdupes` now walks `src` and fails on any `check*.mjs` outside
+  the root. A stale duplicate that fails is one thing; a FIX that
+  lands in the copy nobody runs is worse, because the work is done and
+  the benefit is invisible.
+
+No migration. Suite 132 of 150.
+
+---
+
 # A self-lay plot is on nobody's circuit — 11 Sep 2026
 
 Reported from a 231-plot site: "Link the meters to circuits: 214 of

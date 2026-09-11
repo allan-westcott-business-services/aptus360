@@ -272,6 +272,41 @@ export function ampsFor(kva, outputV = SUB_DEFAULTS.Output_V) {
   return (Number(kva) || 0) * 1000 / (Math.sqrt(3) * v);
 }
 
+/* ── The fuse protecting one way ──
+
+   A substation's board carried ONE rating for all of its ways, which
+   is only true of a board where every circuit is the same size. A way
+   feeding four flats and a way feeding a street of houses are not
+   protected by the same fuse, and the schedule has to say so per way
+   or it is not a schedule.
+
+   `Way_Fuses` is the map, way number to rating, alongside the
+   `Way_Circuits` map it is read beside. `Way_Fuse_A` stays as the
+   board's default: it is what every existing drawing has, and a
+   substation whose ways really are all the same should say that once
+   rather than four times.
+
+   So the order is the way, then the board, then the built-in default
+   — and a way that has never been touched reads exactly as it did
+   before this existed, which is what makes this safe to add to a
+   database full of drawings.
+
+   Keys are compared as strings and numbers both: jsonb hands the map
+   back with string keys, and the editor writes whatever the row's
+   `way` is. One shape assumed, one day, is a fuse silently reverting
+   to the default. */
+export function fuseForWay(substation, way) {
+  const A = substation?.Attributes || {};
+  const per = A.Way_Fuses || {};
+  const raw = per[way] ?? per[String(way)] ?? per[Number(way)];
+  const n = raw == null || raw === "" ? null : Number(raw);
+  if (n != null && Number.isFinite(n) && n > 0) return n;
+  const board = A.Way_Fuse_A;
+  const b = board == null || board === "" ? null : Number(board);
+  if (b != null && Number.isFinite(b) && b > 0) return b;
+  return SUB_DEFAULTS.Way_Fuse_A;
+}
+
 /* Put a circuit on a free LV way, or report that there isn't one.
 
    Already-assigned circuits keep their way, so re-running doesn't
@@ -282,7 +317,6 @@ export function ampsFor(kva, outputV = SUB_DEFAULTS.Output_V) {
 export function assignWay(substation, circuitId, kva) {
   const A = substation?.Attributes || {};
   const ways = A.Ways != null ? Number(A.Ways) : SUB_DEFAULTS.Ways;
-  const fuse = A.Way_Fuse_A != null ? Number(A.Way_Fuse_A) : SUB_DEFAULTS.Way_Fuse_A;
   const outV = A.Output_V != null ? Number(A.Output_V) : SUB_DEFAULTS.Output_V;
   const map = { ...(A.Way_Circuits || {}) };
 
@@ -296,7 +330,14 @@ export function assignWay(substation, circuitId, kva) {
       if (map[w] == null) { way = w; map[w] = Number(circuitId); changed = true; break; }
     }
   }
-  if (way == null) return { way: null, full: true, ways, fuse, amps: 0, over: false, map, changed: false };
+  if (way == null) {
+    return { way: null, full: true, ways, fuse: fuseForWay(substation, null),
+      amps: 0, over: false, map, changed: false };
+  }
+
+  /* The fuse of the way it landed on, not the board's \u2014 the whole
+     point of a per-way rating is that "over" means over THIS one. */
+  const fuse = fuseForWay(substation, way);
 
   const amps = Math.round(ampsFor(kva, outV));
   return { way, full: false, ways, fuse, amps, over: fuse > 0 && amps > fuse, map, changed };

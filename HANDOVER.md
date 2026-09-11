@@ -198,6 +198,7 @@ caught a fault that had already shipped at least once.
 | `node checkboardcircuit.mjs` | A circuit born on a spare way, membered by a board |
 | `node checkhdcoterminal.mjs` | The build runs out to a cut-out at the end of the dig |
 | `node checkservicemoved.mjs` | Auto Service re-lays the plots whose ground moved, and only those |
+| `node checkwayfuse.mjs` | Each LV way carries its own fuse rating |
 | `node checktrace.mjs` | One token to the fork, two after it |
 | `node checkdupes.mjs` | One dialog and one producer per piece of state |
 | `node checkbomroles.mjs` | The bill counts what is bought, not the markers |
@@ -4563,6 +4564,84 @@ hopping between them passes its own start — which is the walk getting
 clear of the board, not the ring closing. A ring genuinely closing is
 caught by the double feed (every station reached from both directions)
 or by meeting a *different* primary along the last line.
+
+## A fuse rating per way
+
+Asked for: a fuse rating per circuit at the substation. The board had
+one `Way_Fuse_A` for all its ways, and `assignWay` judged every
+circuit's "over" against it.
+
+`fuseForWay(substation, way)` is the single rule: the way's own
+rating, else the board's, else `SUB_DEFAULTS.Way_Fuse_A`. The map is
+`Way_Fuses`, keyed by way, sitting beside `Way_Circuits` and
+`Circuit_Names` — the third map on that board keyed the same way, so
+it reads and clears the same way too.
+
+**`Way_Fuse_A` is deliberately kept as the board default rather than
+migrated into the map.** Every existing drawing has it, a board whose
+ways really are all the same should say so once, and the fallback
+means a database full of drawings reads identically on the day this
+ships. That case is first in `checkwayfuse` for exactly that reason —
+it is the only one that applies to any existing project.
+
+Two details worth keeping:
+
+- **Cleared means "follow the board", never "no fuse".** An empty box
+  passes through `""` before it passes nothing, and a zero would read
+  as unprotected — so `""`, `0` and `null` all fall back. There is a
+  case for each.
+- **Keys are compared as string and number both.** jsonb returns the
+  map with string keys and the editor writes whatever the row's `way`
+  is; assuming one shape is a rating that silently reverts to the
+  board's, which is the kind of fault nobody reports because it looks
+  like they mistyped.
+
+Note the name collision, which is pre-existing and was left alone: on
+a LINK BOX, `Way_Fuse_A` is already a map of way to rating (see
+CircuitReport and the box's editor). On a substation the same key is a
+scalar. Two roles, two shapes, one name. Renaming either would touch
+live data, so the substation's per-way map took a new name instead —
+but anyone reading `Way_Fuse_A` should check which role they have in
+their hand first.
+
+## Checks live at the root
+
+Asked, looking at the folder: should these check files be in
+`src/features/gis` or at the root? At the root — `checkall` reads the
+root directory only, and the five sitting in `src/features/gis` had
+therefore never run. They could not have if they had been tried: their
+imports are written relative to the root, so each one crashes with
+ERR_MODULE_NOT_FOUND where it lives.
+
+Four were earlier generations of a root check of the same name, and
+the root versions cover the same rules with their own later fixtures
+(377 lines against 101, 1,509 against 148). Harmless enough.
+
+**The fifth had a fix in it.** `checkoverridecarry` was repaired on 9
+September — `canvas.slice(at, at + 30000)` replaced by a slice to the
+end of the function, with a comment naming it the fifth outing of
+fault 33 — and the repair went into the stranded copy. The root copy
+kept the fixed window, kept failing, and sat in the standing failure
+list looking like a known problem nobody had got to. Applying the
+stranded fix to the root copy makes it pass. **Standing failures:
+nineteen to eighteen.**
+
+That is the thing to take from this. A stale duplicate that fails is
+noise. A stale duplicate that receives a FIX is worse than noise: the
+work is done, the benefit is invisible, and the failure it was meant
+to clear goes on being explained away as known. Both of the session's
+earlier notes about `src/features/gis/checkbuildblockers.mjs` said
+"noticed, not touched" — the right instinct about someone else's file,
+and it left a working fix stranded for two days next to it.
+
+`checkdupes` now walks `src` and fails on any `check*.mjs` outside the
+root, so the next one is caught the day it appears. The five are
+deleted; they are tracked in git if anything is wanted back.
+
+**Worth a look with the same eye:** the standing failure list has
+eighteen entries that have been treated as known for weeks. At least
+one of them was not a real failure at all. It would be worth an hour
+going through the rest before assuming any of them is understood.
 
 ## A self-lay plot is on nobody's circuit
 

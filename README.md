@@ -1,3 +1,28 @@
+# The breech's feeder end point — 11 Sep 2026
+
+Four rules, asked together.
+
+- **Break → a point at the insert point.** Already the case; unchanged.
+- **Numbered against its circuit.** `planInsertion` puts it in its
+  right place ALONG the cable and renumbers the stops after it — but
+  it needs an origin (a stop numbered 0) to measure from, and returned
+  nothing without one, so a point on a hand-drawn circuit came out
+  labelled "Point" with no number. `nextSeqFor` is the fallback: one
+  past the highest on the circuit, or the FIRST where the circuit has
+  none. It starts at 1, because 0 is the origin's and a hand-placed
+  stop taking it would claim to be the start of the run.
+- **Levels at it.** It is an ordinary stop carrying the cable's size,
+  so the levels quote it like any other — nothing special was needed.
+- **No break → no point.** This is the behaviour change: the stop used
+  to be created either way. A breech let into a run that carries on
+  ends nothing, so a stop at it puts a figure on the drawing that no
+  cable terminates at, and pushes every stop after it up one for
+  nothing. The renumbering writes go with it.
+
+Suite 135 of 153. No migration.
+
+---
+
 # Cables offset by ground distance — 11 Sep 2026
 
 Reported from a zoomed-out screenshot: cables sharing a trench splayed

@@ -99,7 +99,7 @@ import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
 import { circuitBuildParts, circuitMembership, SPAN_REACH_M, SNAP_TOL,
   carriedOverrides, carriedOverrideFor } from "./feeder.js";
-import { planFeederPoints, planInsertion, marksOnPart,
+import { planFeederPoints, planInsertion, nextSeqFor, marksOnPart,
   partEndMark, jointMarks } from "./feederPoints.js";
 import { anchorSnapshot, withMovedAnchor, anchorUpdates } from "./anchorFollow.js";
 import { nodeFedBy as nodeFedByLine, runThrough as runThroughNode } from "./spanNodes.js";
@@ -9797,6 +9797,19 @@ export default function GISCanvasPage() {
       const savedJoint = await addFeature(draftJoint);
       reconcile(tempId, savedJoint);
 
+      /* ── And the point on the run, beside it — if the run ends here ──
+
+         Only where the cable was BROKEN. A feeder end point is the end
+         of a length of cable: it is where the levels are quoted, where
+         the schedule measures to, and where the next length starts.
+         A breech let into a run that carries on unbroken ends nothing,
+         so numbering a stop at it would put a figure on the drawing
+         that no cable terminates at — and push every stop after it up
+         one for nothing.
+
+         So the fitting is placed either way and the stop follows the
+         break. Asked for in those words, and it is also what the rest
+         of the drawing already assumes. */
       /* ── And the point on the run, beside it ──
 
          A separate feature, as at a breech: the diamond is the fitting,
@@ -9810,11 +9823,26 @@ export default function GISCanvasPage() {
       const circuitId = line.Attributes?.Circuit_ID ?? null;
       const letter = line.Attributes?.Circuit_Letter
         || (circuitId != null ? String.fromCharCode(64 + Number(circuitId)) : "A");
-      const ins = circuitId != null
+      const placed = circuitId != null
         ? planInsertion({ features, circuit: { id: circuitId, letter }, at })
         : { seq: null, label: null, writes: [] };
 
-      await addFeature({
+      /* ── A number even where the walk cannot order it ──
+
+         `planInsertion` numbers a stop by where the cable reaches it,
+         which needs an origin to measure from. A circuit with no stops
+         yet has none, and the point came out labelled "Point" with no
+         number.
+
+         So: its place along the run where that can be worked out, and
+         otherwise the next free number on the circuit — the FIRST one
+         where the circuit has no stops at all. */
+      const ins = (placed.seq != null || circuitId == null) ? placed : (() => {
+        const seq = nextSeqFor(features, circuitId);
+        return { seq, label: spanLabel(letter, seq), writes: [] };
+      })();
+
+      if (breakLine) await addFeature({
         Layer_Key: "electric",
         Feature_Type: "point",
         Feature_Role: "feederpoint",
@@ -9849,12 +9877,16 @@ export default function GISCanvasPage() {
           Generated: true,
         },
       });
-      if (ins.writes?.length) await bulkUpdateFeatures(projectId, ins.writes);
+      /* The renumbering of the stops after it belongs to the stop, so
+         it is written only when the stop is. */
+      if (breakLine && ins.writes?.length) {
+        await bulkUpdateFeatures(projectId, ins.writes);
+      }
 
       await load(projectId);
       setStatus(`${spec?.label ?? "Joint"} placed on ${line.Label ?? "the feeder"}`
-        + (halves ? ", the cable broken there" : " at its end")
-        + (ins.label ? `, and ${ins.label} added` : ""));
+        + (breakLine ? ", the cable broken there" : ", the cable left whole")
+        + (breakLine && ins.label ? `, and ${ins.label} added` : ""));
       setTimeout(() => setStatus(""), 9000);
       setError("");
     } catch (e) {

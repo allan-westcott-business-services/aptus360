@@ -21,6 +21,7 @@ import { readFileSync } from "node:fs";
 import {
   insertVertexAt, splitPolylineAt, canBreakAt, pointOnLineNear,
 } from "./src/features/gis/snapping.js";
+import { nextSeqFor } from "./src/features/gis/feederPoints.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -311,6 +312,73 @@ const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
   if (!/This drawing has no LV feeder cables to joint yet/.test(canvas)) {
     fail("a drawing with no feeders at all reports the same thing as a "
       + "near miss, so the two cannot be told apart");
+  }
+}
+
+/* ── The feeder end point follows the BREAK ──
+
+   Four rules, asked together:
+
+     break     a feeder end point is placed at the insert point
+     numbered  the next number on the circuit it sits on, or the FIRST
+               where that circuit has none yet
+     levels    the levels are quoted at it, like any other stop
+     no break  no feeder end point at all
+
+   The last is the one that changes behaviour: the stop used to be
+   created either way. A breech let into a run that carries on ends
+   nothing, so a stop at it puts a figure on the drawing that no cable
+   terminates at, and pushes every stop after it up one for nothing. */
+{
+  const fp = (cid, seq) => ({ Feature_ID: 100 + seq, Feature_Role: "feederpoint",
+    Layer_Key: "electric", Attributes: { Circuit_ID: cid, Span_Seq: seq } });
+
+  /* First on the circuit: with nothing there, the first number. Not
+     zero \u2014 that is the origin's, written by the build at the
+     substation, and a hand-placed stop taking it would claim to be the
+     start of the run. */
+  if (nextSeqFor([], 1) !== 1) {
+    fail(`a circuit with no stops gives ${nextSeqFor([], 1)}, not the first number`);
+  }
+  if (nextSeqFor([fp(1, 0)], 1) !== 1) {
+    fail("a circuit with only its origin does not give the first number");
+  }
+
+  /* Next on the circuit, where stops exist. */
+  if (nextSeqFor([fp(1, 0), fp(1, 1), fp(1, 2)], 1) !== 3) {
+    fail("the next number does not follow the stops already on the circuit");
+  }
+  /* Another circuit's stops are not this circuit's. */
+  if (nextSeqFor([fp(2, 5), fp(2, 6)], 1) !== 1) {
+    fail("numbering counts stops from a circuit the point is not on");
+  }
+  /* A gap in the numbers does not reissue one: A0, A1, A3 gives A4,
+     because A3 is on the drawing and two stops with one number is a
+     drawing nobody can read a schedule from. */
+  if (nextSeqFor([fp(1, 0), fp(1, 1), fp(1, 3)], 1) !== 4) {
+    fail("a gap in the numbering is filled with a number already in use");
+  }
+
+  /* The stop is created ONLY on a break, and the renumbering of the
+     stops after it goes with it. */
+  if (!/if \(breakLine\) await addFeature\(\{[\s\S]{0,120}Feature_Role: "feederpoint"/.test(canvas)) {
+    fail("a feeder end point is placed even when the cable is left whole, "
+      + "so a run that ends nowhere is given an end");
+  }
+  if (!/if \(breakLine && ins\.writes\?\.length\)/.test(canvas)) {
+    fail("the stops after it are renumbered even when no stop was added");
+  }
+  /* And where the walk cannot order it, it still gets a number rather
+     than the bare word "Point". */
+  if (!/nextSeqFor\(features, circuitId\)/.test(canvas)) {
+    fail("a stop on a circuit with no origin gets no number at all");
+  }
+  /* The levels are quoted at it because it is an ordinary stop on the
+     circuit, carrying the cable's size \u2014 not because anything here
+     treats it specially. */
+  if (!/VD_Cable_Size_ID: line\.Attributes\.VD_Cable_Size_ID/.test(canvas)) {
+    fail("the stop does not take the cable's size, so the levels have "
+      + "nothing to quote at it");
   }
 }
 

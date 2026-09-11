@@ -196,6 +196,34 @@ function mainsGraph(features, circuitId) {
   return { distancesFrom };
 }
 
+/* ── The number for a point when the walk cannot place it ──
+
+   `planInsertion` puts a new stop in its right place ALONG the cable,
+   renumbering everything after it, which is what a drawing needs. It
+   can only do that from an origin: a stop numbered 0 to measure from.
+   Without one — a circuit whose cables were drawn by hand, or one
+   whose build has not run — it returns nothing, and a point placed by
+   hand came out labelled "Point" with no number at all.
+
+   This is the fallback: one past the highest number on the circuit, or
+   the FIRST number where the circuit has no points yet. Not an
+   ordering (nothing here knows the route); just a number that is free
+   and reads as belonging to this circuit.
+
+   Starts at 1, not 0. Zero is the origin's, written by the build at
+   the substation or POC, and a hand-placed stop taking it would claim
+   to be the start of the run. */
+export function nextSeqFor(features = [], circuitId) {
+  let top = null;
+  for (const f of features) {
+    if (f?.Feature_Role !== "feederpoint" && f?.Feature_Role !== "linkbox") continue;
+    if (Number(f.Attributes?.Circuit_ID) !== Number(circuitId)) continue;
+    const n = Number(f.Attributes?.Span_Seq);
+    if (Number.isFinite(n) && (top == null || n > top)) top = n;
+  }
+  return top == null ? 1 : top + 1;
+}
+
 export function planInsertion({ features = [], circuit, at, excludeId = null }) {
   const letter = circuit?.letter ?? "A";
   const none = { seq: null, label: null, writes: [] };

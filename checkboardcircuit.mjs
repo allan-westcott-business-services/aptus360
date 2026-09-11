@@ -313,6 +313,60 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
   }
 }
 
+/* ── A circuit made by hand is somewhere to move meters TO ──
+
+   Reported: "+ New circuit" on a spare way makes Circuit 1, and the
+   Circuit Report offers no way to assign meters to it \u2014 only "assign
+   to a NEW circuit". The report grouped by membership, so a circuit
+   holding nothing was invisible; and the report is the one place a
+   meter is moved onto a circuit, so the circuit somebody had just
+   made was the only one they could not use.
+
+   `circuitChoices` already unions way-only circuits for the editor's
+   pickers. This is the same union for the report \u2014 the fourth reader
+   this session taught what another already knew. */
+{
+  nid = 1;
+  const s = sub({ Ways: 4, Way_Circuits: { 1: 1 },
+    Circuit_Names: { 1: "Circuit 1" } });
+  /* A meter on no circuit, reachable, so the report has an unlinked
+     group to move FROM. */
+  const seed = { Feature_ID: 70, Feature_Role: "plot", Layer_Key: "plot",
+    Plot_ID: 7, Geometry: [[40, 0]], Attributes: {} };
+  const m = { Feature_ID: 71, Feature_Role: "meter", Layer_Key: "electric",
+    Plot_ID: 7, Geometry: [[40, 0]], Attributes: {} };
+  const dig = { Feature_ID: 72, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[0, 0], [40, 0]], Attributes: { Line_Type: "trench_main" } };
+
+  const r = circuitReport([s, seed, m, dig], { plotById: () => ({ kva_load: 2 }) });
+  if (r.error) fail(`the report refuses the drawing: ${r.error}`);
+  else {
+    const c1 = r.circuits.find((c) => Number(c.id) === 1);
+    if (!c1) {
+      fail("a circuit started on a spare way is missing from the report, so "
+        + "there is nowhere to move meters to but a brand new circuit");
+    } else {
+      if (c1.count !== 0) fail("the new circuit is reported as holding meters");
+      if (!c1.wayOnly) {
+        fail("the new circuit is not marked as one waiting for its first "
+          + "member, so an empty section reads as a circuit that lost them");
+      }
+      if (Number(c1.way) !== 1) {
+        fail(`the new circuit does not say which way it sits on (${c1.way})`);
+      }
+      if (c1.name !== "Circuit 1") {
+        fail(`the name given at birth is lost by the report: ${c1.name}`);
+      }
+    }
+    /* And it is a real target: the report's mover offers every circuit
+       that is not the unlinked group. */
+    const targets = r.circuits.filter((c) => c.id !== "unlinked");
+    if (!targets.some((c) => Number(c.id) === 1)) {
+      fail("the new circuit is not offered as somewhere to move meters");
+    }
+  }
+}
+
 // 6. The pieces are wired in, not just written.
 {
   const editor = readFileSync("src/features/gis/FeatureEditor.jsx", "utf8");

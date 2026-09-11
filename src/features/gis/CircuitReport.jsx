@@ -525,6 +525,20 @@ export default function CircuitReport({
                         {" + "}{c.cutouts} cut-out{c.cutouts === 1 ? "" : "s"}
                       </>
                     )}
+                    {/* Started by hand on a spare way and holding
+                        nothing yet. Said plainly, because an empty
+                        section otherwise reads as a circuit that has
+                        lost its meters rather than one waiting for
+                        its first. */}
+                    {c.wayOnly && c.count === 0 && (
+                      <>
+                        {" \u00B7 "}
+                        <em>
+                          new, on LV way {c.way} &mdash; tick meters above and
+                          move them here
+                        </em>
+                      </>
+                    )}
                     {" \u00B7 "}{kvaF(c.totalKva + (c.boardKva || 0))}
                     {/* Said where it happens rather than left as a
                         column of dashes: a missing distance means the

@@ -1869,6 +1869,40 @@ export function circuitReport(features = [], opts = {}) {
     else (g.cutouts ??= []).push(b);
   }
 
+  /* ── And a circuit that exists on a way, holding nothing yet ──
+
+     "+ New circuit" on a spare LV way makes a circuit before it has
+     any member: that is the point of it, for a block of flats or a
+     run that has not been drawn. The report grouped by membership, so
+     a circuit with none was invisible — and the report is where
+     meters are moved ONTO a circuit, so the one circuit somebody had
+     just made by hand was the one they could not move anything to.
+     Reported in those words.
+
+     `circuitChoices` already unions these for the editor's pickers.
+     This is the same union for the report, and the fourth reader this
+     session to be taught what another already knew.
+
+     Marked `wayOnly`, so the report can say why a circuit with nothing
+     on it is not a mistake. */
+  for (const o of lvOrigins(features)) {
+    const ways = o.Attributes?.Way_Circuits;
+    if (!ways || typeof ways !== "object") continue;
+    for (const [way, v] of Object.entries(ways)) {
+      if (v == null) continue;
+      const key = Number(v);
+      if (byCircuit.has(key)) continue;
+      byCircuit.set(key, {
+        id: key,
+        name: (o.Attributes?.Circuit_Names || {})[key] || `Circuit ${key}`,
+        letter: circuitLetter(key),
+        meters: [],
+        wayOnly: true,
+        way: Number(way),
+      });
+    }
+  }
+
   const summarise = (name, letter, rows, id, extra = {}) => ({
     id, name, letter,
     meters: rows.sort((a, b) =>
@@ -1914,6 +1948,11 @@ export function circuitReport(features = [], opts = {}) {
     .map((c) => ({
       ...summarise(c.name, c.letter, c.meters, c.id,
         { boards: c.boards, cutouts: c.cutouts }),
+      /* Started on a way and holding nothing yet \u2014 not a fault, and
+         the report says so rather than showing an empty section that
+         reads like one. */
+      wayOnly: !!c.wayOnly,
+      way: c.way ?? null,
       /* Which POC this circuit names, read off its own meters \u2014 the
          same attribute the build reads first, so the report's control
          and the build cannot mean different things. Null is "the

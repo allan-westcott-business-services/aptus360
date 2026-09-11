@@ -4665,6 +4665,37 @@ either acts or calls setError. **When an armed mode does nothing at
 all — no act, no message — suspect a throw before suspecting the
 data.**
 
+## Four readers of one drawing
+
+Worth collecting, because it has now happened four times in one
+session and each time cost a round trip with the user.
+
+`circuitsFrom` was taught that a circuit can be held by something
+other than a drawn meter. Every OTHER reader of the same drawing had
+to be told separately, and each was found only when a user hit it:
+
+1. **The levels check** walked the raw drawing, so a circuit fed
+   through MSDBs "had no supplies on it".
+2. **The build's blockers and the steps** counted flats as plots
+   wanting seeds and services they must not have.
+3. **The circuit report** grouped by drawn meters, so a circuit held
+   by boards and a cut-out did not appear \u2014 and could not be deleted.
+4. **The circuit report again**, for a circuit held by nothing at all:
+   one started by hand on a spare way, which could not be moved to
+   because it was not listed.
+
+The shape is always the same: one place learns what a circuit's
+membership means, and the others carry an older, narrower idea of it
+while looking perfectly correct. None of them fails loudly. Each says
+something confident and wrong \u2014 "no supplies on it", "0 of 65 seeded",
+an empty list.
+
+**Before adding a fifth kind of member, grep for the readers first.**
+The membership questions are: which meters, which boards, which
+cut-outs, which way allocations. `circuitsFrom`, `circuitChoices`,
+`circuitReport`, `circuitMembership`, `buildBlockers`, `electricSteps`
+and `runLevelsCheck` all ask a version of it.
+
 ## A miss that turned the tool off
 
 Reported: "it is not asking me if I want to break the cable, and it is

@@ -1,3 +1,27 @@
+# A hand-made circuit as a move target — 11 Sep 2026
+
+Reported: "+ New circuit" on a spare LV way makes Circuit 1, and the
+Circuit Report offers no way to assign meters to it — only "assign to
+a new circuit".
+
+The report grouped circuits by their membership, so one holding
+nothing was invisible. The report is the one place a meter is moved
+ONTO a circuit, so the circuit somebody had just made by hand was the
+only one they could not use.
+
+`circuitReport` now unions in every circuit allocated on an origin's
+way that no member answers to — the same union `circuitChoices`
+already does for the editor's pickers, and the fourth reader this
+session taught what another already knew. It carries the name given at
+birth, the way it sits on, and a `wayOnly` flag so the header can say
+"new, on LV way 1 — tick meters above and move them here" rather than
+showing an empty section that reads like a circuit which lost its
+meters.
+
+Suite 135 of 153. No migration.
+
+---
+
 # Circuits that could not be deleted — 11 Sep 2026
 
 Reported with a drawing whose every circuit is held by MSDBs and a

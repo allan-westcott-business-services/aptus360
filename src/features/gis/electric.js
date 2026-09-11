@@ -1588,7 +1588,14 @@ export function circuitReport(features = [], opts = {}) {
         + "\u2014 circuits are traced from one of them.",
     };
   }
-  if (!meters.length) {
+  /* Boards and cut-outs are members too \u2014 see below. A drawing whose
+     dwellings are all flats on an MSDB has no drawn meters at all, and
+     refusing it here made the report unopenable on exactly the design
+     that has most circuits to look at. */
+  const boardsOnCircuits = features.filter((f) =>
+    (f.Feature_Role === "msdb" || f.Feature_Role === "hdcutout")
+    && f.Attributes?.Circuit_ID != null);
+  if (!meters.length && !boardsOnCircuits.length) {
     return { error: "No electric meters placed yet \u2014 nothing to report." };
   }
 
@@ -1833,7 +1840,36 @@ export function circuitReport(features = [], opts = {}) {
     }
   }
 
-  const summarise = (name, letter, rows, id) => ({
+  /* ── Circuits held by a board or a cut-out ──
+
+     A circuit exists when something names it, and a flat's meter is a
+     row on an MSDB rather than a point on the drawing. Grouping by
+     drawn meters alone meant a circuit feeding four boards of flats
+     did not appear in the report at all \u2014 and the report is where a
+     circuit is deleted, so it could not be deleted either. Reported as
+     exactly that.
+
+     The same shape of fault as the levels check: `circuitsFrom` was
+     taught that a board is a member and this reader was not.
+
+     They are added AFTER the meters, so a circuit that has both keeps
+     the name its meters carry. */
+  for (const b of boardsOnCircuits) {
+    const key = Number(b.Attributes.Circuit_ID);
+    if (!byCircuit.has(key)) {
+      byCircuit.set(key, {
+        id: key,
+        name: b.Attributes.Circuit_Name || `Circuit ${key}`,
+        letter: b.Attributes.Circuit_Letter || circuitLetter(key),
+        meters: [],
+      });
+    }
+    const g = byCircuit.get(key);
+    if (b.Feature_Role === "msdb") (g.boards ??= []).push(b);
+    else (g.cutouts ??= []).push(b);
+  }
+
+  const summarise = (name, letter, rows, id, extra = {}) => ({
     id, name, letter,
     meters: rows.sort((a, b) =>
       String(a.plot).localeCompare(String(b.plot), undefined, { numeric: true })),
@@ -1853,12 +1889,31 @@ export function circuitReport(features = [], opts = {}) {
        Counted here so the report can say it plainly rather than leaving
        somebody to wonder whether the figure is missing or the run is. */
     unreached: rows.filter((r) => r.distM == null).length,
+
+    /* ── What else is on it ──
+
+       A circuit whose members are boards reads as empty otherwise:
+       no meters, no load, and a Delete button that looks safe to
+       press. The flats are counted the way the board counts its own
+       (picked plots first, the manual table as fallback) and their
+       kVA is the figure the board keeps. */
+    boards: (extra.boards || []).length,
+    flats: (extra.boards || []).reduce((t, b) => {
+      const picked = b.Attributes?.MSDB_Plot_IDs;
+      if (Array.isArray(picked) && picked.length) return t + picked.length;
+      const rowsOn = b.Attributes?.MSDB_Apartments;
+      return t + (Array.isArray(rowsOn) ? rowsOn.length : 0);
+    }, 0),
+    cutouts: (extra.cutouts || []).length,
+    boardKva: Math.round((extra.boards || []).reduce((t, b) =>
+      t + (Number(b.Attributes?.MSDB_Total_kVA) || 0), 0) * 10) / 10,
   });
 
   const circuits = [...byCircuit.values()]
     .sort((a, b) => a.id - b.id)
     .map((c) => ({
-      ...summarise(c.name, c.letter, c.meters, c.id),
+      ...summarise(c.name, c.letter, c.meters, c.id,
+        { boards: c.boards, cutouts: c.cutouts }),
       /* Which POC this circuit names, read off its own meters \u2014 the
          same attribute the build reads first, so the report's control
          and the build cannot mean different things. Null is "the

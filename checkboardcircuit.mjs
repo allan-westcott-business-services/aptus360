@@ -15,7 +15,7 @@
    because on a two-origin drawing that IS the answer to "fed from". */
 import { readFileSync } from "node:fs";
 import {
-  circuitsFrom, circuitChoices, nextCircuitId, nextCircuitNumber,
+  circuitsFrom, circuitChoices, nextCircuitId, nextCircuitNumber, circuitReport,
 } from "./src/features/gis/electric.js";
 import { withAssumedMeters, boardFlatCount } from "./src/features/gis/msdb.js";
 
@@ -251,6 +251,65 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
   }
   if (boardFlatCount({ Attributes: {} }) !== 0) {
     fail("an empty board does not count zero");
+  }
+}
+
+/* ── A circuit held by a board appears in the report ──
+
+   Reported: "I can no longer delete circuits." The report groups by
+   drawn METERS, so a circuit whose members are boards and cut-outs
+   did not appear in it at all \u2014 and the report is the only place a
+   circuit is deleted, so it could not be deleted either.
+
+   Same shape as the levels check before it: `circuitsFrom` was taught
+   that a board is a member, and this reader was not. Third time this
+   session that one reader of the drawing knew and another did not. */
+{
+  nid = 1;
+  const s = sub({ Ways: 4, Way_Circuits: { 1: 2 } });
+  const b = board({ Circuit_ID: 2, Circuit_Name: "Circuit 2",
+    MSDB_Plot_IDs: [11, 12, 13], MSDB_Total_kVA: 9 });
+  const cut = { Feature_ID: 90, Feature_Type: "point", Feature_Role: "hdcutout",
+    Layer_Key: "electric", Geometry: [[9, 9]],
+    Attributes: { Circuit_ID: 2, Supply_kVA: 5 } };
+  /* One ordinary meter on no circuit, so the report has something to
+     open with and the drawing is not a special case. */
+  const m = { Feature_ID: 95, Feature_Role: "meter", Layer_Key: "electric",
+    Plot_ID: 7, Geometry: [[1, 1]], Attributes: {} };
+
+  const r = circuitReport([s, b, cut, m], { plotById: () => ({ kva_load: 2 }) });
+  if (r.error) fail(`the report refuses the drawing: ${r.error}`);
+  else {
+    const c2 = r.circuits.find((c) => Number(c.id) === 2);
+    if (!c2) {
+      fail("a circuit whose members are a board and a cut-out is missing from "
+        + "the report, so there is nothing to press Delete on");
+    } else {
+      if (c2.boards !== 1) fail(`the circuit shows ${c2.boards} board(s)`);
+      if (c2.flats !== 3) fail(`the circuit shows ${c2.flats} flat(s)`);
+      if (c2.cutouts !== 1) fail(`the circuit shows ${c2.cutouts} cut-out(s)`);
+      /* And its load, or it reads as an empty circuit beside a Delete
+         button that looks safe to press. */
+      if (c2.boardKva !== 9) fail(`the board's kVA is reported as ${c2.boardKva}`);
+    }
+  }
+
+  /* A drawing with NO drawn meters at all still opens: the flats-only
+     case, where the report matters most. */
+  const flatsOnly = circuitReport([s, b], { plotById: () => null });
+  if (flatsOnly.error) {
+    fail(`a flats-only drawing cannot open the report: ${flatsOnly.error}`);
+  }
+
+  /* Deleting has to take the board off the circuit too, or the circuit
+     comes back the moment anything reads the drawing again. */
+  const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/const held = features\.filter\(\(f\) =>\s*\n\s*\(f\.Feature_Role === "msdb" \|\| f\.Feature_Role === "hdcutout"\) && mine\(f\)\)/.test(canvas)) {
+    fail("deleting a circuit unassigns only its meters, so a board keeps "
+      + "naming it and the circuit returns");
+  }
+  if (!/\[\.\.\.meters, \.\.\.held\]\.map/.test(canvas)) {
+    fail("the boards are found but not actually unassigned");
   }
 }
 

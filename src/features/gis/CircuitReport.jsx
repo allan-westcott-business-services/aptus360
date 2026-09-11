@@ -507,7 +507,25 @@ export default function CircuitReport({
                   <span className="cr-meta">
                     {report.origins?.length > 1 ? "" : `from ${report.station} \u00B7 `}
                     {c.count} meter{c.count === 1 ? "" : "s"}
-                    {" \u00B7 "}{kvaF(c.totalKva)}
+                    {/* ── And what else is on it ──
+
+                        A circuit whose members are boards has no drawn
+                        meters, so this read "0 meters · 0 kVA" beside a
+                        Delete button — an empty-looking circuit that
+                        is nothing of the sort. The flats and their load
+                        are what it actually carries. */}
+                    {c.boards > 0 && (
+                      <>
+                        {" + "}{c.boards} board{c.boards === 1 ? "" : "s"}
+                        {c.flats > 0 && ` (${c.flats} flat${c.flats === 1 ? "" : "s"})`}
+                      </>
+                    )}
+                    {c.cutouts > 0 && (
+                      <>
+                        {" + "}{c.cutouts} cut-out{c.cutouts === 1 ? "" : "s"}
+                      </>
+                    )}
+                    {" \u00B7 "}{kvaF(c.totalKva + (c.boardKva || 0))}
                     {/* Said where it happens rather than left as a
                         column of dashes: a missing distance means the
                         walk could not get there from the origin, which

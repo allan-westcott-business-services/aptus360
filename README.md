@@ -1,3 +1,34 @@
+# Circuits that could not be deleted — 11 Sep 2026
+
+Reported with a drawing whose every circuit is held by MSDBs and a
+heavy duty cut-out, and whose eighteen drawn meters are on no circuit
+at all: circuits 2, 4 and 6 were missing from the Circuit Report
+entirely. The report is the only place a circuit is deleted, so they
+could not be deleted.
+
+Two halves, both fixed:
+
+- **The report grouped by drawn meters only.** `circuitsFrom` was
+  taught that a board is a member; `circuitReport` was not — the third
+  time this session one reader of the drawing knew something another
+  did not. It now adds circuits held by a board or a cut-out, and the
+  header says what is on them: "0 meters + 1 board (3 flats) + 1
+  cut-out · 14 kVA". A circuit reading "0 meters · 0 kVA" beside a
+  Delete button is an empty-looking circuit that is nothing of the
+  sort. It also no longer refuses a drawing with no drawn meters at
+  all, which is the flats-only case where the report matters most.
+- **Deleting unassigned meters only.** A board kept naming its
+  circuit, so the circuit came back the moment anything read the
+  drawing again. Boards and cut-outs are now taken off with the
+  meters, and their link box output with them: an output feeding a
+  board on no circuit is a claim about a feed that no longer exists.
+  The confirm dialog says so before anything is written.
+
+On the reported drawing the three circuits now appear with their
+boards, flats and cut-out counted. Suite 135 of 153. No migration.
+
+---
+
 # The breech's feeder end point — 11 Sep 2026
 
 Four rules, asked together.

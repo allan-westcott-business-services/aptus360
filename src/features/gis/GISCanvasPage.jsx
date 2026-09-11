@@ -16358,6 +16358,16 @@ export default function GISCanvasPage() {
     const mine = (f) => Number(f.Attributes?.Circuit_ID) === Number(circuit.id);
 
     const meters = features.filter((f) => f.Feature_Role === "meter" && mine(f));
+    /* ── And the members that are not meters ──
+
+       A board carries its flats as a table and a heavy duty cut-out is
+       a termination; both name their circuit the same way a meter
+       does. Unassigning meters alone left them still naming it, so the
+       circuit came straight back the moment anything read the drawing
+       again \u2014 which is what "I can no longer delete circuits" looks
+       like once the report has been taught that a board is a member. */
+    const held = features.filter((f) =>
+      (f.Feature_Role === "msdb" || f.Feature_Role === "hdcutout") && mine(f));
     const nodes = features.filter((f) => (f.Feature_Role === "spannode"
       || f.Feature_Role === "feederpoint") && mine(f));
 
@@ -16405,6 +16415,10 @@ export default function GISCanvasPage() {
       + `${feeders.length} feeder cable(s) and ${nodes.length} span node(s) deleted\n`
       + `${joints.length} joint(s) deleted\n`
       + `${meters.length} meter(s) unassigned \u2014 the meters, services and trenches stay`
+      + (held.length
+        ? `\n${held.length} board(s) and cut-out(s) taken off the circuit `
+          + "\u2014 they stay on the drawing, with their flats"
+        : "")
       + (shared
         ? `\n\n${shared} joint(s) recorded against two circuits are left in place \u2014 `
           + "run Place Feeder Joints to replace them."
@@ -16421,7 +16435,7 @@ export default function GISCanvasPage() {
        progress bar sits under the modal at z-index 8 against its 1000,
        so it would run where nobody could see it. */
     const steps = [
-      meters.length && "meters",
+      (meters.length || held.length) && "meters",
       (nodes.length + feeders.length + joints.length) && "features",
       "way",
       "reload",
@@ -16432,11 +16446,17 @@ export default function GISCanvasPage() {
     setBusy("circuit");
     say(`Deleting ${circuit.name}\u2026`);
     try {
-      if (meters.length) {
-        say(`Unassigning ${meters.length} meter(s)`);
-        await bulkUpdateFeatures(projectId, meters.map((m) => {
+      if (meters.length || held.length) {
+        const n = meters.length + held.length;
+        say(`Unassigning ${n} member(s)`);
+        await bulkUpdateFeatures(projectId, [...meters, ...held].map((m) => {
           const A = { ...m.Attributes };
           delete A.Circuit_ID; delete A.Circuit_Name; delete A.Circuit_Letter;
+          /* A board's way on the link box goes with its circuit: the
+             output fed THIS circuit, and a board on no circuit hanging
+             off an output is a claim about a feed that no longer
+             exists. */
+          delete A.Link_Box_ID; delete A.Link_Way;
           return { Feature_ID: m.Feature_ID, Attributes: A };
         }));
         /* Counted, not just announced. Without this the bar reached

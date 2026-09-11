@@ -272,6 +272,11 @@ export function ampsFor(kva, outputV = SUB_DEFAULTS.Output_V) {
   return (Number(kva) || 0) * 1000 / (Math.sqrt(3) * v);
 }
 
+/* The ratings a way's fuse is chosen from. The standard sizes carried
+   for an LV board; a free-typed number invited 3150 for 315 and had no
+   way to notice. */
+export const WAY_FUSES = [160, 200, 315, 400, 500];
+
 /* ── The fuse protecting one way ──
 
    A substation's board carried ONE rating for all of its ways, which

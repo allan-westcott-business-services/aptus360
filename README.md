@@ -1,3 +1,27 @@
+# The substation editor — 11 Sep 2026
+
+Follows the per-way fuse below.
+
+- **Headed "Substation"**, not "Point". A header over a panel of ways,
+  fuses and circuits should name the thing somebody opened. POC and
+  MSDB got their own names at the same time.
+- **A fifth wider** (504px against the base 420px), because the board
+  is a table and the per-way fuse made a fifth column that the row had
+  no width left to give.
+- **The board-wide Way Fuse control is gone.** One box rating the
+  whole board alongside five rating each way is two answers to the
+  same question. The ATTRIBUTE stays: every existing drawing has a
+  `Way_Fuse_A`, `fuseForWay` still falls back to it, so those boards
+  read exactly as before and their ways show that rating until
+  somebody sets them. Removing a control does not remove a value.
+- **The fuse is chosen, not typed**: 160, 200, 315, 400, 500. A free
+  box invited 3150 for 315 with nothing able to notice. Where a board
+  already carries a rating off that list — 250, say — it stays in the
+  list and stays selected: opening a panel must not quietly round
+  somebody's design to the nearest option.
+
+---
+
 # A fuse rating per way — 11 Sep 2026
 
 The substation's board carried one rating for all of its ways, which

@@ -33,7 +33,7 @@ import { bedColour } from "../../lib/bedColours.js";
 import { kvaOf } from "./voltDrop.js";
 import {
   pocUnit, circuitLetter, circuitsFrom, circuitChoices, nextCircuitId,
-  nextCircuitNumber, fuseForWay,
+  nextCircuitNumber, fuseForWay, WAY_FUSES,
   SUB_DEFAULTS, ampsFor,
   moveCircuitToWay, compactWays,
 } from "./electric.js";
@@ -1021,6 +1021,12 @@ export default function FeatureEditor({
        way every substation on the ring is fed would bury the one fact
        somebody opened it for. */
     : feature.Feature_Role === "hdcutout" ? "Heavy duty cut-out"
+    /* The board somebody has opened. "Point" over a panel of ways,
+       fuses and circuits is the header naming the least interesting
+       true thing about it. */
+    : feature.Feature_Role === "substation" ? "Substation"
+    : feature.Feature_Role === "poc" ? "Point of connection"
+    : feature.Feature_Role === "msdb" ? "MSDB"
     : feature.Feature_Role === "primary" ? "Primary substation"
     : feature.Feature_Role === "ringsub" ? "HV substation (on the ring)"
     : feature.Feature_Role === "openpoint" ? "Normally open point"
@@ -1133,7 +1139,11 @@ export default function FeatureEditor({
           "To be Removed" and "On-site or Off-site" to the point of
           guessing. A plot seed still has few enough fields that the
           narrow form is the better shape. */}
-      <div className={isTrench ? "fe fe-wide" : "fe"}
+      <div className={isTrench ? "fe fe-wide"
+        /* The board is a table: way, circuit, fuse, loading and colour
+           in one row. A fifth column arrived with the per-way fuse and
+           the row had no width left to give it. */
+        : feature.Feature_Role === "substation" ? "fe fe-station" : "fe"}
         onClick={(e) => e.stopPropagation()} style={drag.panelStyle}
         role="dialog" aria-label="Edit feature">
         <style>{CSS}</style>
@@ -2861,13 +2871,21 @@ export default function FeatureEditor({
                     </p>
                   )}
                 </div>
-                <div className="fld">
-                  <label htmlFor="fe-fuse">Way fuse (A)</label>
-                  <input id="fe-fuse" type="number" step="1"
-                    placeholder={String(SUB_DEFAULTS.Way_Fuse_A)}
-                    value={f.Attributes.Way_Fuse_A ?? ""}
-                    onChange={(e) => setAttr("Way_Fuse_A")(e.target.value)} />
-                </div>
+                {/* ── The board-wide fuse control is gone ──
+
+                    A rating is set per way now, in the Fuse column
+                    below, because a way feeding four flats and a way
+                    feeding a street are not protected by the same one.
+                    One box claiming to rate the whole board alongside
+                    five that rate each way is two answers to the same
+                    question.
+
+                    The ATTRIBUTE stays. Every existing drawing has a
+                    `Way_Fuse_A`, and `fuseForWay` still falls back to
+                    it, so a board saved before this reads exactly as
+                    it did and its ways show that rating until somebody
+                    sets them. Removing the control does not remove the
+                    value, and nothing here writes it away. */}
               </div>
               <p className="hint fe-board-hint">
                 <span>
@@ -3123,16 +3141,32 @@ export default function FeatureEditor({
                           exists, which is the order things happen in
                           when a board is being planned. */}
                       <span className="fe-fusecell">
-                        <input className="fe-fuse" type="number" min="0" step="1"
+                        {/* Chosen, not typed. The ratings are a short
+                            standard list, and a free box invited 3150
+                            for 315 with nothing able to notice.
+
+                            The list is the five plus, where a board
+                            already carries something else, that value
+                            as well. A drawing saved with 250 must not
+                            have it quietly rounded to the nearest
+                            option the day this ships — it stays, it is
+                            selected, and changing it is somebody's
+                            decision rather than a side effect of
+                            opening the panel. */}
+                        <select className="fe-fuse"
                           aria-label={`Fuse rating for way ${way}`}
-                          placeholder={String(wayFuse || SUB_DEFAULTS.Way_Fuse_A)}
-                          value={(f.Attributes.Way_Fuses || {})[way] ?? ""}
+                          value={String(fuseForWay(f, way))}
                           onChange={(e) => {
                             const per = { ...(f.Attributes.Way_Fuses || {}) };
-                            if (e.target.value === "") delete per[way];
-                            else per[way] = e.target.value;
+                            per[way] = Number(e.target.value);
                             setAttr("Way_Fuses")(per);
-                          }} />
+                          }}>
+                          {[...new Set([...WAY_FUSES, fuseForWay(f, way)])]
+                            .sort((a, b) => a - b)
+                            .map((a) => (
+                              <option key={a} value={String(a)}>{a}</option>
+                            ))}
+                        </select>
                         <span className="fe-fuse-a">A</span>
                       </span>
                       {load
@@ -4381,6 +4415,11 @@ const CSS = `
 /* Half again as wide, so three controls in a row have room for their
    longest option rather than truncating it. */
 .fe.fe-wide { width: min(630px, 94vw); }
+/* A fifth of again on the base 420px, for the board's five columns.
+   Not fe-sub: that is already the small grey line under a header,
+   and a class name meaning two things is how one of them stops
+   working when somebody edits the other. */
+.fe.fe-station { width: min(504px, 94vw); }
 /* .fe, .fe-head and .fe-head h3 now live in styles.css, beside
    .fe-backdrop and .fe-foot. Fifteen components use .fe and this block
    is only injected while THIS modal is mounted, so any of the others
@@ -4485,8 +4524,7 @@ const CSS = `
    the unit cannot be typed over. */
 .fe-fusecell { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .fe-fuse { border: 1px solid var(--border); border-radius: 6px; font: 600 12px inherit;
-  padding: 4px 6px; width: 52px; text-align: right; }
-.fe-fuse::placeholder { color: var(--muted); font-weight: 400; }
+  padding: 4px 4px; width: 100%; min-width: 0; background: var(--white); }
 .fe-fuse-a { font: 600 10px inherit; color: var(--muted); }
 .fe-cname { border: 1px solid var(--border); border-radius: 6px; font: 600 12px inherit;
   padding: 4px 8px; flex: 1 1 130px; min-width: 110px; width: auto; }

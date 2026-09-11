@@ -4565,6 +4565,36 @@ clear of the board, not the ring closing. A ring genuinely closing is
 caught by the double feed (every station reached from both directions)
 or by meeting a *different* primary along the last line.
 
+## The substation editor
+
+Four changes asked for together, all in FeatureEditor:
+
+- **Header.** `Feature_Role === "substation"` gives "Substation".
+  Added POC and MSDB beside it, since the same argument applies and
+  the map they sit in is one expression.
+- **Width.** `.fe.fe-station` at `min(504px, 94vw)` against the base
+  420 — a fifth wider, for the board's five columns. Named
+  `fe-station` and NOT `fe-sub`, which already exists as the small
+  grey line under a header; a class name meaning two things is how one
+  of them stops working when somebody edits the other.
+- **The board-wide fuse control removed.** The attribute is kept and
+  `fuseForWay` still falls back to it, so every board saved before
+  this shows its old rating on every way until somebody changes one.
+  Worth being explicit: removing the control does not remove the
+  value, and nothing writes it away — a board opened and saved keeps
+  its `Way_Fuse_A` untouched.
+- **The per-way fuse is a select**: `WAY_FUSES` = 160, 200, 315, 400,
+  500. The options are that list UNION the way's current effective
+  rating, so a board carrying 250 keeps it and keeps it selected.
+  Without the union a select silently snaps to its first option and
+  somebody's design changes because a panel was opened.
+
+The CSS lives in a template literal, and a backtick in a comment
+closed it mid-file — **second time this session**, same trap, same
+symptom (a parse error a hundred lines below the edit). If a build
+fails in the styles with "Expected ; but found", look for a backtick
+in a comment before anything else.
+
 ## A fuse rating per way
 
 Asked for: a fuse rating per circuit at the substation. The board had

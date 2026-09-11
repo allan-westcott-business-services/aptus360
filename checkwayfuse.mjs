@@ -12,7 +12,7 @@
    order (way, then board, then built-in) is what makes this safe to
    add to a database full of them. */
 import { readFileSync } from "node:fs";
-import { fuseForWay, assignWay, SUB_DEFAULTS } from "./src/features/gis/electric.js";
+import { fuseForWay, assignWay, SUB_DEFAULTS, WAY_FUSES } from "./src/features/gis/electric.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -85,7 +85,32 @@ const sub = (attrs) => ({ Feature_ID: 1, Feature_Role: "substation",
   if (!old.over) fail("a board-wide rating no longer decides over on its ways");
 }
 
-// 6. Wired into the editor: a box per row, the loading judged against
+/* ── The header says what it is ──
+
+   "Point" over a panel of ways, fuses and circuits names the least
+   interesting true thing about it. */
+{
+  const editor = readFileSync("src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/Feature_Role === "substation" \? "Substation"/.test(editor)) {
+    fail("the substation editor is still headed Point");
+  }
+  /* And the board is wide enough for its five columns. */
+  if (!/Feature_Role === "substation" \? "fe fe-station"/.test(editor)) {
+    fail("the substation panel is not widened for the board's columns");
+  }
+  if (!/\.fe\.fe-station \{ width: min\(504px/.test(editor)) {
+    fail("the wider panel has no width rule, so the class does nothing");
+  }
+}
+
+// 6. The standard ratings, and nothing invented.
+{
+  if (String(WAY_FUSES) !== String([160, 200, 315, 400, 500])) {
+    fail(`the offered ratings are ${WAY_FUSES.join(", ")}`);
+  }
+}
+
+// 7. Wired into the editor: a box per row, the loading judged against
 //    it, and the board's rating shown as the placeholder rather than
 //    written in as a value.
 {
@@ -100,16 +125,31 @@ const sub = (attrs) => ({ Feature_ID: 1, Feature_Role: "substation",
     fail("the loading bar still measures every way against the board's "
       + "rating, so the percentage is not this way's");
   }
-  if (!/placeholder=\{String\(wayFuse \|\| SUB_DEFAULTS\.Way_Fuse_A\)\}/.test(editor)) {
-    fail("the board's default is not offered as a placeholder, so a row "
-      + "following the board looks like a row with no fuse at all");
+  /* Chosen from the standard ratings, not typed: a free box invited
+     3150 for 315 and nothing could notice. */
+  if (!/<select className="fe-fuse"/.test(editor)) {
+    fail("the fuse is still a free text field, so a mistyped rating "
+      + "cannot be caught");
   }
-  /* Read off the DRAFT: a rating typed in has to move the bar under it
-     before anything is saved, or the number and the bar disagree on
-     screen. */
-  if (!/value=\{\(f\.Attributes\.Way_Fuses \|\| \{\}\)\[way\] \?\? ""\}/.test(editor)) {
-    fail("the fuse box does not read the draft, so typing a rating does "
-      + "not move the loading bar beside it");
+  /* Read off the DRAFT, and through the same fallback rule the rest of
+     the app uses, so a row following the board shows the rating it
+     actually has rather than a blank. */
+  if (!/value=\{String\(fuseForWay\(f, way\)\)\}/.test(editor)) {
+    fail("the fuse box does not show the way's effective rating from the "
+      + "draft, so the number and the bar beside it can disagree");
+  }
+  /* A board already carrying something off the list keeps it. Rounding
+     somebody's 250 to the nearest option the day this ships is a
+     change to their design made by opening a panel. */
+  if (!/new Set\(\[\.\.\.WAY_FUSES, fuseForWay\(f, way\)\]\)/.test(editor)) {
+    fail("a rating that is not one of the standard five is dropped from "
+      + "the list, so opening the panel silently changes it");
+  }
+  /* And the board-wide control is gone: one box rating the whole board
+     beside five rating each way is two answers to one question. */
+  if (/id="fe-fuse"/.test(editor)) {
+    fail("the board-wide fuse control is still there alongside the per-way "
+      + "ratings");
   }
   /* The column exists in the header and in the grid, or the cells land
      under the wrong headings. */

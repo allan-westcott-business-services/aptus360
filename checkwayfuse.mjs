@@ -151,6 +151,21 @@ const sub = (attrs) => ({ Feature_ID: 1, Feature_Role: "substation",
     fail("the board-wide fuse control is still there alongside the per-way "
       + "ratings");
   }
+  /* Rating, output and ways on one row. `.fe-row` gives its children
+     `flex: 1`, so three in a row is a third each \u2014 the layout is the
+     count of fields in the row, not a width set anywhere, which is why
+     this asserts the grouping rather than a percentage. */
+  const row = editor.slice(editor.indexOf('<label htmlFor="fe-rating"'),
+    editor.indexOf('<p className="hint fe-board-hint"'));
+  const closes = row.indexOf("</div>\n              </div>");
+  const inOneRow = row.slice(0, closes < 0 ? row.length : closes);
+  for (const id of ["fe-rating", "fe-outv", "fe-ways"]) {
+    if (!inOneRow.includes(`htmlFor="${id}"`)) {
+      fail(`${id} is not on the same row as the other two, so the three `
+        + "board figures are split across rows again");
+    }
+  }
+
   /* The column exists in the header and in the grid, or the cells land
      under the wrong headings. */
   if (!/<span>Way<\/span><span>Circuit<\/span><span>Fuse<\/span>/.test(editor)) {

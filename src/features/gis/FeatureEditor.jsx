@@ -2843,8 +2843,6 @@ export default function FeatureEditor({
                     value={f.Attributes.Output_V ?? ""}
                     onChange={(e) => setAttr("Output_V")(e.target.value)} />
                 </div>
-              </div>
-              <div className="fe-row">
                 <div className="fld">
                   <label htmlFor="fe-ways">LV ways</label>
                   <input id="fe-ways" type="number" min="1" max="24" step="1"
@@ -2871,22 +2869,28 @@ export default function FeatureEditor({
                     </p>
                   )}
                 </div>
-                {/* ── The board-wide fuse control is gone ──
-
-                    A rating is set per way now, in the Fuse column
-                    below, because a way feeding four flats and a way
-                    feeding a street are not protected by the same one.
-                    One box claiming to rate the whole board alongside
-                    five that rate each way is two answers to the same
-                    question.
-
-                    The ATTRIBUTE stays. Every existing drawing has a
-                    `Way_Fuse_A`, and `fuseForWay` still falls back to
-                    it, so a board saved before this reads exactly as
-                    it did and its ways show that rating until somebody
-                    sets them. Removing the control does not remove the
-                    value, and nothing here writes it away. */}
               </div>
+              {/* ── The board-wide fuse control is gone ──
+
+                  A rating is set per way now, in the Fuse column
+                  below, because a way feeding four flats and a way
+                  feeding a street are not protected by the same one.
+                  One box claiming to rate the whole board alongside
+                  five that rate each way is two answers to the same
+                  question.
+
+                  The ATTRIBUTE stays. Every existing drawing has a
+                  Way_Fuse_A, and fuseForWay still falls back to it, so
+                  a board saved before this reads exactly as it did and
+                  its ways show that rating until somebody sets them.
+                  Removing the control does not remove the value, and
+                  nothing here writes it away.
+
+                  Its row went with it: rating, output and ways were
+                  two rows of two and a half, and they are one row of
+                  three now that there is nothing to share the second
+                  with. */}
+
               <p className="hint fe-board-hint">
                 <span>
                   One circuit per way. Defining a circuit takes the next free

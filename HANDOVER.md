@@ -4583,6 +4583,13 @@ Four changes asked for together, all in FeatureEditor:
   Worth being explicit: removing the control does not remove the
   value, and nothing writes it away — a board opened and saved keeps
   its `Way_Fuse_A` untouched.
+- **Rating, output and ways on one row**, a third each. `.fe-row` is
+  flex with `flex: 1` children, so three fields in a row IS a third
+  each — no width is set and none should be. The check asserts the
+  three labels fall inside one row's markup rather than looking for a
+  percentage, because a percentage is not what makes it true. The
+  second row disappeared with the board-wide fuse control that had
+  been sharing it with LV ways.
 - **The per-way fuse is a select**: `WAY_FUSES` = 160, 200, 315, 400,
   500. The options are that list UNION the way's current effective
   rating, so a board carrying 250 keeps it and keeps it selected.

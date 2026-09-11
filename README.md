@@ -5,6 +5,11 @@ Follows the per-way fuse below.
 - **Headed "Substation"**, not "Point". A header over a panel of ways,
   fuses and circuits should name the thing somebody opened. POC and
   MSDB got their own names at the same time.
+- **Rating (kVA), Output (V) and LV ways share one row**, a third
+  each. `.fe-row` gives its children `flex: 1`, so the layout follows
+  from the count of fields in the row rather than from a width set
+  anywhere — which is what the check asserts. The second row went with
+  the board-wide fuse control that used to sit beside LV ways.
 - **A fifth wider** (504px against the base 420px), because the board
   is a table and the per-way fuse made a fifth column that the row had
   no width left to give.

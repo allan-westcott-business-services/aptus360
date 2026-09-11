@@ -10,7 +10,7 @@ import {
 } from "../../api/gis.js";
 import {
   SNAP_PX, CONNECT_M, snapTargets, findSnap, nearestOnLines, connectedTo, lineLength,
-  classOf, classLabel, joinLines, isTrenchType, splitPolylineAt,
+  classOf, classLabel, joinLines, isTrenchType, splitPolylineAt, insertVertexAt, canBreakAt,
 } from "./snapping.js";
 import BasemapSetup from "./BasemapSetup.jsx";
 /* What a trench has been told to hold. Imported under its own name:
@@ -2874,6 +2874,10 @@ export default function GISCanvasPage() {
   const traceFrame = useRef(null);
   /* Which cable, where several lie under the pointer. */
   const [jointPick, setJointPick] = useState(null);
+  /* Whether the breech about to be placed breaks the cable under it.
+     Held rather than answered inline, because the answer comes from a
+     person: { kind, lineId, at, label }. */
+  const [breakAsk, setBreakAsk] = useState(null);
   /* ── The trace's three questions, asked together ──
 
      What is being followed, which way, and \u2014 where several cables lie
@@ -9656,13 +9660,67 @@ export default function GISCanvasPage() {
     } catch (e) { setError(e.message); }
   }
 
-  async function placeJointOnCable(kind, line, at) {
+  async function placeJointOnCable(kind, line, at, opts = {}) {
     const spec = JOINT_KINDS[kind];
+    /* ── Break the cable here, or leave it whole ──
 
-    /* The break first, so the joint can record what it holds. At a
-       cable's END there is nothing to break and one cable is the whole
-       of it. */
-    const halves = await breakLineAt(line, at);
+       Asked of the person placing it, because the drawing cannot tell.
+       A breech let into a run that continues is one cable with a
+       fitting on it; a breech where the run ENDS and others begin is
+       two. Both are real, and which one this is belongs to whoever is
+       drawing it. Defaults to breaking, which is what every caller did
+       before this option existed.
+
+       Leaving it whole still puts a VERTEX under the fitting. A symbol
+       lying on a line with nothing recording the meeting is not a
+       joint: nothing holds it, and dragging it later slides it off the
+       cable, because the follow machinery moves vertices and there
+       would be none to move. With the vertex there, the cable
+       rubber-bands with the fitting through the rule that already
+       exists for every other fitting. */
+    /* ── And never claim one that did not happen ──
+
+       At the END of a cable there is nothing to cut, and
+       `splitPolylineAt` says so by returning null. `breakLineAt` then
+       set an error and returned nothing — and this carried on and
+       placed the joint anyway, recording `Breaks_Cable: true` about a
+       cable it had not touched. Reported from a real drawing: asked to
+       break, did not break, said nothing useful.
+
+       A breech is most naturally placed exactly there, at the end of
+       the run it terminates, so this is the common case rather than an
+       edge of one. Asked first, and the answer decides what actually
+       happens AND what is written down. */
+    const canBreak = canBreakAt(line.Geometry || [], at, CONNECT_M * 4);
+    const breakLine = opts.breakLine !== false && canBreak;
+
+    let halves = null;
+    if (breakLine) {
+      /* The break first, so the joint can record what it holds. At a
+         cable's END there is nothing to break and one cable is the
+         whole of it. */
+      halves = await breakLineAt(line, at);
+      /* Locked, or refused for any other reason: it has already said
+         why. Placing the joint now would leave a fitting claiming a
+         break the drawing does not have. */
+      if (!halves) return;
+    } else {
+      if (locked(line)) { setError(whyLocked(line)); return; }
+      const ins = insertVertexAt(line.Geometry || [], at, CONNECT_M * 4);
+      if (!ins) {
+        setError("That point is not on the cable \u2014 click one of its ends, "
+          + "a corner, or the middle of a run.");
+        return;
+      }
+      /* Only when a vertex was actually added: clicking an end or an
+         existing corner needs no write, and a no-op save would put the
+         line in the undo stack for nothing. */
+      if (ins.added) {
+        await moveFeatures(projectId, [
+          { Feature_ID: line.Feature_ID, Geometry: ins.geometry },
+        ]);
+      }
+    }
 
     const draftJoint = {
       Layer_Key: "electric",
@@ -9691,6 +9749,12 @@ export default function GISCanvasPage() {
         Joint_Cables: halves
           ? [halves.headId, halves.tailId].filter((x) => Number.isFinite(x))
           : [Number(line.Feature_ID)],
+        /* Recorded, because it cannot be worked out afterwards. A
+           breech on an unbroken cable and a breech at the meeting of
+           two cables that happen to touch look identical on the
+           drawing, and the editor has to be able to say which was
+           asked for. */
+        Breaks_Cable: breakLine,
         Generated: false,
       },
     };
@@ -9906,7 +9970,46 @@ export default function GISCanvasPage() {
         return;
       }
 
-      await placeJointOnCable(kind, near[0].line, near[0].hit.q);
+      /* ── Onto a point of the cable, not merely near it ──
+
+         An end, a corner, or the midpoint of a run: the same
+         vocabulary the heavy duty cut-out is placed with, and the
+         reason is the same. A fitting dropped three-tenths of a metre
+         from the end of a cable is a fitting that does not hold it —
+         it reads as placed, and the first thing that asks what it
+         joins finds nothing.
+
+         The nearest such point within a click's reach, falling back to
+         the point on the line under the pointer, so a deliberate click
+         halfway along a long straight still lands where it was aimed
+         rather than being dragged to a corner metres away. */
+      const chosen = near[0];
+      const targets = snapTargets([chosen.line], { includeMidpoints: true });
+      const reachM = SNAP_PX / (view.scale || 1);
+      let snap = null;
+      for (const t of targets) {
+        const d = Math.hypot(t.at[0] - point[0], t.at[1] - point[1]);
+        if (!snap || d < snap.d) snap = { d, at: t.at };
+      }
+      const at = snap && snap.d <= reachM ? [snap.at[0], snap.at[1]] : chosen.hit.q;
+
+      /* ── And whether it breaks the cable ──
+
+         Asked here rather than assumed, for a breech: the run may end
+         at it and continue as new cables, or it may pass straight
+         through. Both are ordinary. The other kinds keep the answer
+         they have always had, so nothing that worked yesterday now
+         stops to ask a question. */
+      if (kind === "breech") {
+        setBreakAsk({ kind, lineId: Number(chosen.line.Feature_ID), at,
+          label: cableTitle(chosen.line),
+          /* Whether a break is even possible there. At the END of a
+             cable it is not, and that is exactly where a breech
+             usually goes. */
+          canBreak: canBreakAt(chosen.line.Geometry || [], at, CONNECT_M * 4) });
+        return;
+      }
+      await placeJointOnCable(kind, chosen.line, at);
       return;
     }
 
@@ -19438,8 +19541,26 @@ export default function GISCanvasPage() {
       setStatus("Line broken in two \u2014 the far half is selected");
       setTimeout(() => setStatus(""), 5000);
       setError("");
+      /* ── The two halves, named ──
+
+         This returned nothing at all, including on success. Its only
+         caller that asks — a joint recording the cables it holds —
+         tested the result and always got undefined, so a joint placed
+         on a break has always written down the ORIGINAL cable's id and
+         never the far half's. The half beyond the joint was held by
+         nothing: the fitting knew one of the two cables it joins.
+
+         Invisible because the fallback is a real id and the drawing
+         looks right. It shows up as the far half not following when
+         the joint is dragged.
+
+         Returned on success only. A caller that needs to know whether
+         the cut happened can now ask, rather than placing a fitting
+         that claims a break the drawing does not have. */
+      return { headId: Number(f.Feature_ID), tailId: Number(made?.Feature_ID) || null };
     } catch (e) { setError(e.message); await load(projectId); }
     finally { setBusy(""); }
+    return null;
   }
 
   /* Deleting a category. Batched rather than one at a time: the original
@@ -23582,21 +23703,37 @@ export default function GISCanvasPage() {
                             "somewhere on this circuit"; this answers
                             "here", and breaks the cable where it lands
                             because that is what a joint is. */}
-                        <MenuItem label={jointFor
+                        <MenuItem label={jointFor === "straight"
                           ? "Click the cable\u2026 (Esc to stop)"
                           : "+ Straight Joint"} indent
-                          active={!!jointFor}
+                          /* Its own kind, not "any joint mode": with a
+                             second kind armed the same way, `!!jointFor`
+                             lit this one up while the breech was the
+                             thing waiting for a click. */
+                          active={jointFor === "straight"}
                           hint={"Click where it goes \u2014 the cable says ON LINE, and breaks there"}
                           disabled={!!busy || !projectId}
                           onClick={() => {
-                            setJointFor(jointFor ? null : "straight");
+                            setJointFor(jointFor === "straight" ? null : "straight");
                             setSelected([]); setDraft([]);
                           }} />
-                        <MenuItem label="+ Breech Joint" indent
-                          hint="One joint, snapped to the nearest LV feeder"
+                        {/* Clicked onto the cable, like the straight
+                            joint beside it, rather than dropped in the
+                            middle of the view and snapped to whatever
+                            feeder happened to be nearest. A breech is
+                            placed AT a point of a run — an end, a
+                            corner, the middle — and the point is the
+                            whole of what it records. */}
+                        <MenuItem label={jointFor === "breech"
+                          ? "Click the cable\u2026 (Esc to stop)"
+                          : "+ Breech Joint"} indent
+                          active={jointFor === "breech"}
+                          hint="Click an end, a corner or the middle of a feeder"
                           disabled={!!busy || !projectId}
-                          onClick={() => withUndo("Place breech joint",
-                            () => placeJoint("breech"))} />
+                          onClick={() => {
+                            setJointFor(jointFor === "breech" ? null : "breech");
+                            setSelected([]); setDraft([]);
+                          }} />
                         <MenuItem label="+ Bottle End Joint" indent
                           hint="Seals a feeder that stops here"
                           disabled={!!busy || !projectId}
@@ -25047,6 +25184,15 @@ export default function GISCanvasPage() {
                        you mean. What is done with the answer differs. */
                     if (pick.purpose === "trace") {
                       runTrace(pick.at, { ...pick.spec, startLineId: line.Feature_ID });
+                    } else if (pick.kind === "breech") {
+                      /* Which cable, then whether to break it. Two
+                         questions because they are two questions: one
+                         the drawing cannot answer and one only the
+                         designer can. */
+                      setBreakAsk({ kind: pick.kind, lineId: Number(o.id),
+                        at: o.at, label: o.label,
+                        canBreak: canBreakAt(line.Geometry || [], o.at,
+                          CONNECT_M * 4) });
                     } else {
                       withUndo("Place straight joint",
                         () => placeJointOnCable(pick.kind, line, o.at));
@@ -25065,6 +25211,72 @@ export default function GISCanvasPage() {
             </div>
             <div className="cpick-actions">
               <button className="btn ghost" onClick={() => setJointPick(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {breakAsk && (
+        /* ── Does this breech break the cable? ──
+
+            The drawing cannot tell, and both answers are ordinary. A
+            breech where a run ENDS and others begin is two cables with
+            a fitting between them. A breech let into a run that
+            carries on is one cable with a fitting on it.
+
+            Asked as two plain statements about the cable rather than
+            as a checkbox, because "break the cable" ticked or unticked
+            leaves the reader working out what the unticked state
+            means. Each button says what the drawing will hold. */
+        <div className="cpick-backdrop" onClick={() => setBreakAsk(null)}>
+          <div className="cpick" onClick={(e) => e.stopPropagation()}
+            role="dialog" aria-label="Break the cable">
+            <h3>{breakAsk.canBreak ? "Break the cable here?" : "Place the joint here"}</h3>
+            <p className="hint">
+              {breakAsk.canBreak
+                ? `Placing a breech joint on ${breakAsk.label}.`
+                : `${breakAsk.label} ends at this point \u2014 there is nothing `
+                  + "to cut, so the joint holds the end as it is."}
+            </p>
+            <div className="cpick-list">
+              {breakAsk.canBreak && (
+              <button className="cpick-item" onClick={() => {
+                const ask = breakAsk;
+                setBreakAsk(null);
+                const line = features.find((x) =>
+                  Number(x.Feature_ID) === Number(ask.lineId));
+                if (!line) return;
+                withUndo("Place breech joint", () =>
+                  placeJointOnCable(ask.kind, line, ask.at, { breakLine: true }));
+              }}>
+                <span className="cpick-name">Break it here</span>
+                <span className="cpick-n">
+                  The run ends at the joint and continues as a second cable
+                </span>
+              </button>
+              )}
+              <button className="cpick-item" onClick={() => {
+                const ask = breakAsk;
+                setBreakAsk(null);
+                const line = features.find((x) =>
+                  Number(x.Feature_ID) === Number(ask.lineId));
+                if (!line) return;
+                withUndo("Place breech joint", () =>
+                  placeJointOnCable(ask.kind, line, ask.at, { breakLine: false }));
+              }}>
+                <span className="cpick-name">
+                  {breakAsk.canBreak ? "Leave the cable whole" : "Place it here"}
+                </span>
+                <span className="cpick-n">
+                  One cable, with the joint held on it \u2014 it bends with the
+                  joint if you move it
+                </span>
+              </button>
+            </div>
+            <div className="cpick-actions">
+              <button className="btn ghost" onClick={() => setBreakAsk(null)}>
                 Cancel
               </button>
             </div>

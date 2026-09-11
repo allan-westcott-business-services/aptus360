@@ -1,3 +1,60 @@
+# Placing a breech joint — 11 Sep 2026
+
+**Reported after the first cut: "it did not break the cable."** True,
+and in the commonest case. At the END of a cable there is nothing to
+cut — `splitPolylineAt` returns null, because a split needs a length
+either side — and a breech is most naturally placed exactly there, at
+the end of the run it terminates. `breakLineAt` set an error and
+returned nothing; the placement carried on and wrote
+`Breaks_Cable: true` about a cable it had not touched.
+
+Three faults behind it, all fixed:
+
+- `canBreakAt` is asked BEFORE the choice is offered, and the dialog
+  no longer offers a break where none is possible — at a cable end it
+  says so and offers only to place the joint. One rule, asked by both
+  the button and the act, so they cannot disagree.
+- A break refused for any other reason (a locked cable) now aborts
+  instead of placing a fitting that claims it.
+- **`breakLineAt` returned nothing at all, including on success.** Its
+  only caller that asks — the joint recording the cables it holds —
+  always got undefined, so a joint placed on a break has always
+  written down the original cable's id and never the far half's. The
+  half beyond the joint was held by nothing, which shows as it not
+  following when the joint is dragged. It returns both ids now.
+
+
+Three things, asked together.
+
+- **Clicked onto a point of a cable.** The breech armed for a click,
+  like the straight joint beside it, instead of being dropped in the
+  middle of the view and snapped to whatever feeder was nearest. The
+  click lands on an end, a corner or the midpoint of a run — the same
+  vocabulary the heavy duty cut-out uses — falling back to the point
+  under the pointer, so a deliberate click halfway along a long
+  straight is not dragged to a corner metres away.
+- **Break the cable, or don't.** Asked at placement, because the
+  drawing cannot tell: a breech where a run ENDS and others begin is
+  two cables, and one let into a run that carries on is one. Two
+  buttons that each say what the drawing will hold, rather than a
+  checkbox whose unticked state the reader has to work out. The answer
+  is recorded as `Breaks_Cable` — afterwards the two look identical.
+- **It rubber-bands when dragged.** This falls out of the second if
+  the second is done properly. "Leave the cable whole" cannot mean
+  "drop a symbol on a line": the drag moves VERTICES, so a fitting
+  with none under it slides off its own cable the first time it is
+  moved. Leaving it whole therefore inserts a vertex at the point
+  (`insertVertexAt`, the other half of `splitPolylineAt`), and the
+  existing rule carries it from there — the cable stretches rather
+  than sliding, because only the held index moves.
+
+Where several cables lie under the pointer, the existing "which
+cable?" dialog asks first and then hands on to the break question —
+two questions because they are two questions. Every other joint kind
+keeps the behaviour it had. No migration. Suite 134 of 152.
+
+---
+
 # The substation editor — 11 Sep 2026
 
 Follows the per-way fuse below.

@@ -199,6 +199,7 @@ caught a fault that had already shipped at least once.
 | `node checkhdcoterminal.mjs` | The build runs out to a cut-out at the end of the dig |
 | `node checkservicemoved.mjs` | Auto Service re-lays the plots whose ground moved, and only those |
 | `node checkwayfuse.mjs` | Each LV way carries its own fuse rating |
+| `node checkbreechplace.mjs` | A breech is placed on a cable point, breaking it or not |
 | `node checktrace.mjs` | One token to the fork, two after it |
 | `node checkdupes.mjs` | One dialog and one producer per piece of state |
 | `node checkbomroles.mjs` | The bill counts what is bought, not the markers |
@@ -4601,6 +4602,117 @@ closed it mid-file — **second time this session**, same trap, same
 symptom (a parse error a hundred lines below the edit). If a build
 fails in the styles with "Expected ; but found", look for a backtick
 in a comment before anything else.
+
+## The breech that did not break the cable
+
+Reported one turn after the placement work shipped: **"it did not
+break the cable."** Correct, and in the commonest case rather than an
+edge of one.
+
+`splitPolylineAt` returns null at the END of a cable — a split needs a
+length either side — and a breech is most naturally placed exactly
+there, at the end of the run it terminates. `breakLineAt` set an error
+and returned nothing, and `placeJointOnCable` carried on, placed the
+joint, and recorded `Breaks_Cable: true` about a cable it had not
+touched. The snapping work made it more likely, not less: ends became
+a preferred snap target, so the click lands on the one point where
+breaking is impossible.
+
+Three separate faults, and only the first was the reported one:
+
+1. **The choice was offered where it could not be honoured.**
+   `canBreakAt` (snapping.js) now answers first, and the dialog drops
+   the break button at a cable end and says why. It asks
+   `splitPolylineAt` rather than reimplementing its conditions, so the
+   button and the act cannot disagree about what is possible.
+2. **A refused break still placed the joint.** A locked cable now
+   aborts the placement rather than leaving a fitting claiming a break
+   the drawing does not have.
+3. **`breakLineAt` returned nothing at all, including on success.**
+   Found while fixing the other two, and older than both. Its only
+   caller that asks is the joint recording what it holds:
+   `halves ? [headId, tailId] : [lineId]` therefore ALWAYS took the
+   fallback, so every joint ever placed on a break recorded the
+   original cable and never the far half. The half beyond the joint
+   was held by nothing — which shows up not as an error but as that
+   half failing to follow when the joint is dragged. It returns both
+   ids now.
+
+The third is worth dwelling on. It was invisible because the fallback
+is a real id and the drawing looks right; the only symptom is a drag
+behaving oddly, which reads as a drag bug rather than as a placement
+one. **A ternary whose condition is always false is not a branch, it
+is dead code with a comment describing what it would do.**
+
+`checkscope` earned its place here too. Rewriting the block left
+`whole = ins.geometry` assigned with its `let whole` declaration
+deleted — the build passed, and choosing "leave the cable whole" would
+have thrown `whole is not defined` at runtime. That is exactly the
+fault checkscope was written for, and it caught it in the same run.
+
+And two more spelling-pinned assertions surfaced in
+`checkjointonline`: `setJointFor(jointFor ? null : "straight")` and
+`const halves = await breakLineAt(...)`, both of which changed shape
+while the rules they test held. **Fourth and fifth of this class this
+session.** Both now match the rule.
+
+## Placing a breech joint
+
+Three things asked together, and the third is a consequence of the
+second rather than a separate piece of work.
+
+**Clicked onto a point of a cable.** `placeJoint("breech")` dropped
+one at the centre of the view and snapped it to the nearest feeder
+anywhere on the drawing; the breech now arms `jointFor` like the
+straight joint and waits for a click. The click snaps through
+`snapTargets(..., { includeMidpoints: true })` — ends, corners,
+midpoints — falling back to the nearest point on the line, so a
+deliberate click mid-straight lands where it was aimed.
+
+While doing that: the straight joint's menu item read
+`active={!!jointFor}`, which lit it up whenever ANY kind was armed.
+With one kind that was indistinguishable from correct. Both items now
+test their own kind.
+
+**Break or not, asked.** `placeJointOnCable` takes `{ breakLine }`,
+defaulting to true so every existing caller is unchanged. The dialog
+offers two statements about the cable rather than a checkbox, and the
+answer is written to the joint as `Breaks_Cable` — after the fact a
+breech on an unbroken cable and a breech where two cables meet are
+indistinguishable, so the intent has to be recorded when it is known.
+Both routes reach the question: where several cables lie under the
+pointer the "which cable?" dialog asks first and hands on.
+
+**The rubber-band, and why it is not separate work.** Leaving the
+cable whole INSERTS a vertex at the point — `insertVertexAt` in
+snapping.js, the other half of `splitPolylineAt`. Without it the
+fitting is a symbol lying on a line: nothing records the meeting, and
+the first drag slides it off, because the follow machinery moves
+vertices and there is none to move. With it, the chain that already
+exists carries the rest: `Joint_Cables` names the line → `told` makes
+every vertex of it a candidate → the vertex under the joint is within
+reach → it goes into `drag.current.rubber` → the apply step moves that
+index alone, so the run stretches rather than sliding.
+
+Two existing rules had to be checked rather than assumed, and both
+already held: the two-cables-only narrowing is limited to
+`Joint_Type === "straight"`, so a breech is not cut down to two
+arbitrary cables; and the `told` clause in the candidate rule does not
+exclude `joinsEnds`, so a breech that NAMES a cable gets all of its
+vertices. `checkbreechplace` asserts both, because either would break
+the rubber-band silently and neither is near the code that placed the
+joint.
+
+Worth knowing: `checkbreechdrag` already covers the broken case (three
+cables meeting at one breech all follow it) and is still green. The
+new check covers the unbroken one.
+
+**Verified how far:** the pure pieces by test (`insertVertexAt` against
+mid-segment, corner, end, off-line, hairpin and non-mutation), and the
+drag chain by asserting each link of it in place. A live drag was not
+simulated — that needs the whole canvas mounted against a project —
+so if the rubber-band misbehaves on a real drawing, the chain above is
+the order to check it in.
 
 ## A fuse rating per way
 

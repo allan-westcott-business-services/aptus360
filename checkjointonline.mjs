@@ -54,7 +54,11 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
        is exactly what breaking a run and joining it there is. A service
        joint is a fitting let into a run to take a service off it — a
        different thing, and what this placed at first. */
-    if (!/setJointFor\(jointFor \? null : "straight"\)/.test(canvas)) {
+    /* By what it arms, not by the exact toggle it is written with: a
+       second joint kind arming the same way turned `jointFor ? null`
+       into `jointFor === "straight" ? null`, and this went red while
+       the rule it cares about was untouched. */
+    if (!/setJointFor\([^)]*"straight"\)/.test(canvas)) {
       fail("the mode places something other than a straight joint");
     }
     /* Feeders only: a joint on a trench or a service is a fitting in a
@@ -128,7 +132,10 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
     canvas.indexOf("async function placeAt(point)"));
   if (!fn) fail("placeJointOnCable has gone");
   else {
-    if (!/const halves = await breakLineAt\(line, at\);/.test(fn)) {
+    /* That the break happens and its result is what the joint records
+       — not the declaration it is written with. `const halves` became
+       `let halves` when a second path was added that does not break. */
+    if (!/halves = await breakLineAt\(line, at\);/.test(fn)) {
       fail("the cable is not broken before the joint records what it holds");
     }
     if (!/Joint_Cables: halves/.test(fn)) {

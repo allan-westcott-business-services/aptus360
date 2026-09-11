@@ -231,6 +231,82 @@ export function joinLines(lines, tol = CONNECT_M) {
 
    Returns null when the point is at an end — there is nothing on one
    side of it, and a zero-length run is not a break. */
+/* ── A vertex at this point, without cutting the line ──
+
+   The other half of `splitPolylineAt`. Breaking a cable at a fitting
+   makes two cables; this makes one cable that BENDS there.
+
+   It is what "place the joint but leave the cable whole" has to mean
+   geometrically. A breech dropped mid-segment with no vertex under it
+   is a symbol lying on a line rather than a fitting held by one:
+   nothing records the meeting, and dragging the joint later moves the
+   symbol off the cable, because the follow machinery moves VERTICES
+   and there is none to move. Insert one and the cable rubber-bands
+   with the fitting for free, through the rule that already exists.
+
+   Returns the geometry unchanged where a vertex is already there —
+   within `tol`, so clicking an end or an existing corner does not
+   stack a second vertex on top of the first — and null where the
+   point is not on the line at all, which the caller reports rather
+   than silently ignoring.
+
+   `index` is where the vertex ended up, so a caller can say which
+   segment was split without searching for it again. */
+export function insertVertexAt(geometry = [], point, tol = CONNECT_M) {
+  const g = geometry;
+  if (!Array.isArray(g) || g.length < 2 || !point) return null;
+
+  for (let i = 0; i < g.length; i++) {
+    if (Math.hypot(g[i][0] - point[0], g[i][1] - point[1]) <= tol) {
+      return { geometry: g.map((p) => [p[0], p[1]]), index: i, added: false };
+    }
+  }
+
+  /* The segment it falls on, nearest first: a cable that doubles back
+     can pass the same point twice, and the nearer passing is the one
+     under the pointer. */
+  let best = null;
+  for (let i = 0; i + 1 < g.length; i++) {
+    const [ax, ay] = g[i];
+    const [bx, by] = g[i + 1];
+    const vx = bx - ax;
+    const vy = by - ay;
+    const l2 = vx * vx + vy * vy;
+    if (!l2) continue;
+    let u = ((point[0] - ax) * vx + (point[1] - ay) * vy) / l2;
+    u = Math.max(0, Math.min(1, u));
+    const qx = ax + vx * u;
+    const qy = ay + vy * u;
+    const d = Math.hypot(point[0] - qx, point[1] - qy);
+    if (!best || d < best.d) best = { d, i, q: [qx, qy] };
+  }
+  if (!best || best.d > tol) return null;
+
+  const out = g.map((p) => [p[0], p[1]]);
+  out.splice(best.i + 1, 0, best.q);
+  return { geometry: out, index: best.i + 1, added: true };
+}
+
+/* ── Is there anything to cut here ──
+
+   At the END of a cable there is not: a split needs a length either
+   side, and `splitPolylineAt` returns null there for that reason. Nor
+   on a cable so short that its middle is within `tol` of an end, where
+   the point reads as the end vertex.
+
+   Asked BEFORE offering the choice, because a breech is most naturally
+   placed exactly where breaking is impossible — at the end of the run
+   it terminates. Offering "break it here" there and then quietly not
+   breaking is worse than not offering it: the drawing records a break
+   that never happened.
+
+   One rule, not two: this asks the split itself rather than
+   reimplementing its conditions, so the button and the act cannot
+   disagree about what is possible. */
+export function canBreakAt(geometry = [], point, tol = CONNECT_M) {
+  return splitPolylineAt(geometry, point, tol) != null;
+}
+
 export function splitPolylineAt(geometry = [], point, tol = CONNECT_M) {
   const g = geometry;
   if (g.length < 2 || !point) return null;

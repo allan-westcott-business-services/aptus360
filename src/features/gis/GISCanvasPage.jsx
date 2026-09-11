@@ -45,7 +45,8 @@ import {
 } from "./autoService.js";
 import { originMissing,
   circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, metredSuppliesInside, circuitKva,
-  assignWay, releaseWays, circuitsFrom, pocUnit, spanLabel, originNodeFor, traceFrom,
+  assignWay, releaseWays, circuitsFrom, circuitChoices,
+  pocUnit, spanLabel, originNodeFor, traceFrom,
   distancesFrom,
   sourceImpedance, NO_SOURCE_NOTE, upstreamVoltDropPct, workingVoltage, voltageOf,
   circuitReport,
@@ -12833,8 +12834,11 @@ export default function GISCanvasPage() {
        circuit renamed by hand would be silently renamed back, and one
        fact spelled two ways is what the span node cable sizes kept
        proving. */
+    /* Choices, not members: a circuit started on a spare way is a
+       circuit to join, and it is exactly the one with no members to
+       be found by. */
     const existing = joinId == null ? null
-      : circuitsFrom(features).find((c) => Number(c.id) === Number(joinId));
+      : circuitChoices(features).find((c) => Number(c.id) === Number(joinId));
     if (joinId != null && !existing) {
       setError("That circuit no longer exists \u2014 it may have been deleted.");
       return false;
@@ -13106,7 +13110,10 @@ export default function GISCanvasPage() {
        apart. The meters are the fact; the stamp is a copy. So a copy
        naming something that is not there is dropped and the lasso
        stands, which is also what happens to a box that never had one. */
-    const live = circuitsFrom(features);
+    /* A circuit on a way and holding nothing is live, not stale. Read
+       from members alone, a box stamped with a hand-made circuit had
+       its stamp thrown away as naming something deleted. */
+    const live = circuitChoices(features);
     const stamped = box.Attributes?.Circuit_ID ?? null;
     const stale = stamped != null
       && !live.some((c) => Number(c.id) === Number(stamped));
@@ -13382,8 +13389,11 @@ export default function GISCanvasPage() {
     const skipped = ids.length - meters.length;
     const how = `picked from the report${skipped
       ? `, ${skipped} already on a circuit skipped` : ""}`;
-    if (lvOrigins(features).length > 1 || circuitsFrom(features).length) {
-      const onDrawing = circuitsFrom(features);
+    if (lvOrigins(features).length > 1 || circuitChoices(features).length) {
+      /* Including the ones waiting for a first member \u2014 see
+         circuitChoices. Offering only membered circuits meant a
+         designer who had just made one had to make a second. */
+      const onDrawing = circuitChoices(features);
       setCircuitPick({ meters, seeds: meters.length, taken: skipped,
         circuits: onDrawing, origin: "", how,
         target: onDrawing.length ? null : "new" });
@@ -16291,7 +16301,17 @@ export default function GISCanvasPage() {
      where a network already exists to be wrong. */
   async function moveToCircuit(meterIds = [], targetCircuitId) {
     const ids = meterIds.map(Number);
-    const target = circuitsFrom(features)
+    /* ── Offered means reachable ──
+
+       Resolved against `circuitsFrom`, which lists circuits by their
+       MEMBERSHIP, this refused every circuit that has no members yet:
+       the report offered "Circuit 1", the move said "that circuit no
+       longer exists", and nothing happened. The one circuit somebody
+       had just made by hand was the one that could not be moved to.
+
+       `circuitChoices` is the list the report offers from, so the
+       question asked here is the same question the person answered. */
+    const target = circuitChoices(features)
       .find((c) => Number(c.id) === Number(targetCircuitId));
     if (!target) { setError("That circuit no longer exists."); return; }
 

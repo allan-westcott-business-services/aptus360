@@ -101,7 +101,11 @@ if (!/\.cpick-item\.on \{/.test(canvas)) {
     canvas.indexOf("async function moveToLinkWay"));
   if (!lasso) fail("the link-way lasso has gone");
   else {
-    if (!/const live = circuitsFrom\(features\);/.test(lasso)) {
+    /* That it checks against a list of the circuits that exist \u2014 not
+       which list. It moved from `circuitsFrom` to `circuitChoices` when
+       a circuit started by hand on a spare way turned out to be live
+       and unlisted, and this went red while the rule it tests held. */
+    if (!/const live = circuit(sFrom|Choices)\(features\);/.test(lasso)) {
       fail("the lasso does not check that the box's circuit still exists");
     }
     if (!/const claimed = stale \? null : stamped;/.test(lasso)) {

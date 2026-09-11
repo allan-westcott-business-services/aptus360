@@ -1,3 +1,27 @@
+# Offered means reachable — 11 Sep 2026
+
+Reported: the Circuit Report offered "Circuit 1", the meters were
+ticked, Move was pressed, and nothing moved.
+
+`moveToCircuit` resolved the target with `circuitsFrom` — the list by
+MEMBERSHIP — so a circuit with no members yet was not found and the
+move aborted with "that circuit no longer exists". The report offered
+it from `circuitChoices`. **A list to choose from and a list to
+resolve against have to be the same list**, or the choice is offered
+and then refused.
+
+Four places now read the offered list: moving meters onto a circuit,
+joining one by lasso, what that lasso dialog lists, and whether a link
+box's stamped circuit still exists (a way-only circuit was being
+treated as deleted and its stamp thrown away). The places that ask
+about circuits with MEMBERS — the build, the colours, the levels, the
+bill — still read `circuitsFrom`, and a case asserts that has not
+drifted.
+
+Suite 135 of 153. No migration.
+
+---
+
 # A hand-made circuit as a move target — 11 Sep 2026
 
 Reported: "+ New circuit" on a spare LV way makes Circuit 1, and the

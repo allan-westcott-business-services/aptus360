@@ -367,6 +367,49 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
   }
 }
 
+/* ── Offered means reachable ──
+
+   Reported: the report offered "Circuit 1", the meters were ticked,
+   Move was pressed, and nothing moved. `moveToCircuit` resolved the
+   target with `circuitsFrom` — the list by MEMBERSHIP — so a circuit
+   with no members yet was not found, and the move aborted saying the
+   circuit no longer exists.
+
+   A list to choose from and a list to resolve against have to be the
+   same list, or the choice is offered and then refused. */
+{
+  nid = 1;
+  const s = sub({ Ways: 4, Way_Circuits: { 1: 1 },
+    Circuit_Names: { 1: "Circuit 1" } });
+  const world = [s];
+
+  /* The pure half: the circuit IS findable in the list the report
+     offers from, and is NOT findable in the one the move used. */
+  if (!circuitChoices(world).some((c) => Number(c.id) === 1)) {
+    fail("the report cannot offer a circuit that holds nothing");
+  }
+  if (circuitsFrom(world).some((c) => Number(c.id) === 1)) {
+    fail("circuitsFrom has started listing circuits with no members, which "
+      + "would change what the build and the bill count");
+  }
+
+  const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  /* The move resolves against the offered list. */
+  if (!/const target = circuitChoices\(features\)\s*\n\s*\.find\(\(c\) => Number\(c\.id\) === Number\(targetCircuitId\)\)/.test(canvas)) {
+    fail("moving meters resolves the target by membership, so a circuit that "
+      + "holds nothing yet is offered and then refused");
+  }
+  /* And so do the other three places a circuit is offered or checked:
+     joining one by lasso, what that dialog lists, and whether a link
+     box's stamped circuit still exists. */
+  const joins = (canvas.match(/circuitChoices\(features\)/g) || []).length;
+  if (joins < 4) {
+    fail(`only ${joins} place(s) read the offered list; the move, the lasso `
+      + "join, the lasso dialog and the stale-stamp test all need it");
+  }
+}
+
 // 6. The pieces are wired in, not just written.
 {
   const editor = readFileSync("src/features/gis/FeatureEditor.jsx", "utf8");

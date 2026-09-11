@@ -18,8 +18,9 @@
    The shapes below are that drawing's: a long run heading south-east,
    and a second sharing its corridor before turning away south-west. */
 import { readFileSync } from "node:fs";
-import { feederRenderPlan, offsetPolyline, alignSign }
-  from "./src/features/gis/feederColour.js";
+import {
+  feederRenderPlan, offsetPolyline, alignSign, laneOffsetPx, SPACING_M,
+} from "./src/features/gis/feederColour.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -145,6 +146,84 @@ if (!a || !b) {
   if (!trenches.some((t) => runsOn(t).length >= 3)) {
     fail("the fixture has no trench with three cables in it, so the case "
       + "this was written for is untested");
+  }
+}
+
+/* ── The gap is a distance in the ground ──
+
+   Reported from a zoomed-out screenshot: cables sharing a trench
+   splayed far enough apart to read as separate routes. The offset was
+   a flat five pixels applied to screen coordinates, so it was the same
+   gap however wide the view — and five pixels at a site scale is
+   metres of ground.
+
+   The plan hands out a LANE and the pixels are worked out at draw
+   time against the zoom, so the separation means the same distance in
+   the ground at every scale, bounded at both ends by what an eye can
+   read. */
+{
+  /* Two cables down one trench. */
+  const a = line(1, 1, [[0, 0], [100, 0]]);
+  const b = line(2, 2, [[0, 1], [100, 1]]);
+  const plan = feederRenderPlan([a, b]);
+  const la = plan.get(1)?.lane;
+  const lb = plan.get(2)?.lane;
+
+  if (la == null || lb == null) fail("the plan hands out no lanes");
+  else {
+    if (la === lb) fail("both cables are given the same lane");
+    /* Straddling the true line: one either side, so neither is drawn
+       as though it left the trench. */
+    if (Math.sign(la) === Math.sign(lb)) {
+      fail(`both lanes are on the same side (${la}, ${lb})`);
+    }
+    if (Math.abs(Math.abs(la) - Math.abs(lb)) > 1e-9) {
+      fail(`the pair is not centred on the trench (${la}, ${lb})`);
+    }
+  }
+
+  /* On the ground, the gap holds steady across the zooms a designer
+     actually uses. Outside those it is clamped, which is a fact about
+     eyes rather than about cable. */
+  const gapM = (scale) =>
+    Math.abs(laneOffsetPx(la, scale) - laneOffsetPx(lb, scale)) / scale;
+  for (const scale of [4, 10, 20]) {
+    const m = gapM(scale);
+    if (Math.abs(m - SPACING_M) > 0.02) {
+      fail(`at ${scale} px/m the cables are drawn ${m.toFixed(2)} m apart, `
+        + `not ${SPACING_M} m`);
+    }
+  }
+
+  /* Zoomed out to a whole site, the group draws TIGHT: a couple of
+     pixels, not the metres the flat offset used to imply. */
+  const wide = Math.abs(laneOffsetPx(la, 0.2) - laneOffsetPx(lb, 0.2));
+  if (wide > 3) {
+    fail(`zoomed out, the pair is still ${wide.toFixed(1)} px apart \u2014 `
+      + "which is what made a shared trench read as two routes");
+  }
+  /* But never nothing: two cables merged into one stroke is a drawing
+     that has lost a cable. */
+  if (wide < 1) {
+    fail(`zoomed out, the pair is ${wide.toFixed(2)} px apart, so the second `
+      + "cable is invisible");
+  }
+
+  /* And zoomed hard in it does not run away. */
+  const close = Math.abs(laneOffsetPx(la, 200) - laneOffsetPx(lb, 200));
+  if (close > 16) {
+    fail(`zoomed in, the pair is ${close.toFixed(0)} px apart, which reads as `
+      + "two routes again");
+  }
+
+  /* The canvas must USE the lane, at every place a cable is drawn or
+     clicked. A hit test reading the old flat pixels would find a cable
+     where it is not drawn, and pick a different one at each zoom. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const uses = (canvas.match(/laneOffsetPx\(/g) || []).length;
+  if (uses < 4) {
+    fail(`the lane is used in ${uses} place(s); the cable, its markers and `
+      + "both hit tests all need it or they disagree about where the cable is");
   }
 }
 

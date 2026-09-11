@@ -116,6 +116,7 @@ import { cumulativeToNode, serviceVoltDrop, VD_DEFAULTS, defaultFeederCable,
 } from "./voltDrop.js";
 import {
   feederRenderPlan, offsetPolyline, circuitColours, circuitIdOf, feederColourAt,
+  laneOffsetPx,
 } from "./feederColour.js";
 import {
   planJoints, reconcileJoints, JOINT_KINDS, isBottleEnd, bottleEndAngle,
@@ -5597,7 +5598,22 @@ export default function GISCanvasPage() {
            about where the pipes are. The same nudge the LV feeders use,
            for the same reason and through the same function. */
         const pairNudge = servicePairOffset(f, hatchLayers);
-        const nudge = fp?.offsetPx ?? pairNudge;
+        /* ── The separation is a distance in the ground ──
+
+           It used to be a flat five pixels applied to screen
+           coordinates, which is the same gap however far out the view
+           is. Zoomed to a whole site that implies metres: cables
+           sharing one trench splayed across a street and read as
+           separate routes.
+
+           The plan hands out a LANE — how many cable-widths off the
+           true line, and which side — and the pixels are worked out
+           here against the current zoom, so the gap means 300 mm of
+           bedding separation at every scale and the group draws tight
+           when the view is wide. */
+        const nudge = fp?.lane != null && fp.lane !== 0
+          ? laneOffsetPx(fp.lane, view.scale)
+          : (fp?.offsetPx ?? pairNudge);
         const line = nudge ? offsetPolyline(pts, nudge) : pts;
 
         ctx.beginPath();
@@ -5681,9 +5697,13 @@ export default function GISCanvasPage() {
                been nudged aside they would sit beside the cable they
                annotate. Shifted by the same amount, along the same left
                normal offsetPolyline uses, so they travel with it. */
-            const q = fp?.offsetPx
-              ? { x: q0.x - Math.sin(angle) * fp.offsetPx,
-                  y: q0.y + Math.cos(angle) * fp.offsetPx }
+            /* The same lane the cable itself is drawn at, or the
+               marker sits beside a line it is supposed to be on. */
+            const markNudge = fp?.lane != null && fp.lane !== 0
+              ? laneOffsetPx(fp.lane, view.scale) : (fp?.offsetPx ?? 0);
+            const q = markNudge
+              ? { x: q0.x - Math.sin(angle) * markNudge,
+                  y: q0.y + Math.cos(angle) * markNudge }
               : q0;
             ctx.save();
             ctx.translate(q.x, q.y);
@@ -7412,7 +7432,9 @@ export default function GISCanvasPage() {
       const fpV = f.Feature_Type !== "point"
         ? feederPlan.get(Number(f.Feature_ID)) : null;
       const nudgeV = f.Feature_Type !== "point"
-        ? (fpV?.offsetPx ?? servicePairOffset(f, hatchLayers)) : 0;
+        ? (fpV?.lane != null && fpV.lane !== 0
+          ? laneOffsetPx(fpV.lane, view.scale)
+          : (fpV?.offsetPx ?? servicePairOffset(f, hatchLayers))) : 0;
       const vpts = nudgeV ? offsetPolyline(g.map((m) => toPx(m)), nudgeV) : null;
       g.forEach((m, i) => {
         const p = vpts ? vpts[i] : toPx(m);
@@ -7433,7 +7455,12 @@ export default function GISCanvasPage() {
            line is clickable only where it is not. Same rule for the
            gas/water service pairs, which use the same nudge. */
         const fpHit = feederPlan.get(Number(f.Feature_ID));
-        const nudge = fpHit?.offsetPx ?? servicePairOffset(f, hatchLayers);
+        /* Clicking finds the cable where it is DRAWN. Read any other
+           way, a cable picked at one zoom is a different cable at
+           another. */
+        const nudge = fpHit?.lane != null && fpHit.lane !== 0
+          ? laneOffsetPx(fpHit.lane, view.scale)
+          : (fpHit?.offsetPx ?? servicePairOffset(f, hatchLayers));
         const drawn = nudge
           ? offsetPolyline(g.map((m) => toPx(m)), nudge)
           : null;

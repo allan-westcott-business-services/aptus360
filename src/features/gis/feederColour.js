@@ -251,6 +251,43 @@ export function crossTrack(reference = [], g = []) {
    pair straddles the trench it is in and neither is drawn as though it
    left. Ordered by colour index, so a cable keeps its side of the
    trench between sessions. */
+/* ── How far apart, on the ground ──
+
+   The separation used to be a flat five pixels, applied after the
+   geometry had been turned into screen coordinates. That is constant
+   however far out the view is zoomed, so at a site scale it implies
+   metres of ground: cables that share a trench splay across a street
+   and the drawing reads as though they took different routes.
+   Reported from a screenshot of a zoomed-out site.
+
+   `SPACING_M` is what it means instead: cables in one trench lie about
+   this far apart in the ground, and the drawing says so at whatever
+   scale it happens to be at. Three hundred millimetres is a real
+   bedding separation and small enough that a zoomed-out view draws the
+   group tight, which is what it looks like from a distance.
+
+   Clamped, because a drawing is also a thing to read. Below the floor
+   two cables merge into one stroke and the second is invisible; above
+   the ceiling a hard zoom pushes them apart far enough to look like
+   separate routes again. Both bounds are in pixels because both are
+   facts about eyes and screens, not about the ground. */
+export const SPACING_M = 0.3;
+const MIN_LANE_PX = 1.1;
+const MAX_LANE_PX = 7;
+
+export function laneSpacingPx(scale, spacingM = SPACING_M) {
+  const px = (Number(spacingM) || 0) * (Number(scale) || 0);
+  if (!Number.isFinite(px) || px <= 0) return MIN_LANE_PX;
+  return Math.min(MAX_LANE_PX, Math.max(MIN_LANE_PX, px));
+}
+
+/* A lane number turned into the offset to draw it at, at this zoom.
+   Lanes come out of the plan as ±0.5, ±1, ±1.5 … so the group
+   straddles the true line; the sign is the side. */
+export function laneOffsetPx(lane, scale, spacingM = SPACING_M) {
+  return (Number(lane) || 0) * laneSpacingPx(scale, spacingM);
+}
+
 export function offsetsFor(count, spacingPx = 5) {
   if (count < 2) return [0];
   const mid = (count - 1) / 2;
@@ -540,6 +577,13 @@ export function feederRenderPlan(features = [], opts = {}) {
         ?? (r.circuitId == null ? null : byCircuit.get(r.circuitId) ?? null),
       circuitId: r.circuitId,
       offsetPx: 0,
+      /* The lane, which is what the drawing actually wants: how many
+         cable-widths off the true line this run sits, and on which
+         side. Turned into pixels at draw time against the current
+         zoom, so the separation means the same distance in the ground
+         at every scale. `offsetPx` is kept beside it for readers that
+         have not been told, and is the old flat-pixel figure. */
+      lane: 0,
     });
   });
 
@@ -565,13 +609,16 @@ export function feederRenderPlan(features = [], opts = {}) {
       .map((x) => x.r);
 
     const offsets = offsetsFor(ordered.length, spacingPx);
+    const lanes = offsetsFor(ordered.length, 1);
     ordered.forEach((r, i) => {
       /* Into the run's own frame. offsetPolyline works along the points
          as drawn, so a reversed run needs the sign flipped to end up on
          the side just chosen for it. */
       const sign = alignSign(ref.geometry, r.geometry);
       const cur = plan.get(r.id);
-      plan.set(r.id, { ...cur, offsetPx: offsets[i] * sign });
+      plan.set(r.id, { ...cur,
+        offsetPx: offsets[i] * sign,
+        lane: lanes[i] * sign });
     });
   }
 
@@ -605,12 +652,22 @@ export function feederRenderPlan(features = [], opts = {}) {
     if (rivals.length) {
       const taken = new Set(rivals.map((q) => plan.get(q.id)?.offsetPx ?? 0));
       /* Outward from where the grouping put it, so a run only moves as
-         far as it has to and the spread the group chose survives. */
+         far as it has to and the spread the group chose survives.
+
+         The lane moves with it, by the same number of steps. Stepping
+         one and not the other would leave the two disagreeing about
+         where the cable is \u2014 and since the drawing reads the lane and
+         everything else still reads the pixels, the collision this
+         pass exists to fix would come back at every zoom but one. */
+      let steps = 0;
       for (let k = 1; taken.has(off) && k <= 24; k++) {
         const step = Math.ceil(k / 2) * spacingPx * (k % 2 ? 1 : -1);
         off = (cur.offsetPx ?? 0) + step;
+        steps = Math.ceil(k / 2) * (k % 2 ? 1 : -1);
       }
-      if (off !== cur.offsetPx) plan.set(r.id, { ...cur, offsetPx: off });
+      if (off !== cur.offsetPx) {
+        plan.set(r.id, { ...cur, offsetPx: off, lane: (cur.lane ?? 0) + steps });
+      }
     }
     placed.push(r);
   }

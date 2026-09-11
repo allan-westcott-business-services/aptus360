@@ -1,3 +1,34 @@
+# Cables offset by ground distance — 11 Sep 2026
+
+Reported from a zoomed-out screenshot: cables sharing a trench splayed
+far enough apart to read as separate routes. The offset was a flat 5
+pixels applied to screen coordinates — the same gap however wide the
+view — and 5 pixels at a site scale is metres of ground.
+
+- The plan now hands out a **lane** (how many cable-widths off the
+  true line, and which side) and the pixels are worked out at draw
+  time against the current zoom. The gap means `SPACING_M` = 300 mm,
+  a real bedding separation, at every scale.
+- Clamped at both ends, because a drawing is also a thing to read:
+  never below 1.1 px (two cables merged into one stroke is a drawing
+  that has lost a cable) and never above 7 px (a hard zoom would push
+  them apart into separate routes again). Zoomed out to a whole site
+  the pair draws about 2 px apart — tight, which is what a trench
+  looks like from a distance.
+- Applied in all four places a cable is drawn or clicked: the cable,
+  its markers, and both hit tests. A hit test reading the old flat
+  pixels would find a cable where it is not drawn, and pick a
+  different one at each zoom.
+- The collision pass that steps a run off a taken lane moves the lane
+  and the pixels together, or the two would disagree and the very
+  collision it exists to fix would return at every zoom but one.
+
+`checkfeederoffsets.mjs` measures the gap ON THE GROUND across the
+zooms a designer uses, and asserts the tight-when-wide and
+not-invisible bounds. No migration. Suite 135 of 153.
+
+---
+
 # A \u2014 on screen — 11 Sep 2026
 
 The breech dialog read "held on it \u2014 it bends with the joint".

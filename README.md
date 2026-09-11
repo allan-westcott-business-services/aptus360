@@ -1,3 +1,32 @@
+# A self-lay plot is on nobody's circuit — 11 Sep 2026
+
+Reported from a 231-plot site: "Link the meters to circuits: 214 of
+231 meter(s) on a circuit", and Auto Build LV Network asking to be run
+anyway every time. The seventeen short were exactly the seventeen
+self-lay plots — checked against the drawing, the two sets match with
+no difference either way.
+
+A self-lay plot is fed from the incumbent's network: we dig to their
+tee and lay nothing past it. It is on no circuit of ours by design, so
+the step could never be completed and the warning could never be
+cleared.
+
+- `electricSteps` and `buildBlockers` both take an `isSelfLay`
+  predicate now and leave those meters out of the count. The canvas
+  passes `isSelfLayMeter`, which already existed and reads
+  `Plot_Utility.Self_Lay_Provider` — neither module loads tables, so
+  the fact is handed in rather than looked up.
+- Both default to "no", so any caller not yet told reads exactly as
+  before. Cases hold that, and hold that an ordinary plot genuinely
+  off a circuit is still caught: the exemption is self-lay, not "has
+  no circuit".
+- On the reported drawing the step goes from "214 of 231" to "214 of
+  214", and the build from a warning to clean.
+
+No migration. Suite 131 of 150.
+
+---
+
 # Auto Service re-lays only what moved — 10 Sep 2026
 
 A seed with a service trench was skipped as already done. Right the

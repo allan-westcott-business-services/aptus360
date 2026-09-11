@@ -47,11 +47,28 @@ const isService = (f) => /service/i.test(String(f.Attributes?.Line_Type ?? ""));
 
 export function electricSteps({
   features = [], plots = [], developers = [], lineTypes = [],
+  /* Whether this meter's plot takes its supply from the incumbent's
+     network — see the meters filter below. Defaulting to "no" leaves
+     every caller that has not been told reading exactly as before. */
+  isSelfLay = () => false,
 } = {}) {
   const mains = features.filter((f) => isTrench(f, lineTypes) && !isService(f));
   const services = features.filter((f) => isTrench(f, lineTypes) && isService(f));
+  /* ── Self-lay plots are not ours to circuit ──
+
+     A self-lay plot is fed from the incumbent's network: we dig to
+     their main and lay nothing past it, and its meter is on nobody's
+     circuit by design. Counted among the meters that need one, it
+     made a step that could never be completed — "214 of 231 meter(s)
+     on a circuit", seventeen short for ever, with the seventeen being
+     exactly the seventeen self-lay plots.
+
+     `isSelfLay` comes from the caller for the same reason it does in
+     buildBlockers: the fact lives in Plot_Utility and this module
+     does not load tables. */
   const meters = features.filter((f) => f.Feature_Role === "meter"
-    && f.Layer_Key === "electric");
+    && f.Layer_Key === "electric"
+    && !isSelfLay(f));
 
   /* A boundary is known by its layer, not by a Feature_Role.
 

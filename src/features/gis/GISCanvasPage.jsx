@@ -1560,7 +1560,13 @@ export default function GISCanvasPage() {
      says so for ever, including after the trench it drew is deleted. */
   const steps = useMemo(() => electricSteps({
     features, plots: plotList, developers, lineTypes,
-  }), [features, plotList, developers, lineTypes]);
+    /* A self-lay plot is fed from the incumbent's network and belongs
+       to no circuit of ours, so it is not counted among the meters
+       waiting to be linked to one. Without this the step reads "214
+       of 231" for ever and the build asks to be run anyway every
+       time. */
+    isSelfLay: (m) => isSelfLayMeter(m, { slp: slpSet, slpNrs: slpNrsSet, layers }),
+  }), [features, plotList, developers, lineTypes, slpSet, slpNrsSet, layers]);
 
   /* Run a step, or say what has to happen first.
 
@@ -16336,6 +16342,11 @@ export default function GISCanvasPage() {
        and the drawing looks finished either way. */
     const blockers = buildBlockers(features, {
       plotLabel: (id) => plotList.find((p) => p.plot_id === id)?.plot_number ?? id,
+      /* A self-lay plot is fed from the incumbent's network: not on
+         one of our circuits, and not dug to by us past their tee. It
+         is neither missing a circuit nor missing a service, and
+         counting it as either refuses a build that is ready. */
+      isSelfLay: (m) => isSelfLayMeter(m, { slp: slpSet, slpNrs: slpNrsSet, layers }),
     });
     if (!blockers.ok && !opts.anyway) {
       const say = (list) => list.map((x) => x.label).filter(Boolean).join(", ");

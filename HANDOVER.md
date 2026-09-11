@@ -4564,6 +4564,46 @@ clear of the board, not the ring closing. A ring genuinely closing is
 caught by the double feed (every station reached from both directions)
 or by meeting a *different* primary along the last line.
 
+## A self-lay plot is on nobody's circuit
+
+Reported: "Link the meters to circuits: 214 of 231 meter(s) on a
+circuit" on a 231-plot site, with the build asking to be run anyway
+every time. The seventeen were exactly the seventeen self-lay plots —
+verified against the drawing, the set of meters with no `Circuit_ID`
+and the set of plots with a self-lay service trench matched with no
+difference in either direction.
+
+A self-lay plot takes its supply from the incumbent's network: we dig
+to their tee and lay nothing past it. It is on no circuit of ours by
+design, so this was a step that could never be completed and a warning
+that could never be cleared — the worst kind, because the only way
+past it is to learn to ignore a warning, and then the real ones go
+unread too.
+
+`electricSteps` and `buildBlockers` both take an `isSelfLay` predicate
+and drop those meters from the count. The canvas passes
+`isSelfLayMeter`, which already existed: the fact lives in
+`Plot_Utility.Self_Lay_Provider` and neither module loads tables, so it
+is handed in rather than looked up — the same shape as `plotLabel`
+beside it.
+
+Both default to `() => false`, so a caller that has not been told
+reads exactly as before; there is a case for that in each check,
+because a default that quietly changes behaviour for everyone is how a
+"safe" addition stops being safe.
+
+**The exemption is self-lay, not "has no circuit".** An ordinary plot
+genuinely missing its circuit is still caught, and both checks assert
+it. Worth stating because the easy version of this fix — skipping any
+meter with no `Circuit_ID` — makes the gate unable to report the fault
+it exists for.
+
+Same shape as the flats-only refusals above: a gate written when every
+plot was one of ours, meeting a plot that is not. **That is now four
+of them** (the circuit lasso, the service blocker, the seeds step, and
+this). If another turns up, look for the same assumption before
+treating it as new.
+
 ## Auto Service re-lays only what moved
 
 Asked for: run Auto Lay Service Trench and have it skip the plots

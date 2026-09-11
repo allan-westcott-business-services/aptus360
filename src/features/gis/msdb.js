@@ -621,10 +621,27 @@ export function linkOrder(ends, distanceTo) {
    board's own table and never drawn as a trench. Asking for one would
    be asking somebody to draw a thing that does not exist. */
 export function buildBlockers(features = [], opts = {}) {
-  const { plotLabel = (id) => String(id) } = opts;
+  const {
+    plotLabel = (id) => String(id),
+    /* ── A self-lay plot is fed from somebody else's network ──
+
+       It is not on one of our circuits and must never be: the
+       incumbent's main feeds it, we dig to their tee and lay nothing
+       past it. The build counted its meter among those "not on a
+       circuit" and refused to run — 214 of 231, with the 17 short
+       being exactly the 17 self-lay plots, none of which could ever
+       be made to pass.
+
+       Asked of the caller rather than worked out here, because the
+       answer lives in `Plot_Utility.Self_Lay_Provider` — a table this
+       module has no business loading. Defaulting to "no" keeps every
+       existing caller reading as it did. */
+    isSelfLay = () => false,
+  } = opts;
 
   const meters = features.filter((f) => f.Feature_Role === "meter"
-    && f.Layer_Key === "electric");
+    && f.Layer_Key === "electric"
+    && !isSelfLay(f));
 
   /* Flats sit on a board's table, by plot id. */
   const onABoard = new Set();

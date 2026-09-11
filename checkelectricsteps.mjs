@@ -376,6 +376,60 @@ const pt = (role, attrs = {}, id = 1) => ({
   }
 }
 
+/* ── A self-lay plot is on nobody's circuit, by design ──
+
+   Reported from a 231-plot site: **"Link the meters to circuits: 214
+   of 231 meter(s) on a circuit"**, and the build asking to be run
+   anyway every time. The seventeen short were exactly the seventeen
+   self-lay plots — fed from the incumbent's network, dug to their tee
+   and nothing laid past it. There is no circuit to put them on, so
+   the step could never be completed and the warning could never be
+   cleared. */
+{
+  const meter = (id, plotId, circuit) => ({ Feature_ID: id,
+    Feature_Role: "meter", Layer_Key: "electric", Plot_ID: plotId,
+    Geometry: [[id, 0]], Attributes: circuit == null ? {} : { Circuit_ID: circuit } });
+  const world = [
+    poly(), line("trench_main"), pt("spannode", {}, 700),
+    meter(801, 1, 1), meter(802, 2, 1),
+    /* Two self-lay plots: no circuit, and never will have one. */
+    meter(803, 3, null), meter(804, 4, null),
+  ];
+  const plots = [1, 2, 3, 4].map((id) => (
+    { plot_id: id, Property_Config_ID: 1, Heat_Source_ID: 2 }));
+  const selfLay = (m) => Number(m.Plot_ID) === 3 || Number(m.Plot_ID) === 4;
+
+  const told = electricSteps({ plots, features: world, lineTypes: LT,
+    isSelfLay: selfLay });
+  const c = told.steps.find((x) => x.key === "circuits");
+  if (!c.done) {
+    fail(`self-lay plots are still counted as waiting for a circuit: "${c.detail}"`);
+  }
+  if (!/2 of 2/.test(c.detail)) {
+    fail(`the count still includes the self-lay plots: "${c.detail}"`);
+  }
+  if (told.allows("build").warn) {
+    fail(`the build still warns about them: "${told.allows("build").warn}"`);
+  }
+
+  /* Told nothing, it reads as it always did \u2014 so no caller that has
+     not been updated changes behaviour. */
+  const untold = electricSteps({ plots, features: world, lineTypes: LT });
+  if (untold.steps.find((x) => x.key === "circuits").done) {
+    fail("a caller that passes no self-lay rule now skips meters it should count");
+  }
+
+  /* And an ordinary plot genuinely off a circuit is still caught \u2014
+     the exemption is self-lay, not "has no circuit". */
+  const oneMissing = [...world, meter(805, 5, null)];
+  const still = electricSteps({
+    plots: [...plots, { plot_id: 5, Property_Config_ID: 1, Heat_Source_ID: 2 }],
+    features: oneMissing, lineTypes: LT, isSelfLay: selfLay });
+  if (still.steps.find((x) => x.key === "circuits").done) {
+    fail("an ordinary plot with no circuit is let through as if it were self-lay");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Electric build order behaves (read from the drawing, refused with a reason).");
 process.exit(bad ? 1 : 0);

@@ -328,6 +328,50 @@ const f = raw.features;
   }
 }
 
+/* ── A self-lay plot blocks nothing ──
+
+   It is fed from the incumbent's network: not on one of our circuits,
+   and not dug to by us past their tee. Counted as missing either, it
+   refuses a build that is ready \u2014 and no amount of work can make it
+   pass, because there is nothing to link it to. */
+{
+  const slpMeter = { Feature_ID: 900, Feature_Role: "meter",
+    Layer_Key: "electric", Plot_ID: 44, Geometry: [[10, 400]],
+    Attributes: {} };
+  const ours = { Feature_ID: 901, Feature_Role: "meter",
+    Layer_Key: "electric", Plot_ID: 45, Geometry: [[12, 0]],
+    Attributes: { Circuit_ID: 1 } };
+  const dig = { Feature_ID: 902, Feature_Type: "line", Layer_Key: "trench",
+    Attributes: { Line_Type: "trench_service", Seed_Feature_ID: 903 },
+    Geometry: [[12, 0], [12, 4]] };
+  const world = [slpMeter, ours, dig];
+  const isSelfLay = (m) => Number(m.Plot_ID) === 44;
+
+  const told = buildBlockers(world, { isSelfLay });
+  if (told.noCircuit.length) {
+    fail("a self-lay plot is reported as missing a circuit it can never have");
+  }
+  if (told.noService.length) {
+    fail("a self-lay plot is reported as missing a service trench of ours");
+  }
+
+  /* Untold, it behaves exactly as before \u2014 the default must not
+     change what any existing caller sees. */
+  const untold = buildBlockers(world);
+  if (!untold.noCircuit.length) {
+    fail("the default now skips meters that should still be counted");
+  }
+
+  /* And an ordinary plot off a circuit is still caught. */
+  const both = buildBlockers([...world,
+    { Feature_ID: 904, Feature_Role: "meter", Layer_Key: "electric",
+      Plot_ID: 46, Geometry: [[14, 0]], Attributes: {} }], { isSelfLay });
+  if (both.noCircuit.length !== 1) {
+    fail(`the self-lay exemption is catching ordinary plots too: `
+      + `${both.noCircuit.length} reported where 1 was expected`);
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The build refuses a drawing it cannot build from (and names the plots and supplies).");
 process.exit(bad ? 1 : 0);

@@ -1,5 +1,19 @@
 # Placing a breech joint — 11 Sep 2026
 
+**The reason nothing happened: a typo of mine that threw.**
+`snapTargets` returns entries holding `point`; the click handler read
+`t.at`, so `undefined[0]` threw a TypeError and the handler died
+before doing anything — no joint, no dialog, not even an error
+message. It broke the straight joint too, since the snap runs before
+the kind is considered.
+
+The check of the day asserted that `snapTargets` was CALLED, which it
+was. A loop inside a click handler can only be grepped; the snap is
+now `pointOnLineNear` in snapping.js, a function with a return value,
+tested against a line for ends, corners, midpoints, out-of-reach and
+bad input. Putting `t.at` back makes three cases fail.
+
+
 **Then reported: no question, and no joint either.** The armed mode
 disarmed itself BEFORE testing whether a cable was under the click, so
 a click a few pixels off the line ended the mode and said only "click

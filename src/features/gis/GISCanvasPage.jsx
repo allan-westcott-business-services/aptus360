@@ -10,7 +10,7 @@ import {
 } from "../../api/gis.js";
 import {
   SNAP_PX, CONNECT_M, snapTargets, findSnap, nearestOnLines, connectedTo, lineLength,
-  classOf, classLabel, joinLines, isTrenchType, splitPolylineAt, insertVertexAt, canBreakAt,
+  classOf, classLabel, joinLines, isTrenchType, splitPolylineAt, insertVertexAt, canBreakAt, pointOnLineNear,
 } from "./snapping.js";
 import BasemapSetup from "./BasemapSetup.jsx";
 /* What a trench has been told to hold. Imported under its own name:
@@ -10034,14 +10034,8 @@ export default function GISCanvasPage() {
          halfway along a long straight still lands where it was aimed
          rather than being dragged to a corner metres away. */
       const chosen = near[0];
-      const targets = snapTargets([chosen.line], { includeMidpoints: true });
-      const reachM = SNAP_PX / (view.scale || 1);
-      let snap = null;
-      for (const t of targets) {
-        const d = Math.hypot(t.at[0] - point[0], t.at[1] - point[1]);
-        if (!snap || d < snap.d) snap = { d, at: t.at };
-      }
-      const at = snap && snap.d <= reachM ? [snap.at[0], snap.at[1]] : chosen.hit.q;
+      const snap = pointOnLineNear(chosen.line, point, SNAP_PX / (view.scale || 1));
+      const at = snap ? snap.at : chosen.hit.q;
 
       /* ── And whether it breaks the cable ──
 

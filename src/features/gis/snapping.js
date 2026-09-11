@@ -287,6 +287,36 @@ export function insertVertexAt(geometry = [], point, tol = CONNECT_M) {
   return { geometry: out, index: best.i + 1, added: true };
 }
 
+/* ── The point of a line nearest a click ──
+
+   An end, a corner, or the midpoint of a segment: the vocabulary a
+   fitting is placed with. Returns the chosen point, what kind it is,
+   and how far the click was from it — or null where nothing of the
+   sort is within reach, so the caller can fall back to the point on
+   the line under the pointer.
+
+   Extracted rather than written inline at the one call site, because
+   the inline version read `t.at` from a `snapTargets` entry, which
+   holds `point`. Reading a property that does not exist is undefined,
+   and `undefined[0]` throws — so the click handler died before doing
+   anything at all: no joint, no dialog, not even an error. The check
+   asserted that snapTargets was CALLED, which it was.
+
+   A function with a return value can be tested against a line; a loop
+   in the middle of a click handler can only be grepped. */
+export function pointOnLineNear(line, point, reach) {
+  const g = line?.Geometry || [];
+  if (g.length < 2 || !point) return null;
+  let best = null;
+  for (const t of snapTargets([line], { includeMidpoints: true })) {
+    const q = t.point;
+    if (!Array.isArray(q)) continue;
+    const d = Math.hypot(q[0] - point[0], q[1] - point[1]);
+    if (!best || d < best.d) best = { d, at: [q[0], q[1]], kind: t.kind };
+  }
+  return best && best.d <= reach ? best : null;
+}
+
 /* ── Is there anything to cut here ──
 
    At the END of a cable there is not: a split needs a length either

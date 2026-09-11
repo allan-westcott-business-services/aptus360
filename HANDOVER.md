@@ -4603,6 +4603,36 @@ symptom (a parse error a hundred lines below the edit). If a build
 fails in the styles with "Expected ; but found", look for a backtick
 in a comment before anything else.
 
+## The click that threw
+
+Reported twice as "nothing is happening", and it was mine.
+`snapTargets` returns entries shaped
+`{ point, featureId, vertex, kind, ... }`. The snap loop I added to
+the click handler read `t.at`. `undefined[0]` throws, so the handler
+died at that line: no joint, no dialog, no error banner, nothing in
+the UI at all. It took the straight joint down with it, because the
+snap runs before the kind is looked at.
+
+**The check asserted the call, not the result.** It tested that
+`snapTargets([chosen.line], { includeMidpoints: true })` appeared in
+the file — which it did, being the very line that threw. That is the
+whole lesson: a grep over an inline loop can only confirm that the
+code was typed, never that it works. The snap is now
+`pointOnLineNear(line, point, reach)` in snapping.js, returning
+`{ d, at, kind }` or null, and the check runs it against a real line
+for an end, a corner, a midpoint, an out-of-reach click, a one-point
+line and a missing line. Restoring `t.at` fails three of them.
+
+**Three rounds of wrong diagnosis before it.** A stale build, then a
+cable type, then — worst — I analysed drawing 27 from hours earlier
+and reported "877 service cables" about a small test drawing the user
+had never sent me. The evidence that would have found it in one step
+was there the whole time: an exception in the click handler is the
+only thing that produces silence in a handler that otherwise always
+either acts or calls setError. **When an armed mode does nothing at
+all — no act, no message — suspect a throw before suspecting the
+data.**
+
 ## A miss that turned the tool off
 
 Reported: "it is not asking me if I want to break the cable, and it is

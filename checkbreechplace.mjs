@@ -19,7 +19,7 @@
    existing rule carries it from there. */
 import { readFileSync } from "node:fs";
 import {
-  insertVertexAt, splitPolylineAt, canBreakAt,
+  insertVertexAt, splitPolylineAt, canBreakAt, pointOnLineNear,
 } from "./src/features/gis/snapping.js";
 
 let bad = 0;
@@ -97,7 +97,7 @@ const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
     fail("the breech is not armed for a click, so it is still dropped in "
       + "the middle of the view and snapped to the nearest feeder");
   }
-  if (!/snapTargets\(\[chosen\.line\], \{ includeMidpoints: true \}\)/.test(canvas)) {
+  if (!/pointOnLineNear\(chosen\.line, point,/.test(canvas)) {
     fail("the click does not snap to the cable's ends, corners and midpoints");
   }
   /* Its own armed state. With two kinds armed the same way, `!!jointFor`
@@ -106,6 +106,53 @@ const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
     fail("a joint menu item still lights up for any armed kind, so the "
       + "menu says the wrong one is waiting for a click");
   }
+}
+
+/* ── The snap, by what it RETURNS ──
+
+   This is the one that got through. The click handler looped over
+   `snapTargets` entries reading `t.at` — the entries hold `point` —
+   so `undefined[0]` threw and the handler died before doing anything:
+   no joint, no dialog, not even an error. Reported twice as "nothing
+   is happening", and the check of the day asserted only that
+   `snapTargets` was CALLED, which it was.
+
+   A loop inside a click handler can only be grepped. A function with
+   a return value can be run against a line, which is what this does. */
+{
+  const line = { Feature_ID: 1, Feature_Type: "line",
+    Geometry: [[0, 0], [20, 0], [20, 20]], Attributes: {} };
+
+  const end = pointOnLineNear(line, [0.4, 0], 1);
+  if (!end) fail("a click near the start of a cable snaps to nothing");
+  else {
+    if (String(end.at) !== String([0, 0])) fail(`it snapped to ${end.at}, not the end`);
+    if (end.kind !== "end") fail(`the end is reported as "${end.kind}"`);
+  }
+
+  const corner = pointOnLineNear(line, [19.6, 0.2], 1);
+  if (!corner || String(corner.at) !== String([20, 0])) {
+    fail("a click near a corner does not snap to it");
+  }
+
+  const mid = pointOnLineNear(line, [10.2, 0], 1);
+  if (!mid || String(mid.at) !== String([10, 0])) {
+    fail("a click near the middle of a run does not snap to the midpoint");
+  }
+  if (mid && mid.kind !== "mid") fail(`the midpoint is reported as "${mid.kind}"`);
+
+  /* Out of reach is null, so the caller can fall back to the point
+     under the pointer rather than dragging the fitting metres away to
+     the nearest corner. */
+  if (pointOnLineNear(line, [5, 0], 1) !== null) {
+    fail("a deliberate click mid-straight is dragged to a corner");
+  }
+  if (pointOnLineNear({ Geometry: [[0, 0]] }, [0, 0], 1) !== null) {
+    fail("a one-point line is treated as a cable");
+  }
+  /* And it never throws on an entry it does not understand, which is
+     how the original failed. */
+  if (pointOnLineNear(null, [0, 0], 1) !== null) fail("no line is not handled");
 }
 
 // ── 4. The choice is asked, and carried ──

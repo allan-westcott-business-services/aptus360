@@ -166,6 +166,55 @@ const shape = (items) => items
   }
 }
 
+/* ── A flat's meter is named like every other meter ──
+
+   The drawing labels an assumed meter "Flat 17", which is what the
+   board's own table calls it and is right there. In the report's Meter
+   column it sat among rows reading "Electric Meter 12" and looked like
+   a different kind of thing \u2014 when it is the same kind of thing: the
+   electricity meter for plot 17. */
+{
+  const sub = { Feature_ID: 1, Feature_Role: "substation", Layer_Key: "electric",
+    Label: "Substation 1", Geometry: [[0, 0]], Attributes: {} };
+  const dig = { Feature_ID: 2, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[0, 0], [80, 0]], Attributes: { Line_Type: "trench_main" } };
+  const board = { Feature_ID: 50, Feature_Role: "msdb", Layer_Key: "electric",
+    Label: "MSDB 1", Geometry: [[40, 0]], Attributes: { Circuit_ID: 1 } };
+  const drawn = { Feature_ID: 112, Feature_Role: "meter", Layer_Key: "electric",
+    Label: "Electric Meter 12", Plot_ID: 12, Geometry: [[10, 0]],
+    Attributes: { Circuit_ID: 1, Meter_Utility: "electric" } };
+  const flat = { Feature_ID: 217, Feature_Role: "meter", Layer_Key: "electric",
+    Label: "Flat 17", Plot_ID: 17, Geometry: [[40, 0]],
+    Attributes: { Assumed: true, MSDB_ID: 50, Circuit_ID: 1,
+      Assumed_kVA: 1.5, Meter_Utility: "electric" } };
+
+  const r = circuitReport([sub, dig, board, drawn, flat], {
+    plotById: (id) => ({ plot_number: String(id), config_code: "2BF", kva_load: 1.5 }),
+  });
+  const rows = r.circuits?.find((c) => Number(c.id) === 1)?.meters ?? [];
+  const f = rows.find((x) => Number(x.id) === 217);
+  if (!f) fail("the flat is missing from its circuit");
+  else if (f.meter !== "Electric Meter 17") {
+    fail(`a flat's meter is named "${f.meter}" among rows named `
+      + '"Electric Meter 12", so the column reads as two kinds of thing');
+  }
+  /* The drawn meter is untouched: it keeps the label the canvas gave
+     it, and the two now read as one list. */
+  const d = rows.find((x) => Number(x.id) === 112);
+  if (d && d.meter !== "Electric Meter 12") {
+    fail(`a drawn meter's name changed to "${d.meter}"`);
+  }
+
+  /* No plot row to name it from: the drawing's own label, which still
+     says something, rather than "Meter 217". */
+  const bare = circuitReport([sub, dig, board, flat], { plotById: () => null });
+  const b = bare.circuits?.find((c) => Number(c.id) === 1)?.meters?.[0];
+  if (b && !/Flat 17/.test(b.meter)) {
+    fail(`with no plot row the flat is named "${b.meter}" rather than falling `
+      + "back to the label the drawing gave it");
+  }
+}
+
 // 8. Wired into the table.
 {
   const report = readFileSync("src/features/gis/CircuitReport.jsx", "utf8");

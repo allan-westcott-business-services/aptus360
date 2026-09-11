@@ -10,6 +10,12 @@ access before initialization" the moment it opened. The
 "Nothing matches that filter" row had the same hard six and now uses
 the count too.
 
+And a flat's Meter column read "Flat 17" among rows reading "Electric
+Meter 12" — the same kind of thing named as though it were a different
+one. It is named from the plot now, exactly as the canvas names a
+drawn meter. The drawing's own label is untouched: the board's flat
+table and the levels use it, and "Flat 17" is the right word there.
+
 And a flat's House Type read "Flat on MSDB", which is the column
 answering a different question from the one it asks. It gives the
 three-letter code like every other row; where the flat hangs is said

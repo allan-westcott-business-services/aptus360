@@ -1868,9 +1868,28 @@ export function circuitReport(features = [], opts = {}) {
       ? base + (Number(assumed.Assumed_Riser_M) || 0)
         + (Number(assumed.Assumed_Tail_M) || 0)
       : base;
+    /* ── A flat's meter is named like every other meter ──
+
+       An assumed meter is labelled "Flat 17" on the drawing, which is
+       what the board's own table calls it and is right there. In the
+       report's Meter column it sat among rows reading "Electric Meter
+       12" and looked like a different kind of thing, when it is the
+       same kind of thing: the electricity meter for plot 17.
+
+       Named from the plot, the same way the canvas names a drawn
+       meter \u2014 `${utility} Meter ${plot_number}` \u2014 so the column
+       reads as one list. The drawing's own label is left alone: the
+       board's flat table and the levels both use it, and it is the
+       right word in those places.
+
+       Falls back to the label where there is no plot row to name it
+       from, which is better than "Meter 4711". */
+    const plotNo = plot?.plot_number ?? plot?.Plot_Number ?? null;
     return {
       id: m.Feature_ID,
-      meter: m.Label || `Meter ${m.Feature_ID}`,
+      meter: assumed && plotNo != null
+        ? `Electric Meter ${plotNo}`
+        : (m.Label || `Meter ${m.Feature_ID}`),
       plot: plot?.plot_number ?? plot?.Plot_Number
         /* The label a flat was given when its meter was assumed:
            "Flat 101". Without it the row is blank in the column a

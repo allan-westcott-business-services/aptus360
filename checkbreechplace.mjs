@@ -189,6 +189,37 @@ const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
   }
 }
 
+/* ── A miss must not turn the tool off ──
+
+   Reported: "it is not asking me if I want to break the cable, and
+   it is not even showing the joint." Two clicks in a row is what that
+   looks like. The mode disarmed itself BEFORE testing whether a cable
+   was under the pointer, so a click a few pixels off the line ended
+   it — and the next click, aimed properly, did nothing at all,
+   because nothing was armed to answer it.
+
+   The first click at least said "click on an LV feeder cable". The
+   second said nothing, which is why the report describes silence. */
+{
+  const arm = canvas.slice(canvas.indexOf("    if (jointFor) {"),
+    canvas.indexOf("await placeJointOnCable(kind, chosen.line, at)"));
+  const disarm = arm.indexOf("setJointFor(null)");
+  const test = arm.indexOf("if (!near.length)");
+  if (disarm < 0 || test < 0) {
+    fail("the armed joint mode no longer has both a disarm and a "
+      + "nothing-here test, so this cannot check their order");
+  } else if (disarm < test) {
+    fail("the mode disarms before it checks whether a cable is under the "
+      + "click, so one near-miss silently ends it and the next click does "
+      + "nothing at all");
+  }
+  /* And the message says the mode is still on, because a person who
+     has just missed needs to know whether to click again or re-arm. */
+  if (!/Still placing; Esc to stop\./.test(canvas)) {
+    fail("a missed click does not say the tool is still armed");
+  }
+}
+
 // ── 6. The rubber-band, by the rule that carries it ──
 {
   /* Leaving the cable whole inserts the vertex — without it there is

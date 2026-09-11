@@ -9917,8 +9917,6 @@ export default function GISCanvasPage() {
 
     if (jointFor) {
       const kind = jointFor;
-      setJointFor(null);
-      setSnapHit(null);
 
       /* Feeders only. A joint is a fitting on an LV main; one on a
          trench or a service is in a place no main runs. */
@@ -9932,10 +9930,30 @@ export default function GISCanvasPage() {
         .sort((a, b) => a.hit.d - b.hit.d);
 
       if (!near.length) {
-        setError("Click on an LV feeder cable \u2014 the cable says ON LINE "
-          + "under the pointer when you are on it.");
+        /* ── Still armed after a miss ──
+
+           This disarmed the mode BEFORE looking for a cable, so a
+           click a few pixels off the line turned the tool off and said
+           only "click on an LV feeder cable". The next click \u2014 aimed
+           properly this time \u2014 did nothing whatever: no joint, no
+           question, no error, because nothing was armed to answer it.
+           Reported as "it is not asking me, and not even showing the
+           joint", which is what two clicks in a row look like when the
+           first one quietly ended the mode.
+
+           A miss is a miss. The mode stays on, the message says so,
+           and Esc is what ends it \u2014 which is what the menu item has
+           claimed all along. */
+        setError("No LV feeder cable there \u2014 click where the cable says "
+          + "ON LINE under the pointer. Still placing; Esc to stop.");
         return;
       }
+
+      /* Found one: the click is being answered, so the mode has done
+         its job. Disarmed here rather than on entry, for the reason
+         above. */
+      setJointFor(null);
+      setSnapHit(null);
 
       /* ── Several cables under the pointer: ask which ──
 

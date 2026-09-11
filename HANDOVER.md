@@ -4603,6 +4603,40 @@ symptom (a parse error a hundred lines below the edit). If a build
 fails in the styles with "Expected ; but found", look for a backtick
 in a comment before anything else.
 
+## A miss that turned the tool off
+
+Reported: "it is not asking me if I want to break the cable, and it is
+not even showing the joint."
+
+`placeAt`'s armed-joint block called `setJointFor(null)` on its first
+line, before looking for a cable under the click. So:
+
+1. Arm the mode. The menu item changes to "Click the cable…".
+2. Click a few pixels off the line. The mode ends, and the only
+   feedback is "click on an LV feeder cable".
+3. Click again, on the cable this time. **Nothing happens at all** —
+   no joint, no question, no error — because nothing is armed.
+
+The report is of step 3, and step 3 is silent, which is why it reads
+as the feature not working rather than as a miss. Disarming now
+happens once a cable is found, and the miss message says the tool is
+still placing.
+
+Worth generalising: **every armed mode in this file that clears its
+own state before validating the click has this fault.** The pattern to
+look for is `setXFor(null)` as the first statement of the block. The
+symptom is always the same and always describes the SECOND click, so
+it never points at the real cause.
+
+Two of `checkjointonline`'s four failures were also text-pinned
+assertions of this same session's making —
+`|| !!trenchEndFor || !!jointFor;` and
+`if (drawing || placing || jointFor) {` — both pinned to expressions
+that have since grown another clause, while the routing and the
+snapping they test are both in place and working. They are two of the
+remaining standing failures and are worth an hour with the rest of
+that list.
+
 ## The breech that did not break the cable
 
 Reported one turn after the placement work shipped: **"it did not

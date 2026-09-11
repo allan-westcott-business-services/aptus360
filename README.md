@@ -1,5 +1,17 @@
 # Placing a breech joint — 11 Sep 2026
 
+**Then reported: no question, and no joint either.** The armed mode
+disarmed itself BEFORE testing whether a cable was under the click, so
+a click a few pixels off the line ended the mode and said only "click
+on an LV feeder cable". The next click — aimed properly — did nothing
+whatever: no joint, no question, no error, because nothing was armed
+to answer it. Two clicks in a row is what the report describes.
+
+A miss is now a miss: the mode stays on, the message says so, and Esc
+ends it, which is what the menu item has claimed all along. The mode
+disarms when a cable is actually found.
+
+
 **Reported after the first cut: "it did not break the cable."** True,
 and in the commonest case. At the END of a cable there is nothing to
 cut — `splitPolylineAt` returns null, because a split needs a length

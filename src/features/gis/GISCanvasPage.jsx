@@ -9944,8 +9944,40 @@ export default function GISCanvasPage() {
            A miss is a miss. The mode stays on, the message says so,
            and Esc is what ends it \u2014 which is what the menu item has
            claimed all along. */
-        setError("No LV feeder cable there \u2014 click where the cable says "
-          + "ON LINE under the pointer. Still placing; Esc to stop.");
+        /* ── And say what IS there ──
+
+           "No LV feeder cable there" is true and useless: it does not
+           distinguish a click two pixels wide of the line from a
+           drawing that has no LV mains on it at all. Reported as
+           "nothing is happening", on a drawing carrying 877 service
+           cables and not one feeder \u2014 every click was a miss, and the
+           message could not say so.
+
+           So it names what the pointer found instead, and where there
+           is nothing of any kind, it says whether the drawing has any
+           feeders to click. A joint goes on an LV main; a service, a
+           trench and an HV cable are all near misses worth naming by
+           the thing they are. */
+        const feeders = visible.filter((f) => f.Feature_Type === "line"
+          && f.Layer_Key === "electric"
+          && f.Attributes?.Line_Type === "elec_main").length;
+        const under = visible
+          .filter((f) => f.Feature_Type === "line" && (f.Geometry || []).length > 1)
+          .map((f) => ({ f, hit: nearestOnPolyline(point, f.Geometry) }))
+          .filter((x) => x.hit && x.hit.d <= reach)
+          .sort((a, b) => a.hit.d - b.hit.d)[0]?.f;
+
+        setError(
+          under
+            ? `That is ${classLabel(under, lineTypes) || "not an LV feeder"}, `
+              + "not an LV feeder cable \u2014 a joint goes on a feeder. Still "
+              + "placing; Esc to stop."
+            : feeders
+              ? "No LV feeder cable there \u2014 click where the cable says ON "
+                + "LINE under the pointer. Still placing; Esc to stop."
+              : "This drawing has no LV feeder cables to joint yet \u2014 run "
+                + "Auto Build LV Network first. Esc to stop.",
+        );
         return;
       }
 
@@ -23749,8 +23781,26 @@ export default function GISCanvasPage() {
                           hint="Click an end, a corner or the middle of a feeder"
                           disabled={!!busy || !projectId}
                           onClick={() => {
-                            setJointFor(jointFor === "breech" ? null : "breech");
+                            const on = jointFor !== "breech";
+                            setJointFor(on ? "breech" : null);
                             setSelected([]); setDraft([]);
+                            /* ── Said where it can be seen ──
+
+                               The menu item's label changes while the
+                               mode is armed, and the menu closes on
+                               the click, so nobody ever sees it. The
+                               only sign left was a small ring at the
+                               pointer, which says something is armed
+                               but not what, nor what to click.
+
+                               Reported as the mode doing nothing. The
+                               status line is where every other armed
+                               mode says what it wants. */
+                            setStatus(on
+                              ? "Placing a breech joint \u2014 click an end, a "
+                                + "corner or the middle of an LV feeder cable. "
+                                + "Esc to stop."
+                              : "");
                           }} />
                         <MenuItem label="+ Bottle End Joint" indent
                           hint="Seals a feeder that stops here"

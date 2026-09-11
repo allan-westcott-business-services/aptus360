@@ -86,7 +86,14 @@ const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
 
 // ── 3. Placed by clicking a point of a cable ──
 {
-  if (!/setJointFor\(jointFor === "breech" \? null : "breech"\)/.test(canvas)) {
+  /* That it ARMS, not the toggle it is written with. Pinned to the
+     exact expression, this went red the moment the toggle grew a
+     variable so the status line could be set from it — the sixth
+     spelling-pinned assertion of this session, and the second of my
+     own making. */
+  const arms = /setJointFor\([^)]*"breech"[^)]*\)/.test(canvas);
+  const dropsAtCentre = /placeJoint\("breech"\)/.test(canvas);
+  if (!arms || dropsAtCentre) {
     fail("the breech is not armed for a click, so it is still dropped in "
       + "the middle of the view and snapped to the nearest feeder");
   }
@@ -217,6 +224,46 @@ const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
      has just missed needs to know whether to click again or re-arm. */
   if (!/Still placing; Esc to stop\./.test(canvas)) {
     fail("a missed click does not say the tool is still armed");
+  }
+
+  /* ── A miss has to say WHAT it found ──
+
+     "No LV feeder cable there" cannot tell a click two pixels wide of
+     the line from a drawing with no feeders on it at all. Reported as
+     "nothing is happening" on a drawing carrying 877 service cables
+     and not one feeder: every click was a miss and the message could
+     not say so. */
+  if (!/This drawing has no LV feeder cables to joint yet/.test(canvas)) {
+    fail("a drawing with no feeders on it gets the same message as a "
+      + "near-miss, so there is nothing to tell them apart by");
+  }
+  if (!/not an LV feeder cable \\u2014 a joint goes on a feeder/.test(canvas)) {
+    fail("clicking a service or a trench does not say what was clicked, so "
+      + "the wrong cable type reads as the tool not working");
+  }
+}
+
+/* ── The armed mode has to be visible ──
+
+   The menu item's label changes while armed, and the menu closes on
+   the click, so nobody ever sees it. What was left was a small ring
+   at the pointer: enough to know something is armed, not enough to
+   know what it wants. Reported as the mode doing nothing.
+
+   And a miss has to name what the pointer DID find. "No LV feeder
+   cable there" cannot tell a click two pixels wide of the line from a
+   drawing with no feeders on it at all. */
+{
+  if (!/Placing a breech joint \\u2014 click an end/.test(canvas)) {
+    fail("arming the breech says nothing on the status line, so the only "
+      + "sign of the mode is a ring at the pointer");
+  }
+  if (!/not an LV feeder cable \\u2014 a joint goes on a feeder/.test(canvas)) {
+    fail("a click on the wrong kind of line does not say what it found");
+  }
+  if (!/This drawing has no LV feeder cables to joint yet/.test(canvas)) {
+    fail("a drawing with no feeders at all reports the same thing as a "
+      + "near miss, so the two cannot be told apart");
   }
 }
 

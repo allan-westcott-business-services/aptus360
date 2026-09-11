@@ -38,7 +38,13 @@ export default function PlacementPanel({
     [parsed.numbers, byNumber]
   );
   const missing = parsed.numbers.filter((n) => !byNumber[n]);
-  const already = parsed.numbers.filter((n) => byNumber[n]?.placed);
+  const already = parsed.numbers.filter((n) => byNumber[n]?.placed
+    && !byNumber[n]?.onBoard);
+  /* Spoken for by an MSDB rather than already on the drawing. Counted
+     apart because "already placed" sends somebody looking for a seed
+     that does not exist and never will: the flat's meter is a row on
+     the board. */
+  const onBoard = parsed.numbers.filter((n) => byNumber[n]?.onBoard);
 
   const placing = queue.length > 0;
 
@@ -201,6 +207,12 @@ export default function PlacementPanel({
                 : <span className="pp-bad">Nothing to place from that range</span>}
               {already.length > 0 && (
                 <span className="pp-note"> &middot; {already.length} already placed</span>
+              )}
+              {onBoard.length > 0 && (
+                <span className="pp-note">
+                  {" "}&middot; {onBoard.length} on an MSDB &mdash; their meters
+                  are on the board
+                </span>
               )}
               {missing.length > 0 && (
                 <span className="pp-note"> &middot; {missing.length} not on this project</span>

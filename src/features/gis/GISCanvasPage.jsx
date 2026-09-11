@@ -27120,7 +27120,21 @@ export default function GISCanvasPage() {
             {(placeOpen || queue.length > 0) && (
               <div className="gis-place">
                 <PlacementPanel
-                  plots={plotList}
+                  /* ── A flat on a board is not a plot to place ──
+
+                     Its meter is a row on the MSDB, not a point on the
+                     drawing: there is nothing to seed, and a seed
+                     placed for it would be a second home for a
+                     dwelling the board already feeds.
+
+                     The other placement panel has had this filter for
+                     a while; this one was never told, so the same
+                     plots were refused in one dialog and offered in
+                     the other. Marked rather than dropped, so a typed
+                     range says why a number is spoken for instead of
+                     quietly coming up short. */
+                  plots={plotList.map((p) => (plotsOnBoards(features).has(Number(p.plot_id))
+                    ? { ...p, placed: true, onBoard: true } : p))}
                   utilities={utilities}
                   queue={queue}
                   current={nextPlot}

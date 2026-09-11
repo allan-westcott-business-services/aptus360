@@ -256,8 +256,28 @@ const f = raw.features;
     fail("the board's own flats are filtered out of its own table");
   }
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-  if (!/plotsOnBoards\(features\)\.has\(Number\(p\.plot_id\)\)/.test(canvas)) {
-    fail("Place Plots still offers plots already on an MSDB");
+  /* ── Both placement panels, not one ──
+
+     There are two: the one that adds plots and places them, and the
+     one that places plots already on the project. The filter was on
+     the first only, so the same flats were refused in one dialog and
+     offered as seeds in the other \u2014 reported from a screenshot of
+     plots 2, 19 and 20 sitting on MSDB 2 and listed as "5 to place".
+
+     Counted rather than matched once, because one call site passing
+     and the other not is exactly the fault. */
+  const filters = (canvas.match(/plotsOnBoards\(features\)\.has\(Number\(p\.plot_id\)\)/g) || []).length;
+  if (filters < 2) {
+    fail(`${filters} placement panel(s) filter out plots already on an MSDB; `
+      + "both need to, or the same plot is refused in one dialog and offered "
+      + "in the other");
+  }
+  /* And the reason is said. "Already placed" sends somebody looking
+     for a seed that does not exist and never will. */
+  const panel = readFileSync("./src/features/gis/PlacementPanel.jsx", "utf8");
+  if (!/onBoard/.test(panel)) {
+    fail("a plot held by a board is reported as already placed, which sends "
+      + "somebody hunting for a seed that was never drawn");
   }
 }
 

@@ -1,3 +1,26 @@
+# A flat on a board is not a plot to place — 11 Sep 2026
+
+Reported from two screenshots: MSDB 2 holds plots 2, 19 and 20, and
+Place Plots offered all three as seeds — "5 to place".
+
+There are two placement panels: the one that adds plots to the project
+and places them, and the one that places plots already on it. The
+filter was on the first only, so the same flats were refused in one
+dialog and offered in the other. Both filter now.
+
+The reason is said rather than counted as "already placed", which
+would send somebody hunting for a seed that does not exist and never
+will: a flat's meter is a row on the board, so there is nothing to
+seed. A typed range now reports "3 on an MSDB — their meters are on
+the board".
+
+Rendered and checked: with the reported drawing's plots, the panel
+offers 17 and 18 and reads "2 to place". The check counts the filter
+at both call sites, because one passing and the other not is exactly
+the fault. Suite 135 of 153.
+
+---
+
 # Offered means reachable — 11 Sep 2026
 
 Reported: the Circuit Report offered "Circuit 1", the meters were

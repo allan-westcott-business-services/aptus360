@@ -80,6 +80,48 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   }
 }
 
+/* ── Backspace mid-draw takes back a vertex ──
+
+   Two handlers read Backspace: this one, which deletes the selection,
+   and the one that undoes the last vertex of a line being drawn.
+
+   The deletion was first, and with nothing selected it `return`s \u2014
+   which leaves the whole listener. So Backspace did nothing at all
+   while drawing, which is exactly when nothing is selected. Reported
+   as the key no longer removing the last placed vertex.
+
+   Order is the whole of the fix, so order is what this checks. */
+{
+  const drawAt = canvas.indexOf('e.key === "Backspace" && liveDrawing.current');
+  const delAt = canvas.indexOf('if (!typing && (e.key === "Delete" || e.key === "Backspace")) {');
+  if (drawAt < 0) {
+    fail("nothing undoes the last vertex of a line being drawn");
+  } else if (delAt < 0) {
+    fail("the delete-selection handler has gone");
+  } else if (drawAt > delAt) {
+    fail("the delete-selection handler reads Backspace before the vertex "
+      + "undo does, and returns when nothing is selected \u2014 so Backspace "
+      + "does nothing at all while drawing");
+  }
+
+  /* Through refs, not the closure: the listener is bound once per
+     change of `features`, and a draft changes on every click. Read
+     from the closure, Backspace would undo a vertex placed several
+     clicks ago, or nothing if the draft was empty when it was bound. */
+  if (!/liveDraft\.current = draft;/.test(canvas)) {
+    fail("the draft is read through a stale closure, so the vertex undone "
+      + "is not the one just placed");
+  }
+  if (!/liveDrawing\.current = drawing;/.test(canvas)) {
+    fail("whether a line is being drawn is read through a stale closure");
+  }
+
+  /* And it still takes exactly one vertex. */
+  if (!/setDraft\(\(d\) => d\.slice\(0, -1\)\)/.test(canvas)) {
+    fail("Backspace no longer removes the last vertex alone");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
-  : "Delete removes the selection (and only when there is one).");
+  : "Delete removes the selection, and Backspace undoes a vertex while drawing.");
 process.exit(bad ? 1 : 0);

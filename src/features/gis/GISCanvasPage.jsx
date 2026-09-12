@@ -22548,6 +22548,15 @@ export default function GISCanvasPage() {
      otherwise act on a selection from whenever that last happened. */
   const liveSelected = useRef([]);
   liveSelected.current = selected;
+  /* The draft, for the same reason: the key listener is bound once per
+     change of `features`, and a line being drawn changes on every
+     click. Read through the closure, Backspace undid a vertex that was
+     placed several clicks ago \u2014 or nothing at all, if the draft was
+     empty when the listener was bound. */
+  const liveDraft = useRef([]);
+  liveDraft.current = draft;
+  const liveDrawing = useRef(false);
+  liveDrawing.current = drawing;
 
   async function removeSelected(only = null) {
     /* An onClick hands this a MouseEvent, which is not a selection.
@@ -22624,6 +22633,30 @@ export default function GISCanvasPage() {
         return;
       }
 
+      /* ── Drawing first ──
+
+         While a line is being drawn, Backspace takes back the last
+         vertex. That handler used to sit below the delete-selection
+         one, which reads Backspace too \u2014 and with nothing selected it
+         `return`s, which leaves the whole listener. So Backspace did
+         nothing at all mid-draw, which is precisely when nothing is
+         selected.
+
+         Asked before the deletion, not after, because "undo the vertex
+         I just placed" is unambiguous while a draft is open: there is
+         no selection to delete, and a half-drawn line is the only
+         thing the key could mean.
+
+         Read through the ref for the same reason the deletion below
+         does: this listener is bound once per change of `features`,
+         and a draft changes on every click. */
+      if (!typing && e.key === "Backspace" && liveDrawing.current
+        && liveDraft.current.length) {
+        e.preventDefault();
+        setDraft((d) => d.slice(0, -1));
+        return;
+      }
+
       /* ── Delete removes what is selected ──
 
          Where hands already go for it. `removeSelected` is the same
@@ -22690,11 +22723,8 @@ export default function GISCanvasPage() {
       }
       if (e.key === "Escape") { setDraft([]); setTool("select"); setSelected([]); stopPlacing(); }
       if (e.key === "Enter" && drawing) finishDrawing();
-      if (e.key === "Backspace" && drawing && draft.length) {
-        e.preventDefault();
-        setDraft((d) => d.slice(0, -1));
-        return;
-      }
+      /* The vertex undo is handled at the top, before the deletion
+         that also reads Backspace. It was here, and was unreachable. */
       if ((e.key === "Delete" || e.key === "Backspace")
           && document.activeElement?.tagName !== "INPUT") {
         /* A point is being worked on, so Delete means that point. Only

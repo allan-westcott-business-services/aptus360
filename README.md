@@ -1,3 +1,27 @@
+# Backspace while drawing — 12 Sep 2026
+
+Reported: hitting Backspace mid-line no longer removes the last placed
+vertex.
+
+Two handlers read Backspace. The one that deletes the selection was
+first, and with nothing selected it `return`s — which leaves the whole
+listener, not just that branch. So Backspace did nothing at all while
+drawing, which is exactly when nothing is selected.
+
+The vertex undo is asked first now. While a draft is open the key is
+unambiguous: there is no selection to delete, and a half-drawn line is
+the only thing it could mean. It reads the draft through a ref for the
+same reason the deletion reads the selection through one — the
+listener is bound once per change of `features`, and a draft changes
+on every click, so through the closure it would undo a vertex placed
+several clicks ago or nothing at all.
+
+`checkdeletekey` now asserts the ORDER of the two handlers, which is
+the whole of the fix; putting them back the old way round fails it.
+Suite 136 of 154.
+
+---
+
 # The substation is answered first — 12 Sep 2026
 
 Reported from a newly placed MSDB: the circuit had to be entered

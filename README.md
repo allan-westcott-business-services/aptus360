@@ -1,3 +1,37 @@
+# The MSDB editor, laid out — 11 Sep 2026
+
+Half as wide again (630px against the base 420) and reorganised, so
+nothing wraps and each fact sits beside the one it belongs with:
+
+    Label              Layer
+    Location (75%)     Floor (25%)
+    Circuit            Prefix   Isolate
+    Fed from           Link box output
+    Previous floor to MSDB (m)   At the board
+    MSDB to ground (m)           Leaving the board
+    Service cable
+    Flats
+    Notes
+
+- **Each run beside the level it produces.** The metres up the riser
+  and the volt drop at the board are one fact in two halves — somebody
+  types the length and reads what it costs — and they were in separate
+  rows, so the number and its consequence were never on screen
+  together.
+- **Layer, Fed from and the circuit strip moved into the panel**, and
+  the shared copies are suppressed for a board. Two boxes writing one
+  value is two places to wonder which won. The Fed from control is
+  built once and placed by whoever needs it, so the two cannot drift
+  apart.
+- **Tail cable is now Service cable.**
+- The letter and the isolate button take only the width they need, so
+  the circuit name keeps the rest of its row.
+
+Rendered and read back to confirm the rows, with one Layer box, one
+Fed from and one isolate button. Suite 136 of 154.
+
+---
+
 # A landlord supply is placed once — 11 Sep 2026
 
 Either it is a seed on the drawing with its own meter, or it is fed

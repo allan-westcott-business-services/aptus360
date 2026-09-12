@@ -859,6 +859,49 @@ export default function FeatureEditor({
      the reason the ids are kept apart everywhere else: a supply's id
      and a plot's id are numbers from different tables, and one list
      would have a board serving plot 7 because supply 7 was ticked. */
+  /* ── The Fed from control, as a value ──
+
+     A fact about the CIRCUIT, offered wherever the thing in front of
+     you names one. A board wants it beside its output, in its own
+     layout; everything else wants it where it has always been. Built
+     once here so the two cannot drift into two controls writing one
+     value.
+
+     Null where there is nothing to decide: one origin on the drawing,
+     or no circuit on this feature. */
+  const fedFromField = useMemo(() => {
+    const cid = f.Attributes?.Circuit_ID;
+    if (f.Layer_Key !== "electric" || cid == null) return null;
+    if (!onSetCircuitOrigin) return null;
+    const origins = lvOrigins(allFeatures);
+    if (origins.length <= 1) return null;
+    const named = (allFeatures || [])
+      .filter((x) => x.Feature_Role === "meter"
+        && Number(x.Attributes?.Circuit_ID) === Number(cid))
+      .map((x) => x.Attributes?.Circuit_Origin_ID)
+      .find((x) => x != null) ?? null;
+    return (
+      <div className="fld">
+        <label htmlFor="fe-fedfrom">Fed from</label>
+        <select id="fe-fedfrom" value={named != null ? String(named) : ""}
+          onChange={(e) => onSetCircuitOrigin(cid,
+            e.target.value === "" ? null : Number(e.target.value))}>
+          <option value="">{"Not set \u2014 the build picks the nearest POC"}</option>
+          {origins.map((o) => (
+            <option key={o.Feature_ID} value={String(o.Feature_ID)}>
+              {o.Label || (o.Feature_Role === "substation"
+                ? "Substation" : `POC #${o.Feature_ID}`)}
+            </option>
+          ))}
+        </select>
+        <p className="hint">
+          The whole circuit, not just this one. Run Build LV Network again to
+          re-route it from the named POC.
+        </p>
+      </div>
+    );
+  }, [f, allFeatures, onSetCircuitOrigin]);
+
   const msdbPickedNrs = useMemo(() => {
     const raw = f.Attributes?.MSDB_NRS_IDs;
     return Array.isArray(raw) ? raw.map(Number) : [];
@@ -1191,7 +1234,8 @@ export default function FeatureEditor({
         /* The board is a table: way, circuit, fuse, loading and colour
            in one row. A fifth column arrived with the per-way fuse and
            the row had no width left to give it. */
-        : feature.Feature_Role === "substation" ? "fe fe-station" : "fe"}
+        : feature.Feature_Role === "substation" ? "fe fe-station"
+          : feature.Feature_Role === "msdb" ? "fe fe-board" : "fe"}
         onClick={(e) => e.stopPropagation()} style={drag.panelStyle}
         role="dialog" aria-label="Edit feature">
         <style>{CSS}</style>
@@ -1657,22 +1701,40 @@ export default function FeatureEditor({
 
                   The same `Label` the rest of the editor writes, not a
                   second name for one thing. */}
-              <div className="fld">
-                <label htmlFor="fe-msdb-label">Label</label>
-                <input id="fe-msdb-label" type="text" placeholder="MSDB"
-                  value={f.Label ?? ""}
-                  onChange={(e) => setF((p) => ({ ...p, Label: e.target.value }))} />
-              </div>
-
-              <div className="fld">
-                <label htmlFor="fe-msdb-loc">Location</label>
-                <input id="fe-msdb-loc" type="text"
-                  placeholder="Riser cupboard, core B"
-                  value={f.Attributes?.MSDB_Location ?? ""}
-                  onChange={(e) => setAttr("MSDB_Location")(e.target.value)} />
-              </div>
-
               <div className="fe-row">
+                <div className="fld">
+                  <label htmlFor="fe-msdb-label">Label</label>
+                  <input id="fe-msdb-label" type="text" placeholder="MSDB"
+                    value={f.Label ?? ""}
+                    onChange={(e) => setF((p) => ({ ...p, Label: e.target.value }))} />
+                </div>
+                {/* The layer, here rather than at the foot of the
+                    panel. Everything about the board reads top to
+                    bottom in one place; the shared field below is
+                    suppressed for a board so one value has one box. */}
+                <div className="fld">
+                  <label htmlFor="fe-msdb-layer">Layer</label>
+                  <select id="fe-msdb-layer" value={f.Layer_Key}
+                    onChange={(e) => setF((p) => ({ ...p, Layer_Key: e.target.value }))}>
+                    {layers.map((l) => (
+                      <option key={l.Layer_Key} value={l.Layer_Key}>{l.Label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Location takes three quarters and the floor a quarter:
+                  "Riser cupboard, core B" is a sentence and "Ground" is
+                  a word, and splitting them evenly wrapped the one and
+                  left the other half empty. */}
+              <div className="fe-row fe-msdb-loc-row">
+                <div className="fld">
+                  <label htmlFor="fe-msdb-loc">Location</label>
+                  <input id="fe-msdb-loc" type="text"
+                    placeholder="Riser cupboard, core B"
+                    value={f.Attributes?.MSDB_Location ?? ""}
+                    onChange={(e) => setAttr("MSDB_Location")(e.target.value)} />
+                </div>
                 <div className="fld">
                   <label htmlFor="fe-msdb-floor">Floor</label>
                   <select id="fe-msdb-floor"
@@ -1761,6 +1823,45 @@ export default function FeatureEditor({
                     </p>
                   )}
                 </div>
+                {/* ── The circuit's letter, and the isolate button ──
+
+                    The letter is how the circuit is named on the
+                    drawing \u2014 the cable labels read way then letter \u2014
+                    so it belongs beside the name it belongs to rather
+                    than in a strip further down. Isolating is the thing
+                    somebody does WITH the circuit they have just
+                    picked, so it sits at the end of the same row. */}
+                <div className="fld fe-msdb-letter">
+                  <span className="fe-lab">Prefix</span>
+                  <div className="fe-msdb-at">
+                    {f.Attributes?.Circuit_Letter
+                      ? <span className="fe-cl">{f.Attributes.Circuit_Letter}</span>
+                      : <span className="fe-msdb-none">&mdash;</span>}
+                  </div>
+                </div>
+                <div className="fld fe-msdb-iso">
+                  <span className="fe-lab">&nbsp;</span>
+                  <button type="button" className="fe-iso"
+                    disabled={f.Attributes?.Circuit_ID == null}
+                    title={circuitIsolated
+                      ? "Bring back the circuits that were hidden"
+                      : "Hide every other circuit. Trenches, plots and the "
+                        + "other utilities stay."}
+                    onClick={() => onIsolateCircuit?.(f.Attributes?.Circuit_ID)}>
+                    {circuitIsolated ? "Show all" : "Isolate"}
+                  </button>
+                </div>
+              </div>
+
+              {/* ── What feeds it, and by which output ──
+
+                  The origin is a fact about the whole circuit and the
+                  output is a fact about this board, but somebody
+                  reading either is asking the same question \u2014 where
+                  does this board's supply come from \u2014 so they sit
+                  together. */}
+              <div className="fe-row">
+                {fedFromField}
                 {msdbBox && (
                   <div className="fld">
                     <label htmlFor="fe-msdb-way">Link box output</label>
@@ -1785,6 +1886,15 @@ export default function FeatureEditor({
                 )}
               </div>
 
+              {/* ── Each run beside the level it produces ──
+
+                  The length up the riser and the volt drop at the
+                  board are one fact in two halves: somebody types
+                  the metres and reads what they cost. They sat in
+                  separate rows, so the number and its consequence
+                  were never on screen together. The run down to
+                  ground and the level leaving the board pair the
+                  same way. */}
               <div className="fe-row">
                 <div className="fld">
                   <label htmlFor="fe-msdb-riser">Previous floor to MSDB (m)</label>
@@ -1800,6 +1910,26 @@ export default function FeatureEditor({
                     onChange={(e) => setAttr("MSDB_Riser_M")(
                       e.target.value === "" ? null : Number(e.target.value))} />
                 </div>
+                <div className="fld">
+                  <span className="fe-lab">At the board</span>
+                  <div className="fe-msdb-at">
+                    {msdbAt?.pct == null
+                      ? <span className="fe-msdb-none">Run the levels check</span>
+                      : (
+                        <>
+                          <strong>{msdbAt.pct.toFixed(2)}%</strong>
+                          {msdbAt.riserPct > 0 && (
+                            <span className="hint">
+                              {" "}including {msdbAt.riserPct.toFixed(2)}% up the riser
+                            </span>
+                          )}
+                        </>
+                      )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="fe-row">
                 <div className="fld">
                   <label htmlFor="fe-msdb-down">MSDB to ground (m)</label>
                   {/* ── The run back down ──
@@ -1818,26 +1948,6 @@ export default function FeatureEditor({
                     value={f.Attributes?.MSDB_Down_M ?? ""}
                     onChange={(e) => setAttr("MSDB_Down_M")(
                       e.target.value === "" ? null : Number(e.target.value))} />
-                </div>
-              </div>
-
-              <div className="fe-row">
-                <div className="fld">
-                  <span className="fe-lab">At the board</span>
-                  <div className="fe-msdb-at">
-                    {msdbAt?.pct == null
-                      ? <span className="fe-msdb-none">Run the levels check</span>
-                      : (
-                        <>
-                          <strong>{msdbAt.pct.toFixed(2)}%</strong>
-                          {msdbAt.riserPct > 0 && (
-                            <span className="hint">
-                              {" "}including {msdbAt.riserPct.toFixed(2)}% up the riser
-                            </span>
-                          )}
-                        </>
-                      )}
-                  </div>
                 </div>
                 <div className="fld">
                   {/* ── Where the outgoing cable starts ──
@@ -1871,7 +1981,7 @@ export default function FeatureEditor({
               </div>
 
               <div className="fld">
-                <label htmlFor="fe-msdb-tail">Tail cable</label>
+                <label htmlFor="fe-msdb-tail">Service cable</label>
                 <select id="fe-msdb-tail"
                   value={f.Attributes?.MSDB_Tail_Cable_ID ?? ""}
                   onChange={(e) => setAttr("MSDB_Tail_Cable_ID")(
@@ -2209,7 +2319,11 @@ export default function FeatureEditor({
               a trench: a trench serves every circuit that runs through it
               and belongs to none, so there is nothing to isolate from
               it. */}
-          {feature.Layer_Key === "electric"
+          {/* A board shows its circuit, its letter and this button on
+              one row at the top of its own panel, where the circuit is
+              chosen. Shown here too, it would be the same three things
+              twice. */}
+          {!isMsdb && feature.Layer_Key === "electric"
             && feature.Attributes?.Circuit_ID != null && (
             <div className="fe-circuit">
               <span>
@@ -2266,7 +2380,10 @@ export default function FeatureEditor({
               drawing. "The build decides" is the honest name for the
               unset state: nearest along the trench, said in the build
               status, until somebody chooses. */}
-          {feature.Layer_Key === "electric"
+          {/* A board places this itself, beside its output. Rendered
+              here as well, it would be two controls writing one
+              value. */}
+          {!isMsdb && feature.Layer_Key === "electric"
             && feature.Attributes?.Circuit_ID != null
             && onSetCircuitOrigin
             && lvOrigins(allFeatures).length > 1 && (() => {
@@ -2409,7 +2526,10 @@ export default function FeatureEditor({
                   anything on that layer whether or not it was a line —
                   so the editor gave a point the whole trench form. That
                   is fixed at the source, in snapping.js. */}
-              {feature.Feature_Role !== "spannode" && (
+              {/* A board has its own Layer field at the top of its
+                  panel, beside its name, for the same reason its Label
+                  is there: one value, one box. */}
+              {feature.Feature_Role !== "spannode" && !isMsdb && (
                 <div className="fld">
                   <label htmlFor="fe-layer">Layer</label>
                   <select id="fe-layer" value={f.Layer_Key}
@@ -4513,6 +4633,22 @@ const CSS = `
    and a class name meaning two things is how one of them stops
    working when somebody edits the other. */
 .fe.fe-station { width: min(504px, 94vw); }
+/* ── The board's panel, half as wide again ──
+
+   630px against the base 420. A board carries more per row than
+   anything else in this editor \u2014 a length and the level it produces,
+   a circuit and its letter and a button \u2014 and at the base width every
+   one of those rows wrapped its labels onto two lines. */
+.fe.fe-board { width: min(630px, 96vw); }
+/* Location takes three quarters, the floor a quarter: one is a
+   sentence and the other is a word. */
+.fe-msdb-loc-row .fld:first-child { flex: 3; }
+.fe-msdb-loc-row .fld:last-child { flex: 1; }
+/* The letter and the isolate button take what they need and no more,
+   so the circuit name keeps the rest of the row. */
+.fe-msdb-letter { flex: 0 0 64px; }
+.fe-msdb-iso { flex: 0 0 auto; }
+.fe-msdb-iso .fe-iso { width: 100%; }
 /* .fe, .fe-head and .fe-head h3 now live in styles.css, beside
    .fe-backdrop and .fe-foot. Fifteen components use .fe and this block
    is only injected while THIS modal is mounted, so any of the others

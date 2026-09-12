@@ -1551,6 +1551,90 @@ const served = (b) => servedFlats(b, flats);
   }
 }
 
+/* ── The board's panel, laid out as asked ──
+
+   Label and Layer on one row; Location and Floor; Circuit with its
+   prefix letter and the isolate button; Fed from with the output; each
+   run beside the level it produces; then the service cable, the flats
+   and the notes.
+
+   Asserted on the markup rather than by rendering, because what
+   matters here is which fields share a row \u2014 and a row is a `fe-row`
+   holding two fields, which the source says plainly. The rendering was
+   checked by hand at the time and reported the rows above in order. */
+{
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  const at = editor.indexOf("{isMsdb && (");
+  const body = editor.slice(at, editor.indexOf("fe-msdb-h", at));
+
+  const rowOf = (id) => {
+    /* The fe-row that holds this field, if any. */
+    const i = body.indexOf(`htmlFor="${id}"`);
+    if (i < 0) return null;
+    const before = body.lastIndexOf('className="fe-row', 0 + i);
+    const closed = body.lastIndexOf("</div>\n\n", i);
+    return before > closed ? before : null;
+  };
+  const sameRow = (a, b) => {
+    const ra = rowOf(a);
+    const rb = rowOf(b);
+    return ra != null && ra === rb;
+  };
+
+  for (const [a, b, what] of [
+    ["fe-msdb-label", "fe-msdb-layer", "the name and the layer"],
+    ["fe-msdb-loc", "fe-msdb-floor", "the location and the floor"],
+    ["fe-msdb-riser", "fe-msdb-down", null],
+  ]) {
+    if (what && !sameRow(a, b)) fail(`${what} are not on one row`);
+  }
+  /* The two runs must NOT share a row: each pairs with its own level
+     instead, which is the point of the change. */
+  if (sameRow("fe-msdb-riser", "fe-msdb-down")) {
+    fail("the two runs share a row again, so neither sits beside the level "
+      + "it produces");
+  }
+
+  /* The circuit row carries the letter and the isolate button. */
+  const circuitRow = body.slice(body.indexOf('htmlFor="fe-msdb-circuit"'));
+  const rowEnd = circuitRow.indexOf('className="fe-row"');
+  const inRow = rowEnd > 0 ? circuitRow.slice(0, rowEnd) : circuitRow;
+  if (!/fe-msdb-letter/.test(inRow)) {
+    fail("the circuit's prefix letter is not beside the circuit");
+  }
+  if (!/fe-msdb-iso/.test(inRow)) {
+    fail("the isolate button is not beside the circuit it isolates");
+  }
+
+  /* Renamed, because it is the service into the building rather than
+     a tail off a cut-out. */
+  if (/Tail cable/.test(body)) fail("the tail cable was not renamed");
+  if (!/Service cable/.test(body)) fail("there is no service cable field");
+
+  /* One box per value: the shared Layer, Fed from and circuit strip
+     are all suppressed for a board, which places its own. */
+  for (const [re, what] of [
+    [/\{feature\.Feature_Role !== "spannode" && !isMsdb && \(/, "the layer"],
+    [/\{!isMsdb && feature\.Layer_Key === "electric"\s*\n\s*&& feature\.Attributes\?\.Circuit_ID != null\s*\n\s*&& onSetCircuitOrigin/, "fed from"],
+    [/\{!isMsdb && feature\.Layer_Key === "electric"\s*\n\s*&& feature\.Attributes\?\.Circuit_ID != null && \(/, "the circuit strip"],
+  ]) {
+    if (!re.test(editor)) {
+      fail(`${what} is rendered twice for a board \u2014 two boxes writing one `
+        + "value is two places to wonder which won");
+    }
+  }
+
+  /* Half as wide again, because a board carries more per row than
+     anything else in this editor. */
+  if (!/\.fe\.fe-board \{ width: min\(630px/.test(editor)) {
+    fail("the board's panel is not widened, so its rows wrap");
+  }
+  if (!/"fe fe-board"/.test(editor)) fail("the board's panel never gets the class");
+  if (!/\.fe-msdb-loc-row \.fld:first-child \{ flex: 3/.test(editor)) {
+    fail("the location does not take three quarters of its row");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The MSDB behaves (flats on a table, load and levels derived).");
 process.exit(bad ? 1 : 0);

@@ -320,7 +320,10 @@ const node = (a) => ({ Attributes: { Future_Allowance: a } });
   /* No layer picker on a span node: its layer is decided when it is
      placed, and changing it hides the node from the utility that owns
      it rather than moving anything. */
-  if (!/feature\.Feature_Role !== "spannode" && \(/.test(code)) {
+  /* That the picker is withheld from a span node \u2014 not the exact
+     shape of the condition, which has since grown a second exclusion
+     for the board that places its own. */
+  if (!/feature\.Feature_Role !== "spannode" &&/.test(code)) {
     fail("a span node is still offered a layer to change");
   }
 

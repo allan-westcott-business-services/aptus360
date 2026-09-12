@@ -14,6 +14,7 @@ import {
   FLOORS, apartmentLoad, msdbLoad, apartmentLevels, worstApartment, msdbText,
   flatsFromPlots, servedFlats, isFlatType, shortType, riserDrop, outputDrop,
   assumedMeters, msdbSupply, withAssumedMeters,
+  landlordSupplies, isLandlordSupply,
 } from "./src/features/gis/msdb.js";
 import { circuitsFrom, circuitReport } from "./src/features/gis/electric.js";
 import { circuitMembership, spanTrace } from "./src/features/gis/feeder.js";
@@ -1399,6 +1400,97 @@ const served = (b) => servedFlats(b, flats);
   if (Math.abs(noDown.pct - atBoard.pct) > 1e-9) {
     fail("the run down was charged to the board's own figure, where the "
       + "flats hang");
+  }
+}
+
+/* ── A landlord supply belongs on the board ──
+
+   A block's stair lighting, lift, door entry or pumps are fed from the
+   board, off the riser, metered in the cupboard \u2014 exactly as the
+   flats beside them. It is not a dwelling, so it is not in the plot
+   list at all: it is a non-residential supply with a stated kVA.
+
+   Only landlord supplies. A shop on the ground floor takes its own
+   service from the network, and a board that could claim any supply
+   would let a retail unit onto a domestic riser by mistake. */
+{
+  const board = { Feature_ID: 50, Feature_Role: "msdb", Layer_Key: "electric",
+    Label: "MSDB 1", Geometry: [[0, 0]],
+    Attributes: { Circuit_ID: 1, MSDB_Plot_IDs: [17], MSDB_NRS_IDs: [9] } };
+  const opts = {
+    plotList: [{ plot_id: 17, plot_number: "17", Property_Config_ID: 1,
+      Heat_Source_ID: 2 }],
+    configs: [{ Property_Config_ID: 1, Property_Type_ID: 9, Bedrooms: 2, Code: "2BF" }],
+    propertyTypes: [{ Property_Type_ID: 9, Property_Type: "Flat" }],
+    consumption: [{ Bedrooms: 2, Heat_Source_ID: 2, Consumption_kVA: 1.5 }],
+    nrsList: [
+      { NRS_ID: 9, Supply_Ref: "Landlord A", NRS_Sub_Type_ID: 3, Requested_kVA: 4 },
+      { NRS_ID: 10, Supply_Ref: "Corner shop", NRS_Sub_Type_ID: 4, Requested_kVA: 20 },
+    ],
+    nrsSubTypes: [{ NRS_Sub_Type_ID: 3, Label: "Landlord Supply" },
+      { NRS_Sub_Type_ID: 4, Label: "Retail" }],
+  };
+
+  /* Only the landlord one is offered at all. */
+  const offered = landlordSupplies(opts);
+  if (offered.length !== 1 || Number(offered[0].nrsId) !== 9) {
+    fail(`${offered.length} supplies offered to a board; only the landlord `
+      + "supply should be");
+  }
+  /* Matched loosely on case and spacing, because a project types its
+     own sub-type labels. */
+  const spaced = landlordSupplies({ ...opts,
+    nrsSubTypes: [{ NRS_Sub_Type_ID: 3, Label: "  landlord supply " }] });
+  if (spaced.length !== 1) fail("the sub-type match is too strict about case or spacing");
+
+  /* It reaches the build, the levels and the report as an assumed
+     meter \u2014 the readers that were told about flats and not about
+     supplies. */
+  const world = withAssumedMeters([board], opts);
+  const made = world.filter((f) => f.Attributes?.Assumed);
+  if (made.length !== 2) {
+    fail(`${made.length} assumed meters for a board of one flat and one `
+      + "landlord supply, where 2 were expected");
+  }
+  const supply = made.find((f) => f.Attributes?.NRS_ID != null);
+  if (!supply) fail("the landlord supply never becomes a meter, so nothing "
+    + "downstream counts it");
+  else {
+    /* Its own stated load, not a dwelling's figure from the
+       consumption table. */
+    if (Number(supply.Attributes.Assumed_kVA) !== 4) {
+      fail(`the supply's load reads ${supply.Attributes.Assumed_kVA} kVA, not `
+        + "the figure stated on its record");
+    }
+    /* Named as itself: calling it a flat would have somebody looking
+       for a dwelling that is not there. */
+    if (!/Landlord A/.test(String(supply.Label))) {
+      fail(`the supply is labelled "${supply.Label}"`);
+    }
+    if (supply.Plot_ID != null) {
+      fail("the supply carries a plot id, which is a number from another table");
+    }
+    /* On the board's circuit, because it is fed through the board. */
+    if (Number(supply.Attributes.Circuit_ID) !== 1) {
+      fail("the supply is not on the board's circuit");
+    }
+  }
+
+  /* A supply ticked onto one board is not served by another. */
+  const other = { ...board, Feature_ID: 51,
+    Attributes: { Circuit_ID: 1, MSDB_Plot_IDs: [], MSDB_NRS_IDs: [] } };
+  const two = withAssumedMeters([board, other], opts)
+    .filter((f) => f.Attributes?.NRS_ID === 9);
+  if (two.length !== 1) {
+    fail(`${two.length} boards claim the same landlord supply`);
+  }
+
+  /* And a caller that has not been told about supplies still gets its
+     flats, exactly as before. */
+  const old = withAssumedMeters([board], { ...opts, nrsList: undefined,
+    nrsSubTypes: undefined });
+  if (old.filter((f) => f.Attributes?.Assumed).length !== 1) {
+    fail("a caller passing no supplies changed behaviour");
   }
 }
 

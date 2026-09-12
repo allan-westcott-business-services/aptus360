@@ -79,6 +79,19 @@ export function blankApartment(n) {
    Reading anything else here would be a second answer to a question the
    scheme has already answered. */
 export function apartmentLoad(row, heatSourceId, consumption = []) {
+  /* ── A landlord supply states its own load ──
+
+     It has no bedrooms and no heat source, so the consumption table
+     has nothing to say about it: the figure is the one agreed on the
+     supply record. Null there is MISSING rather than nought \u2014 a
+     supply nobody has sized would otherwise add zero to the board and
+     the cable would be sized short without a word. */
+  if (row?.nrsId != null) {
+    const k = Number(row.statedKva);
+    return Number.isFinite(k) && k > 0
+      ? { kva: k, missing: false }
+      : { kva: 0, missing: true };
+  }
   const hit = (consumption || []).find((c) =>
     Number(c.Bedrooms) === Number(row?.bedrooms)
     && Number(c.Heat_Source_ID) === Number(heatSourceId));
@@ -292,6 +305,62 @@ export function isFlatType(typeName) {
   return /\b(flat|apartment|maisonette|duplex)\b/i.test(String(typeName ?? ""));
 }
 
+/* ── A landlord supply belongs on the board ──
+
+   A block's landlord supply \u2014 the stair lighting, the lift, the door
+   entry, the pumps \u2014 is fed from the same board as the flats, off the
+   same riser, and metered in the same cupboard. It is not a dwelling,
+   so it is not in the plot list at all: it is a non-residential supply
+   with a stated kVA.
+
+   Only landlord supplies. A shop on the ground floor is a
+   non-residential supply too and takes its own service from the
+   network, and a board that could claim any NRS would let somebody put
+   a whole retail unit on a domestic riser by mistake.
+
+   Matched on the sub-type's LABEL rather than its id, because the ids
+   are per database and the label is what the designer picked. Compared
+   loosely on case and spacing: "Landlord supply" and "Landlord Supply"
+   are the same thing to everyone except a string comparison. */
+export const LANDLORD_SUPPLY = "landlord supply";
+
+export function isLandlordSupply(rec, nrsSubTypes = []) {
+  const id = rec?.NRS_Sub_Type_ID ?? rec?.nrs_sub_type_id;
+  if (id == null) return false;
+  const label = (nrsSubTypes || [])
+    .find((t) => Number(t.NRS_Sub_Type_ID) === Number(id))?.Label;
+  return String(label ?? "").trim().toLowerCase() === LANDLORD_SUPPLY;
+}
+
+/* The landlord supplies a board could serve, in the shape the board's
+   own list uses. `nrsId` where a flat has `plotId`, and the two never
+   collide because they are different fields \u2014 ids from two tables in
+   one list is how a board ends up serving plot 7 because supply 7 was
+   ticked.
+
+   `kva` is stated on the record rather than worked out from bedrooms
+   and a heat source: a landlord supply has neither, and the figure the
+   designer agreed is the figure. */
+export function landlordSupplies({ nrsList = [], nrsSubTypes = [] } = {}) {
+  return (nrsList || [])
+    .filter((r) => isLandlordSupply(r, nrsSubTypes))
+    .map((r) => ({
+      nrsId: Number(r.NRS_ID),
+      plotId: null,
+      ref: String(r.Supply_Ref || r.Description || `Supply ${r.NRS_ID}`),
+      typeName: "Landlord supply",
+      code: "LS",
+      short: "LS",
+      bedrooms: 0,
+      heatSourceId: null,
+      /* Stated, and kept as null when it is not: a supply with no
+         agreed load is a figure nobody has given, and inventing a zero
+         would quietly size the board's cable short. */
+      statedKva: r.Requested_kVA == null || r.Requested_kVA === ""
+        ? null : Number(r.Requested_kVA),
+    }));
+}
+
 export function flatsFromPlots({
   plotList = [], configs = [], propertyTypes = [],
 } = {}) {
@@ -337,14 +406,34 @@ export function servedFlats(feature, flats = []) {
   const chosen = new Set(
     (Array.isArray(picked) ? picked : []).map(Number),
   );
+  /* ── And the landlord supplies ──
+
+     Kept in their own list and their own distance map, because an NRS
+     id and a plot id are numbers from different tables: one list would
+     have a board serving plot 7 because supply 7 was ticked. The row
+     ids were already prefixed \u2014 `p7` \u2014 which is the same distinction
+     made one layer up, and `n7` joins it. */
+  const pickedNrs = feature?.Attributes?.MSDB_NRS_IDs;
+  const chosenNrs = new Set(
+    (Array.isArray(pickedNrs) ? pickedNrs : []).map(Number),
+  );
   const dist = feature?.Attributes?.MSDB_Distances || {};
+  const distNrs = feature?.Attributes?.MSDB_NRS_Distances || {};
   return (flats || [])
-    .filter((f) => chosen.has(Number(f.plotId)))
-    .map((f) => ({
-      ...f,
-      id: `p${f.plotId}`,
-      distanceM: Number(dist[String(f.plotId)]) || 0,
-    }));
+    .filter((f) => (f.nrsId != null
+      ? chosenNrs.has(Number(f.nrsId))
+      : chosen.has(Number(f.plotId))))
+    .map((f) => (f.nrsId != null
+      ? {
+        ...f,
+        id: `n${f.nrsId}`,
+        distanceM: Number(distNrs[String(f.nrsId)]) || 0,
+      }
+      : {
+        ...f,
+        id: `p${f.plotId}`,
+        distanceM: Number(dist[String(f.plotId)]) || 0,
+      }));
   /* `...f` carries heatSourceId and short through: the row the levels
      work on is the flat, not a copy of it with fields dropped. */
 }
@@ -385,16 +474,29 @@ export function assumedMeters(feature, rows = []) {
     /* Not a Feature_ID: these are not features, and giving them one
        that looks like a row's id invites something to try to save
        them. */
-    assumedFor: Number(r.plotId),
+    assumedFor: r.nrsId != null ? Number(r.nrsId) : Number(r.plotId),
     Feature_Role: "meter",
     Feature_Type: "point",
     Layer_Key: "electric",
-    Plot_ID: r.plotId,
-    Label: r.ref ? `Flat ${r.ref}` : "Flat",
+    Plot_ID: r.plotId ?? null,
+    /* ── A landlord supply is metered like the flats beside it ──
+
+       It has no plot, so `NRS_ID` is how its record is found again \u2014
+       the same attribute a drawn non-residential meter carries, so
+       everything that already reads a supply's load from its record
+       finds this one without being told anything new.
+
+       Named by its own reference rather than "Flat": it is the stair
+       lighting or the lift, and calling it a flat in the schedule
+       would have somebody looking for a dwelling that is not there. */
+    Label: r.nrsId != null
+      ? (r.ref ? String(r.ref) : "Landlord supply")
+      : (r.ref ? `Flat ${r.ref}` : "Flat"),
     Geometry: at ? [[at[0], at[1]]] : [],
     Attributes: {
       Assumed: true,
       MSDB_ID: feature?.Feature_ID ?? null,
+      ...(r.nrsId != null ? { NRS_ID: Number(r.nrsId) } : {}),
       Meter_Utility: "electric",
       Circuit_ID: circuitId,
       Circuit_Name: a.Circuit_Name ?? null,
@@ -458,11 +560,27 @@ export function assumedMeterId(msdbId, plotId) {
 
 export function withAssumedMeters(features = [], {
   plotList = [], configs = [], propertyTypes = [], consumption = [],
+  /* ── And the landlord supplies ──
+
+     A board's stair lighting, lift or door entry is a non-residential
+     supply picked onto the board, not a dwelling, so it is in the NRS
+     list rather than the plot list. `servedFlats` and `assumedMeters`
+     both handle one; this is the reader that had not been told, so a
+     landlord supply appeared in the board's own editor and then
+     existed nowhere else: not in the build, not in the levels, not on
+     the circuit report, and not in the load any of them works from.
+
+     Defaulted, so every caller that has not been told still gets the
+     flats it always did. */
+  nrsList = [], nrsSubTypes = [],
 } = {}) {
   const boards = (features || []).filter((f) => f.Feature_Role === "msdb");
   if (!boards.length) return features;
 
-  const flats = flatsFromPlots({ plotList, configs, propertyTypes });
+  const flats = [
+    ...flatsFromPlots({ plotList, configs, propertyTypes }),
+    ...landlordSupplies({ nrsList, nrsSubTypes }),
+  ];
   const extra = [];
   for (const b of boards) {
     /* A board with no circuit is a board nothing can route to. Left out
@@ -470,7 +588,18 @@ export function withAssumedMeters(features = [], {
     if (b.Attributes?.Circuit_ID == null) continue;
     const rows = servedFlats(b, flats).map((r) => ({
       ...r,
-      kva: apartmentLoad(r, r.heatSourceId, consumption).kva,
+      /* A landlord supply states its own load on its record; a flat's
+         is worked out from bedrooms and heat source. Asking the
+         consumption table for a supply would give it a dwelling's
+         figure and lose the one somebody agreed. */
+      /* A landlord supply states its own load on its record \u2014
+         `statedKva`, from Requested_kVA \u2014 and a flat's is worked out
+         from bedrooms and heat source. Asking the consumption table
+         for a supply would give it a dwelling's figure and lose the
+         one somebody agreed. */
+      kva: r.nrsId != null
+        ? (Number(r.statedKva) || 0)
+        : apartmentLoad(r, r.heatSourceId, consumption).kva,
     }));
     for (const m of assumedMeters(b, rows)) {
       extra.push({ ...m, Feature_ID: assumedMeterId(b.Feature_ID, m.assumedFor) });

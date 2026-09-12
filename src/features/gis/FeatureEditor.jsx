@@ -26,6 +26,7 @@ import { servedPlots, JOINT_KINDS, straightJointWarning,
   jointCables, cableEndsAt, servicesAt } from "./joints.js";
 import {
   FLOORS, msdbLoad, apartmentLevels, worstApartment, flatsFromPlots,
+  landlordSupplies,
   plotsAsSeeds, plotsOnBoards, boardFlatCount,
   servedFlats, riserDrop, outputDrop, msdbSupply,
 } from "./msdb.js";
@@ -49,6 +50,13 @@ import {
    of. The parts that differ appear only when they apply. */
 export default function FeatureEditor({
   feature, layers, lineTypes, surfaceTypes = [], plotList, lookups,
+  /* The project's non-residential supplies, for a board to pick its
+     landlord supplies from. Defaulted: the editor is opened from
+     several places, and a board that silently offered no supplies
+     would read as a project with none rather than as a missing prop.
+     Without the default it was worse than that \u2014 `nrsList` was used
+     and never declared, so opening any MSDB threw. */
+  nrsList = [],
   /* Excavation and lay rates. Defaulted rather than required: the
      editor is opened from several places and an estimate that vanished
      because one of them forgot a prop would look like a trench with no
@@ -791,6 +799,37 @@ export default function FeatureEditor({
     });
   }, [plotList, lookups, allFeatures, f]);
 
+  /* ── And the landlord supplies ──
+
+     A block's landlord supply \u2014 stair lighting, lift, door entry,
+     pumps \u2014 is fed from this board, off this riser, metered in this
+     cupboard. It is not a dwelling, so it is not in the plot list at
+     all; it is a non-residential supply with a stated kVA.
+
+     Only landlord supplies, and only ones not already on another
+     board: a shop takes its own service from the network, and a board
+     that could claim any supply would let a retail unit onto a
+     domestic riser by mistake.
+
+     Appended to the flats, so everything downstream \u2014 the served
+     list, the load, the levels, the assumed meters \u2014 sees one list of
+     rows and needed no second path through any of it. */
+  const msdbRows = useMemo(() => {
+    const mine = new Set((f.Attributes?.MSDB_NRS_IDs || []).map(Number));
+    const onOther = new Set();
+    for (const b of allFeatures || []) {
+      if (b.Feature_Role !== "msdb") continue;
+      if (Number(b.Feature_ID) === Number(f.Feature_ID)) continue;
+      for (const id of b.Attributes?.MSDB_NRS_IDs || []) onOther.add(Number(id));
+    }
+    const supplies = landlordSupplies({
+      nrsList: (nrsList || []).filter((r) => mine.has(Number(r.NRS_ID))
+        || !onOther.has(Number(r.NRS_ID))),
+      nrsSubTypes: lookups?.nrsSubTypes || [],
+    });
+    return [...msdbFlats, ...supplies];
+  }, [msdbFlats, nrsList, lookups, allFeatures, f]);
+
   /* The circuits on this drawing, and the link box on the one chosen.
      Both read from the features rather than held on the board: a copy
      of a circuit's name would go stale the moment somebody renamed
@@ -815,8 +854,16 @@ export default function FeatureEditor({
     const raw = f.Attributes?.MSDB_Plot_IDs;
     return Array.isArray(raw) ? raw.map(Number) : [];
   }, [f]);
+  /* The landlord supplies ticked onto this board. Its own list, for
+     the reason the ids are kept apart everywhere else: a supply's id
+     and a plot's id are numbers from different tables, and one list
+     would have a board serving plot 7 because supply 7 was ticked. */
+  const msdbPickedNrs = useMemo(() => {
+    const raw = f.Attributes?.MSDB_NRS_IDs;
+    return Array.isArray(raw) ? raw.map(Number) : [];
+  }, [f]);
 
-  const msdbServed = useMemo(() => servedFlats(f, msdbFlats), [f, msdbFlats]);
+  const msdbServed = useMemo(() => servedFlats(f, msdbRows), [f, msdbRows]);
   const msdbSupplyAt = useMemo(() => msdbSupply(f), [f]);
 
   const msdbTotals = useMemo(
@@ -1853,7 +1900,7 @@ export default function FeatureEditor({
               <div className="fe-msdb-h">
                 <strong>Flats</strong>
                 <span className="hint">
-                  {msdbServed.length} of {msdbFlats.length} on this board
+                  {msdbServed.length} of {msdbRows.length} on this board
                   {/* Every flat has a meter. It is not drawn \u2014 that is
                       what this object exists to avoid \u2014 but a meter is
                       how the application knows a load exists, so the
@@ -1868,7 +1915,7 @@ export default function FeatureEditor({
                 </span>
               </div>
 
-              {msdbFlats.length === 0 ? (
+              {msdbRows.length === 0 ? (
                 <p className="hint">
                   No flats on the Plots tab. A plot counts as a flat when its
                   house type is one &mdash; flat, apartment or maisonette &mdash;
@@ -1883,15 +1930,44 @@ export default function FeatureEditor({
                     </tr>
                   </thead>
                   <tbody>
-                    {msdbFlats.map((flat) => {
-                      const lv = msdbLevels.find((x) => x.plotId === flat.plotId);
-                      const on = msdbPicked.includes(Number(flat.plotId));
+                    {msdbRows.map((flat) => {
+                      /* ── A landlord supply sits in the same table ──
+
+                         Stair lighting, a lift or door entry is fed
+                         from this board off this riser and metered in
+                         this cupboard, exactly as the flats beside it
+                         are. The one difference is which list it is
+                         ticked onto: a supply's id and a plot's id are
+                         numbers from different tables, so they are kept
+                         apart (`MSDB_NRS_IDs` against `MSDB_Plot_IDs`,
+                         and their own distance maps) or a board would
+                         serve plot 7 because supply 7 was ticked.
+
+                         `isNrs` is the only branch \u2014 everything else
+                         about the row is the same, which is why the
+                         list is one list. */
+                      const isNrs = flat.nrsId != null;
+                      const rowKey = isNrs ? `n${flat.nrsId}` : `p${flat.plotId}`;
+                      const lv = msdbLevels.find((x) => (isNrs
+                        ? x.id === rowKey : x.plotId === flat.plotId));
+                      const on = isNrs
+                        ? msdbPickedNrs.includes(Number(flat.nrsId))
+                        : msdbPicked.includes(Number(flat.plotId));
                       return (
-                        <tr key={flat.plotId} className={on ? undefined : "fe-msdb-off"}>
+                        <tr key={rowKey} className={on ? undefined : "fe-msdb-off"}>
                           <td>
                             <input type="checkbox" checked={on}
-                              aria-label={`Plot ${flat.ref} on this board`}
+                              aria-label={isNrs
+                                ? `${flat.ref} on this board`
+                                : `Plot ${flat.ref} on this board`}
                               onChange={() => {
+                                if (isNrs) {
+                                  const next = on
+                                    ? msdbPickedNrs.filter((x) => x !== Number(flat.nrsId))
+                                    : [...msdbPickedNrs, Number(flat.nrsId)];
+                                  setAttr("MSDB_NRS_IDs")(next);
+                                  return;
+                                }
                                 const next = on
                                   ? msdbPicked.filter((x) => x !== Number(flat.plotId))
                                   : [...msdbPicked, Number(flat.plotId)];
@@ -1914,15 +1990,27 @@ export default function FeatureEditor({
                             </span>
                           </td>
                           <td>
+                            {/* Its own map, for the reason the ticks
+                                have their own list: supply 7's tail
+                                and plot 7's tail are two lengths, and
+                                one map would have each overwrite the
+                                other. */}
                             <input type="number" min="0" step="0.1" disabled={!on}
-                              aria-label={`Plot ${flat.ref} distance in metres`}
-                              value={(f.Attributes?.MSDB_Distances
-                                || {})[String(flat.plotId)] ?? ""}
-                              onChange={(e) => setAttr("MSDB_Distances")({
-                                ...(f.Attributes?.MSDB_Distances || {}),
-                                [String(flat.plotId)]: e.target.value === ""
-                                  ? null : Number(e.target.value),
-                              })} />
+                              aria-label={isNrs
+                                ? `${flat.ref} distance in metres`
+                                : `Plot ${flat.ref} distance in metres`}
+                              value={(f.Attributes?.[isNrs
+                                ? "MSDB_NRS_Distances" : "MSDB_Distances"]
+                                || {})[String(isNrs ? flat.nrsId : flat.plotId)] ?? ""}
+                              onChange={(e) => {
+                                const key = isNrs
+                                  ? "MSDB_NRS_Distances" : "MSDB_Distances";
+                                setAttr(key)({
+                                  ...(f.Attributes?.[key] || {}),
+                                  [String(isNrs ? flat.nrsId : flat.plotId)]:
+                                    e.target.value === "" ? null : Number(e.target.value),
+                                });
+                              }} />
                           </td>
                           <td className="num">
                             {!on ? "" : lv?.missingLoad

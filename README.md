@@ -1,3 +1,40 @@
+# A landlord supply on the board — 11 Sep 2026
+
+A block's stair lighting, lift, door entry or pumps are fed from the
+MSDB, off the riser, metered in the cupboard — exactly as the flats
+beside them. They are not dwellings, so they are not in the plot list:
+each is a non-residential supply with a stated kVA.
+
+A board now takes them alongside its flats. **Only landlord supplies**
+— a shop on the ground floor takes its own service, and a board that
+could claim any supply would let a retail unit onto a domestic riser
+by mistake. The sub-type is matched loosely on case and spacing, since
+a project types its own labels.
+
+- Ticked onto `MSDB_NRS_IDs` with distances in `MSDB_NRS_Distances`,
+  kept apart from the plot lists throughout: a supply's id and a plot's
+  id are numbers from different tables, and one list would have a board
+  serving plot 7 because supply 7 was ticked.
+- Its kVA is the figure stated on its record, not a dwelling's figure
+  from the consumption table, which has neither bedrooms nor a heat
+  source to work from.
+- Appended to the flats as one list, so the served list, the load, the
+  levels and the assumed meters needed no second path through any of
+  them. It is named as itself in the schedule, never "Flat".
+
+**The gaps that made it a half-feature**, both fixed: `withAssumedMeters`
+built flats only, so a supply existed in the board's own editor and
+nowhere else — not in the build, the levels or the circuit report; and
+the editor's table listed the flats rather than the combined rows, and
+used `nrsList` without receiving it, which threw the moment any MSDB
+was opened.
+
+Verified by opening a board: the landlord supply is listed and ticked,
+the shop is not offered, and the board totals 5.5 kVA for a 1.5 kVA
+flat and a 4 kVA supply. Suite 136 of 154. No migration.
+
+---
+
 # A block's flats read as a block — 11 Sep 2026
 
 **Two follow-ups from the first cut.** The board heading spanned a

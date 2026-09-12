@@ -1996,6 +1996,12 @@ export default function GISCanvasPage() {
           configs: lookups?.propertyConfigs || [],
           propertyTypes: lookups?.propertyTypes || [],
           consumption: lookups?.houseTypeConsumption || [],
+          /* The board's landlord supplies as well as its flats: stair
+             lighting and a lift are fed from the riser like the
+             dwellings beside them, and a reader told only about flats
+             sees a board drawing less than it does. */
+          nrsList,
+          nrsSubTypes: lookups?.nrsSubTypes || [],
         }));
         /* Null only where there is nothing to say — no circuits, no
            cable catalogue. An empty result replaces nothing, so the
@@ -16689,6 +16695,11 @@ export default function GISCanvasPage() {
       configs: lookups?.propertyConfigs || [],
       propertyTypes: lookups?.propertyTypes || [],
       consumption: lookups?.houseTypeConsumption || [],
+      /* And the landlord supplies on each board \u2014 see the note at the
+         levels. A build told only about flats routes a cable sized for
+         the dwellings and leaves the lift off it. */
+      nrsList,
+      nrsSubTypes: lookups?.nrsSubTypes || [],
     });
 
     const circuits = circuitsFrom(src);
@@ -22039,6 +22050,11 @@ export default function GISCanvasPage() {
       configs: lookups?.propertyConfigs || [],
       propertyTypes: lookups?.propertyTypes || [],
       consumption: lookups?.houseTypeConsumption || [],
+      /* And the landlord supplies on each board \u2014 see the note at the
+         levels. A build told only about flats routes a cable sized for
+         the dwellings and leaves the lift off it. */
+      nrsList,
+      nrsSubTypes: lookups?.nrsSubTypes || [],
     });
 
     const circuits = circuitsFrom(src);
@@ -24921,6 +24937,12 @@ export default function GISCanvasPage() {
           configs: lookups?.propertyConfigs || [],
           propertyTypes: lookups?.propertyTypes || [],
           consumption: lookups?.houseTypeConsumption || [],
+          /* The board's landlord supplies as well as its flats: stair
+             lighting and a lift are fed from the riser like the
+             dwellings beside them, and a reader told only about flats
+             sees a board drawing less than it does. */
+          nrsList,
+          nrsSubTypes: lookups?.nrsSubTypes || [],
         }), {
           plotById: (id) => plotList.find((p) => p.plot_id === id),
           nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
@@ -25574,6 +25596,8 @@ export default function GISCanvasPage() {
              does: both stand on a stop the walk numbered, and both are
              asked "what is the level here" by somebody looking at the
              fitting rather than at the point beside it. */
+          /* The supplies a board can pick its landlord supply from. */
+          nrsList={nrsList}
           levelsAt={["msdb", "hdcutout"].includes(editing?.Feature_Role)
             ? levelsAtBoard(editing)
             : null}

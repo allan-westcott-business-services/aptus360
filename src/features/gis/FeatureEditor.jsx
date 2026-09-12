@@ -902,6 +902,32 @@ export default function FeatureEditor({
     );
   }, [f, allFeatures, onSetCircuitOrigin]);
 
+  /* ── Which way of the substation feeds this board ──
+
+     Read off the origin's `Way_Circuits` map, the one place that says
+     which way carries which circuit \u2014 a copy held on the board would
+     go stale the moment somebody moved the circuit to another way in
+     the substation's editor.
+
+     The circuit names its origin where the drawing has more than one;
+     otherwise the drawing's only origin is the answer. */
+  const msdbWayNo = useMemo(() => {
+    const cid = f.Attributes?.Circuit_ID;
+    if (cid == null) return null;
+    const origins = lvOrigins(allFeatures || []);
+    const named = f.Attributes?.Circuit_Origin_ID;
+    const wanted = named != null
+      ? origins.filter((o) => Number(o.Feature_ID) === Number(named))
+      : origins;
+    for (const o of wanted) {
+      const ways = o.Attributes?.Way_Circuits || {};
+      for (const [way, v] of Object.entries(ways)) {
+        if (Number(v) === Number(cid)) return Number(way);
+      }
+    }
+    return null;
+  }, [f, allFeatures]);
+
   const msdbPickedNrs = useMemo(() => {
     const raw = f.Attributes?.MSDB_NRS_IDs;
     return Array.isArray(raw) ? raw.map(Number) : [];
@@ -1862,7 +1888,34 @@ export default function FeatureEditor({
                   together. */}
               <div className="fe-row">
                 {fedFromField}
-                {msdbBox && (
+                {/* ── The way at the substation ──
+
+                    Which LV way of the board's own substation carries
+                    this circuit. It is not a choice to make here: the
+                    way is allocated when the circuit is created, and
+                    the substation's editor is where it is moved. So it
+                    is read off the origin's way map and shown, which is
+                    what somebody standing at the board wants to know \u2014
+                    which fuse to pull.
+
+                    A link box OUTPUT is a different thing, still asked
+                    for below where there is a box. */}
+                <div className="fld">
+                  <span className="fe-lab">Way</span>
+                  <div className="fe-msdb-at">
+                    {msdbWayNo == null
+                      ? <span className="fe-msdb-none">
+                          {f.Attributes?.Circuit_ID == null
+                            ? "No circuit set"
+                            : "Not allocated \u2014 the build takes a way"}
+                        </span>
+                      : <strong>{msdbWayNo}</strong>}
+                  </div>
+                </div>
+              </div>
+
+              {msdbBox && (
+                <div className="fe-row">
                   <div className="fld">
                     <label htmlFor="fe-msdb-way">Link box output</label>
                     <select id="fe-msdb-way"
@@ -1883,8 +1936,8 @@ export default function FeatureEditor({
                       ))}
                     </select>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* ── Each run beside the level it produces ──
 
@@ -1911,7 +1964,7 @@ export default function FeatureEditor({
                       e.target.value === "" ? null : Number(e.target.value))} />
                 </div>
                 <div className="fld">
-                  <span className="fe-lab">At the board</span>
+                  <span className="fe-lab">Entering the board</span>
                   <div className="fe-msdb-at">
                     {msdbAt?.pct == null
                       ? <span className="fe-msdb-none">Run the levels check</span>
@@ -2036,7 +2089,7 @@ export default function FeatureEditor({
                 <table className="fe-msdb-t">
                   <thead>
                     <tr>
-                      <th>On</th><th>Plot</th><th>Type</th>
+                      <th>Assign</th><th>Plot</th><th>Type</th>
                       <th>Distance</th><th>Load</th><th>At the flat</th>
                     </tr>
                   </thead>

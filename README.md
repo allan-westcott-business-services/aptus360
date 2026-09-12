@@ -1,5 +1,23 @@
 # The MSDB editor, laid out — 11 Sep 2026
 
+**Four follow-ups.** "Prefix", "Entering the board" and "Leaving the
+board" have nothing to label, so they carry a span — which inherits
+body type and put them on screen in the size of a heading beside
+fields whose names are small grey capitals. `.fe-lab` is now set like
+a real label, which fixes the cut-out's figures too.
+
+"At the board" is **Entering the board**, so it pairs with "Leaving
+the board" below it and the two read as the two ends of the board.
+
+The **Way** field is the LV way at the SUBSTATION — which fuse to pull
+— read off the origin's `Way_Circuits` map rather than copied onto the
+board, where it would go stale the moment the circuit moved to another
+way. A link box output is a different thing and is still asked for,
+below, where there is a box.
+
+And the flats table heads its tick column **Assign**.
+
+
 Half as wide again (630px against the base 420) and reorganised, so
 nothing wraps and each fact sits beside the one it belongs with:
 

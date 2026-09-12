@@ -1624,6 +1624,49 @@ const served = (b) => servedFlats(b, flats);
     }
   }
 
+  /* ── A label that is not a <label> still looks like one ──
+
+     The level at a board and the circuit's prefix have nothing to
+     label, so they carry a span \u2014 which inherits body type and put
+     "At the board" on screen in the size of a heading beside fields
+     whose names are small grey capitals. */
+  const css = readFileSync("./src/styles.css", "utf8");
+  if (!/\.fe-lab \{[^}]*text-transform: uppercase/.test(css)) {
+    fail("the figure labels are not set like the field labels beside them");
+  }
+
+  /* Entering, not At: it pairs with "Leaving the board" below it, and
+     the two read as the two ends of the board. */
+  if (/fe-lab">At the board/.test(body)) {
+    fail('"At the board" was not renamed');
+  }
+  if (!/fe-lab">Entering the board/.test(body)) {
+    fail("there is no entering-the-board level");
+  }
+
+  /* ── The way is the SUBSTATION's way ──
+
+     Which LV way carries this circuit, which is what somebody standing
+     at the board wants to know: which fuse to pull. Not the link box
+     output, which is a different thing and still asked for where there
+     is a box. Read off the origin's way map rather than copied onto
+     the board, or it goes stale the moment the circuit is moved to
+     another way in the substation's editor. */
+  if (!/const msdbWayNo = useMemo/.test(editor)) {
+    fail("the board does not work out which way at the substation feeds it");
+  }
+  if (!/Number\(v\) === Number\(cid\)\) return Number\(way\)/.test(editor)) {
+    fail("the way is not read from the origin's way map");
+  }
+  if (!/<span className="fe-lab">Way<\/span>/.test(body)) {
+    fail("the way is not shown on the board");
+  }
+
+  /* The flats table's first column asks what it does. */
+  if (!/<th>Assign<\/th>/.test(editor)) {
+    fail("the flats table still heads its tick column On");
+  }
+
   /* Half as wide again, because a board carries more per row than
      anything else in this editor. */
   if (!/\.fe\.fe-board \{ width: min\(630px/.test(editor)) {

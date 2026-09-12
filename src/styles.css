@@ -91,6 +91,20 @@ label {
   display: block; font-size: 11px; font-weight: 600; text-transform: uppercase;
   letter-spacing: 0.07em; color: var(--muted); margin-bottom: 4px;
 }
+/* ── A label that is not a <label> ──
+
+   Some fields show a figure rather than hold an input: the level at a
+   board, a circuit's prefix letter. They have nothing to label, so
+   they carry a span \u2014 and a span inherits the panel's body type,
+   which put "At the board" on screen in the size of a heading beside
+   fields whose names are small grey capitals.
+
+   The same type as a real label, so a reader cannot tell which fields
+   happen to be editable from the way their names are set. */
+.fe-lab {
+  display: block; font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--muted); margin-bottom: 4px;
+}
 .req { color: #ef4444; }
 .hint { font-size: 11px; color: var(--muted); margin: 3px 0 0; }
 

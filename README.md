@@ -1,3 +1,36 @@
+# Service trenches still being drawn — 12 Sep 2026
+
+The duplicates were only half of it. The staleness loop asked
+`world.find` for the dig stamped to a seed — whichever came first —
+and where a duplicated run had left two, that was often the stale one.
+The seed was reported moved and re-laid; the new dig matched, but the
+stale one was still there to be found first next time, so the SAME
+seed was re-laid on every run, for ever.
+
+Two rules now:
+
+- **A seed is moved only if NONE of its digs is where the drawing says
+  it should be.** If one is right, the plot is served.
+- **The others are copies, and go.** Deleted with the same call that
+  handles a re-lay, but NOT through the re-lay list: a seed in that
+  list is taken out of `serviced` and planned again, which would delete
+  the copies and then dig a fresh one — a longer way round to the same
+  duplicate.
+
+On the reported drawing that is 13 seeds left alone, 12 duplicate
+trenches swept, and 6 genuinely re-laid: 37 service trenches become 19,
+one per plot, on the next run and without the SQL. One of the six is
+instructive — its trench ends exactly where it should, but the mains it
+tees off has since moved, so it is stale for a different reason.
+
+A hand-linked trench is exempt however many there are, and the run says
+what it removed separately from what it re-laid: "4 re-laid" would send
+somebody looking for four new trenches.
+
+Suite 138 of 156.
+
+---
+
 # Duplicate service trenches, again — 12 Sep 2026
 
 Reported with a drawing carrying 37 service trenches for 19 plots:

@@ -20770,6 +20770,10 @@ export default function GISCanvasPage() {
       && Number(f.Attributes?.Seed_Feature_ID) === Number(sd.Feature_ID));
 
     const mismatched = new Map();
+    /* Digs stamped to a seed that already has a correct one: copies
+       left by a run that planned against a drawing it could not see the
+       first run's work in. Deleted, but the seed stays served. */
+    const copies = [];
     for (const sd of seeds) {
       const mine = stampedTo(sd);
       if (!mine.length) continue;
@@ -20813,10 +20817,23 @@ export default function GISCanvasPage() {
       const sid = Number(sd.Feature_ID);
       if (!alreadyLaid.has(sid) || mismatched.has(sid)) continue;
       const mine = stampedTo(sd);
-      const trench = world.find((f) => f.Feature_Type === "line"
+      /* ── Every dig stamped to this seed, not the first one found ──
+
+         A seed with two trenches stamped to it \u2014 which a duplicated
+         run leaves behind \u2014 was judged on whichever `find` happened to
+         return first. Where that was the stale one, the seed was
+         reported moved and the pair re-laid; the new dig matched, but
+         the stale one was still there to be found first next time, so
+         the same seed was re-laid on every run for ever. Reported as
+         service trenches still being drawn.
+
+         The question is whether ANY dig goes where the drawing says it
+         should. If one does, the plot is served and the others are
+         copies, not a reason to dig again. */
+      const drawn = world.filter((f) => f.Feature_Type === "line"
         && Number(f.Attributes?.Seed_Feature_ID) === sid
         && isTrenchType(f.Attributes?.Line_Type, lineTypes));
-      if (!trench) continue;
+      if (!drawn.length) continue;
       /* Which mains the planner would measure to: a plot that is
          self-lay throughout tees off the incumbent's, and asking the
          wrong list would call every self-lay plot moved. */
@@ -20835,10 +20852,42 @@ export default function GISCanvasPage() {
 
          So the test is for the planner's own digs only. A hand-linked
          trench stays until somebody unlinks it. */
-      if (trench.Attributes?.Manual_Link) continue;
-      const why = serviceMoved(sd, trench, trenches, { selfLayOnly: allSelfLay });
+      /* A dig somebody linked by hand is theirs, however many there
+         are: it is there because the automatic route was wrong. */
+      if (drawn.some((t) => t.Attributes?.Manual_Link)) continue;
+
+      /* Moved only if NONE of them is where it should be. */
+      const reasons = drawn.map((t) =>
+        serviceMoved(sd, t, trenches, { selfLayOnly: allSelfLay }));
+      const rightOne = reasons.findIndex((r) => !r);
+      const why = rightOne >= 0 ? null : reasons[0];
+
+      /* ── And the copies go ──
+
+         A seed with more than one dig stamped to it has copies of the
+         same service, from a run that planned against a drawing it
+         could not see the first run's work in. The one that goes where
+         the drawing says it should is kept; the rest are removed with
+         the same delete that handles a re-lay, so a duplicated drawing
+         settles itself on the next run instead of needing a hand. */
+      if (rightOne >= 0) {
+        if (drawn.length > 1) {
+          /* NOT through `mismatched`: that list is what gets re-laid,
+             and a seed in it is taken out of `serviced` and planned
+             again. The plot here is properly served \u2014 one of its digs
+             is right \u2014 so the copies are deleted and the seed is left
+             alone. Putting them in `mismatched` would delete the copies
+             and then dig a fresh one, which is a longer way round to
+             the same duplicate. */
+          const keep = Number(drawn[rightOne].Feature_ID);
+          for (const f of mine) {
+            if (Number(f.Feature_ID) !== keep) copies.push(f);
+          }
+        }
+        continue;
+      }
       if (why) {
-        mismatched.set(sid, { seed: sd, mine: [...mine, trench], wrong: [], why });
+        mismatched.set(sid, { seed: sd, mine: [...mine, ...drawn], wrong: [], why });
       }
     }
 
@@ -21054,7 +21103,11 @@ export default function GISCanvasPage() {
        Removed from `world` as well as from the database, so the plan is
        built from the drawing as it will be, and from the state so the
        canvas stops drawing them. */
-    const toRemove = [...mismatched.values()].flatMap((m) => m.mine);
+    const toRemove = [...[...mismatched.values()].flatMap((m) => m.mine), ...copies]
+      /* One id once: a seed that is both re-laid and had copies would
+         otherwise be asked to delete the same row twice. */
+      .filter((f, i, all) => all.findIndex((x) =>
+        Number(x.Feature_ID) === Number(f.Feature_ID)) === i);
     if (toRemove.length) {
       const ids = toRemove.map((f) => Number(f.Feature_ID));
       const doomed = new Set(ids);
@@ -21481,6 +21534,14 @@ export default function GISCanvasPage() {
             .sort((a, b) => b[1] - a[1])
             .map(([k, n]) => `${n} ${k}`);
           return `, ${mismatched.size} re-laid (${parts.join("; ")})`;
+        })())
+        /* Said separately from the re-lays, because it is a different
+           act: nothing was dug for these, a second copy of a dig was
+           taken off. Somebody reading "4 re-laid" would go looking for
+           four new trenches. */
+        + ((() => {
+          if (!copies.length) return "";
+          return `, ${copies.length} duplicate service trench(es) removed`;
         })())
         + (skipped.length ? `, ${skipped.length} skipped` : "")
         /* Plots with no boundary point, dug to their furthest meter

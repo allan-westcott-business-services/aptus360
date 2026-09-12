@@ -177,11 +177,14 @@ const asDrawn = dug([[100, 0], [100, 5], [100, 12]]);
 // 12. Wired in, and through the same door as a self-lay change.
 {
   const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
-  if (!/serviceMoved\(sd, trench, trenches/.test(canvas)) {
+  /* By the rule, not by the variable: the loop judges every dig
+     stamped to a seed now, so the call reads `t` rather than the single
+     `trench` it used to find. */
+  if (!/serviceMoved\(sd, t, trenches/.test(canvas)) {
     fail("Auto Service never asks whether the ground moved, so a stale "
       + "trench is still skipped as already serviced");
   }
-  if (!/mismatched\.set\(sid, \{ seed: sd, mine: \[\.\.\.mine, trench\]/.test(canvas)) {
+  if (!/mismatched\.set\(sid, \{ seed: sd, mine: \[\.\.\.mine, \.\.\.drawn\]/.test(canvas)) {
     fail("a moved service is not re-laid through the same door as a "
       + "self-lay change, so the old dig is left on the drawing");
   }
@@ -259,7 +262,7 @@ const asDrawn = dug([[100, 0], [100, 5], [100, 12]]);
   /* The hand-drawn route is NOT reported as moved \u2014 checked through
      the canvas, where the exemption lives. */
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-  if (!/if \(trench\.Attributes\?\.Manual_Link\) continue;/.test(canvas)) {
+  if (!/drawn\.some\(\(t\) => t\.Attributes\?\.Manual_Link\)\) continue;/.test(canvas)) {
     fail("a hand-linked trench is put through the staleness test, so Auto "
       + "Service deletes the drawn route and lays its own over it");
   }
@@ -397,6 +400,72 @@ const asDrawn = dug([[100, 0], [100, 5], [100, 12]]);
       fail("a failed fetch stops the run rather than falling back to the "
         + "screen's copy");
     }
+  }
+}
+
+/* ── A seed judged on ALL its digs, and the copies swept ──
+
+   A duplicated run leaves two trenches stamped to one seed. The
+   staleness loop asked `world.find` for one of them \u2014 whichever came
+   first \u2014 and where that was the stale one, the seed was reported
+   moved and re-laid. The new dig matched, but the stale one was still
+   there to be found first next time, so the SAME seed was re-laid on
+   every run for ever. Reported as service trenches still being drawn.
+
+   Two rules now. A seed is moved only if NONE of its digs goes where
+   the drawing says. And where one does, the others are copies: deleted,
+   but the seed stays served \u2014 putting them through the re-lay list
+   would delete the copies and then dig a fresh one, which is a longer
+   way round to the same duplicate. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("for (const sd of seeds) {\n      const sid = Number(sd.Feature_ID);");
+  const loop = at < 0 ? "" : canvas.slice(at, canvas.indexOf("/* Done means laid AND still correct.", at));
+
+  if (!loop) fail("the staleness loop has gone");
+  else {
+    /* Every dig, not the first one found. */
+    if (/const trench = world\.find\(/.test(loop)) {
+      fail("the staleness test still judges a seed by whichever of its digs "
+        + "is found first, so a stale copy re-lays a plot that is already "
+        + "correctly served \u2014 on every run, for ever");
+    }
+    if (!/const drawn = world\.filter\(/.test(loop)) {
+      fail("the staleness test does not gather all the digs stamped to a seed");
+    }
+    if (!/const rightOne = reasons\.findIndex\(\(r\) => !r\)/.test(loop)) {
+      fail("a seed is not judged on whether ANY of its digs is right");
+    }
+    /* The copies are swept, and NOT through the re-lay list. */
+    if (!/copies\.push\(f\)/.test(loop)) {
+      fail("a seed with a correct dig and a copy beside it keeps the copy, so "
+        + "a duplicated drawing never settles");
+    }
+    const sweep = loop.slice(loop.indexOf("if (rightOne >= 0)"));
+    if (/mismatched\.set/.test(sweep.slice(0, sweep.indexOf("continue;")))) {
+      fail("the copies go through the re-lay list, which takes the seed out "
+        + "of `serviced` and digs a fresh one \u2014 a longer way round to the "
+        + "same duplicate");
+    }
+    /* A hand-linked dig is nobody's to sweep, however many there are. */
+    if (!/drawn\.some\(\(t\) => t\.Attributes\?\.Manual_Link\)/.test(loop)) {
+      fail("a hand-linked trench is judged and possibly deleted by the "
+        + "staleness test");
+    }
+  }
+
+  /* The copies are deleted with the re-lays, once each. */
+  if (!/\.\.\.copies\]/.test(canvas)) {
+    fail("the copies are collected and never deleted");
+  }
+  if (!/all\.findIndex\(\(x\) =>\s*\n\s*Number\(x\.Feature_ID\) === Number\(f\.Feature_ID\)\) === i\)/.test(canvas)) {
+    fail("a row can be asked to delete twice, where a seed is both re-laid "
+      + "and had copies");
+  }
+  /* And said, separately from the re-lays: "4 re-laid" would send
+     somebody looking for four new trenches. */
+  if (!/duplicate service trench\(es\) removed/.test(canvas)) {
+    fail("the run does not say it removed duplicates");
   }
 }
 

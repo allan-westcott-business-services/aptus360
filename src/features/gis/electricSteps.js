@@ -28,6 +28,7 @@
    actually helps. */
 
 import { plotsOnBoards } from "./msdb.js";
+import { isServed } from "./autoService.js";
 
 const has = (features, test) => features.some(test);
 const count = (features, test) => features.filter(test).length;
@@ -130,6 +131,24 @@ export function electricSteps({
   const servable = count(features, (f) => f.Feature_Role === "plot")
     + count(features, (f) => f.Feature_Role === "nrs");
 
+  /* ── And how many of them are still waiting ──
+
+     `services.length > 0` says a service trench exists somewhere, which
+     is what "has this step been started" means. It is not what "is
+     there anything left to run" means, and the menu offered Auto
+     Service on a site where every eligible plot already had its dig.
+
+     Asked through `isServed`, the same rule the run itself uses to skip
+     a seed, so the menu and the run cannot disagree about what is
+     outstanding. */
+  const laidLines = (features || []).filter((f) => f.Feature_Type === "line"
+    && (/service/i.test(String(f.Attributes?.Line_Type ?? ""))
+      || f.Attributes?.Self_Lay === true));
+  const allMeters = (features || []).filter((f) => f.Feature_Role === "meter");
+  const outstanding = (features || []).filter((f) =>
+    (f.Feature_Role === "plot" || f.Feature_Role === "nrs")
+    && !isServed(f, allMeters, laidLines)).length;
+
   const steps = [
     {
       key: "plots",
@@ -206,11 +225,19 @@ export function electricSteps({
       key: "service",
       title: "Auto Service",
       hint: "Draws the service trench and the service cables and pipes",
-      done: services.length > 0 || servable === 0,
+      /* Done when nothing is waiting, not when something was drawn. */
+      done: outstanding === 0 || servable === 0,
       enough: services.length > 0 || servable === 0,
       detail: servable === 0
         ? "nothing on the ground to service \u2014 flats are fed from their board"
-        : `${services.length} service trench(es) drawn`,
+        : outstanding === 0
+          ? `${services.length} service trench(es) drawn \u2014 every plot served`
+          : `${services.length} drawn, ${outstanding} plot(s) still to service`,
+      /* Said separately from `done`, because the run still has work on a
+         site where nothing is waiting: a service whose ground has moved
+         is re-laid and a duplicate is swept. The menu uses this to ask
+         rather than to refuse. */
+      outstanding,
     },
     {
       key: "nodes",
@@ -279,8 +306,28 @@ export function electricSteps({
       const i = steps.findIndex((x) => x.key === key);
       if (i < 0) return { ok: true };
 
+      /* ── Nothing waiting for this step ──
+
+         Reported: Auto Service offered on a site where every eligible
+         plot already had its dig. `allows` only ever looked at the
+         steps BEFORE this one, so a step with nothing left to do was
+         indistinguishable from one nobody had started.
+
+         Said rather than refused, because the run still has work on
+         such a site: a service whose ground has moved is re-laid, and a
+         duplicate left by an earlier run is swept. Refusing outright
+         would take away the only way to ask for either. */
+      const me = steps[i];
+      const nothingLeft = me?.outstanding === 0 && me?.done
+        ? `${me.title}: every eligible plot already has one.`
+        : null;
+
       const short = steps.slice(0, i).filter((x) => !x.done);
-      if (!short.length) return { ok: true };
+      if (!short.length) {
+        return nothingLeft
+          ? { ok: true, warn: nothingLeft, settled: true }
+          : { ok: true };
+      }
 
       const hard = short.find((x) => !x.enough);
       if (hard) {
@@ -292,7 +339,9 @@ export function electricSteps({
 
       return {
         ok: true,
-        warn: short.map((x) => `${x.title}: ${x.detail.toLowerCase()}`).join("\n"),
+        warn: [nothingLeft, ...short.map((x) => `${x.title}: ${x.detail.toLowerCase()}`)]
+          .filter(Boolean).join("\n"),
+        settled: !!nothingLeft,
       };
     },
   };

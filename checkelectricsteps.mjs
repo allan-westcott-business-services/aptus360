@@ -102,6 +102,12 @@ const pt = (role, attrs = {}, id = 1) => ({
   if (two.steps[1].done) fail("two developers with no areas drawn counted as done");
 }
 
+/* The seed and the meter carry the same plot, and the service trench
+   is stamped to the seed, because that is what a serviced plot looks
+   like on a real drawing: Auto Service writes all three. Without them
+   nothing can tell the plot is served \u2014 which is also true of the run
+   itself, so a fixture missing them describes a design that is not
+   finished rather than one that is. */
 // 6. A meter not on a circuit blocks the build — the case that fails
 //    silently, because a network routed to nothing still draws cable.
 {
@@ -109,11 +115,12 @@ const pt = (role, attrs = {}, id = 1) => ({
     plots: [{ plot_id: 1, config_code: "3BS", heat_source_id: 2 }],
     features: [
       poly(),
-      pt("plot", {}, 1),
+      { ...pt("plot", {}, 1), Plot_ID: 1 },
       line("trench_main", 2),
-      line("trench_service", 3),
+      { ...line("trench_service", 3),
+        Attributes: { Line_Type: "trench_service", Seed_Feature_ID: 1 } },
       pt("spannode", { Span_Seq: 1 }, 4),
-      pt("meter", {}, 5),
+      { ...pt("meter", {}, 5), Plot_ID: 1 },
     ],
     lineTypes: LT,
   });
@@ -130,11 +137,12 @@ const pt = (role, attrs = {}, id = 1) => ({
     developers: [{ id: 1 }],
     features: [
       poly(),
-      pt("plot", {}, 1),
+      { ...pt("plot", {}, 1), Plot_ID: 1 },
       line("trench_main", 2),
-      line("trench_service", 3),
+      { ...line("trench_service", 3),
+        Attributes: { Line_Type: "trench_service", Seed_Feature_ID: 1 } },
       pt("spannode", { Span_Seq: 1 }, 4),
-      pt("meter", { Circuit_ID: 1 }, 5),
+      { ...pt("meter", { Circuit_ID: 1 }, 5), Plot_ID: 1 },
       {
         Feature_ID: 6, Feature_Type: "line", Layer_Key: "electric",
         Attributes: { Generated: true }, Geometry: [[0, 0], [5, 0]],
@@ -427,6 +435,89 @@ const pt = (role, attrs = {}, id = 1) => ({
     features: oneMissing, lineTypes: LT, isSelfLay: selfLay });
   if (still.steps.find((x) => x.key === "circuits").done) {
     fail("an ordinary plot with no circuit is let through as if it were self-lay");
+  }
+}
+
+/* ── Auto Service offered on a site that has none left to do ──
+
+   Reported: the command ran on a drawing where every eligible plot
+   already had its dig.
+
+   `done` meant "a service trench exists somewhere", which is what
+   "has this step been started" means \u2014 not "is there anything left to
+   run". And `allows` only ever looked at the steps BEFORE this one, so
+   a step with nothing outstanding was indistinguishable from one
+   nobody had begun.
+
+   Counted through `isServed`, the same rule the run uses to skip a
+   seed, so the menu and the run cannot disagree about what is waiting. */
+{
+  const seed = (id, x) => ({ Feature_ID: id, Feature_Role: "plot",
+    Layer_Key: "plot", Plot_ID: id, Geometry: [[x, 50]], Attributes: {} });
+  const meter = (id, x) => ({ Feature_ID: id + 100, Feature_Role: "meter",
+    Layer_Key: "electric", Plot_ID: id, Geometry: [[x, 50]], Attributes: {} });
+  const main = { Feature_ID: 900, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[0, 0], [500, 0]], Attributes: { Line_Type: "trench_main" } };
+  const svc = (id, sid, x) => ({ Feature_ID: id, Feature_Type: "line",
+    Layer_Key: "trench", Geometry: [[x, 0], [x, 50]],
+    Attributes: { Line_Type: "trench_service", Seed_Feature_ID: sid } });
+  const lineTypes = [
+    { Type_Key: "trench_main", Layer_Key: "trench" },
+    { Type_Key: "trench_service", Layer_Key: "trench" },
+  ];
+  const plots = [1, 2, 3].map((id) => ({ plot_id: id, plot_number: String(id),
+    Property_Config_ID: 1, Heat_Source_ID: 1 }));
+  const base = [main, seed(1, 100), meter(1, 100), seed(2, 200), meter(2, 200),
+    seed(3, 300), meter(3, 300)];
+
+  const stepFor = (features) => electricSteps({ features, plots, lineTypes })
+    .steps.find((x) => x.key === "service");
+
+  const all = stepFor([...base, svc(11, 1, 100), svc(12, 2, 200), svc(13, 3, 300)]);
+  if (all.outstanding !== 0) {
+    fail(`every plot served, but ${all.outstanding} counted as waiting`);
+  }
+  if (!all.done) fail("a site with every plot served does not read as done");
+  if (!/every plot served/.test(all.detail)) {
+    fail(`a fully serviced site reads "${all.detail}", which does not say so`);
+  }
+
+  const one = stepFor([...base, svc(11, 1, 100), svc(12, 2, 200)]);
+  if (one.outstanding !== 1) {
+    fail(`one plot waiting, but ${one.outstanding} counted`);
+  }
+  /* And it is NOT done: a trench existing somewhere is not the same as
+     the work being finished, which is what the old rule said. */
+  if (one.done) {
+    fail("a site with a plot still to service reads as done, which is how "
+      + "Auto Service came to be offered as though there were nothing to do");
+  }
+  if (!/1 plot\(s\) still to service/.test(one.detail)) {
+    fail(`the step does not say how many are waiting: "${one.detail}"`);
+  }
+
+  if (stepFor(base).outstanding !== 3) fail("an unserviced site counts none waiting");
+
+  /* ── Said, not refused ──
+
+     The run still has work on a settled site: a service whose ground
+     has moved is re-laid, and a duplicate left by an earlier run is
+     swept. Refusing outright would take away the only way to ask for
+     either, so the menu asks a different question instead. */
+  const src = readFileSync("./src/features/gis/electricSteps.js", "utf8");
+  if (!/settled: true/.test(src)) {
+    fail("nothing tells the menu that a step has nothing waiting");
+  }
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/r\.settled/.test(canvas)) {
+    fail("the menu asks the same question whether the site is settled or "
+      + "half-ready, so a settled site is offered a run that reads as though "
+      + "it will do the work again");
+  }
+  if (!/re-lay any service whose ground \`\s*\n?\s*\+ "has moved and remove any duplicates/.test(canvas)
+    && !/has moved and remove any duplicates/.test(canvas)) {
+    fail("the question on a settled site does not say what running it would "
+      + "still do");
   }
 }
 

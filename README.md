@@ -1,3 +1,38 @@
+# Auto Service offered when there is nothing to service — 12 Sep 2026
+
+Reported: the command ran on a drawing where every eligible plot
+already had its dig.
+
+Two reasons. The step's `done` meant "a service trench exists
+somewhere", which is what "has this been started" means rather than
+"is there anything left to run". And `allows` only ever looked at the
+steps BEFORE this one, so a step with nothing outstanding was
+indistinguishable from one nobody had begun.
+
+The step now counts what is waiting, through `isServed` — the same
+rule the run uses to skip a seed, so the menu and the run cannot
+disagree. It reads "2 drawn, 1 plot(s) still to service", or
+"37 service trench(es) drawn — every plot served".
+
+**Said, not refused.** The run still has work on a settled site: a
+service whose ground has moved is re-laid, and a duplicate left by an
+earlier run is swept. Refusing outright would take away the only way
+to ask for either, so the menu asks a different question instead —
+"every eligible plot already has one. Run anyway? It will re-lay any
+service whose ground has moved and remove any duplicates, and leave
+the rest alone."
+
+Two long-standing fixtures had to change: their plot, meter and
+service trench were not linked to each other, so nothing could tell
+the plot was served — which is true of the run as well, so those
+fixtures described an unfinished design rather than a finished one.
+They now carry the Plot_ID and Seed_Feature_ID that Auto Service
+writes.
+
+Suite 138 of 156.
+
+---
+
 # Service trenches still being drawn — 12 Sep 2026
 
 The duplicates were only half of it. The staleness loop asked

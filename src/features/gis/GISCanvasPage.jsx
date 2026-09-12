@@ -1587,10 +1587,21 @@ export default function GISCanvasPage() {
   const runStep = useCallback((key, go) => {
     const r = steps.allows(key);
     if (!r.ok) { setError(r.why); return; }
-    if (r.warn && !window.confirm(
-      `${r.warn}\n\nRun anyway? Only what is ready will be dealt with, `
-      + "and the rest can be run again once it is."
-    )) return;
+    /* Two different questions, and they were asked with one sentence.
+
+       "Some of the site is not ready" is answered by running on what
+       is: the rest can be run again later.
+
+       "There is nothing waiting for this step" is answered by saying
+       what running it would still do \u2014 re-lay a service whose ground
+       has moved, sweep a duplicate \u2014 because otherwise the only honest
+       answer is no, and somebody who meant to tidy the drawing has no
+       way to ask for it. */
+    if (r.warn && !window.confirm(r.settled
+      ? `${r.warn}\n\nRun anyway? It will re-lay any service whose ground `
+        + "has moved and remove any duplicates, and leave the rest alone."
+      : `${r.warn}\n\nRun anyway? Only what is ready will be dealt with, `
+        + "and the rest can be run again once it is.")) return;
     go();
   }, [steps]);
 

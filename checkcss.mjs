@@ -86,6 +86,33 @@ for (const file of walk("src")) {
         + "content without it, and the footer is pushed out of the panel");
     }
   }
+  /* ── A panel class that means something else ──
+
+     `.fe-board` was the substation's WAY TABLE, `display: grid`. The
+     MSDB panel was given that same class for its width, so the panel
+     became a grid, `.fe`'s flex column stopped applying, and the
+     footer was carried out of the white box with the Delete, Cancel
+     and Save buttons on it.
+
+     Nothing failed. The panel rendered, the DOM stayed correct, and
+     the only sign was three buttons floating on the backdrop.
+
+     So: a class used to modify `.fe` must not also be defined on its
+     own with a display of its own. Checked across the editor's own
+     stylesheet, which is where both meanings lived, three thousand
+     lines apart. */
+  const editorCss = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  for (const m of editorCss.matchAll(/\.fe\.([\w-]+) \{/g)) {
+    const name = m[1];
+    const own = new RegExp(`^\\.${name} \\{([^}]*)\\}`, "m").exec(editorCss);
+    if (own && /display:/.test(own[1])) {
+      fail("src/features/gis/FeatureEditor.jsx",
+        `.${name} modifies the panel AND has a display of its own \u2014 the `
+        + "panel takes that display and stops being a flex column, which "
+        + "drops its footer out of the white box");
+    }
+  }
+
   const fe = /\.fe \{([^}]*)\}/.exec(css)?.[1] ?? "";
   if (!/flex-direction:\s*column/.test(fe) || !/max-height/.test(fe)) {
     fail("src/styles.css", ".fe is no longer a flex column with a max height, "

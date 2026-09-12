@@ -1669,10 +1669,22 @@ const served = (b) => servedFlats(b, flats);
 
   /* Half as wide again, because a board carries more per row than
      anything else in this editor. */
-  if (!/\.fe\.fe-board \{ width: min\(630px/.test(editor)) {
+  if (!/\.fe\.fe-msdb-panel \{ width: min\(630px/.test(editor)) {
     fail("the board's panel is not widened, so its rows wrap");
   }
-  if (!/"fe fe-board"/.test(editor)) fail("the board's panel never gets the class");
+  if (!/"fe fe-msdb-panel"/.test(editor)) {
+    fail("the board's panel never gets the class");
+  }
+  /* ── And the class it gets is its own ──
+
+     `fe-board` was already the substation's way table, which is
+     `display: grid`. The panel wearing that name became a grid, `.fe`'s
+     flex column stopped applying, and the footer was carried out of the
+     white box \u2014 with nothing failing anywhere. */
+  if (/"fe fe-board"/.test(editor)) {
+    fail("the board's panel reuses the way table's class, which makes the "
+      + "panel a grid and drops its footer off the bottom");
+  }
   if (!/\.fe-msdb-loc-row \.fld:first-child \{ flex: 3/.test(editor)) {
     fail("the location does not take three quarters of its row");
   }

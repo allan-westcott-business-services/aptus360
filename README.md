@@ -1,5 +1,23 @@
 # The buttons that fell off the panel — 12 Sep 2026
 
+**The actual cause, found on the second look: a class name collision I
+introduced.** `.fe-board` was already taken — it is the SUBSTATION's
+way table, `display: grid`. Giving the MSDB panel that class for its
+width made the panel a grid, so `.fe`'s flex column stopped applying,
+the body could not scroll and the footer was carried out of the white
+box. The panel is `fe-msdb-panel` now.
+
+Nothing failed when it happened: the panel rendered, the DOM stayed
+correct, and the only sign was three buttons floating on the backdrop.
+It was found by loading the real stylesheet into a rendered panel and
+reading the computed styles back — `.fe` came out `display: grid`,
+which is the whole answer in one line. `checkcss` now fails if a class
+that modifies `.fe` also carries a display of its own.
+
+The `min-height: 0` below was a real latent fault and is worth
+keeping, but it was not what you were seeing.
+
+
 Reported: Delete, Cancel and Save floating on the backdrop under the
 MSDB editor rather than in it.
 

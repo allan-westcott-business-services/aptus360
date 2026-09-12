@@ -1261,7 +1261,7 @@ export default function FeatureEditor({
            in one row. A fifth column arrived with the per-way fuse and
            the row had no width left to give it. */
         : feature.Feature_Role === "substation" ? "fe fe-station"
-          : feature.Feature_Role === "msdb" ? "fe fe-board" : "fe"}
+          : feature.Feature_Role === "msdb" ? "fe fe-msdb-panel" : "fe"}
         onClick={(e) => e.stopPropagation()} style={drag.panelStyle}
         role="dialog" aria-label="Edit feature">
         <style>{CSS}</style>
@@ -4691,8 +4691,20 @@ const CSS = `
    630px against the base 420. A board carries more per row than
    anything else in this editor \u2014 a length and the level it produces,
    a circuit and its letter and a button \u2014 and at the base width every
-   one of those rows wrapped its labels onto two lines. */
-.fe.fe-board { width: min(630px, 96vw); }
+   one of those rows wrapped its labels onto two lines.
+
+   Named fe-msdb-panel, NOT fe-board: that name was already taken, by
+   the substation's way table, which is display: grid. Giving the panel
+   that class made the panel a grid too, so .fe's flex column stopped
+   applying \u2014 the body could not scroll and the footer was carried out
+   of the white box with the Delete, Cancel and Save buttons on it.
+
+   Nothing failed loudly. The panel still rendered, the DOM was still
+   correct, and the only sign was three buttons floating on the
+   backdrop. A class name is a shared namespace across every stylesheet
+   in the app, and this one had a second meaning three thousand lines
+   further down its own file. */
+.fe.fe-msdb-panel { width: min(630px, 96vw); }
 /* Location takes three quarters, the floor a quarter: one is a
    sentence and the other is a word. */
 .fe-msdb-loc-row .fld:first-child { flex: 3; }

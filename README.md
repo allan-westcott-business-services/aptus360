@@ -1,3 +1,45 @@
+# Printing is a PDF now — 12 Sep 2026
+
+The browser's print of the canvas was a PICTURE of the drawing at
+whatever resolution the screen happened to be, with the basemap the
+blurriest thing on the sheet. It is gone. Print to Scale now builds a
+PDF: the design as vectors, the basemap's own PDF page embedded as
+vector beneath them.
+
+**The dialogue answers "what do I print this on".** Every paper size
+is costed at the chosen scale and listed by sheet count, cheapest
+first, and the one in force is drawn on the plan behind as a numbered
+grid. It opens on the cheapest rather than on a guess. Changing the
+scale re-costs everything but leaves a deliberate choice alone.
+
+**Two margins, asked separately**, because they are different things:
+the printer's border (what the machine cannot print into, 5 mm) and
+the sheet overlap (ground shared by neighbours, to trim to, 10 mm).
+Confusing them gives a white line at every seam or 5 mm of drawing
+missing at each one. Lap marks are drawn on the pages that have a
+neighbour, so whoever is trimming knows where to cut.
+
+**The basemap is embedded, not rasterised** — `pdf-lib` rather than
+jsPDF, because only it can place another PDF's page as a form. The
+georeferencing reduces to one number, and the underlay and the
+features are placed from the same tile and the same scale, so they
+cannot drift. Measured on the finished file: **register error 0.0000 mm
+on both axes.**
+
+**And it is to scale**, measured the same way: two features 100 m apart
+and what that comes to in millimetres on the page, at four scales. A
+2% error fails it with the distance a rule would read.
+
+`checkprinttiles` (sheet counts, overlap, centring, ranking) and
+`checkprintpdf` (scale, pages, vector, basemap register, wiring) are
+new. `checkprint` keeps the arithmetic and retires the cases that
+tested the removed print window. Suite 138 of 156.
+
+Two new dependencies: `pdf-lib` for writing. The raster helpers in
+printSheet.js are left in place, unused, with a note saying so.
+
+---
+
 # Backspace while drawing — 12 Sep 2026
 
 Reported: hitting Backspace mid-line no longer removes the last placed

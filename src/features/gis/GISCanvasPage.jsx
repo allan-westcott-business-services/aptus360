@@ -133,7 +133,8 @@ import {
   msdbLoad,
 } from "./msdb.js";
 import { HV_LINE_TYPES } from "./hvRing.js";
-import { printView, drawnBounds } from "./printSheet.js";
+import { drawnBounds } from "./printSheet.js";
+import { savePdf, printPdf } from "./printPdf.js";
 import { inLightingView } from "./lightingView.js";
 import { utilityMenuPress, utilityTint } from "./utilityMenu.js";
 import { routePocToSubstation } from "./route.js";
@@ -11101,130 +11102,61 @@ export default function GISCanvasPage() {
      A window rather than a hidden iframe: the print dialogue belongs to
      a document somebody can see, and a sheet that appears and vanishes
      gives no chance to notice it is wrong before it is on paper. */
-  const printSheet = useCallback(async (opts) => {
-    const { widthPx, heightPx, sheetW, sheetH, marginMm, pxPerMm } = printView(opts);
+  /* ── The drawing, as a PDF ──
 
-    /* Every sheet the drawing needs, or the one asked for. */
-    const tiles = opts.tiles?.length
-      ? opts.tiles
-      : [{ n: 1, centre: opts.centre ?? [0, 0] }];
+     The browser's own print of a canvas was a PICTURE of the drawing
+     at whatever resolution the screen happened to be, and the basemap
+     came out as the blurriest thing on the sheet. This builds a PDF
+     instead: the features as vectors, the basemap's own PDF page
+     embedded as vector under them, both placed from the same tile and
+     the same scale so they cannot drift out of register.
 
-    /* One canvas, redrawn per sheet. Twenty-five A3s at 150 dpi is
-       eleven hundred megabytes if each keeps its own; reusing it costs
-       one redraw and nothing else. */
-    const cv = document.createElement("canvas");
-    cv.width = widthPx;
-    cv.height = heightPx;
-    /* A canvas too large for the browser comes back blank rather than
-       throwing, so it is checked before anything is drawn on it. */
-    const probe = cv.getContext("2d");
-    if (!probe) throw new Error("The sheet is too large for this browser to draw.");
+     The basemap's bytes are fetched here rather than in the writer,
+     which has no opinion about URLs and can therefore be tested
+     without a network. */
+  const basemapBytes = useCallback(async () => {
+    if (!basemap?.Image_Url || basemap.Source_Kind !== "pdf") return null;
+    const res = await fetch(basemap.Image_Url);
+    if (!res.ok) throw new Error("The basemap could not be fetched.");
+    return res.arrayBuffer();
+  }, [basemap]);
 
-    const pages = [];
-    for (const tile of tiles) {
-      const pv = printView({ ...opts, centre: tile.centre }).view;
-      probe.setTransform(1, 0, 0, 1, 0, 0);
-      probe.fillStyle = "#fff";
-      probe.fillRect(0, 0, widthPx, heightPx);
+  const pdfOptions = useCallback(async () => ({
+    layers,
+    styles,
+    lineTypes,
+    utilities,
+    basemap: basemap?.Source_Kind === "pdf" ? basemap : null,
+    basemapBytes: await basemapBytes(),
+    title: [project?.Contract_Number, project?.Name].filter(Boolean).join(" \u2014 "),
+    when: new Date().toLocaleDateString("en-GB",
+      { day: "numeric", month: "short", year: "numeric" }),
+    filename: `${project?.Contract_Number || "drawing"}.pdf`,
+  }), [layers, styles, lineTypes, utilities, basemap, basemapBytes, project]);
 
-      draw({ canvas: cv, view: pv });
+  const savePdfSheets = useCallback(async (plan) => {
+    const src = withAssumedMeters(features, {
+      plotList,
+      configs: lookups?.propertyConfigs || [],
+      propertyTypes: lookups?.propertyTypes || [],
+      consumption: lookups?.houseTypeConsumption || [],
+      nrsList,
+      nrsSubTypes: lookups?.nrsSubTypes || [],
+    });
+    return savePdf(src, plan, await pdfOptions());
+  }, [features, plotList, lookups, nrsList, pdfOptions]);
 
-      /* The scale bar, drawn on the sheet itself.
-
-         The one thing that cannot be enforced from here is somebody
-         printing "fit to page", which rescales everything and makes the
-         stated scale a lie. A bar is measured against a rule and settles
-         it in two seconds \u2014 and it is drawn in the same transform as the
-         drawing, so if the sheet is rescaled the bar is rescaled with it
-         and stops matching its own label. */
-      const barM = [1, 2, 5, 10, 20, 50, 100, 200]
-        .find((m) => m * pv.scale > widthPx * 0.08) ?? 100;
-      const barPx = barM * pv.scale;
-      const bx = marginMm * pxPerMm;
-      const by = heightPx - marginMm * pxPerMm;
-      const ctx = probe;
-      ctx.save();
-      ctx.lineWidth = Math.max(1, pxPerMm * 0.4);
-      ctx.strokeStyle = "#0f172a";
-      ctx.fillStyle = "#0f172a";
-      ctx.beginPath();
-      ctx.moveTo(bx, by);
-      ctx.lineTo(bx + barPx, by);
-      ctx.stroke();
-      for (const t of [0, 1]) {
-        ctx.beginPath();
-        ctx.moveTo(bx + barPx * t, by - pxPerMm * 1.6);
-        ctx.lineTo(bx + barPx * t, by + pxPerMm * 1.6);
-        ctx.stroke();
-      }
-      ctx.font = `${Math.round(pxPerMm * 3)}px system-ui, sans-serif`;
-      ctx.textBaseline = "bottom";
-      ctx.fillText(`${barM} m`, bx, by - pxPerMm * 2.4);
-        /* And which sheet this is, where there is more than one:
-           a pile of A3s with no numbers is a puzzle. */
-        ctx.fillText(`1:${opts.scaleDenom}  \u00b7  ${opts.paper}`
-          + `${opts.landscape ? " landscape" : " portrait"}`
-          + (tiles.length > 1 ? `  \u00b7  sheet ${tile.n} of ${tiles.length}` : ""),
-        bx, by + pxPerMm * 6);
-      ctx.restore();
-
-      pages.push({ n: tile.n, url: cv.toDataURL("image/png") });
-    }
-
-    const win = window.open("", "_blank");
-    if (!win) throw new Error("The print window was blocked. Allow pop-ups and try again.");
-    /* ── Where the printer is chosen ──
-
-       Not here. Which printer, which tray, how many copies belong to
-       the browser's own print dialogue, and an app cannot reach into
-       it \u2014 so this page has to OPEN it, and say so.
-
-       Without that the sheet just appeared in a tab: correct, to scale,
-       and with no visible way to get it onto paper. "I don't see where
-       I select the printer" is the right question to ask of it.
-
-       The bar is screen-only. A control bar printed across the top of a
-       drawing would be its own kind of wrong. */
-    win.document.write(`<!doctype html><html><head><title>`
-      + `Drawing 1:${opts.scaleDenom} ${opts.paper}</title>`
-      + `<style>@page{size:${sheetW}mm ${sheetH}mm;margin:0}`
-      + `html,body{margin:0;padding:0;background:#f1f5f9}`
-      + `img{width:${sheetW}mm;height:${sheetH}mm;display:block;margin:0 auto 18px;`
-      + `box-shadow:0 2px 18px rgba(15,23,42,.25);background:#fff;`
-      /* One sheet per page. Without this a browser flows the second
-         image onto whatever is left of the first page and cuts it in
-         half. */
-      + `break-after:page;page-break-after:always}`
-      + `img:last-child{break-after:auto;page-break-after:auto;margin-bottom:0}`
-      + `.bar{position:sticky;top:0;z-index:2;display:flex;gap:12px;`
-      + `align-items:center;padding:10px 14px;background:#1e293b;color:#fff;`
-      + `font:14px system-ui,sans-serif}`
-      + `.bar b{font-weight:600}`
-      + `.bar button{font:inherit;font-weight:600;padding:6px 14px;border:0;`
-      + `border-radius:6px;background:#f8fafc;color:#0f172a;cursor:pointer}`
-      + `.bar .note{margin-left:auto;opacity:.85;font-size:13px}`
-      + `@media print{.bar{display:none}body{background:#fff}`
-      + `img{box-shadow:none;margin:0}}`
-      + `</style></head><body>`
-      + `<div class="bar">`
-      + `<button onclick="window.print()">Print…</button>`
-      + `<b>${opts.paper}${opts.landscape ? " landscape" : " portrait"} `
-      + `· 1:${opts.scaleDenom}`
-      + (pages.length > 1 ? ` · ${pages.length} sheets` : "") + `</b>`
-      + `<span class="note">Choose the printer in the dialogue. `
-      + `Set scale to 100% or Actual size — not Fit to page, which makes `
-      + `the drawing scale wrong. Paper: ${opts.paper}.`
-      + (pages.length > 1 ? ` Sheets are numbered on each drawing.` : "")
-      + `</span>`
-      + `</div>`
-      + pages.map((pg) => `<img src="${pg.url}" alt="Sheet ${pg.n}">`).join("")
-      + `</body></html>`);
-    win.document.close();
-    /* The dialogue is opened by the button rather than from here.
-       Calling print() as the page loads races the image decoding on a
-       sheet this size, and a blank first page is exactly the failure
-       this feature exists to avoid. */
-  }, [draw]);
+  const printPdfSheets = useCallback(async (plan) => {
+    const src = withAssumedMeters(features, {
+      plotList,
+      configs: lookups?.propertyConfigs || [],
+      propertyTypes: lookups?.propertyTypes || [],
+      consumption: lookups?.houseTypeConsumption || [],
+      nrsList,
+      nrsSubTypes: lookups?.nrsSubTypes || [],
+    });
+    return printPdf(src, plan, await pdfOptions());
+  }, [features, plotList, lookups, nrsList, pdfOptions]);
 
   /* Putting a suggested change on the drawing.
 
@@ -25777,7 +25709,9 @@ export default function GISCanvasPage() {
 
       {printOpen && (
         <PrintModal features={features}
-          onRender={printSheet}
+          basemap={basemap?.Source_Kind === "pdf" ? basemap : null}
+          onSave={savePdfSheets}
+          onPrint={printPdfSheets}
           onFrame={setPrintFrame}
           onClose={() => setPrintOpen(false)} />
       )}

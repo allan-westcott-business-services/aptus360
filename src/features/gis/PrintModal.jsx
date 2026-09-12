@@ -1,281 +1,263 @@
 import { useEffect, useMemo, useState } from "react";
+import { useDragHandle } from "../../lib/useDragHandle.js";
+import { drawnBounds, SCALES, mmPerMetre } from "./printSheet.js";
 import {
-  PAPER, SCALES, sheetMm, groundCovered, printView, drawnBounds, scaleToFit,
-  tooBig, mmPerMetre, sheetGrid,
-} from "./printSheet.js";
+  paperOptions, tilePlan, DEFAULT_MARGIN_MM, DEFAULT_OVERLAP_MM,
+} from "./printTiles.js";
 
-/* Printing the drawing to a sheet somebody can measure.
+/* Choosing what to print the drawing on.
 
-   ── The sheet decides, not the screen ──
+   ── The question this dialogue exists to answer ──
 
-   Every other export here follows what is on screen. This one must not:
-   a plan is issued at a scale, and "whatever was zoomed to" is not one.
-   So the paper size and the scale are chosen, and the drawing is
-   rendered to fit them.
+   Not "which paper is this" but "what do I print this on to get it
+   onto the fewest sheets". That cannot be answered by eye, so every
+   paper size is costed at the chosen scale and listed with its sheet
+   count, and the one being considered is drawn on the drawing behind.
 
-   ── Rendered by the canvas, not beside it ──
+   ── Two margins, and they are different things ──
 
-   The image is produced by the same draw routine the screen uses, given
-   a different transform. A second renderer would be a second set of
-   rules about what a joint looks like, and the two would drift apart on
-   the first change to either.
+   The BORDER is what the printer cannot print into: a fact about the
+   machine, 5 mm on most desktop printers and less on a plotter. The
+   OVERLAP is how much ground neighbouring sheets share: a decision
+   about how they will be joined. Confusing them gives either a white
+   line down every seam or 5 mm of drawing missing at each one, so they
+   are asked separately and named for what they are.
 
-   ── Printed as an image at an exact size in millimetres ──
+   ── It saves a PDF; it does not print ──
 
-   The browser is told the page size and the image is placed at the
-   sheet's own dimensions in mm, so at 100% the scale is true. Printed
-   "fit to page" it is not, and nothing here can prevent that — which is
-   why the sheet carries the scale, the paper size, and a bar to check
-   it against. */
-export default function PrintModal({ features, onRender, onFrame, onClose }) {
-  const [paper, setPaper] = useState("A1");
-  const [landscape, setLandscape] = useState(true);
-  const [dpi, setDpi] = useState(150);
-  const [busy, setBusy] = useState(false);
+   The browser's own print of a canvas was a picture of the drawing at
+   whatever resolution the screen happened to be. A PDF is the drawing:
+   vector, to scale, with the basemap embedded as vector too. Printing
+   is then the PDF viewer's job, where the tray and the copies live
+   anyway. */
+
+export default function PrintModal({
+  features, basemap, onSave, onPrint, onFrame, onClose,
+}) {
+  const drag = useDragHandle();
+  const bounds = useMemo(() => drawnBounds(features || []), [features]);
+
+  const [scaleDenom, setScaleDenom] = useState(500);
+  /* ── Opened on the answer, not on a guess ──
+
+     This opened on A1 landscape whatever was drawn, which for an
+     ordinary site is one sheet with an eighth of the paper used. The
+     dialogue exists to find the cheapest sheet, so it starts on the
+     cheapest sheet and the list explains why.
+
+     Computed once, at mount. Changing the scale afterwards re-costs
+     every option but does not move the selection: a designer who has
+     picked A0 deliberately should not have it taken away for being
+     wasteful. */
+  const [pick, setPick] = useState(() => {
+    const b = drawnBounds(features || []);
+    const best = b ? paperOptions({ bounds: b, scaleDenom: 500 })[0] : null;
+    return { paper: best?.paper ?? "A1", landscape: best?.landscape ?? true };
+  });
+  const paper = pick.paper;
+  const landscape = pick.landscape;
+  const setPaper = (v) => setPick((p) => ({ ...p, paper: v }));
+  const setLandscape = (v) => setPick((p) => ({ ...p, landscape: v }));
+  const [marginMm, setMarginMm] = useState(DEFAULT_MARGIN_MM);
+  const [overlapMm, setOverlapMm] = useState(DEFAULT_OVERLAP_MM);
+  const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
 
-  const bounds = useMemo(() => drawnBounds(features || []), [features]);
-  const [scaleDenom, setScaleDenom] = useState(
-    () => scaleToFit(drawnBounds(features || []), "A1", true),
-  );
+  /* Every size at this scale, cheapest first. Recomputed as the scale
+     or either margin changes, because all three move the answer. */
+  const options = useMemo(() => (bounds
+    ? paperOptions({ bounds, scaleDenom, marginMm, overlapMm })
+    : []), [bounds, scaleDenom, marginMm, overlapMm]);
 
-  const [tiled, setTiled] = useState(false);
-  const [overlapM, setOverlapM] = useState(0);
+  const plan = useMemo(() => (bounds
+    ? tilePlan({ bounds, paper, landscape, scaleDenom, marginMm, overlapMm })
+    : null), [bounds, paper, landscape, scaleDenom, marginMm, overlapMm]);
 
-  const sheet = sheetMm(paper, landscape);
-  const covered = groundCovered(paper, landscape, scaleDenom);
+  /* ── The sheets, on the drawing ──
 
-  /* ── One sheet, or as many as it takes ──
-
-     A site at 1:200 does not fit on anything, and the honest answer is
-     several sheets rather than a scale nobody can read. */
-  const grid = useMemo(
-    () => (bounds ? sheetGrid({ bounds, paper, landscape, scaleDenom, overlapM }) : null),
-    [bounds, paper, landscape, scaleDenom, overlapM],
-  );
-  const tiles = tiled && grid ? grid.tiles : null;
-
-  /* ── The sheet, on the drawing ──
-
-     Reported up as it changes so the canvas can outline it. Two
-     questions \u2014 what size and what scale \u2014 whose real answer is a
-     rectangle on the ground, and until it was drawn the only way to see
-     whether it covered the work was to print it.
+     Reported up so the canvas can outline them. Until they were drawn,
+     the only way to see whether a sheet covered the work was to print
+     it.
 
      Cleared when this closes, including when it closes because the
-     print succeeded: an outline left on the drawing afterwards is a
-     line somebody would try to select. */
+     save succeeded: an outline left behind is a line somebody would
+     try to select. */
   useEffect(() => {
-    /* Two rectangles, because they are two different edges and the
-       difference is the margin. The outer one is the PAPER \u2014 what
-       comes out of the printer. The inner is what actually lands on it.
-       Drawing only the paper would promise ten millimetres of coverage
-       all round that the sheet does not have. */
-    const k = mmPerMetre(scaleDenom);
+    if (!plan) { onFrame?.(null); return; }
+    const k = mmPerMetre(plan.scaleDenom);
     onFrame?.({
-      tiles: tiles ?? null,
-      centre: (tiles?.[0]?.centre) ?? bounds?.centre ?? [0, 0],
-      w: covered.w,
-      h: covered.h,
-      paperW: sheet.w / k,
-      paperH: sheet.h / k,
-      paper,
-      landscape,
-      scaleDenom,
+      tiles: plan.tiles.map((t) => ({
+        centre: t.centre,
+        w: plan.printW / k,
+        h: plan.printH / k,
+        n: t.sheet,
+      })),
+      centre: plan.tiles[0]?.centre ?? bounds?.centre ?? [0, 0],
+      w: plan.printW / k,
+      h: plan.printH / k,
+      paperW: plan.sheetW / k,
+      paperH: plan.sheetH / k,
+      paper: plan.paper,
+      landscape: plan.landscape,
+      scaleDenom: plan.scaleDenom,
     });
-  }, [onFrame, bounds, covered.w, covered.h, sheet.w, sheet.h,
-    paper, landscape, scaleDenom, tiles]);
+  }, [onFrame, plan, bounds]);
 
   useEffect(() => () => onFrame?.(null), [onFrame]);
-  const fits = !bounds || (bounds.w <= covered.w && bounds.h <= covered.h);
-  const size = printView({ paper, landscape, scaleDenom, dpi });
-  const refuse = tooBig(paper, landscape, dpi);
 
-  async function go() {
-    if (refuse) { setErr(refuse); return; }
-    setBusy(true);
+  const run = async (what) => {
+    if (!plan) return;
+    setBusy(what);
     setErr("");
     try {
-      await onRender({ paper, landscape, scaleDenom, dpi,
-        centre: bounds?.centre ?? [0, 0],
-        tiles: tiles ?? null });
-      onClose();
+      const out = what === "save"
+        ? await onSave(plan)
+        : await onPrint(plan);
+      /* Said rather than found later: a sheet issued without its plan
+         is a sheet somebody has to be told about twice. */
+      if (out?.missingBasemap) {
+        setErr("The sheets were made, but the basemap could not be placed \u2014 "
+          + "check it has a scale set in Basemap Setup.");
+      } else {
+        onClose();
+      }
     } catch (e) {
-      setErr(e?.message || "The sheet could not be drawn.");
+      setErr(e?.message || "The PDF could not be made.");
     } finally {
-      setBusy(false);
+      setBusy("");
     }
+  };
+
+  if (!bounds) {
+    return (
+      <div className="fe-backdrop" onClick={onClose}>
+        <div className="fe" onClick={(e) => e.stopPropagation()}>
+          <div className="fe-head"><div><h3>Print to scale</h3></div></div>
+          <div className="fe-body">
+            <p className="hint">Nothing is drawn yet, so there is nothing to print.</p>
+          </div>
+          <div className="fe-foot">
+            <span className="fe-spacer" />
+            <button className="btn ghost" onClick={onClose}>Close</button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="fe-backdrop" onClick={onClose}>
-      <div className="fe pr-modal" onClick={(e) => e.stopPropagation()}
-        role="dialog" aria-label="Print the drawing">
-        <div className="fe-head">
+      <div className="fe fe-print" onClick={(e) => e.stopPropagation()}
+        style={drag.panelStyle} role="dialog" aria-label="Print to scale">
+        <style>{CSS}</style>
+        <div className="fe-head" {...drag.handleProps}>
           <div>
-            <h3>Print</h3>
-            <p className="hint">To scale, on paper up to A0.</p>
+            <h3>Print to scale</h3>
+            <p className="fe-id">
+              {bounds.w.toFixed(0)} &times; {bounds.h.toFixed(0)} m drawn
+            </p>
           </div>
           <button className="fe-x" onClick={onClose} aria-label="Close">&times;</button>
         </div>
 
         <div className="fe-body">
-          <div className="fld">
-            <span className="fe-lab">Paper</span>
-            <div className="pr-row">
-              {Object.keys(PAPER).map((k) => (
-                <button key={k} className={`btn sm${paper === k ? " accent" : " ghost"}`}
-                  onClick={() => setPaper(k)}>{k}</button>
-              ))}
+          <div className="fe-row">
+            <div className="fld">
+              <label htmlFor="pr-scale">Scale</label>
+              <select id="pr-scale" value={scaleDenom}
+                onChange={(e) => setScaleDenom(Number(e.target.value))}>
+                {SCALES.map((s) => <option key={s} value={s}>1:{s}</option>)}
+              </select>
+            </div>
+            <div className="fld">
+              <label htmlFor="pr-border">Printer border (mm)</label>
+              <input id="pr-border" type="number" min="0" max="25" step="1"
+                value={marginMm}
+                onChange={(e) => setMarginMm(Number(e.target.value) || 0)} />
+              <p className="hint">What your printer cannot print into.</p>
+            </div>
+            <div className="fld">
+              <label htmlFor="pr-lap">Sheet overlap (mm)</label>
+              <input id="pr-lap" type="number" min="0" max="50" step="1"
+                value={overlapMm}
+                onChange={(e) => setOverlapMm(Number(e.target.value) || 0)} />
+              <p className="hint">Ground shared by neighbouring sheets, to trim to.</p>
             </div>
           </div>
 
-          <div className="fld">
-            <span className="fe-lab">Orientation</span>
-            <div className="pr-row">
-              {[[true, "Landscape"], [false, "Portrait"]].map(([v, label]) => (
-                <button key={label}
-                  className={`btn sm${landscape === v ? " accent" : " ghost"}`}
-                  onClick={() => setLandscape(v)}>{label}</button>
-              ))}
-            </div>
-          </div>
+          {/* ── Every size, costed ──
 
-          <div className="fld">
-            <span className="fe-lab">Scale</span>
-            <div className="pr-row">
-              {SCALES.map((n) => (
-                <button key={n} className={`btn sm${scaleDenom === n ? " accent" : " ghost"}`}
-                  onClick={() => setScaleDenom(n)}>1:{n}</button>
-              ))}
-              {/* What the drawing needs, so the choice is informed
-                  rather than found by trying each one. */}
-              {bounds && (
-                <button className="btn sm ghost"
-                  title="The smallest standard scale the whole drawing fits at"
-                  onClick={() => setScaleDenom(scaleToFit(bounds, paper, landscape))}>
-                  Fit &mdash; 1:{scaleToFit(bounds, paper, landscape)}
+              The list IS the decision. Sorted by sheet count, so the
+              cheapest answer is the first row, and the one in force is
+              highlighted on the drawing behind. */}
+          <div className="pr-h">At 1:{scaleDenom}</div>
+          <div className="pr-list">
+            {options.map((o) => {
+              const on = o.paper === paper && o.landscape === landscape;
+              return (
+                <button type="button" key={`${o.paper}${o.landscape}`}
+                  className={on ? "pr-opt on" : "pr-opt"}
+                  onClick={() => setPick({ paper: o.paper, landscape: o.landscape })}>
+                  <span className="pr-name">
+                    {o.paper} {o.landscape ? "landscape" : "portrait"}
+                  </span>
+                  <span className="pr-sheets">
+                    {o.sheets} sheet{o.sheets === 1 ? "" : "s"}
+                    {o.sheets > 1 && <em> {o.cols}&times;{o.rows}</em>}
+                  </span>
+                  <span className="pr-use">{Math.round(o.coverage * 100)}% used</span>
                 </button>
-              )}
-            </div>
+              );
+            })}
           </div>
 
-          <div className="fld">
-            <span className="fe-lab">Resolution</span>
-            <div className="pr-row">
-              {[96, 150, 200, 300].map((n) => (
-                <button key={n} className={`btn sm${dpi === n ? " accent" : " ghost"}`}
-                  disabled={!!tooBig(paper, landscape, n)}
-                  title={tooBig(paper, landscape, n) || `${n} dots per inch`}
-                  onClick={() => setDpi(n)}>{n} dpi</button>
-              ))}
-            </div>
-          </div>
+          {plan && (
+            <p className="hint">
+              {plan.sheets === 1
+                ? `One ${plan.paper} sheet covers the drawing at 1:${plan.scaleDenom}.`
+                : `${plan.sheets} sheets, ${plan.cols} across and ${plan.rows} down, `
+                  + `each sharing ${plan.overlapMm} mm with its neighbours.`}
+              {" "}The grid is drawn on the plan behind this.
+            </p>
+          )}
 
-          <div className="fld">
-            <span className="fe-lab">Coverage</span>
-            <div className="pr-row">
-              {[[false, "One sheet"], [true, "Cover the drawing"]].map(([v, label]) => (
-                <button key={label} className={`btn sm${tiled === v ? " accent" : " ghost"}`}
-                  disabled={!bounds}
-                  title={v
-                    ? "As many sheets as the drawing needs at this size and scale"
-                    : "A single sheet, centred on the drawing"}
-                  onClick={() => setTiled(v)}>{label}</button>
-              ))}
-              {tiled && (
-                <>
-                  {/* A common strip on both sides of a join, for
-                      trimming and taping \u2014 and because a plotter that
-                      under-scales slightly leaves a white seam without
-                      one. Zero is a legitimate answer, so it is
-                      offered. */}
-                  <span className="pr-lab">Overlap</span>
-                  {[0, 2, 5].map((m) => (
-                    <button key={m} className={`btn sm${overlapM === m ? " accent" : " ghost"}`}
-                      onClick={() => setOverlapM(m)}>{m} m</button>
-                  ))}
-                </>
-              )}
-            </div>
-          </div>
+          {!basemap && (
+            <p className="hint">
+              No basemap is set, so the sheets carry the design alone.
+            </p>
+          )}
 
-          {/* ── What this will actually give you ──
-
-              Said before printing rather than found on the sheet. The
-              two questions are always the same: does it fit, and how
-              big is the file. */}
-          <div className="pr-sum">
-            <div><strong>{sheet.w} &times; {sheet.h} mm</strong> &middot;{" "}
-              1 m = {mmPerMetre(scaleDenom)} mm on paper</div>
-            <div>Covers <strong>{covered.w.toFixed(0)} &times; {covered.h.toFixed(0)} m</strong>
-              {bounds && (
-                <> of a drawing {bounds.w.toFixed(0)} &times; {bounds.h.toFixed(0)} m</>
-              )}
-            </div>
-            <div className="hint">{size.widthPx} &times; {size.heightPx} pixels</div>
-            {tiled && grid && (
-              <div><strong>{grid.cols} &times; {grid.rows} = {grid.count} sheet
-                {grid.count === 1 ? "" : "s"}</strong>, numbered across then down
-              </div>
-            )}
-            {!fits && !tiled && (
-              <div className="pr-warn">
-                The drawing is bigger than this sheet at this scale &mdash; the
-                edges will be cut off. Use Fit, a larger sheet, a smaller scale,
-                or Cover the drawing.
-              </div>
-            )}
-            {/* Said before printing, not discovered at the printer. */}
-            {tiled && grid && grid.count > 12 && (
-              <div className="pr-warn">
-                {grid.count} sheets is a lot of paper. A larger size or a
-                smaller scale would take fewer.
-              </div>
-            )}
-            {refuse && <div className="pr-warn">{refuse}</div>}
-            {err && <div className="pr-warn">{err}</div>}
-          </div>
-
-          {/* ── What happens when this is pressed ──
-
-              A button called Print that opens a tab is not what the
-              word promises, and the printer is chosen in the browser's
-              own dialogue rather than here \u2014 which is a reasonable
-              thing to go looking for and not find. Said before, so
-              nobody hunts for a control this cannot have. */}
-          <p className="hint">
-            This opens the sheet in a new tab with a <strong>Print</strong>
-            {" "}button. The printer, tray and copies are chosen in your
-            browser&rsquo;s print dialogue.
-          </p>
-          <p className="hint">
-            Set scale to <strong>100%</strong> or <strong>Actual size</strong>
-            {" "}there &mdash; not &ldquo;fit to page&rdquo;, which rescales the
-            sheet and makes the drawing scale wrong. The bar on the sheet
-            checks it against a rule.
-          </p>
+          {err && <p className="fe-err">{err}</p>}
         </div>
 
         <div className="fe-foot">
+          <button className="btn ghost" disabled={!!busy} onClick={() => run("save")}>
+            {busy === "save" ? "Saving\u2026" : "Save PDF"}
+          </button>
+          <span className="fe-spacer" />
           <button className="btn ghost" onClick={onClose}>Cancel</button>
-          <button className="btn accent" disabled={busy || !!refuse} onClick={go}>
-            {busy
-              ? (tiles?.length > 1 ? `Drawing ${tiles.length} sheets\u2026` : "Drawing\u2026")
-              : (tiles?.length > 1 ? `Open ${tiles.length} sheets` : "Open the sheet")}
+          <button className="btn accent" disabled={!!busy} onClick={() => run("print")}>
+            {busy === "print" ? "Preparing\u2026" : "Print"}
           </button>
         </div>
       </div>
-
-      <style>{`
-.pr-modal { width: min(560px, 94vw); }
-.pr-row { display: flex; gap: 6px; flex-wrap: wrap; }
-.pr-sum { margin-top: 12px; padding: 10px 12px; border-radius: 8px;
-  background: var(--bg); border: 1px solid var(--line); font-size: 13px;
-  display: flex; flex-direction: column; gap: 4px; }
-.pr-lab { font-size: 12px; color: var(--muted); align-self: center; }
-.pr-warn { color: #b91c1c; font-weight: 600; }
-      `}</style>
     </div>
   );
 }
+
+const CSS = `
+.fe.fe-print { width: min(560px, 94vw); }
+.pr-h { font: 700 10.5px inherit; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted); margin: 4px 0 2px; }
+.pr-list { display: grid; gap: 4px; max-height: 230px; overflow-y: auto; }
+.pr-opt { display: grid; grid-template-columns: 1fr auto auto; gap: 10px;
+  align-items: center; text-align: left; padding: 7px 10px; border-radius: 8px;
+  border: 1.5px solid var(--border); background: #fff; cursor: pointer;
+  font: inherit; font-size: 12.5px; }
+.pr-opt:hover { border-color: #94a3b8; }
+.pr-opt.on { border-color: var(--accent); background: #eef2ff; }
+.pr-name { font-weight: 600; }
+.pr-sheets { font-weight: 700; }
+.pr-sheets em { font-style: normal; font-weight: 500; color: var(--muted); }
+.pr-use { color: var(--muted); font-size: 11px; min-width: 62px; text-align: right; }
+`;

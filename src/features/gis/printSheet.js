@@ -22,6 +22,21 @@
    at four times the memory. The scale is carried by the millimetres,
    which is why it survives being printed. */
 
+/* ── What is still used from this file ──
+
+   `PAPER`, `SCALES`, `mmPerMetre`, `sheetMm` and `drawnBounds` are the
+   arithmetic the whole of printing rests on, and printTiles.js and
+   printVector.js both read them.
+
+   `groundCovered`, `printView`, `scaleToFit`, `sheetGrid` and `tooBig`
+   belong to the browser print that a PDF replaced: a canvas rendered
+   to an image at a chosen dpi, placed in a print window. Nothing calls
+   them now. They are left rather than deleted because the arithmetic
+   in them is correct and hard-won, and a later feature \u2014 a raster
+   export for somebody whose plotter will not take vector, say \u2014 would
+   want exactly this. Anything reaching for them should know they are
+   not on the path any current feature takes.
+
 /* ISO A sizes, in millimetres, portrait. */
 export const PAPER = {
   A4: [210, 297],

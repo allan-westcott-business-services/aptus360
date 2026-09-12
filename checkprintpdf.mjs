@@ -300,6 +300,58 @@ const bounds = drawnBounds(world);
   }
 }
 
+/* ── Wired up, and the old path gone ──
+
+   The browser's own print of a canvas was a picture of the drawing at
+   whatever resolution the screen happened to be. Leaving it beside the
+   new one would be two ways to print that disagree about what comes
+   out, so it is removed rather than kept as a fallback. */
+{
+  const modal = readFileSync("./src/features/gis/PrintModal.jsx", "utf8");
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  /* The dialogue costs every paper size rather than asking for one. */
+  if (!/paperOptions\(/.test(modal)) {
+    fail("the print dialogue does not cost the paper sizes, so the question "
+      + "it exists to answer is still asked by eye");
+  }
+  /* And opens on the cheapest, or it is a list nobody reads. */
+  if (!/paperOptions\(\{ bounds: b, scaleDenom: 500 \}\)\[0\]/.test(modal)) {
+    fail("the dialogue opens on a guessed paper size rather than the "
+      + "cheapest one");
+  }
+  /* The overlay is fed the real tiles, so what is previewed is what is
+     printed. */
+  if (!/tiles: plan\.tiles\.map/.test(modal)) {
+    fail("the sheets drawn on the canvas do not come from the plan that is "
+      + "printed, so the preview and the PDF can disagree");
+  }
+  /* Both margins are asked for, and named for what they are. */
+  if (!/Printer border/.test(modal) || !/Sheet overlap/.test(modal)) {
+    fail("the printer's border and the sheet overlap are not asked "
+      + "separately, which is how a seam comes out wrong");
+  }
+
+  /* The canvas builds a PDF, and fetches the basemap for it. */
+  if (!/savePdf\(src, plan, await pdfOptions\(\)\)/.test(canvas)) {
+    fail("Save PDF does not go through the PDF writer");
+  }
+  if (!/basemapBytes: await basemapBytes\(\)/.test(canvas)) {
+    fail("the basemap is never fetched, so every sheet goes out without it");
+  }
+  /* The flats on a board are on the sheet too: the same assumed meters
+     the build and the report work from. */
+  if (!/withAssumedMeters\(features, \{[\s\S]{0,400}nrsSubTypes/.test(canvas)) {
+    fail("the sheets are drawn from the raw drawing, so a board's flats and "
+      + "its landlord supplies are missing from the print");
+  }
+  /* And the raster path is gone. */
+  if (/printView\(/.test(canvas)) {
+    fail("the old canvas-to-image print is still wired up, so there are two "
+      + "ways to print that disagree about what comes out");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The PDF is to scale, one page per sheet, and drawn as vectors.");
 process.exit(bad ? 1 : 0);

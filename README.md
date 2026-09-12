@@ -1,3 +1,33 @@
+# A landlord supply is placed once — 11 Sep 2026
+
+Either it is a seed on the drawing with its own meter, or it is fed
+from a board's riser. Never both — any more than a flat can have a
+plot seed AND be on an MSDB. Two copies is a supply counted twice by
+everything that adds up load, and a board sized for a lift that is
+also drawn across the site.
+
+The flats have this in both directions already: `plotsAsSeeds` keeps a
+seeded plot off the boards, `plotsOnBoards` keeps a board's flat out
+of Place Plots. `nrsAsSeeds` and `nrsOnBoards` are the same pair for
+the other table, and both halves are now applied:
+
+- A board does not offer a supply already drawn on the plan.
+- The placement menu does not offer a supply a board already feeds.
+- A board keeps its own supplies in its own list whatever else is true
+  of them, or opening the editor would empty it.
+
+`nrsAsSeeds` counts SEEDS only. A supply's meters carry its NRS_ID
+too, so counting those would call a supply placed on the strength of a
+meter whose seed had been deleted — the same distinction the placement
+menu already draws.
+
+Both filters are asserted by their USE, not their declaration: the
+first version of the check grepped for the variable, and deleting the
+filter while leaving it in place passed. That is the same false
+confidence that shipped the snap bug earlier today. Suite 136 of 154.
+
+---
+
 # A landlord supply on the board — 11 Sep 2026
 
 A block's stair lighting, lift, door entry or pumps are fed from the

@@ -14,7 +14,7 @@ import {
   FLOORS, apartmentLoad, msdbLoad, apartmentLevels, worstApartment, msdbText,
   flatsFromPlots, servedFlats, isFlatType, shortType, riserDrop, outputDrop,
   assumedMeters, msdbSupply, withAssumedMeters,
-  landlordSupplies, isLandlordSupply,
+  landlordSupplies, isLandlordSupply, nrsAsSeeds, nrsOnBoards,
 } from "./src/features/gis/msdb.js";
 import { circuitsFrom, circuitReport } from "./src/features/gis/electric.js";
 import { circuitMembership, spanTrace } from "./src/features/gis/feeder.js";
@@ -1491,6 +1491,63 @@ const served = (b) => servedFlats(b, flats);
     nrsSubTypes: undefined });
   if (old.filter((f) => f.Attributes?.Assumed).length !== 1) {
     fail("a caller passing no supplies changed behaviour");
+  }
+}
+
+/* ── A landlord supply is placed once ──
+
+   Either it is a seed on the drawing with its own meter, or it is fed
+   from a board's riser. Never both, any more than a flat can have a
+   plot seed AND be on a board. Two copies is a supply counted twice
+   by everything that adds up load, and a board sized for a lift that
+   is also drawn across the site.
+
+   The flats have this rule in both directions already \u2014
+   `plotsAsSeeds` keeps a seeded plot off the boards, `plotsOnBoards`
+   keeps a board's flat out of Place Plots. These are the same pair
+   for the other table. */
+{
+  const board = (id, nrs) => ({ Feature_ID: id, Feature_Role: "msdb",
+    Layer_Key: "electric", Geometry: [[0, 0]],
+    Attributes: { Circuit_ID: 1, MSDB_NRS_IDs: nrs } });
+  const seed = (nrsId) => ({ Feature_ID: 900 + nrsId, Feature_Role: "nrs",
+    Layer_Key: "plot", Geometry: [[5, 5]], Attributes: { NRS_ID: nrsId } });
+
+  if (!nrsAsSeeds([seed(9)]).has(9)) {
+    fail("a supply drawn as a seed is not seen as placed");
+  }
+  /* Seeds only. A supply's METERS carry its NRS_ID too, so counting
+     them would call a supply placed on the strength of a meter whose
+     seed had been deleted \u2014 the same distinction the placement menu
+     draws. */
+  const meterOnly = { Feature_ID: 800, Feature_Role: "meter",
+    Layer_Key: "electric", Geometry: [[5, 5]], Attributes: { NRS_ID: 12 } };
+  if (nrsAsSeeds([meterOnly]).has(12)) {
+    fail("a meter with no seed behind it counts as a placed supply");
+  }
+
+  if (!nrsOnBoards([board(50, [7])]).has(7)) {
+    fail("a supply on a board is not seen as taken");
+  }
+  /* The board being edited is excluded, or opening its editor would
+     empty its own list. */
+  if (nrsOnBoards([board(50, [7])], { except: 50 }).has(7)) {
+    fail("a board's own supplies are counted against it");
+  }
+
+  /* And the two filters are applied where they matter: the board's
+     list, and the placement menu. */
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/!drawn\.has\(Number\(r\.NRS_ID\)\)/.test(editor)) {
+    fail("a board still offers a supply that is already drawn on the plan");
+  }
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  /* That the list is FILTERED by it, not merely that it was computed.
+     An earlier version of this asserted the declaration, and deleting
+     the filter while leaving the variable in place passed \u2014 which is
+     the same false confidence that shipped the snap bug. */
+  if (!/!onBoards\.has\(Number\(n\.NRS_ID\)\)/.test(canvas)) {
+    fail("the placement menu still offers a supply that a board already feeds");
   }
 }
 

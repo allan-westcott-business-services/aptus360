@@ -305,6 +305,46 @@ export function isFlatType(typeName) {
   return /\b(flat|apartment|maisonette|duplex)\b/i.test(String(typeName ?? ""));
 }
 
+/* ── The supplies already drawn, and the ones already on a board ──
+
+   A landlord supply is placed ONCE. It is either a seed on the drawing
+   with its own meter, or it is fed from a board's riser \u2014 never both,
+   any more than a flat can have a plot seed AND be on a board. Two
+   copies is a supply counted twice by everything that adds up load,
+   and a board sized for a lift that is also drawn across the site.
+
+   The same pair of readers the flats have (`plotsAsSeeds` and
+   `plotsOnBoards`), asked of the other table. Kept here beside them so
+   the two rules are read together: the next kind of thing a board can
+   serve will need its own pair, and the shape to copy is on this page.
+
+   `nrsAsSeeds` counts SEEDS only, not meters. A supply's meters carry
+   its NRS_ID too, so counting them would call a supply placed on the
+   strength of a meter whose seed had been deleted \u2014 the same
+   distinction the placement menu draws. */
+export function nrsAsSeeds(features = []) {
+  const out = new Set();
+  for (const f of features || []) {
+    if (f?.Feature_Role !== "nrs") continue;
+    const id = f.Attributes?.NRS_ID ?? f.NRS_ID ?? null;
+    if (id != null) out.add(Number(id));
+  }
+  return out;
+}
+
+export function nrsOnBoards(features = [], opts = {}) {
+  const { except = null } = opts;
+  const out = new Set();
+  for (const b of features || []) {
+    if (b?.Feature_Role !== "msdb") continue;
+    /* The board being edited is excluded, so its own supplies stay in
+       its own list — otherwise opening the editor would empty it. */
+    if (except != null && Number(b.Feature_ID) === Number(except)) continue;
+    for (const id of b.Attributes?.MSDB_NRS_IDs || []) out.add(Number(id));
+  }
+  return out;
+}
+
 /* ── A landlord supply belongs on the board ──
 
    A block's landlord supply \u2014 the stair lighting, the lift, the door

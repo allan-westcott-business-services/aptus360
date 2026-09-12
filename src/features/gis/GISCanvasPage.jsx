@@ -128,7 +128,7 @@ import { alpha } from "../../lib/colour.js";
 import PrintModal from "./PrintModal.jsx";
 import {
   withAssumedMeters, servedFlats, flatsFromPlots, apartmentLoad, buildBlockers,
-  plotsOnBoards,
+  plotsOnBoards, nrsOnBoards,
   apartmentLevels, worstApartment, riserDrop, stampLink, linkEnds, linkOrder,
   msdbLoad,
 } from "./msdb.js";
@@ -23090,8 +23090,24 @@ export default function GISCanvasPage() {
                         const placedIds = new Set(features
                           .filter((f) => f.Feature_Role === "nrs" && f.Attributes?.NRS_ID != null)
                           .map((f) => Number(f.Attributes.NRS_ID)));
+                        /* ── And the ones a board already feeds ──
+
+                           A landlord supply picked onto an MSDB is fed
+                           from that riser and metered in that cupboard.
+                           Placing it again as a seed would be the same
+                           supply twice: counted twice by everything
+                           that adds up load, and drawn in a place its
+                           cable does not go.
+
+                           The same rule the flats have in both
+                           directions \u2014 a plot on a board is not offered
+                           to Place Plots, and a plot with a seed is not
+                           offered to a board. This is the half that was
+                           missing. */
+                        const onBoards = nrsOnBoards(features);
                         const waiting = nrsList
-                          .filter((n) => !placedIds.has(Number(n.NRS_ID)));
+                          .filter((n) => !placedIds.has(Number(n.NRS_ID))
+                            && !onBoards.has(Number(n.NRS_ID)));
                         const nameOf = nrsName;
                         return (
                           <>

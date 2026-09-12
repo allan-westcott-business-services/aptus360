@@ -26,7 +26,7 @@ import { servedPlots, JOINT_KINDS, straightJointWarning,
   jointCables, cableEndsAt, servicesAt } from "./joints.js";
 import {
   FLOORS, msdbLoad, apartmentLevels, worstApartment, flatsFromPlots,
-  landlordSupplies,
+  landlordSupplies, nrsAsSeeds, nrsOnBoards,
   plotsAsSeeds, plotsOnBoards, boardFlatCount,
   servedFlats, riserDrop, outputDrop, msdbSupply,
 } from "./msdb.js";
@@ -816,15 +816,16 @@ export default function FeatureEditor({
      rows and needed no second path through any of it. */
   const msdbRows = useMemo(() => {
     const mine = new Set((f.Attributes?.MSDB_NRS_IDs || []).map(Number));
-    const onOther = new Set();
-    for (const b of allFeatures || []) {
-      if (b.Feature_Role !== "msdb") continue;
-      if (Number(b.Feature_ID) === Number(f.Feature_ID)) continue;
-      for (const id of b.Attributes?.MSDB_NRS_IDs || []) onOther.add(Number(id));
-    }
+    const onOther = nrsOnBoards(allFeatures, { except: f.Feature_ID });
+    /* Already drawn as a seed on the plan, and therefore not this
+       board's to feed: a supply is placed once, exactly as a flat is
+       either seeded or on a board and never both. Its own supplies
+       stay in its own list whatever else is true of them, or opening
+       the editor would empty it. */
+    const drawn = nrsAsSeeds(allFeatures);
     const supplies = landlordSupplies({
       nrsList: (nrsList || []).filter((r) => mine.has(Number(r.NRS_ID))
-        || !onOther.has(Number(r.NRS_ID))),
+        || (!onOther.has(Number(r.NRS_ID)) && !drawn.has(Number(r.NRS_ID)))),
       nrsSubTypes: lookups?.nrsSubTypes || [],
     });
     return [...msdbFlats, ...supplies];

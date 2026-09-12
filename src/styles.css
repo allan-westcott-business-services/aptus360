@@ -609,7 +609,27 @@ body.resizing { cursor: col-resize; user-select: none; }
    gap, so every label sat directly on the control above it. Same cause
    as the transparent panel — defined in FeatureEditor's own block and
    read by every other modal that never mounts it. */
-.fe-body { padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 11px; }
+/* ── The body scrolls; the footer stays ──
+
+   `.fe` is a flex column with a max height, and this has always had
+   `overflow-y: auto`. That is not enough on its own: a flex item's
+   `min-height` defaults to `auto`, which means "never shrink below my
+   content", so a tall panel grew past the max height instead of
+   scrolling \u2014 and the footer was carried out of the white box and
+   left floating on the backdrop with the Delete, Cancel and Save
+   buttons on it.
+
+   Latent until a panel got tall enough to reach 88vh, which the MSDB
+   editor did when its rows were reorganised. Every modal using `.fe`
+   had the same fault waiting: the bill of materials, the bulk editor,
+   the print dialog.
+
+   `min-height: 0` is what lets it shrink, and `flex: 1 1 auto` is what
+   makes it take the space between the head and the foot. */
+.fe-body { padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column;
+  gap: 11px; flex: 1 1 auto; min-height: 0; }
+/* And the two that must not be squeezed to nothing by it. */
+.fe-head, .fe-foot { flex: 0 0 auto; }
 
 /* An aside inside a panel: what this selection cannot be told to do.
    Used by the bulk editor and defined nowhere at all until now, so it

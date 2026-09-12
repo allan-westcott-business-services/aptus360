@@ -1,3 +1,27 @@
+# The buttons that fell off the panel — 12 Sep 2026
+
+Reported: Delete, Cancel and Save floating on the backdrop under the
+MSDB editor rather than in it.
+
+The DOM was right — the footer IS inside the panel. The fault is
+older and was simply waiting for a tall enough panel. `.fe` is a flex
+column with `max-height: 88vh`, and `.fe-body` has `overflow-y: auto`,
+which is not enough on its own: **a flex item's `min-height` defaults
+to `auto`**, meaning "never shrink below my content". So the body grew
+past the max height instead of scrolling, and carried the footer out
+of the white box.
+
+`min-height: 0` is what lets it shrink; `flex: 1 1 auto` is what makes
+it take the space between the head and the foot. One rule, four
+modals: the feature editor, the bill of materials, the bulk editor and
+the print dialog all had the same fault waiting.
+
+Held by `checkcss`, because nothing that reads values can see it: the
+DOM is correct either way, and jsdom computes no layout. Removing the
+`min-height` fails the check with the reason. Suite 136 of 154.
+
+---
+
 # The MSDB editor, laid out — 11 Sep 2026
 
 **Four follow-ups.** "Prefix", "Entering the board" and "Leaving the

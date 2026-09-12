@@ -54,6 +54,45 @@ for (const file of walk("src")) {
   }
 }
 
-console.log(bad ? `\n${bad} empty stylesheet(s)`
-  : `All ${checked} exported stylesheets have rules in them.`);
+/* ── A panel whose body scrolls ──
+
+   `.fe` is a flex column with `max-height: 88vh`, and `.fe-body` has
+   `overflow-y: auto`. That is not enough on its own: a flex item's
+   `min-height` defaults to `auto` \u2014 "never shrink below my content"
+   \u2014 so a tall panel grew past the max height instead of scrolling,
+   and the footer was carried out of the white box and left floating on
+   the backdrop with the Delete, Cancel and Save buttons on it.
+
+   Reported from the MSDB editor once its rows were reorganised, but
+   every modal using `.fe` had the same fault waiting: the bill of
+   materials, the bulk editor, the print dialog.
+
+   Checked here because no test that reads values can see it. The DOM
+   is correct either way \u2014 the footer IS inside the panel \u2014 and jsdom
+   computes no layout, so this is the only place it can be held. */
+{
+  const fail = (where, why) => { console.log(`  FAIL ${where}: ${why}`); bad++; };
+  const css = readFileSync("./src/styles.css", "utf8");
+  const body = /\.fe-body \{([^}]*)\}/.exec(css)?.[1] ?? "";
+  if (!body) fail("src/styles.css", ".fe-body has no rule at all");
+  else {
+    if (!/overflow-y:\s*auto/.test(body)) {
+      fail("src/styles.css", ".fe-body does not scroll, so a tall panel "
+        + "pushes its own footer off the bottom");
+    }
+    if (!/min-height:\s*0/.test(body)) {
+      fail("src/styles.css", ".fe-body has no min-height: 0, so `overflow-y: "
+        + "auto` cannot take effect \u2014 a flex item will not shrink below its "
+        + "content without it, and the footer is pushed out of the panel");
+    }
+  }
+  const fe = /\.fe \{([^}]*)\}/.exec(css)?.[1] ?? "";
+  if (!/flex-direction:\s*column/.test(fe) || !/max-height/.test(fe)) {
+    fail("src/styles.css", ".fe is no longer a flex column with a max height, "
+      + "which is what the body scrolling and the footer staying both rest on");
+  }
+}
+
+console.log(bad ? `\n${bad} problem(s)`
+  : `All ${checked} exported stylesheets have rules, and a panel's body scrolls.`);
 process.exit(bad ? 1 : 0);

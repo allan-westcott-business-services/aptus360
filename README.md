@@ -1,3 +1,30 @@
+# The bill calls it HDCO — 12 Sep 2026
+
+The bill of materials named a heavy duty cut-out "Hdcutout": the role
+key wearing a capital letter, which is not the name of anything.
+
+The point items are named from a list rather than from `initcap`,
+because there is no rule that turns 'poc' into "POC" and
+'servicevalve' into "Service Valve" — those are facts about the trade,
+not about the string. `hdcutout` was never added to that list, so it
+fell through to the fallback.
+
+Migration **0212** is 0207 with one line added and nothing else
+changed: the whole function is replaced because a Postgres function
+has no way to amend one branch of one CASE. The diff is five lines
+added, none removed, and that was checked rather than assumed.
+
+`checkbomroles` now holds every role whose real name `initcap` cannot
+reach — HDCO, MSDB, POC, Service Valve, Link Box, Lighting Column, Gas
+Governor — and the fallback with them, so a role added tomorrow still
+reads as something rather than as a blank cell. The trouble with a
+fallback that works is that nobody notices it.
+
+Suite 138 of 156. **Run 0212** (after 0209 and 0211, both still
+outstanding).
+
+---
+
 # The real reason Auto Service kept duplicating — 12 Sep 2026
 
 Reported three times. The first two answers were real faults and

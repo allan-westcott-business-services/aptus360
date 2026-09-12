@@ -32,10 +32,14 @@ const defining = readdirSync(dir)
     .includes("CREATE OR REPLACE FUNCTION gis_bom"))
   .sort();
 
+/* The definition the database would have if the folder were replayed.
+   Hoisted so every case below reads the same one \u2014 working it out
+   twice is two chances to read a different migration. */
+const newest = defining[defining.length - 1];
+const sql = newest ? readFileSync(`${dir}/${newest}`, "utf8") : "";
+
 if (!defining.length) fail("no migration defines gis_bom");
 else {
-  const newest = defining[defining.length - 1];
-  const sql = readFileSync(`${dir}/${newest}`, "utf8");
 
   /* The exclusion list, as the newest definition has it. */
   /* The clause, not the comment above it explaining why NULL NOT IN
@@ -69,6 +73,54 @@ else {
     && !/f\."Feature_Role" IS NULL\s*\n\s*OR f\."Feature_Role" NOT IN/.test(sql)) {
     fail(`${newest} drops every point with no role \u2014 NULL NOT IN (...) is `
       + "NULL, which is not true, and the older joints have no role");
+  }
+}
+
+/* ── Named the way the trade names them ──
+
+   The point items are named from a list rather than from initcap,
+   because there is no rule that turns 'poc' into "POC" and
+   'servicevalve' into "Service Valve": those are facts about the trade,
+   not about the string. initcap is the fallback, so a role added later
+   reads as something rather than blank.
+
+   The trouble with a fallback that works is that nobody notices it.
+   'hdcutout' fell through and the bill said "Hdcutout" — the role key
+   wearing a capital letter, and not the name of anything. Reported
+   from a real bill.
+
+   So every role that reaches the bill is checked against the list.
+   A role naming itself acceptably through initcap is fine; one whose
+   real name is an acronym or two words is not, and this says which. */
+{
+  const named = (role) => new RegExp(`WHEN '${role}'\\s*THEN`).test(sql);
+
+  /* The ones whose names initcap cannot reach. An acronym or a
+     two-word name has to be written down. */
+  for (const [role, want] of [
+    ["hdcutout", "HDCO"],
+    ["msdb", "MSDB"],
+    ["poc", "POC"],
+    ["servicevalve", "Service Valve"],
+    ["linkbox", "Link Box"],
+    ["column", "Lighting Column"],
+    ["governor", "Gas Governor"],
+  ]) {
+    if (!named(role)) {
+      fail(`the bill has no name for '${role}', so initcap gives it one \u2014 `
+        + `it should read "${want}"`);
+      continue;
+    }
+    if (!new RegExp(`WHEN '${role}'\\s*THEN '${want}'`).test(sql)) {
+      fail(`'${role}' is named on the bill, but not as "${want}"`);
+    }
+  }
+
+  /* And the fallback is still there, so a role added tomorrow reads as
+     something rather than as a blank cell. */
+  if (!/ELSE initcap\(/.test(sql)) {
+    fail("the fallback name has gone, so a role nobody has listed yet would "
+      + "come out blank on the bill");
   }
 }
 

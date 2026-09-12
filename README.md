@@ -1,3 +1,36 @@
+# A plot added later joins the circuit it is fed from — 12 Sep 2026
+
+Link to Circuit is run once, and plots keep arriving. A plot added
+afterwards had a meter on no circuit, and nothing downstream picked it
+up: the build routes what a circuit OWNS and the report lists what a
+circuit owns, so the dwelling quietly stopped being accounted for — no
+cable sized for it, no load against the way, nothing on the schedule.
+
+Auto Lay Service Trench now answers it from the drawing. The service
+tees off a particular LV main, that main carries a circuit, and the
+new plot's meter is put on it — name and letter travelling with the
+id, so the meter never carries a number nothing names.
+
+Three limits, each deliberate:
+
+- **Only where the cable is there.** Before Build LV Network has run
+  there are no feeders to ask, and taking the nearest substation's
+  circuit would be a guess dressed as a fact. The plot waits for the
+  build like everything else.
+- **The nearer cable wins** where two circuits run close, because the
+  plot is fed by the one its service actually tees off.
+- **Electric only.** Gas and water have no circuits, and a Circuit_ID
+  on a water meter would be read by something eventually.
+
+The tee comes from the plan's own `foot`. My first attempt read
+`plan.runs[0].geometry[0]`, which does not exist — the feature would
+have found nothing and looked as though it had never been built. The
+check asserts the field, so the next edit cannot reintroduce it.
+
+Suite 138 of 156.
+
+---
+
 # A service trench drawn by hand, linked to its plot — 12 Sep 2026
 
 Auto Service stamps `Seed_Feature_ID` on every dig it makes and reads

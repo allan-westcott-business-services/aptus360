@@ -619,6 +619,60 @@ export function planAutoService(seeds = [], trenches = [], utilitiesFor = () => 
   return { plans, skipped };
 }
 
+/* ── Which circuit a new plot joins ──
+
+   A plot added after Link to Circuit has been run has a meter on no
+   circuit. Nothing downstream will pick it up: the build routes what a
+   circuit owns, the report lists what a circuit owns, and a meter on
+   none is a dwelling the design has quietly stopped accounting for.
+
+   The answer is on the drawing already. The service tees off a
+   particular LV main, that main carries a circuit, and the plot is fed
+   by that circuit. So the tee point is asked which cable it touches
+   and the cable is asked which circuit it is.
+
+   Only where the cable is THERE. Before Build LV Network has run there
+   are no feeders to ask, and inventing a circuit from the nearest
+   substation would be a guess dressed as a fact \u2014 null instead, and
+   the plot waits for the build like everything else.
+
+   `reach` is generous by design: a tee is drawn at the foot on the
+   main, and a cable is drawn along the trench a little off it. Two
+   metres is nearer than any two circuits' cables ever run to each
+   other on a real drawing, and nearer than a service is to a main it
+   does not tee off. */
+export function circuitAtTee(features = [], at, reach = 2) {
+  if (!Array.isArray(at)) return null;
+  let best = null;
+  for (const f of features) {
+    if (f?.Feature_Type !== "line") continue;
+    if (f.Layer_Key !== "electric") continue;
+    if (String(f.Attributes?.Line_Type ?? "") !== "elec_main") continue;
+    if (f.Attributes?.Circuit_ID == null) continue;
+    const g = f.Geometry || [];
+    for (let i = 1; i < g.length; i++) {
+      const [ax, ay] = g[i - 1];
+      const [bx, by] = g[i];
+      const vx = bx - ax;
+      const vy = by - ay;
+      const l2 = vx * vx + vy * vy;
+      let u = l2 ? ((at[0] - ax) * vx + (at[1] - ay) * vy) / l2 : 0;
+      u = Math.max(0, Math.min(1, u));
+      const d = Math.hypot(at[0] - (ax + vx * u), at[1] - (ay + vy * u));
+      if (d <= reach && (!best || d < best.d)) {
+        best = {
+          d,
+          circuitId: Number(f.Attributes.Circuit_ID),
+          circuitName: f.Attributes.Circuit_Name ?? null,
+          circuitLetter: f.Attributes.Circuit_Letter ?? null,
+          cableId: Number(f.Feature_ID),
+        };
+      }
+    }
+  }
+  return best;
+}
+
 /* ── Has anything about this plot's dig actually changed ──
 
    A seed with a service trench is skipped as done. That is right the

@@ -40,7 +40,7 @@ import { resolveStyle, appearance, subjectOf, symbolPath, markerPositions, STROK
 import { splitByBoundary, boundaryPolygons, pointInAny, pointInPolygon, surfaceFor,
   planClassification, ON_SITE, OFF_SITE } from "./boundary.js";
 import {
-  planAutoService, mainsTrenches, serviceMoved, teeIntoMains, nearestOnPolyline,
+  planAutoService, mainsTrenches, serviceMoved, circuitAtTee, teeIntoMains, nearestOnPolyline,
   isServed, meterHasService, layServices, isExistingFeature, skipSummary,
 } from "./autoService.js";
 import { originMissing,
@@ -21177,6 +21177,28 @@ export default function GISCanvasPage() {
           }
         }
 
+        /* ── The circuit a new plot joins ──
+
+           A plot added after Link to Circuit was run has a meter on no
+           circuit, and nothing downstream picks it up: the build routes
+           what a circuit owns and the report lists what a circuit owns,
+           so the dwelling quietly stops being accounted for.
+
+           The answer is on the drawing. The service tees off a
+           particular LV main, that main carries a circuit, and the plot
+           is fed by it. Read once per plan, from the dig's own tee.
+
+           Null before Build LV Network has run: there are no feeders to
+           ask, and taking the nearest substation's circuit instead
+           would be a guess dressed as a fact. The plot waits for the
+           build, like everything else. */
+        /* `foot` is the tee: the point on the main the plan dug from.
+           Named by the planner rather than dug out of the trench
+           geometry, which is an array of points and has no `geometry`
+           field \u2014 reading one would have left this quietly finding
+           nothing and the feature looking as though it did not work. */
+        const joins = plan.foot ? circuitAtTee(world, plan.foot) : null;
+
         for (const m of plan.meters) {
           /* Already placed, with its meters. Leave them alone and run
              the service to where they actually are. */
@@ -21199,6 +21221,24 @@ export default function GISCanvasPage() {
                  kVA would go missing from the way. */
               ...(plan.seed.Attributes?.NRS_ID != null
                 ? { NRS_ID: plan.seed.Attributes.NRS_ID } : {}),
+              /* ── And the circuit the cable it tees off carries ──
+
+                 Electric only: gas and water have no circuits, and a
+                 Circuit_ID on a water meter would be read by something
+                 eventually.
+
+                 Never over an existing answer. This meter is being
+                 created, so there is nothing to overwrite here \u2014 but
+                 the rule is stated because the same reasoning applied
+                 to an existing meter would be a silent reassignment,
+                 and the next person to reach for this should know the
+                 line. */
+              ...(joins && m.utility.layer_key === "electric"
+                ? {
+                  Circuit_ID: joins.circuitId,
+                  Circuit_Name: joins.circuitName,
+                  Circuit_Letter: joins.circuitLetter,
+                } : {}),
               /* Classified on the way in, so it counts on the right side
                  of the bill rather than landing in Unclassified. */
               Site: polys.length ? (pointInAny(m.point, polys) ? ON_SITE : OFF_SITE) : null,

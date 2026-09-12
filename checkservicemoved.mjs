@@ -14,7 +14,9 @@
    hand, and it makes the summary meaningless. So most of what follows
    is cases that must come back unchanged. */
 import { readFileSync } from "node:fs";
-import { serviceMoved, isServed } from "./src/features/gis/autoService.js";
+import {
+  serviceMoved, isServed, circuitAtTee,
+} from "./src/features/gis/autoService.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -290,6 +292,70 @@ const asDrawn = dug([[100, 0], [100, 5], [100, 12]]);
   if (!/delete A\.Seed_Feature_ID;\s*\n\s*delete A\.Manual_Link;/.test(canvas)) {
     fail("a link cannot be undone, so a trench linked to the wrong plot "
       + "keeps that plot out of Auto Service for ever");
+  }
+}
+
+/* ── A plot added later joins the circuit it is fed from ──
+
+   Link to Circuit is run once, and plots keep arriving. A plot added
+   afterwards has a meter on no circuit, and nothing downstream picks
+   it up: the build routes what a circuit OWNS and the report lists
+   what a circuit owns, so the dwelling quietly stops being accounted
+   for \u2014 no cable sized for it, no load against the way, nothing on
+   the schedule.
+
+   The answer is already on the drawing. The service tees off a
+   particular LV main, that main carries a circuit, and the plot is fed
+   by it. */
+{
+  const cable = (id, cid, g) => ({ Feature_ID: id, Feature_Type: "line",
+    Layer_Key: "electric", Geometry: g,
+    Attributes: { Line_Type: "elec_main", Circuit_ID: cid,
+      Circuit_Name: `Circuit ${cid}`, Circuit_Letter: cid === 7 ? "A" : "B" } });
+  const world = [cable(1, 7, [[0, 0], [100, 0]]), cable(2, 9, [[0, 40], [100, 40]])];
+
+  const on7 = circuitAtTee(world, [50, 0.3]);
+  if (!on7 || on7.circuitId !== 7) {
+    fail("a tee on circuit 7's cable does not read as circuit 7");
+  }
+  if (on7 && (on7.circuitName !== "Circuit 7" || on7.circuitLetter !== "A")) {
+    fail("the circuit's name and letter do not travel with its id, so the "
+      + "meter would carry a number nothing names");
+  }
+  /* The NEARER cable wins where two run close: a plot is fed by the
+     one its service actually tees off. */
+  if (circuitAtTee(world, [50, 39.8])?.circuitId !== 9) {
+    fail("the tee takes the wrong cable where two circuits run near each other");
+  }
+  /* Nowhere near a cable is null, not a guess. Before Build LV Network
+     has run there is nothing to ask, and taking the nearest
+     substation's circuit would be a guess dressed as a fact. */
+  if (circuitAtTee(world, [50, 20]) !== null) {
+    fail("a tee nowhere near a feeder is given a circuit anyway");
+  }
+  if (circuitAtTee([], [0, 0]) !== null) fail("a drawing with no cables invents one");
+  /* A cable with no circuit of its own gives nothing to inherit. */
+  const bare = [{ ...cable(3, 7, [[0, 80], [100, 80]]),
+    Attributes: { Line_Type: "elec_main" } }];
+  if (circuitAtTee(bare, [50, 80]) !== null) {
+    fail("a cable on no circuit still hands one out");
+  }
+
+  /* ── Wired to the plan's own tee ──
+
+     `foot` is the point on the main the plan dug from. An earlier
+     version of this read `plan.runs[0].geometry[0]`, which does not
+     exist: the feature would have found nothing and looked as though
+     it had never been built. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/plan\.foot \? circuitAtTee\(world, plan\.foot\)/.test(canvas)) {
+    fail("the circuit is not read from the plan's own tee point");
+  }
+  /* Electric only: a Circuit_ID on a water meter would be read by "
+     something eventually. */
+  if (!/joins && m\.utility\.layer_key === "electric"/.test(canvas)) {
+    fail("the circuit is written onto every utility's meter, not just the "
+      + "electric one");
   }
 }
 

@@ -13,6 +13,7 @@ import { drawnBounds, mmPerMetre } from "./src/features/gis/printSheet.js";
 import { tilePlan } from "./src/features/gis/printTiles.js";
 import { pageDrawList } from "./src/features/gis/printVector.js";
 import { buildPdf } from "./src/features/gis/printPdf.js";
+import { PDFDocument, rgb } from "pdf-lib";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -129,31 +130,35 @@ const bounds = drawnBounds(world);
 // 6. The PDF itself: one page per tile, at the sheet's own size.
 {
   const plan = tilePlan({ bounds, paper: "A4", landscape: true, scaleDenom: 100 });
-  const doc = buildPdf(world, plan, { title: "Test" });
-  if (!doc) fail("no document was produced");
+  const out = await buildPdf(world, plan, { title: "Test" });
+  if (!out) fail("no document was produced");
   else {
-    const n = doc.getNumberOfPages();
-    if (n !== plan.sheets) {
-      fail(`${n} pages for a ${plan.sheets}-sheet plan`);
+    if (out.pages !== plan.sheets) {
+      fail(`${out.pages} pages for a ${plan.sheets}-sheet plan`);
     }
-    const size = doc.internal.pageSize;
-    if (Math.abs(size.getWidth() - plan.sheetW) > 0.1
-      || Math.abs(size.getHeight() - plan.sheetH) > 0.1) {
-      fail(`the page is ${size.getWidth()}x${size.getHeight()} mm, not the `
-        + `${plan.sheetW}x${plan.sheetH} the plan was made for`);
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const read = await pdfjs.getDocument({
+      data: new Uint8Array(out.bytes), useSystemFonts: true }).promise;
+    if (read.numPages !== plan.sheets) fail("the file has the wrong page count");
+    const vp = (await read.getPage(1)).getViewport({ scale: 1 });
+    const mm = (pt) => pt * 25.4 / 72;
+    if (Math.abs(mm(vp.width) - plan.sheetW) > 0.1
+      || Math.abs(mm(vp.height) - plan.sheetH) > 0.1) {
+      fail(`the page is ${mm(vp.width).toFixed(1)}x${mm(vp.height).toFixed(1)} mm, `
+        + `not the ${plan.sheetW}x${plan.sheetH} the plan was made for`);
     }
     /* Vector, not a picture of the drawing: an image would show up as
-       one XObject and no path operators at all. */
-    const out = doc.output();
-    if (!/\bre\b|\bl\b|\bm\b/.test(out)) {
-      fail("the page carries no path operators, so it is not vector");
-    }
-    if (out.includes("/Subtype /Image") || out.includes("/Subtype/Image")) {
-      fail("the page carries an image, which is what vector was chosen "
-        + "instead of");
-    }
+       an image XObject and no path construction at all. */
+    const ops = await (await read.getPage(1)).getOperatorList();
+    const O = pdfjs.OPS;
+    const paths = ops.fnArray.filter((f) => f === O.constructPath).length;
+    const images = ops.fnArray.filter((f) => f === O.paintImageXObject
+      || f === O.paintJpegXObject).length;
+    if (!paths) fail("the page carries no paths, so it is not vector");
+    if (images) fail("the page carries a raster image, which is what vector "
+      + "was chosen instead of");
   }
-  if (buildPdf(world, null) !== null) fail("a document is built with no plan");
+  if (await buildPdf(world, null) !== null) fail("a document is built with no plan");
 }
 
 // 7. A sheet somebody can collate and check.
@@ -164,11 +169,10 @@ const bounds = drawnBounds(world);
 //    directly and reported the furniture missing when it was there.
 {
   const plan = tilePlan({ bounds, paper: "A4", landscape: true, scaleDenom: 100 });
-  const doc = buildPdf(world, plan, { title: "Cedar Trees" });
+  const out = await buildPdf(world, plan, { title: "Cedar Trees" });
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const read = await pdfjs.getDocument({
-    data: new Uint8Array(doc.output("arraybuffer")),
-    useSystemFonts: true,
+    data: new Uint8Array(out.bytes), useSystemFonts: true,
   }).promise;
 
   const textOf = async (n) => {
@@ -194,6 +198,105 @@ const bounds = drawnBounds(world);
     if (!/row \d+, column \d+/.test(last)) {
       fail("a tiled sheet does not say where in the grid it belongs");
     }
+  }
+}
+
+/* ── The basemap lands in register with the drawing ──
+
+   The basemap is a PDF, embedded as a form rather than rasterised, so
+   the printed plan is as sharp as the plan it was traced over. That is
+   only worth anything if it lands in the right place: a basemap half a
+   metre out is worse than no basemap, because the design looks wrong
+   rather than the underlay.
+
+   So: a basemap with a mark at a known point on its page,
+   georeferenced so that mark IS a ground position, and a feature at
+   that same ground position. Both must land on the same millimetre of
+   paper.
+
+   Measured by pushing the mark through the transformation matrix the
+   finished PDF actually carries \u2014 not by trusting the arithmetic that
+   wrote it. */
+{
+  const W = 1000;
+  const H = 700;
+  const mark = [200, 150];        /* on the basemap page, from its top-left */
+
+  const bmDoc = await PDFDocument.create();
+  const bmPage = bmDoc.addPage([W, H]);
+  bmPage.drawLine({ start: { x: mark[0] - 10, y: H - mark[1] },
+    end: { x: mark[0] + 10, y: H - mark[1] }, thickness: 2, color: rgb(0.8, 0.2, 0.2) });
+  const basemapBytes = await bmDoc.save();
+
+  /* 0.5 m per page unit, page top-left at ground (900, 425). The mark
+     is then ground (900 + 200x0.5, 425 + 150x0.5) = (1000, 500). */
+  const basemap = { Metres_Per_Pixel: 0.5, Origin_X: 900, Origin_Y: 425,
+    Pdf_Page: 1, Opacity: 1 };
+  const groundOfMark = [1000, 500];
+
+  const plan = tilePlan({ bounds, paper: "A3", landscape: true, scaleDenom: 500 });
+  const out = await buildPdf(world, plan, { basemap, basemapBytes, labels: false });
+  if (!out) { fail("nothing was built with a basemap"); }
+  else if (out.missingBasemap) {
+    fail("the basemap was not placed, so the sheet goes out without its plan");
+  } else {
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const read = await pdfjs.getDocument({ data: new Uint8Array(out.bytes) }).promise;
+    const page = await read.getPage(1);
+    const ops = await page.getOperatorList();
+    const O = pdfjs.OPS;
+
+    /* The matrix in force when the basemap form is painted. */
+    const mul = (a, b) => [
+      a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1],
+      a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3],
+      a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5],
+    ];
+    let ctm = [1, 0, 0, 1, 0, 0];
+    const stack = [];
+    let formCtm = null;
+    for (let i = 0; i < ops.fnArray.length; i++) {
+      const fn = ops.fnArray[i];
+      if (fn === O.save) stack.push(ctm.slice());
+      else if (fn === O.restore) ctm = stack.pop() || ctm;
+      else if (fn === O.transform) ctm = mul(ctm, ops.argsArray[i]);
+      else if (fn === O.paintFormXObjectBegin) {
+        formCtm = mul(ctm, ops.argsArray[i][0]);
+        break;
+      }
+    }
+    if (!formCtm) {
+      fail("the basemap is not painted as an embedded form \u2014 it has been "
+        + "rasterised, or left out");
+    } else {
+      const PTmm = 72 / 25.4;
+      const u = mark[0];
+      const v = H - mark[1];
+      const x = formCtm[0] * u + formCtm[2] * v + formCtm[4];
+      const y = formCtm[1] * u + formCtm[3] * v + formCtm[5];
+      const gotX = x / PTmm;
+      const gotY = plan.sheetH - y / PTmm;
+
+      /* Where the drawing puts that ground point. */
+      const k = 1000 / plan.scaleDenom;
+      const t = plan.tiles[0];
+      const wantX = (groundOfMark[0] - t.minX) * k + plan.marginMm;
+      const wantY = (groundOfMark[1] - t.minY) * k + plan.marginMm;
+
+      if (Math.abs(gotX - wantX) > 0.05 || Math.abs(gotY - wantY) > 0.05) {
+        fail(`the basemap is out of register: its mark lands at `
+          + `${gotX.toFixed(2)},${gotY.toFixed(2)} mm where the feature at the `
+          + `same ground point is at ${wantX.toFixed(2)},${wantY.toFixed(2)}`);
+      }
+    }
+  }
+
+  /* A basemap with no scale cannot be placed, and the caller is told
+     rather than shipping a sheet that quietly has no plan on it. */
+  const noScale = await buildPdf(world, plan, {
+    basemap: { Metres_Per_Pixel: 0, Origin_X: 0, Origin_Y: 0 }, basemapBytes });
+  if (!noScale.missingBasemap) {
+    fail("a basemap with no metres-per-unit is reported as placed");
   }
 }
 

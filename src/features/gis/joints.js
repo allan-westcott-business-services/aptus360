@@ -257,8 +257,23 @@ function jointsForCircuit(features, circuit, opts) {
   const { seedIds, meterIds } = circuitMembership(features, circuit.id);
   if (!seedIds.size && !meterIds.size) return [];
 
+  /* ── This circuit's boards and cut-outs, not every board ──
+
+     `buildFeederModel` reads absent `msdbIds`/`hdcoIds` as "count every
+     one of them", which is right for a whole-drawing trace and wrong
+     for a circuit. Handed `circuitId` it takes the ones this circuit
+     owns.
+
+     Without it, every circuit's walk reached every MSDB on the
+     drawing: a circuit fed from Substation 2, whose cables run across
+     the west of the site, planned bottle ends on three boards beside
+     Substation 1 \u2014 on the other circuit's side, at positions its own
+     cable never goes near. Reported as exactly that.
+
+     The build was taught this; this walk is the other reader of the
+     same question and was not. */
   const M = buildFeederModel(features, {
-    lineTypes, plotById, nrsById, seedIds, meterIds });
+    lineTypes, plotById, nrsById, seedIds, meterIds, circuitId: circuit.id });
   if (M.error) return [];
 
   /* ── Meters the network could not find ──

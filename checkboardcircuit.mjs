@@ -18,6 +18,7 @@ import {
   circuitsFrom, circuitChoices, nextCircuitId, nextCircuitNumber, circuitReport,
 } from "./src/features/gis/electric.js";
 import { withAssumedMeters, boardFlatCount } from "./src/features/gis/msdb.js";
+import { buildFeederModel } from "./src/features/gis/feeder.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -407,6 +408,78 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
   if (joins < 4) {
     fail(`only ${joins} place(s) read the offered list; the move, the lasso `
       + "join, the lasso dialog and the stale-stamp test all need it");
+  }
+}
+
+/* ── One circuit's boards are not another circuit's ──
+
+   Reported with a drawing: three bottle ends on Circuit 1 sitting on
+   Circuit 1's OTHER side of the site, at the exact positions of three
+   MSDBs fed from a different substation \u2014 one of them on top of
+   Circuit 4's own bottle end.
+
+   `planJoints` builds its own model of each circuit and never passed
+   `circuitId`, and `buildFeederModel` reads absent `msdbIds` as "count
+   every board on the drawing". So every circuit's joint walk reached
+   every MSDB, wherever it was and whoever fed it.
+
+   The BUILD was taught this when the same fault put two cables on one
+   cut-out. This is the other reader of the same question, and the
+   sixth this session to be found holding an older idea of what a
+   circuit owns. */
+{
+  nid = 1;
+  /* Two substations, far apart, one dig each. A board on the east
+     circuit only. */
+  const west = sub({ Ways: 4, Way_Circuits: { 1: 1 } });
+  west.Geometry = [[0, 0]];
+  const east = { ...sub({ Ways: 4, Way_Circuits: { 1: 4 } }), Geometry: [[300, 0]] };
+  const digW = { Feature_ID: 300, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[0, 0], [60, 0]], Attributes: { Line_Type: "trench_main" } };
+  const digE = { Feature_ID: 301, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[300, 0], [360, 0]], Attributes: { Line_Type: "trench_main" } };
+  /* One ordinary plot on the west circuit, so it has something of its
+     own to route to. */
+  const seedW = { Feature_ID: 310, Feature_Role: "plot", Layer_Key: "plot",
+    Plot_ID: 5, Geometry: [[50, 0]], Attributes: {} };
+  const meterW = { Feature_ID: 311, Feature_Role: "meter", Layer_Key: "electric",
+    Plot_ID: 5, Geometry: [[50, 0]], Attributes: { Circuit_ID: 1 } };
+  /* The board is the east circuit's, at the east end. */
+  const boardE = { Feature_ID: 320, Feature_Role: "msdb", Layer_Key: "electric",
+    Geometry: [[350, 0]],
+    Attributes: { Circuit_ID: 4, MSDB_Plot_IDs: [11], MSDB_Total_kVA: 6 } };
+
+  const world = [west, east, digW, digE, seedW, meterW, boardE];
+
+  /* The west circuit's walk must not reach the east board. Asked of
+     the model directly, which is what both the build and the joint
+     planner walk. */
+  const m = buildFeederModel(world, {
+    plotById: () => ({ kva_load: 4 }),
+    circuitId: 1,
+    seedIds: new Set([310]), meterIds: new Set([311]),
+  });
+  if (m.error) fail(`the west circuit does not model at all: ${m.error}`);
+  else {
+    const atBoard = m.nodes.findIndex((n) =>
+      Math.hypot(n[0] - 350, n[1] - 0) < 1.5);
+    if (atBoard >= 0 && (m.cum[atBoard] > 0 || m.cumKva[atBoard] > 0)) {
+      fail("a circuit's walk carries load to a board fed from another "
+        + "substation, so its joints and cables land on the other circuit's "
+        + "side of the drawing");
+    }
+    if (Math.round(m.cumKva[m.S] * 10) / 10 !== 4) {
+      fail(`the west circuit carries ${m.cumKva[m.S]} kVA, which is not its `
+        + "own plot's 4 alone");
+    }
+  }
+
+  /* And the joint planner passes the circuit through, or it walks the
+     unfiltered model again. */
+  const jointsSrc = readFileSync("src/features/gis/joints.js", "utf8");
+  if (!/buildFeederModel\(features, \{[\s\S]{0,200}circuitId: circuit\.id \}\)/.test(jointsSrc)) {
+    fail("the joint planner does not tell the model which circuit it is "
+      + "walking, so every circuit reaches every board on the drawing");
   }
 }
 

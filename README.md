@@ -1,3 +1,65 @@
+# Circuit 1's bottle ends on Circuit 4's boards — 12 Sep 2026
+
+Reported with the drawing: bottle ends 55024, 55025 and 55026 on
+Circuit 1 sitting at the exact positions of MSDB 1, 2 and 3 — boards
+fed from a different substation, on the other side of the site, two of
+them on top of Circuit 4's own bottle ends.
+
+Circuit 1 is fed from Substation 2 at [162, 51] and its cables all run
+west, between [109, 44] and [176, 80]. Nothing of its own goes near
+[211–216, 82–87]. The cables were right; the joints were not.
+
+`planJoints` builds its own model of each circuit and never passed
+`circuitId`, and `buildFeederModel` reads an absent `msdbIds` as
+"count every board on the drawing". So every circuit's joint walk
+reached every MSDB, wherever it stood and whoever fed it — and planted
+a bottle end on each.
+
+**The sixth reader of the same question.** The build was taught this
+when the identical fault put two LV cables on one heavy duty cut-out;
+this walk was not. With `circuitId` passed, the planner drops from 28
+joints to 25 on the reported drawing and marks exactly 55024, 55025
+and 55026 as stale — which the joints step then removes, listing them
+as "placed by an earlier run, no longer called for".
+
+**To clear the drawing**: re-run the joints step. The cables need no
+rebuild.
+
+Suite 136 of 154.
+
+---
+
+# Fed from, then the circuit — 12 Sep 2026
+
+The MSDB editor's rows are swapped: **Fed from | Way** above
+**Circuit | Prefix | Isolate**. The feed comes first because
+everything below narrows by it, which is the order somebody works in.
+
+- **Fed from offers only substations the board can be reached from
+  along the trenches**, asked exactly as the circuit report asks it of
+  a meter — `distancesFrom` an origin, and is this board in the
+  answer. A substation with no dig between it and the board cannot
+  feed it. One already named stays listed, marked "no longer
+  reachable", because losing a choice silently looks like it was never
+  made.
+- **The circuit list is only that substation's circuits** — the ones
+  its ways carry, plus any whose members name it as their origin. A
+  board on a circuit fed from somewhere it is not connected to is two
+  facts on one board contradicting each other. Changing the feed
+  clears a circuit that no longer belongs to it.
+
+**A latent fault found on the way**: the draft holds only what can be
+edited — Label, Layer_Key, Attributes — and carries no `Feature_ID`.
+Three places asked `f.Feature_ID` and got undefined. Two were masked
+(a board was not excluded from its own flat and supply lists, which a
+`mine` test papered over); the third made every substation read as
+unreachable, which is how it was caught. All three read the saved row
+now.
+
+Suite 136 of 154.
+
+---
+
 # The buttons that fell off the panel — 12 Sep 2026
 
 **The actual cause, found on the second look: a class name collision I

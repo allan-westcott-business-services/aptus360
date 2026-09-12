@@ -20670,11 +20670,27 @@ export default function GISCanvasPage() {
        of the plot's meters, which is what a hand-drawn one looks like. */
     const svcTrenches = world.filter((f) =>
       f.Feature_Type === "line" && isTrenchType(f.Attributes?.Line_Type, lineTypes)
-      /* Not the incumbent's. An existing trench is on the trench layer
-         like any other, so it counts as one here — and a plot standing
-         beside one would read as already dug. It is their ground, and
-         nothing of ours has been laid in it yet. */
-      && !isExistingFeature(f));
+      /* ── Not the incumbent's ground, but ours IS ours ──
+
+         An existing trench is on the trench layer like any other, so a
+         plot standing beside one would read as already dug. It is their
+         ground and nothing of ours has been laid in it.
+
+         Unless it carries a Seed_Feature_ID. That stamp is written by
+         this run and by nothing else: it says "this dig was laid for
+         that plot". A service trench dug by the DEVELOPER is written
+         with Build_Status `existing` \u2014 no excavation to charge, the
+         laying still ours \u2014 and on an ordinary site that is nearly
+         every service trench on the drawing.
+
+         So the exclusion was hiding our own work from us. `isServed`
+         never saw those digs, every plot read as unserved, and a fresh
+         trench was laid on every run. Reported three times, and the
+         reason each earlier fix did not hold: the stale snapshot and
+         the first-dig-found test were both real, and neither was this.
+
+         The stamp is the distinction, not the status. */
+      && (!isExistingFeature(f) || f.Attributes?.Seed_Feature_ID != null));
 
     /* ── A self-lay service leaves no dig behind ──
 

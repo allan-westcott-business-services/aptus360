@@ -469,6 +469,73 @@ const asDrawn = dug([[100, 0], [100, 5], [100, 12]]);
   }
 }
 
+/* ── A developer-dug trench is still OUR dig ──
+
+   The fault behind "Auto Service is still laying duplicates", reported
+   three times.
+
+   A service trench dug by the developer is written with Build_Status
+   `existing`: no excavation to charge, the laying still ours. On an
+   ordinary site that is nearly every service trench on the drawing \u2014
+   36 of 37 on the reported one.
+
+   The run excluded every `existing` line from the list it asks "is
+   this plot served", because an existing trench is the incumbent's
+   ground and a plot standing beside one is not dug. True of THEIR
+   ground; not true of a dig this run laid and stamped. So the run was
+   hiding its own work from itself: 15 of 19 seeds read as unserved,
+   and a fresh trench was laid on every run, for ever.
+
+   The stamp is the distinction, not the status. */
+{
+  const seed = { Feature_ID: 700, Feature_Role: "plot", Layer_Key: "plot",
+    Plot_ID: 9, Geometry: [[100, 40]], Attributes: {} };
+  const meter = { Feature_ID: 701, Feature_Role: "meter", Layer_Key: "electric",
+    Plot_ID: 9, Geometry: [[100, 40]], Attributes: {} };
+  const devDug = { Feature_ID: 702, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[100, 0], [100, 40]],
+    Attributes: { Line_Type: "trench_service", Seed_Feature_ID: 700,
+      Build_Status: "existing", Developer_Dug: true } };
+  /* The incumbent's ground: existing, and stamped to nobody. */
+  const theirs = { Feature_ID: 703, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[200, 0], [200, 40]],
+    Attributes: { Line_Type: "trench_service", Build_Status: "existing" } };
+
+  /* isServed itself has never cared about Build_Status \u2014 it reads the
+     list it is given. So the rule under test is the filter that builds
+     that list, in the canvas. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/\(!isExistingFeature\(f\) \|\| f\.Attributes\?\.Seed_Feature_ID != null\)/.test(canvas)) {
+    fail("the run hides developer-dug service trenches from itself, so every "
+      + "plot on an ordinary site reads as unserved and is dug again on every "
+      + "run");
+  }
+  /* And the exclusion still holds for ground that is genuinely theirs. */
+  const keep = (f) => !(String(f.Attributes?.Build_Status ?? "") === "existing")
+    || f.Attributes?.Seed_Feature_ID != null;
+  if (!keep(devDug)) fail("our own developer-dug trench is still hidden");
+  if (keep(theirs)) {
+    fail("the incumbent's ground now counts as a service we laid, so a plot "
+      + "standing beside one would never be dug");
+  }
+  if (!isServed(seed, [meter], [devDug])) {
+    fail("a developer-dug trench stamped to the seed does not serve it");
+  }
+  if (isServed(seed, [meter], [])) fail("a plot with no dig reads as served");
+
+  /* ── The menu and the run must ask the same question ──
+
+     They did not: the step counted a developer-dug trench as serving
+     its plot while the run did not, so the menu said "every plot
+     served" about a site the run was about to dig again. */
+  const steps = readFileSync("./src/features/gis/electricSteps.js", "utf8");
+  const stepLaid = /const laidLines[\s\S]{0,400}?;/.exec(steps)?.[0] ?? "";
+  if (/isExisting/.test(stepLaid) && !/Seed_Feature_ID/.test(stepLaid)) {
+    fail("the step's count of what is served excludes existing trenches "
+      + "without allowing for the stamp, so the menu and the run disagree");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Auto Service re-lays the plots whose ground moved, and only those.");
 process.exit(bad ? 1 : 0);

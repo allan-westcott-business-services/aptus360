@@ -1,3 +1,37 @@
+# The real reason Auto Service kept duplicating — 12 Sep 2026
+
+Reported three times. The first two answers were real faults and
+neither was this one.
+
+**A service trench dug by the developer is written with Build_Status
+`existing`** — no excavation to charge, the laying still ours. On an
+ordinary site that is nearly every service trench on the drawing: 36 of
+37 on the reported one.
+
+The run excluded every `existing` line from the list it asks "is this
+plot served", because an existing trench is the incumbent's ground and
+a plot standing beside one is not dug. That is true of THEIR ground. It
+is not true of a dig this run laid and stamped with the seed.
+
+So the run was hiding its own work from itself. Measured on the
+reported drawing: **15 of 19 seeds read as unserved**, and a fresh
+trench was laid on every run, for ever. With the fix, 0 of 19.
+
+**The stamp is the distinction, not the status.** `Seed_Feature_ID` is
+written by this run and by nothing else; it says "this dig was laid for
+that plot", whoever pays for the digging.
+
+It also explains a claim I made last time and got wrong. I said the
+menu and the run could not disagree about what was outstanding — they
+did, because they built their lists differently: the step counted
+developer-dug trenches and the run did not, so the menu said "every
+plot served" about a site the run was about to dig again. Both now use
+the stamp, and a case pins them together.
+
+Suite 138 of 156.
+
+---
+
 # Auto Service offered when there is nothing to service — 12 Sep 2026
 
 Reported: the command ran on a drawing where every eligible plot

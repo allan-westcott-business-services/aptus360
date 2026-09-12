@@ -14,7 +14,7 @@
    hand, and it makes the summary meaningless. So most of what follows
    is cases that must come back unchanged. */
 import { readFileSync } from "node:fs";
-import { serviceMoved } from "./src/features/gis/autoService.js";
+import { serviceMoved, isServed } from "./src/features/gis/autoService.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -205,6 +205,91 @@ const asDrawn = dug([[100, 0], [100, 5], [100, 12]]);
   if (/if \(!allSelfLay\) continue|isSelfLayFor\([^)]*\)\) continue/.test(loop)) {
     fail("the staleness check has been gated on self-lay, so an ordinary "
       + "plot with a moved boundary point is skipped again");
+  }
+}
+
+/* ── A service trench drawn by hand, linked to its plot ──
+
+   Auto Service stamps `Seed_Feature_ID` on every dig it makes and
+   reads it back to know that plot is done. A trench drawn by hand
+   carries nothing, so the next run digs a second one to the same plot.
+
+   Linking it by clicking the plot writes that stamp, and `isServed`
+   \u2014 which the run already consults \u2014 does the rest.
+
+   The trap, and the reason this case exists: the staleness test
+   compares a dig against the route the PLANNER would take. A
+   hand-drawn trench never matches, so without an exemption Auto
+   Service would delete the drawing and put the wrong route back. That
+   is the one outcome nobody wants from a button called Auto Service. */
+{
+  const seed = { Feature_ID: 400, Feature_Role: "plot", Layer_Key: "plot",
+    Plot_ID: 7, Geometry: [[100, 20]], Attributes: {} };
+  const meter = { Feature_ID: 401, Feature_Role: "meter", Layer_Key: "electric",
+    Plot_ID: 7, Geometry: [[100, 20]], Attributes: {} };
+  /* Drawn round something, so it is nothing like the straight route a
+     planner would take. */
+  const byHand = { Feature_ID: 402, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[100, 0], [130, 6], [128, 18], [100, 20]],
+    Attributes: { Line_Type: "trench_service" } };
+
+  /* Unlinked, the plot reads as unserved: the run would dig to it. */
+  if (isServed(seed, [meter], [{ ...byHand, Attributes: { Line_Type: "trench_service" } }])
+    === false) {
+    /* It may be served by proximity, which is fine \u2014 the point below
+       is the STAMP, which is what makes it certain. */
+  }
+
+  const linked = { ...byHand,
+    Attributes: { ...byHand.Attributes, Seed_Feature_ID: 400, Manual_Link: true } };
+  if (!isServed(seed, [meter], [linked])) {
+    fail("a trench stamped with the plot's seed does not count as serving it, "
+      + "so Auto Service digs a second one");
+  }
+  /* And the stamp is what does it, not luck: the same trench nowhere
+     near the plot still counts, because somebody said so. */
+  const far = { ...linked, Geometry: [[900, 900], [930, 930]] };
+  if (!isServed(seed, [meter], [far])) {
+    fail("the link is ignored unless the trench happens to run near the "
+      + "meter, so a deliberate link is not trusted");
+  }
+
+  /* The hand-drawn route is NOT reported as moved \u2014 checked through
+     the canvas, where the exemption lives. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/if \(trench\.Attributes\?\.Manual_Link\) continue;/.test(canvas)) {
+    fail("a hand-linked trench is put through the staleness test, so Auto "
+      + "Service deletes the drawn route and lays its own over it");
+  }
+  /* The link is written by clicking the plot, and the click is
+     validated before the mode disarms \u2014 the fault the joint placement
+     taught. */
+  if (!/if \(servesFor\) \{/.test(canvas)) {
+    fail("there is no way to link a trench to its plot");
+  }
+  /* From the armed block to the NEXT one, not to the first `if
+     (jointFor)` in the file \u2014 the draw code has one of those hundreds
+     of lines earlier, so slicing to it ran backwards and matched
+     nothing. */
+  const armAt = canvas.indexOf("if (servesFor) {");
+  const arm = canvas.slice(armAt, canvas.indexOf("if (jointFor) {", armAt));
+  const disarmAt = arm.indexOf("setServesFor(null)");
+  const testAt = arm.indexOf("if (!seed)");
+  if (disarmAt >= 0 && testAt >= 0 && disarmAt < testAt) {
+    fail("the linking mode disarms before it checks a plot was clicked, so a "
+      + "near miss ends it silently and the next click does nothing");
+  }
+  if (!/Seed_Feature_ID: seed\.Feature_ID/.test(arm)) {
+    fail("clicking the plot does not stamp the trench with its seed");
+  }
+  if (!/Manual_Link: true/.test(arm)) {
+    fail("a hand-linked trench is not marked as one, so the staleness test "
+      + "cannot tell it from a dig the planner made");
+  }
+  /* And it can be undone, or a mistaken link is permanent. */
+  if (!/delete A\.Seed_Feature_ID;\s*\n\s*delete A\.Manual_Link;/.test(canvas)) {
+    fail("a link cannot be undone, so a trench linked to the wrong plot "
+      + "keeps that plot out of Auto Service for ever");
   }
 }
 

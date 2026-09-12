@@ -57,6 +57,9 @@ export default function FeatureEditor({
      Without the default it was worse than that \u2014 `nrsList` was used
      and never declared, so opening any MSDB threw. */
   nrsList = [],
+  /* Arms the "click the plot this serves" mode, or clears the link
+     when handed null. The canvas owns the click; this only asks. */
+  onLinkPlot = null,
   /* Excavation and lay rates. Defaulted rather than required: the
      editor is opened from several places and an estimate that vanished
      because one of them forgot a prop would look like a trench with no
@@ -1015,6 +1018,21 @@ export default function FeatureEditor({
     return null;
   }, [f, allFeatures]);
 
+  /* What the linked seed is called, for the Serves line. Read from the
+     drawing rather than stored on the trench: a plot renumbered would
+     otherwise leave the trench quoting the old number. */
+  const servesLabel = useMemo(() => {
+    const id = feature.Attributes?.Seed_Feature_ID;
+    if (id == null) return null;
+    const seed = (allFeatures || []).find((x) =>
+      Number(x.Feature_ID) === Number(id));
+    if (!seed) return null;
+    if (seed.Feature_Role === "nrs") return seed.Label || "a supply";
+    const plot = (plotList || []).find((p) =>
+      Number(p.plot_id) === Number(seed.Plot_ID));
+    return `plot ${plot?.plot_number ?? seed.Plot_ID}`;
+  }, [feature, allFeatures, plotList]);
+
   const msdbPickedNrs = useMemo(() => {
     const raw = f.Attributes?.MSDB_NRS_IDs;
     return Array.isArray(raw) ? raw.map(Number) : [];
@@ -1887,8 +1905,8 @@ export default function FeatureEditor({
 
                   Only substations the board can actually be reached
                   from along the trenches \u2014 see msdbOrigins. */}
-              <div className="fe-row">
-                <div className="fld">
+              <div className="fe-row fe-msdb-supply">
+                <div className="fld fe-msdb-from">
                   <label htmlFor="fe-msdb-origin">Fed from</label>
                   <select id="fe-msdb-origin"
                     value={f.Attributes?.Circuit_Origin_ID ?? ""}
@@ -1941,7 +1959,7 @@ export default function FeatureEditor({
 
                     A link box OUTPUT is a different thing, still asked
                     for below where there is a box. */}
-                <div className="fld">
+                <div className="fld fe-msdb-way">
                   <span className="fe-lab">Way</span>
                   <div className="fe-msdb-at">
                     {msdbWayNo == null
@@ -1953,10 +1971,19 @@ export default function FeatureEditor({
                       : <strong>{msdbWayNo}</strong>}
                   </div>
                 </div>
-              </div>
 
-              <div className="fe-row">
-                <div className="fld">
+                {/* ── The whole supply question on one row ──
+
+                    Where it is fed from, which way of that substation,
+                    which circuit on that way, that circuit's prefix,
+                    and the button that isolates it. Five controls, but
+                    one question read left to right, and each narrows
+                    the one after it.
+
+                    The row is sized so nothing truncates at the
+                    panel's 630px: the two selects take the room and
+                    the three small ones take only what they need. */}
+                <div className="fld fe-msdb-circ">
                   <label htmlFor="fe-msdb-circuit">Circuit</label>
                   <select id="fe-msdb-circuit"
                     /* Answered in order: the feed above decides which
@@ -3786,6 +3813,58 @@ export default function FeatureEditor({
                   });
                 })()}
 
+              {/* ── Which plot a service trench serves ──
+
+                  Auto Service stamps `Seed_Feature_ID` on every dig it
+                  makes and reads it back to know that plot is done. A
+                  trench drawn by hand carries nothing, so the next run
+                  digs a second one to the same plot.
+
+                  Linked by clicking the plot on the drawing rather than
+                  picking a number from a list: on an estate of two
+                  hundred, the plot is a thing on screen and its number
+                  is a thing somebody would have to go and find.
+
+                  Only for a service trench. A main serves no one plot,
+                  and offering this on one would invite a link that
+                  means nothing. */}
+              {isTrench && /service/i.test(String(f.Attributes?.Line_Type ?? "")) && (
+                <div className="fld">
+                  <span className="fe-lab">Serves</span>
+                  <div className="fe-serves">
+                    {feature.Attributes?.Seed_Feature_ID != null ? (
+                      <>
+                        <strong>
+                          {servesLabel ?? `seed #${feature.Attributes.Seed_Feature_ID}`}
+                        </strong>
+                        {feature.Attributes?.Manual_Link && (
+                          <span className="fe-msdb-none">&nbsp;&middot; linked by hand</span>
+                        )}
+                        <span className="fe-spacer" />
+                        <button type="button" className="fe-free"
+                          title="Auto Service will dig to this plot again"
+                          onClick={() => onLinkPlot?.(feature.Feature_ID, null)}>
+                          Unlink
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="fe-msdb-none">
+                          No plot &mdash; Auto Service will dig its own
+                        </span>
+                        <span className="fe-spacer" />
+                        <button type="button" className="fe-free"
+                          disabled={!onLinkPlot}
+                          title="Then click the plot seed this trench serves"
+                          onClick={() => onLinkPlot?.(feature.Feature_ID)}>
+                          Link to a plot&hellip;
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Line type is in the row above for a trench, alongside
                   the layer and the label. */}
               {!isTrench && (
@@ -4863,9 +4942,24 @@ const CSS = `
 .fe-msdb-loc-row .fld:last-child { flex: 1; }
 /* The letter and the isolate button take what they need and no more,
    so the circuit name keeps the rest of the row. */
-.fe-msdb-letter { flex: 0 0 64px; }
+/* ── The supply row, sized so nothing truncates ──
+
+   Five controls on one row at a panel width of 630: "Fed from" and
+   "Circuit" hold names somebody chose ("Substation 1", "Circuit 1-2")
+   and take the room; the way and the prefix are a digit and a letter
+   and take almost none; the button takes its own label.
+
+   Given explicit widths rather than left to flex evenly, because
+   evenly is how "Substation 1" ends up as "Substation…" beside 40
+   empty pixels next to a single letter. */
+.fe-serves { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.fe-msdb-supply .fld { min-width: 0; }
+.fe-msdb-from { flex: 1 1 150px; }
+.fe-msdb-way { flex: 0 0 56px; }
+.fe-msdb-circ { flex: 1 1 130px; }
+.fe-msdb-letter { flex: 0 0 52px; }
 .fe-msdb-iso { flex: 0 0 auto; }
-.fe-msdb-iso .fe-iso { width: 100%; }
+.fe-msdb-iso .fe-iso { width: 100%; white-space: nowrap; }
 /* .fe, .fe-head and .fe-head h3 now live in styles.css, beside
    .fe-backdrop and .fe-foot. Fifteen components use .fe and this block
    is only injected while THIS modal is mounted, so any of the others

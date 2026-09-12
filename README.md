@@ -1,3 +1,49 @@
+# A service trench drawn by hand, linked to its plot — 12 Sep 2026
+
+Auto Service stamps `Seed_Feature_ID` on every dig it makes and reads
+it back to know that plot is done. A trench drawn by hand carried
+nothing, so the next run dug a second one to the same plot.
+
+Open the trench, press **Link to a plot**, and click the plot's seed
+on the drawing. Clicked rather than picked from a list: on an estate
+of two hundred, the plot is a thing on screen and its number is a
+thing somebody would have to go and find. The editor then reads
+"Serves plot 17 · linked by hand", with an Unlink that hands the plot
+back to Auto Service.
+
+**The trap this had to avoid.** The staleness check added earlier
+compares a dig against the route the PLANNER would take, and a
+hand-drawn trench never matches — so Auto Service would have deleted
+the drawn route and laid its own over it, which is the one outcome
+nobody wants from that button. A hand-linked trench carries
+`Manual_Link` and is exempt: it stays until somebody unlinks it.
+
+The stamp is what does the work, not proximity: a linked trench counts
+as serving its plot even if it runs nowhere near the meter, because
+somebody said so. And the armed click validates before it disarms, so
+a near miss leaves the tool ready to try again — the fault the breech
+placement taught.
+
+Suite 138 of 156.
+
+---
+
+# The supply row — 12 Sep 2026
+
+Fed from, the way, the circuit, its prefix and the isolate button are
+now on one row in the MSDB editor. Five controls, but one question
+read left to right, each narrowing the one after it.
+
+Sized explicitly rather than left to flex evenly: the two selects hold
+names somebody chose ("Substation 1", "Circuit 1-2") and take the
+room; the way and the prefix are a digit and a letter and take almost
+none. Shared evenly, "Substation 1" truncates beside 40 empty pixels
+next to a single letter.
+
+Suite 138 of 156.
+
+---
+
 # Printing is a PDF now — 12 Sep 2026
 
 The browser's print of the canvas was a PICTURE of the drawing at

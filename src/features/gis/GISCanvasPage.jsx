@@ -2866,6 +2866,9 @@ export default function GISCanvasPage() {
      need one HERE". Both are wanted; a fitting whose position is the
      whole point should be placed by pointing at it. */
   const [jointFor, setJointFor] = useState(null);
+  /* The service trench waiting to be told which plot it serves. Holds
+     the trench's id: the click that follows names the plot. */
+  const [servesFor, setServesFor] = useState(null);
 
   /* ── Following a network from a point ──
 
@@ -2917,7 +2920,7 @@ export default function GISCanvasPage() {
      because there were two of them and only one was wrong, which is
      how the prompt drew correctly over a click that did nothing. */
   const awaitingClick = placing || !!meterFor || !!nrsFor
-    || !!boundaryFor || !!trenchEndFor || !!jointFor || !!traceFrom;
+    || !!boundaryFor || !!trenchEndFor || !!jointFor || !!servesFor || !!traceFrom;
 
   const visible = useMemo(
     () => features.filter((f) => {
@@ -9979,6 +9982,70 @@ export default function GISCanvasPage() {
         direction: spec.direction,
         lineId: near[0]?.line?.Feature_ID ?? null,
       });
+      return;
+    }
+
+    /* ── Which plot this trench serves ──
+
+        A service trench drawn by hand serves a plot, and nothing on the
+        drawing says which: Auto Service stamps `Seed_Feature_ID` on
+        every dig it makes and reads it back to know the plot is done,
+        so a hand-drawn trench without one is invisible to it and a
+        second dig is laid to the same plot.
+
+        Clicking the plot is what writes it. Asked of the drawing rather
+        than picked from a list, because on an estate of two hundred the
+        plot is a thing on screen and its number is a thing somebody
+        would have to go and find.
+
+        Validated BEFORE the mode is disarmed: a click that lands on no
+        seed leaves the tool armed to try again. Disarming first is how
+        the last armed mode came to do nothing at all on the second
+        click. */
+    if (servesFor) {
+      const reach = Math.max(1.5, SNAP_PX / (view.scale || 1));
+      const seed = visible
+        .filter((f) => f.Feature_Role === "plot" || f.Feature_Role === "nrs")
+        .map((f) => ({ f, d: Math.hypot(
+          (f.Geometry?.[0]?.[0] ?? Infinity) - point[0],
+          (f.Geometry?.[0]?.[1] ?? Infinity) - point[1]) }))
+        .filter((x) => x.d <= reach)
+        .sort((a, b) => a.d - b.d)[0]?.f;
+
+      if (!seed) {
+        setError("No plot seed there \u2014 click the seed of the plot this "
+          + "trench serves. Still linking; Esc to stop.");
+        return;
+      }
+
+      const line = features.find((f) =>
+        Number(f.Feature_ID) === Number(servesFor));
+      setServesFor(null);
+      setSnapHit(null);
+      if (!line) return;
+
+      const label = seed.Feature_Role === "nrs"
+        ? (nrsName(seed) || "the supply")
+        : `plot ${plotNumberFrom(plotList, seed.Plot_ID) ?? seed.Plot_ID}`;
+      try {
+        await updateFeature(projectId, line.Feature_ID, {
+          Plot_ID: seed.Plot_ID ?? null,
+          Attributes: {
+            ...line.Attributes,
+            Seed_Feature_ID: seed.Feature_ID,
+            /* Hand-linked, so Auto Service leaves the route alone: the
+               staleness test compares against the route the planner
+               would take, and this one was drawn because that route was
+               wrong. */
+            Manual_Link: true,
+          },
+        });
+        await load(projectId);
+        setStatus(`${line.Label ?? "The service trench"} now serves ${label} `
+          + "\u2014 Auto Service will not dig to it again.");
+        setTimeout(() => setStatus(""), 8000);
+        setError("");
+      } catch (e) { setError(e.message); }
       return;
     }
 
@@ -20731,6 +20798,19 @@ export default function GISCanvasPage() {
       const utils = utilitiesFor(sd) || [];
       const allSelfLay = utils.length > 0 && utils.every((u) =>
         isSelfLayFor(sd, u.layer_key, { slp: slpSet, slpNrs: slpNrsSet, layers }));
+      /* ── A dig somebody drew is not the planner's to redraw ──
+
+         A trench linked to its plot by hand is there because the
+         automatic route was wrong: round a tree, along an easement, the
+         way the gang will actually dig it. The staleness test compares
+         a dig against the route the planner WOULD take, so a hand-drawn
+         one never matches \u2014 and re-laying it would delete the drawing
+         and put the wrong route back, which is the one outcome nobody
+         would want from a button called Auto Service.
+
+         So the test is for the planner's own digs only. A hand-linked
+         trench stays until somebody unlinks it. */
+      if (trench.Attributes?.Manual_Link) continue;
       const why = serviceMoved(sd, trench, trenches, { selfLayOnly: allSelfLay });
       if (why) {
         mismatched.set(sid, { seed: sd, mine: [...mine, trench], wrong: [], why });
@@ -22633,6 +22713,12 @@ export default function GISCanvasPage() {
          reloaded. */
       if (e.key === "Escape" && (traceFrom || traceRun)) {
         setTraceFrom(null); setTraceRun(null); setSnapHit(null);
+        return;
+      }
+      if (e.key === "Escape" && servesFor) {
+        setServesFor(null); setSnapHit(null);
+        setStatus("Linking stopped \u2014 the trench still serves no plot");
+        setTimeout(() => setStatus(""), 5000);
         return;
       }
       if (e.key === "Escape" && jointFor) {
@@ -25576,6 +25662,29 @@ export default function GISCanvasPage() {
              fitting rather than at the point beside it. */
           /* The supplies a board can pick its landlord supply from. */
           nrsList={nrsList}
+          /* Handed a trench id: arms the click that names its plot.
+             Handed null as the second argument: clears the link, which
+             hands the plot back to Auto Service. */
+          onLinkPlot={async (lineId, clear) => {
+            if (clear === null) {
+              const line = features.find((f) =>
+                Number(f.Feature_ID) === Number(lineId));
+              if (!line) return;
+              const A = { ...line.Attributes };
+              delete A.Seed_Feature_ID;
+              delete A.Manual_Link;
+              try {
+                await updateFeature(projectId, lineId, { Attributes: A });
+                await load(projectId);
+                setStatus("Unlinked \u2014 Auto Service will dig to that plot again.");
+                setTimeout(() => setStatus(""), 6000);
+              } catch (e) { setError(e.message); }
+              return;
+            }
+            setEditing(null);
+            setServesFor(lineId);
+            setStatus("Click the seed of the plot this trench serves. Esc to stop.");
+          }}
           levelsAt={["msdb", "hdcutout"].includes(editing?.Feature_Role)
             ? levelsAtBoard(editing)
             : null}

@@ -359,6 +359,47 @@ const asDrawn = dug([[100, 0], [100, 5], [100, 12]]);
   }
 }
 
+/* ── The run reads the drawing, not the screen ──
+
+   Reported twice now, on two different drawings. `features` is React
+   state, captured when a run starts, and it catches up only after that
+   run finishes and the component re-renders. A run begun before then
+   sees a drawing with none of the first run's work in it, finds every
+   plot unserved, and digs the lot again.
+
+   The result is two service trenches per plot with identical geometry
+   and identical attributes, in two blocks of feature ids. `isServed`
+   is never wrong about it \u2014 it is asked about a drawing that no longer
+   exists.
+
+   Checked by reading the source, because the fault is an ordering
+   between a React render and an await: there is no state to hand a
+   test. What CAN be pinned is that the run fetches before it plans. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("async function runAutoService");
+  if (at < 0) fail("Auto Service has gone");
+  else {
+    const body = canvas.slice(at, canvas.indexOf("\n  async function", at + 30));
+    const fetchAt = body.indexOf("await listGis(projectId)");
+    const planAt = body.indexOf("planAutoService(");
+    if (fetchAt < 0) {
+      fail("Auto Service plans from the screen's copy of the drawing, so a "
+        + "second run begun before the first has rendered digs every plot "
+        + "again");
+    } else if (planAt >= 0 && fetchAt > planAt) {
+      fail("Auto Service fetches the drawing after planning from it, which "
+        + "is the same as not fetching at all");
+    }
+    /* And it still works offline: a run that refuses is worse than one
+       that might duplicate, because the duplicate is visible. */
+    if (!/catch \{/.test(body.slice(fetchAt, fetchAt + 400))) {
+      fail("a failed fetch stops the run rather than falling back to the "
+        + "screen's copy");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Auto Service re-lays the plots whose ground moved, and only those.");
 process.exit(bad ? 1 : 0);

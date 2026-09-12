@@ -20592,8 +20592,33 @@ export default function GISCanvasPage() {
        through and everything after has to plan from the drawing as it
        will be. Reassigning React state is not possible and setFeatures
        does not take effect until the next render, which is long after
-       this function has finished. */
+       this function has finished.
+
+       ── And read from the database, not from the screen ──
+
+       `features` is React state, captured when this run started. It
+       catches up only after a run finishes and the component
+       re-renders, so a run begun before that \u2014 a second press, or the
+       whole-design sequence starting from a closure taken a moment
+       earlier \u2014 sees a drawing with none of the first run's work in
+       it. Every plot then reads as unserved and the lot is dug again.
+
+       That is how a drawing came to carry two service trenches per
+       plot: identical geometry, identical attributes, in two blocks of
+       feature ids. `isServed` was never wrong; it was asked about a
+       drawing that no longer existed.
+
+       One fetch at the start removes the window. Falling back to the
+       screen's copy if it fails, because a run that might duplicate is
+       visible and recoverable while a button that refuses to run looks
+       broken. */
     let world = features;
+    try {
+      const fresh = await listGis(projectId);
+      if (Array.isArray(fresh?.features)) world = fresh.features;
+    } catch {
+      /* Kept: see above. */
+    }
 
     const seeds = selected.length
       ? world.filter((f) => selected.includes(f.Feature_ID) && isSeed(f))

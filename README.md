@@ -1,3 +1,36 @@
+# Duplicate service trenches, again — 12 Sep 2026
+
+Reported with a drawing carrying 37 service trenches for 19 plots:
+18 doubled, in two blocks of feature ids.
+
+`isServed` was never wrong about them — it was asked about a drawing
+that no longer existed. `runAutoService` planned from `features`,
+which is React state captured when the run starts and catches up only
+after the run finishes and the component re-renders. A run begun
+before then — a second press, or the whole-design sequence starting
+from a closure taken a moment earlier — saw a drawing with none of the
+first run's work in it, found every plot unserved, and dug the lot
+again.
+
+**This is the same fault that produced 877 service cables on drawing
+27**, where it was diagnosed and a hardening was offered but not
+taken. It has now cost two drawings, so it is fixed rather than
+described: the run fetches the drawing from the database before it
+plans, and falls back to the screen's copy only if that fetch fails —
+a run that might duplicate is visible and recoverable, while a button
+that refuses to run looks broken.
+
+Twelve of the eighteen pairs are identical and six are not: where a
+meter moved between runs, the second trench takes a different route to
+the same plot. `supabase/cleanup_duplicate_service_trenches.sql` keys
+on the SEED rather than the geometry for that reason — matching on
+geometry would leave those six behind — keeps the newest, and never
+touches a trench linked by hand.
+
+Suite 138 of 156.
+
+---
+
 # A plot added later joins the circuit it is fed from — 12 Sep 2026
 
 Link to Circuit is run once, and plots keep arriving. A plot added

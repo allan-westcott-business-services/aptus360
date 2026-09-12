@@ -1644,6 +1644,82 @@ const served = (b) => servedFlats(b, flats);
     fail("there is no entering-the-board level");
   }
 
+  /* ── Fed from, then the circuit ──
+
+     The feed comes first because everything below narrows by it: the
+     circuits offered are the ones that substation feeds, and the way
+     is that substation's way. Choosing the feed and then the circuit
+     is the order somebody works in. */
+  const fedAt = body.indexOf('htmlFor="fe-msdb-origin"');
+  const circuitAt = body.indexOf('htmlFor="fe-msdb-circuit"');
+  if (fedAt < 0) fail("the board has no Fed from of its own");
+  else if (circuitAt >= 0 && fedAt > circuitAt) {
+    fail("the circuit is chosen above the feed that narrows it");
+  }
+
+  /* ── Only substations the trenches actually reach ──
+
+     Asked exactly as the circuit report asks it of a meter:
+     `distancesFrom` an origin, and is this board in the answer. A
+     substation with no dig between it and the board cannot feed it,
+     and offering it invites a drawing that says something the ground
+     cannot do. */
+  if (!/distancesFrom\(allFeatures \|\| \[\], o\.Feature_ID\)/.test(editor)) {
+    fail("the board offers substations it cannot be reached from");
+  }
+  /* From the SAVED row's id, not the draft's: the draft holds only
+     what can be edited \u2014 Label, Layer_Key, Attributes \u2014 and has no
+     Feature_ID at all, so asking it made every substation read as
+     unreachable. */
+  if (/\.get\(Number\(f\.Feature_ID\)\)/.test(editor)) {
+    fail("reachability is asked of the draft, which has no Feature_ID, so "
+      + "every substation reads as unreachable");
+  }
+  if (/except: f\.Feature_ID/.test(editor)) {
+    fail("a board is excluded from its own lists by an id the draft does "
+      + "not carry");
+  }
+
+  /* ── The substation is answered first ──
+
+     With no substation chosen, the circuit list fell back to every
+     circuit on the drawing \u2014 including one belonging to a substation
+     the trenches cannot reach. Reported from a new board: Fed from
+     correctly withheld the unreachable substation, and the circuit
+     list underneath offered its circuit anyway, so the board could be
+     put on a circuit its own feed could never carry.
+
+     Empty AND disabled, with a hint: a control that is merely empty
+     reads as a drawing with no circuits on it. */
+  if (!/disabled=\{f\.Attributes\?\.Circuit_Origin_ID == null\}/.test(editor)) {
+    fail("the circuit can be chosen before the substation that decides "
+      + "which circuits are possible");
+  }
+  if (!/return mineNow == null \? \[\]/.test(editor)) {
+    fail("with no substation chosen the board still offers every circuit on "
+      + "the drawing, including ones it cannot be fed from");
+  }
+  if (!/Choose the substation above first/.test(editor)) {
+    fail("the disabled circuit list does not say why it is empty");
+  }
+  /* A board that already HAS a circuit keeps it listed, or one saved
+     before this reads as having lost it. */
+  if (!/all\.filter\(\(c\) => Number\(c\.id\) === Number\(mineNow\)\)/.test(editor)) {
+    fail("a board with a circuit but no recorded feed shows blank, which "
+      + "reads as the circuit having been lost");
+  }
+
+  /* ── And only the circuits that substation feeds ──
+
+     A board on a circuit fed from a substation it is not connected to
+     is two facts on one board contradicting each other. */
+  if (!/const msdbCircuits = useMemo/.test(editor)) {
+    fail("the board offers every circuit on the drawing");
+  }
+  if (!/\{msdbCircuits\.map\(\(c\) => \(/.test(editor)) {
+    fail("the narrowed list is worked out and then not used");
+  }
+
   /* ── The way is the SUBSTATION's way ──
 
      Which LV way carries this circuit, which is what somebody standing

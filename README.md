@@ -1,3 +1,33 @@
+# The substation is answered first — 12 Sep 2026
+
+Reported from a newly placed MSDB: the circuit had to be entered
+before the substation, and the circuit list offered a circuit
+belonging to Substation 2 — which is unreachable from that board,
+because a length of trench between them has Carries LV unticked.
+
+Fed from was right: it withheld Substation 2. The circuit list
+underneath was not. With no substation chosen it fell back to every
+circuit on the drawing, so a board could be put on a circuit its own
+feed could never carry.
+
+It is now empty and **disabled** until a substation is chosen, with a
+hint saying why — a control that is merely empty reads as a drawing
+with no circuits on it. That also makes the order: the feed decides
+what the list means, so it has to be answered first.
+
+A board that already has a circuit keeps it listed whatever else is
+true, or one saved before this would show blank and read as having
+lost it.
+
+Checked against the reported drawing: MSDB 5 as placed offers no
+circuits and is disabled; choosing Substation 1 offers only its
+Circuit 1-1, with Substation 2's Circuit 2-1 gone; and MSDB 3, which
+has a circuit but no recorded feed, still shows its own.
+
+Suite 136 of 154.
+
+---
+
 # Circuit 1's bottle ends on Circuit 4's boards — 12 Sep 2026
 
 Reported with the drawing: bottle ends 55024, 55025 and 55026 on

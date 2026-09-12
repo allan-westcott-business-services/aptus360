@@ -34,7 +34,7 @@ import { bedColour } from "../../lib/bedColours.js";
 import { kvaOf } from "./voltDrop.js";
 import {
   pocUnit, circuitLetter, circuitsFrom, circuitChoices, nextCircuitId,
-  nextCircuitNumber, fuseForWay, WAY_FUSES,
+  nextCircuitNumber, fuseForWay, WAY_FUSES, distancesFrom,
   SUB_DEFAULTS, ampsFor,
   moveCircuitToWay, compactWays,
 } from "./electric.js";
@@ -787,7 +787,14 @@ export default function FeatureEditor({
   const msdbFlats = useMemo(() => {
     const mine = new Set((f.Attributes?.MSDB_Plot_IDs || []).map(Number));
     const taken = plotsAsSeeds(allFeatures);
-    const onOther = plotsOnBoards(allFeatures, { except: f.Feature_ID });
+    /* `feature`, not the draft: the draft holds only what can be
+       edited \u2014 Label, Layer_Key, Attributes \u2014 and has no Feature_ID at
+       all. `f.Feature_ID` was undefined, so this board was never
+       excluded from the boards its own flats are taken off. Masked
+       here by the `mine` test above it, which keeps its own picks
+       whatever else is true; not masked in the reachability below,
+       where it made every substation read as unreachable. */
+    const onOther = plotsOnBoards(allFeatures, { except: feature.Feature_ID });
     return flatsFromPlots({
       plotList: (plotList || []).filter((p) => mine.has(Number(p.plot_id))
         || (!taken.has(Number(p.plot_id)) && !onOther.has(Number(p.plot_id)))),
@@ -816,7 +823,7 @@ export default function FeatureEditor({
      rows and needed no second path through any of it. */
   const msdbRows = useMemo(() => {
     const mine = new Set((f.Attributes?.MSDB_NRS_IDs || []).map(Number));
-    const onOther = nrsOnBoards(allFeatures, { except: f.Feature_ID });
+    const onOther = nrsOnBoards(allFeatures, { except: feature.Feature_ID });
     /* Already drawn as a seed on the plan, and therefore not this
        board's to feed: a supply is placed once, exactly as a flat is
        either seeded or on a board and never both. Its own supplies
@@ -901,6 +908,86 @@ export default function FeatureEditor({
       </div>
     );
   }, [f, allFeatures, onSetCircuitOrigin]);
+
+  /* ── The substations this board can actually be fed from ──
+
+     Reachability along the TRENCH network, asked exactly as the
+     circuit report asks it of a meter: `distancesFrom` an origin, and
+     is this board in the answer. A substation on the far side of the
+     site with no dig between it and the board cannot feed it, and
+     offering it invites a drawing that says something the ground
+     cannot do.
+
+     One walk per origin. There are rarely more than two or three on a
+     drawing, and the walk is the same one the report runs.
+
+     A substation ALREADY named stays in the list whether or not it is
+     reachable now: somebody who has drawn a board, named its feed and
+     then moved a trench needs to see what they chose, and losing it
+     silently would look like the choice had never been made. It is
+     marked instead. */
+  const msdbOrigins = useMemo(() => {
+    if (!isMsdb) return [];
+    const named = f.Attributes?.Circuit_Origin_ID;
+    return lvOrigins(allFeatures || []).map((o) => {
+      const reachable = distancesFrom(allFeatures || [], o.Feature_ID)
+        .get(Number(feature.Feature_ID)) != null;
+      return { origin: o, reachable };
+    }).filter((x) => x.reachable
+      || Number(named) === Number(x.origin.Feature_ID));
+  }, [isMsdb, allFeatures, feature, f]);
+
+  /* ── And the circuits that substation feeds ──
+
+     A circuit belongs to the origin whose way carries it, or to the
+     one its members name. Offering every circuit on the drawing let a
+     board be put on a circuit fed from a substation it is not
+     connected to \u2014 two facts on one board contradicting each other,
+     with nothing to say which was meant.
+
+     With no substation chosen there is nothing to narrow by, so the
+     whole list stands. */
+  const msdbCircuits = useMemo(() => {
+    const all = circuitChoices(allFeatures || []);
+    const originId = f.Attributes?.Circuit_Origin_ID;
+    if (!isMsdb) return all;
+    /* ── Nothing to offer until the substation is chosen ──
+
+       With no substation this fell back to every circuit on the
+       drawing, including circuits belonging to a substation the
+       trenches do not reach. Reported from a new board: Fed from
+       correctly withheld Substation 2, whose route is blocked by a
+       trench with Carries LV unticked, and the circuit list underneath
+       offered Substation 2's circuit anyway.
+
+       Offering nothing is also what makes the order: the feed decides
+       what this list means, so it has to be answered first.
+
+       The circuit already SET stays listed whatever else is true, or a
+       board saved before this \u2014 or one whose feed has been cleared \u2014
+       would show blank and read as having lost its circuit. */
+    const mineNow = f.Attributes?.Circuit_ID;
+    if (originId == null) {
+      return mineNow == null ? []
+        : all.filter((c) => Number(c.id) === Number(mineNow));
+    }
+    const origin = (allFeatures || []).find((x) =>
+      Number(x.Feature_ID) === Number(originId));
+    const ways = origin?.Attributes?.Way_Circuits || {};
+    const onIts = new Set(Object.values(ways).map(Number));
+    /* And circuits whose members name this origin, which is how a
+       lasso-made circuit records its feed. */
+    for (const m of allFeatures || []) {
+      if (m.Feature_Role !== "meter" && m.Feature_Role !== "msdb") continue;
+      if (Number(m.Attributes?.Circuit_Origin_ID) !== Number(originId)) continue;
+      if (m.Attributes?.Circuit_ID != null) onIts.add(Number(m.Attributes.Circuit_ID));
+    }
+    /* The circuit this board is already on stays listed, for the same
+       reason the named substation does. */
+    const mine = f.Attributes?.Circuit_ID;
+    return all.filter((c) => onIts.has(Number(c.id))
+      || Number(c.id) === Number(mine));
+  }, [isMsdb, allFeatures, f]);
 
   /* ── Which way of the substation feeds this board ──
 
@@ -1790,14 +1877,95 @@ export default function FeatureEditor({
                   board on the wrong one is counted against the wrong
                   fuse. A circuit with no box has no output to choose,
                   so the field is not offered. */}
+              {/* ── What feeds it, and by which way ──
+
+                  First, because everything below narrows by it: the
+                  circuits offered are the ones this substation feeds,
+                  and the way is the way of this substation. Choosing
+                  the feed and then the circuit is the order somebody
+                  works in.
+
+                  Only substations the board can actually be reached
+                  from along the trenches \u2014 see msdbOrigins. */}
+              <div className="fe-row">
+                <div className="fld">
+                  <label htmlFor="fe-msdb-origin">Fed from</label>
+                  <select id="fe-msdb-origin"
+                    value={f.Attributes?.Circuit_Origin_ID ?? ""}
+                    onChange={(e) => {
+                      const id = e.target.value === "" ? null : Number(e.target.value);
+                      setF((prev) => ({ ...prev, Attributes: {
+                        ...prev.Attributes,
+                        Circuit_Origin_ID: id,
+                        /* A circuit fed from somewhere else is no
+                           longer this board's to be on. Cleared rather
+                           than left contradicting the feed above it. */
+                        ...(id != null && prev.Attributes?.Circuit_ID != null
+                          && !msdbCircuits.some((c) =>
+                            Number(c.id) === Number(prev.Attributes.Circuit_ID))
+                          ? { Circuit_ID: null, Circuit_Name: null,
+                            Circuit_Letter: null } : {}),
+                      } }));
+                      /* The whole circuit follows, where one is set:
+                         its origin is a fact about the circuit, not
+                         about this board alone. */
+                      if (id != null && f.Attributes?.Circuit_ID != null) {
+                        onSetCircuitOrigin?.(f.Attributes.Circuit_ID, id);
+                      }
+                    }}>
+                    <option value="">Not set</option>
+                    {msdbOrigins.map(({ origin, reachable }) => (
+                      <option key={origin.Feature_ID} value={origin.Feature_ID}>
+                        {origin.Label || (origin.Feature_Role === "substation"
+                          ? "Substation" : `POC #${origin.Feature_ID}`)}
+                        {reachable ? "" : " \u2014 no longer reachable"}
+                      </option>
+                    ))}
+                  </select>
+                  {msdbOrigins.length === 0 && (
+                    <p className="hint">
+                      No substation reaches this board along the trenches yet.
+                      Draw the dig back to one, then pick it here.
+                    </p>
+                  )}
+                </div>
+                {/* ── The way at the substation ──
+
+                    Which LV way of the board's own substation carries
+                    this circuit. It is not a choice to make here: the
+                    way is allocated when the circuit is created, and
+                    the substation's editor is where it is moved. So it
+                    is read off the origin's way map and shown, which is
+                    what somebody standing at the board wants to know \u2014
+                    which fuse to pull.
+
+                    A link box OUTPUT is a different thing, still asked
+                    for below where there is a box. */}
+                <div className="fld">
+                  <span className="fe-lab">Way</span>
+                  <div className="fe-msdb-at">
+                    {msdbWayNo == null
+                      ? <span className="fe-msdb-none">
+                          {f.Attributes?.Circuit_ID == null
+                            ? "No circuit set"
+                            : "Not allocated \u2014 the build takes a way"}
+                        </span>
+                      : <strong>{msdbWayNo}</strong>}
+                  </div>
+                </div>
+              </div>
+
               <div className="fe-row">
                 <div className="fld">
                   <label htmlFor="fe-msdb-circuit">Circuit</label>
                   <select id="fe-msdb-circuit"
+                    /* Answered in order: the feed above decides which
+                       circuits this list may hold. */
+                    disabled={f.Attributes?.Circuit_Origin_ID == null}
                     value={f.Attributes?.Circuit_ID ?? ""}
                     onChange={(e) => {
                       const id = e.target.value === "" ? null : Number(e.target.value);
-                      const c = choices.find((x) => x.id === id);
+                      const c = msdbCircuits.find((x) => x.id === id);
                       /* Name and letter travel with the id: the flats'
                          meters carry all three, exactly as a drawn
                          meter does, and a circuit named in one place
@@ -1822,13 +1990,32 @@ export default function FeatureEditor({
                       } }));
                     }}>
                     <option value="">Not set</option>
-                    {choices.map((c) => (
+                    {/* Only the circuits the chosen substation feeds \u2014
+                        see msdbCircuits. A board on a circuit fed from
+                        somewhere it is not connected to is two facts
+                        on one board contradicting each other. */}
+                    {msdbCircuits.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
                         {c.wayOnly ? ` \u2014 new, on LV way ${c.way}` : ""}
                       </option>
                     ))}
                   </select>
+                  {/* Empty and disabled is a dead control unless it
+                      says why. */}
+                  {f.Attributes?.Circuit_Origin_ID == null && (
+                    <p className="hint">
+                      Choose the substation above first &mdash; the circuits
+                      offered here are the ones it feeds.
+                    </p>
+                  )}
+                  {f.Attributes?.Circuit_Origin_ID != null
+                    && msdbCircuits.length === 0 && (
+                    <p className="hint">
+                      That substation has no circuits yet. Start one on a spare
+                      LV way in its editor, or lasso plot seeds to make one.
+                    </p>
+                  )}
                   {/* The road in, said where somebody is stuck. A
                       flats-only design has nothing to lasso, so an
                       empty list here used to be a dead end with no
@@ -1876,41 +2063,6 @@ export default function FeatureEditor({
                     onClick={() => onIsolateCircuit?.(f.Attributes?.Circuit_ID)}>
                     {circuitIsolated ? "Show all" : "Isolate"}
                   </button>
-                </div>
-              </div>
-
-              {/* ── What feeds it, and by which output ──
-
-                  The origin is a fact about the whole circuit and the
-                  output is a fact about this board, but somebody
-                  reading either is asking the same question \u2014 where
-                  does this board's supply come from \u2014 so they sit
-                  together. */}
-              <div className="fe-row">
-                {fedFromField}
-                {/* ── The way at the substation ──
-
-                    Which LV way of the board's own substation carries
-                    this circuit. It is not a choice to make here: the
-                    way is allocated when the circuit is created, and
-                    the substation's editor is where it is moved. So it
-                    is read off the origin's way map and shown, which is
-                    what somebody standing at the board wants to know \u2014
-                    which fuse to pull.
-
-                    A link box OUTPUT is a different thing, still asked
-                    for below where there is a box. */}
-                <div className="fld">
-                  <span className="fe-lab">Way</span>
-                  <div className="fe-msdb-at">
-                    {msdbWayNo == null
-                      ? <span className="fe-msdb-none">
-                          {f.Attributes?.Circuit_ID == null
-                            ? "No circuit set"
-                            : "Not allocated \u2014 the build takes a way"}
-                        </span>
-                      : <strong>{msdbWayNo}</strong>}
-                  </div>
                 </div>
               </div>
 

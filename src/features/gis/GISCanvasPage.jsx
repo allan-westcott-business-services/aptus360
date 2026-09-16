@@ -5579,9 +5579,16 @@ export default function GISCanvasPage() {
         /* Through the same rule the lines use, so a joint's name answers
            to the Joint labels switch while a plot number carries on
            following the master one. */
+        /* A wash out says what it is inside the symbol, so a second
+           reading of the same thing beside it — "WO 8" in black against
+           a disc that already reads WO — is noise on a drawing that has
+           little room to spare. The Label is still there; it names the
+           fitting in the editor, in a schedule and in the bill, which
+           is where a number is read rather than counted off a plan. */
         if (f.Label && labelShown(f, on) && vs > 2.5
             && !isMeter && f.Feature_Role !== "spannode"
-        && f.Feature_Role !== "feederpoint") {
+        && f.Feature_Role !== "feederpoint"
+        && f.Feature_Role !== "washout") {
           ctx.fillStyle = pointStyle.labelColour;
           ctx.font = "600 11px ui-monospace, Menlo, monospace";
           ctx.textAlign = "center";

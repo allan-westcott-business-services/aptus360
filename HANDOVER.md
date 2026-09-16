@@ -4686,6 +4686,17 @@ characters is a hundred lines of prose and no rules at all.
      Wash outs are also in Bulk Delete now ("All wash outs", under
      Points), beside the service valves.
 
+     And no label beside the symbol. The generic point-label pass wrote
+     `Label` against every point, so a disc already reading WO carried
+     a black "WO 8" next to it — the same thing said twice, on a plan
+     with no room to spare. Excluded by role in BOTH renderers, beside
+     meters, span nodes and feeder points which are excluded for the
+     same kind of reason. The Label itself stays: it names the fitting
+     in the editor, in a schedule and in the bill, which is where a
+     number is read rather than counted off a drawing. Service valves
+     deliberately keep theirs — "SV 10" is how one is referred to on
+     site, and the canvas draws only "SV" in the symbol.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

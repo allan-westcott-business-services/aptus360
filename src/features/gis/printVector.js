@@ -411,6 +411,11 @@ export function pageDrawList(features = [], tile, {
       if (role === "meter" || role === "spannode" || role === "feederpoint") {
         continue;
       }
+      /* And a wash out, which writes WO inside its own symbol: the
+         screen stopped putting the number beside it for want of room on
+         a dense plan, and a sheet that kept doing so would be labelling
+         by rules of its own again. */
+      if (role === "washout") continue;
       if (!labelShown(f, { lineTypes, showLabels, kinds: labelKinds })) {
         continue;
       }

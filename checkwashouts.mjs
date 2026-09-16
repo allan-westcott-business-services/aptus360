@@ -273,6 +273,22 @@ const has = (list, at, tol = 0.01) =>
   }
 }
 
+// 11. The symbol says WO; nothing writes the number beside it. The
+//     disc already carries the letters, so a black "WO 8" against it is
+//     the same thing said twice on a plan with no room to spare.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/Feature_Role !== "washout"/.test(canvas)) {
+    fail("the canvas writes a wash out's label beside its symbol, which "
+      + "reads WO twice over");
+  }
+  const print = readFileSync("./src/features/gis/printVector.js", "utf8");
+  if (!/if \(role === "washout"\) continue;/.test(print)) {
+    fail("the sheet writes a wash out's label beside its symbol \u2014 the "
+      + "print is labelling by rules of its own again");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Wash outs go at the dead ends, carry WO, and are styled from admin.");
 process.exit(bad ? 1 : 0);

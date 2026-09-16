@@ -684,6 +684,41 @@ const bounds = drawnBounds(world);
   }
 }
 
+/* ── A symbol's size clamps are pixels, and the sheet is millimetres ──
+
+   `appearance` holds a scaled symbol between Min_Symbol_Px and
+   Max_Symbol_Px \u2014 screen pixels, by their names. The print hands it
+   millimetres-per-metre as its scale, so the figure that came back was
+   millimetres held between PIXEL bounds: a floor meant to keep a meter
+   visible at site zoom became a floor of 8 mm on paper, and every meter
+   printed as a centimetre-wide blob over the plot it belonged to. */
+{
+  const meter = { Feature_ID: 21, Feature_Type: "point",
+    Feature_Role: "meter", Layer_Key: "water", Geometry: [[1000, 500]] };
+  const styles = [{ GIS_Style_ID: 1, Style_Name: "Meter",
+    Feature_Role: "meter", Symbol: "circle", Scale_Symbol: true,
+    Symbol_Size_M: 0.6, Min_Symbol_Px: 8, Max_Symbol_Px: 24 }];
+  const plan = tilePlan({ bounds: drawnBounds([meter]), paper: "A3",
+    landscape: true, scaleDenom: 500 });
+  const [item] = pageDrawList([meter], plan.tiles[0], {
+    scaleDenom: 500, marginMm: plan.marginMm, styles, labels: false });
+  const k = mmPerMetre(500);
+  const c = [(1000 - plan.tiles[0].minX) * k + plan.marginMm,
+    (500 - plan.tiles[0].minY) * k + plan.marginMm];
+  const r = Math.max(...item.subs[0].pts.map(([x, y]) =>
+    Math.hypot(x - c[0], y - c[1])));
+
+  /* A plan symbol is a couple of millimetres across. Anything past
+     four is the pixel floor leaking into paper units. */
+  if (r * 2 > 4) {
+    fail(`a meter prints ${(r * 2).toFixed(1)} mm across \u2014 the symbol's `
+      + "pixel clamps are being applied to millimetres");
+  }
+  /* And still drawn: a clamp converted the wrong way in the other
+     direction would vanish it. */
+  if (r < 0.2) fail("a meter prints too small to see");
+}
+
 /* ── Wired up, and the old path gone ──
 
    The browser's own print of a canvas was a picture of the drawing at

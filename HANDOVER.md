@@ -4541,6 +4541,23 @@ characters is a hundred lines of prose and no rules at all.
      Service labels default OFF, so a sheet only carries them when the
      screen does.
 
+     *Sizes, one round later.* The first cut of the symbol work read
+     its radius off `appearance`, which holds a scaled symbol between
+     `Min_Symbol_Px` and `Max_Symbol_Px` — SCREEN PIXELS, by their own
+     names. The print hands `appearance` millimetres-per-metre as its
+     scale, so the figure coming back was millimetres held between
+     pixel bounds: a floor meant to keep a meter visible at site zoom
+     became a floor of 8 MM on paper, and every meter printed as a
+     centimetre-wide blob over the plot it named. `symbolRadiusMm` in
+     printVector now works from the raw style and converts the clamps
+     at MM_PER_PX before applying them. The check measures a meter's
+     printed diameter: 1.7 mm with the fix, 9.6 mm without.
+
+     The general trap, worth naming: `appearance(style, scale)` takes
+     any scale, and the print's scale is in different units from the
+     screen's. Anything it returns that is mixed with a px-named field
+     needs converting; widths already did this, symbols did not.
+
      Known and deliberate limits, stated rather than left to be
      discovered: the catalogue-spelled cable name and the gas flow (Q)
      are canvas-only, derived from lookups the print does not load, and

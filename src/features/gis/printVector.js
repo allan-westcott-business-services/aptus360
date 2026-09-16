@@ -72,6 +72,41 @@ const MAX_W_MM = 1.6;
    measurement and is converted at MM_PER_PX like every width here. */
 const SYMBOL_FALLBACK_MM = 1.6;
 
+/* How big a symbol is on paper, in millimetres of radius.
+
+   Two kinds of style, and the difference matters here in a way it
+   does not on screen:
+
+     to scale    a real size in ground metres \u2014 multiplied by the page
+                 scale, so a 0.9 m chamber is 1.8 mm at 1:500 and half
+                 that at 1:1000, which is what "to scale" means
+
+     fixed       a size in SCREEN pixels \u2014 a screen measurement, so it
+                 is converted at MM_PER_PX like every width on the sheet
+
+   The clamps Min_Symbol_Px and Max_Symbol_Px are pixels by their own
+   names, so they are converted before they are applied. Applying them
+   raw to a millimetre figure is what printed centimetre-wide meters:
+   a floor meant to keep a symbol visible at site zoom became a floor
+   of 8 mm on paper. */
+function symbolRadiusMm(style = {}, k) {
+  const mmOf = (px) => (px == null || !Number.isFinite(Number(px))
+    ? null : Number(px) * MM_PER_PX);
+
+  if (style.Scale_Symbol && style.Symbol_Size_M != null) {
+    const lo = mmOf(style.Min_Symbol_Px);
+    const hi = mmOf(style.Max_Symbol_Px);
+    let mm = Number(style.Symbol_Size_M) * k;
+    if (lo != null) mm = Math.max(lo, mm);
+    if (hi != null) mm = Math.min(hi, mm);
+    return Math.max(0.2, mm);
+  }
+
+  const px = Number(style.Symbol_Size_Px);
+  if (Number.isFinite(px) && px > 0) return Math.max(0.2, px * MM_PER_PX);
+  return SYMBOL_FALLBACK_MM / 2;
+}
+
 /* A canvas-shaped sink that keeps the path instead of painting it.
 
    `symbolPath` speaks the 2D context's language \u2014 beginPath, moveTo,
@@ -273,17 +308,22 @@ export function pageDrawList(features = [], tile, {
 
     /* The radius on paper.
 
-       A style sizing its symbol in ground metres has already been
-       turned into page millimetres by `appearance` at this page's
-       scale. A style sizing it in pixels means screen pixels, which
-       become millimetres the way every width here does. A meter is
-       drawn at six tenths, as the canvas draws it. */
-    const scaled = st.Scale_Symbol && st.Symbol_Size_M != null;
-    const rawR = Number(ap.symbolPx);
-    const baseMm = Number.isFinite(rawR) && rawR > 0
-      ? (scaled ? rawR : rawR * MM_PER_PX)
-      : SYMBOL_FALLBACK_MM / 2;
-    const rMm = (role === "meter" ? baseMm * 0.6 : baseMm);
+       Worked out from the raw style rather than read off `appearance`,
+       because `appearance`'s clamps are in SCREEN PIXELS —
+       Min_Symbol_Px and Max_Symbol_Px, by their names. Handing it
+       millimetres-per-metre as its scale makes the scaled size come
+       out in millimetres, which is what this file wants, but it then
+       holds that millimetre figure between pixel bounds: a floor of
+       8 px became a floor of 8 MM, so every meter on the sheet printed
+       as a centimetre-wide blob sitting over the plot it belonged to.
+
+       So the clamps are converted before they are applied, at the same
+       MM_PER_PX every width here uses. A style sizing its symbol in
+       ground metres is drawn to scale and held between those bounds in
+       paper terms; a style sizing it in pixels is a screen measurement
+       converted once. A meter draws at six tenths, as on screen. */
+    const rMm = (role === "meter" ? symbolRadiusMm(st, k) * 0.6
+      : symbolRadiusMm(st, k));
 
     /* Recorded about the origin, turned the way the screen turns it,
        then carried to where the point lands on the page. Turning the

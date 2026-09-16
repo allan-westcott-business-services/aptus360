@@ -4428,6 +4428,37 @@ characters is a hundred lines of prose and no rules at all.
      the same — make the print read the module the screen reads, not
      a restatement of it.
 
+133. **Fourth print-parity fault, found from the other direction.**
+     Reported as "the water main style is wrong on the CANVAS": green
+     dashed expected, thin solid purple shown, while the rule looked
+     right in Admin → GIS Styles. The canvas was behaving correctly.
+     The drawing had an operator standard selected, and an
+     operator-scoped rule covering water — weight 32, the strongest
+     claim in the cascade, by design — outranked the base green rule.
+     What made it read as a canvas fault was that the PRINT showed the
+     green: `pageDrawList` resolved styles with no `organisationId` at
+     all, so every org-scoped rule silently fell off the sheet, and
+     the print's accidental base-style rendering became the user's
+     reference for "correct". `pdfOptions` now carries
+     `organisationId: standard || null` and the print resolves under
+     the same standard the screen does. Checked functionally: an
+     org-scoped rule changes the sheet only under that operator's
+     standard.
+
+     Two lessons. First, when screen and print disagree, do not assume
+     the screen is the broken one — this time the print's bug had
+     defined the user's expectation. Second, **the GIS Styles admin
+     preview draws the row in isolation and ignores its scope columns
+     entirely**, so it cannot show which rule WINS on a given feature.
+     That blindness turned a working cascade into a support round trip.
+     A cascade inspector in the admin — pick a line type and operator,
+     see the matching rows in specificity order and the resolved
+     result, through resolveStyle itself — is the standing fix, not
+     yet built. The Line_Type autocomplete there also offers keys from
+     already-saved styles rather than the real line-type list, which
+     is a second trap of the same shape (a rule that previews and
+     matches nothing).
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

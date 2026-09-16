@@ -11210,6 +11210,11 @@ export default function GISCanvasPage() {
        there. */
     showLabels,
     labelKinds,
+    /* And the operator standard, for the same reason: an org-scoped
+       style rule is the strongest claim in the cascade, and a sheet
+       that dropped it printed the base styles under a drawing being
+       worked to an operator's. */
+    organisationId: standard || null,
     basemap: basemap?.Source_Kind === "pdf" ? basemap : null,
     basemapBytes: await basemapBytes(),
     title: [project?.Contract_Number, project?.Name].filter(Boolean).join(" \u2014 "),
@@ -11217,7 +11222,7 @@ export default function GISCanvasPage() {
       { day: "numeric", month: "short", year: "numeric" }),
     filename: `${project?.Contract_Number || "drawing"}.pdf`,
   }), [layers, styles, lineTypes, utilities, showLabels, labelKinds,
-    basemap, basemapBytes, project]);
+    basemap, basemapBytes, project, standard]);
 
   /* ── The print is of the drawing AS SHOWN ──
 

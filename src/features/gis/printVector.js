@@ -129,6 +129,7 @@ export function pageDrawList(features = [], tile, {
   showLabels = true,
   labelKinds = DEFAULT_LABEL_KINDS,
   utilities = [],
+  organisationId = null,
 } = {}) {
   if (!tile) return [];
   const k = mmPerMetre(scaleDenom);
@@ -142,10 +143,16 @@ export function pageDrawList(features = [], tile, {
      equivalent is millimetres per metre, and the widths that come back
      are converted below. Passing the paper scale rather than a screen
      zoom is what makes a style's Min_Scale/Max_Scale rules mean the
-     same thing on the sheet as on screen. */
+     same thing on the sheet as on screen.
+
+     The operator standard travels too. An operator-scoped rule is the
+     strongest claim in the cascade, so a drawing being worked to one
+     looked one way on screen and another on paper \u2014 the sheet quietly
+     fell back to the base styles, which is the wrong drawing to hand
+     to that operator's inspector. */
   const styleOf = (f) => {
     const subject = subjectOf(f, layers);
-    const st = resolveStyle(subject, styles, { utilities });
+    const st = resolveStyle(subject, styles, { utilities, organisationId });
     return { st, ap: appearance(st, k) };
   };
 

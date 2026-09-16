@@ -480,6 +480,55 @@ const bounds = drawnBounds(world);
   }
 }
 
+/* ── The sheet is drawn to the operator's standard the screen is ──
+
+   An operator-scoped style rule is the strongest claim in the cascade
+   (weight 32): drawing to that operator's standard is the whole point
+   of choosing one. The print resolved styles with no operator at all,
+   so every org-scoped rule silently fell away and the sheet showed the
+   base styles under a drawing that looked quite different on screen \u2014
+   the wrong drawing to hand to that operator's inspector. */
+{
+  const main = [{ Feature_ID: 1, Feature_Type: "line", Feature_Role: "shape",
+    Layer_Key: "water", Geometry: [[1000, 500], [1100, 500]],
+    Attributes: { Line_Type: "water_main" } }];
+  const styles = [
+    { GIS_Style_ID: 1, Style_Name: "Water Main", Line_Type: "water_main",
+      Layer_Key: "water", Colour: "#2ccc00", Dashed: true, Width_Px: 3.5 },
+    { GIS_Style_ID: 2, Style_Name: "Operator water", Line_Type: "water_main",
+      Organisation_ID: 7, Colour: "#9333ea", Dashed: false, Width_Px: 1.5 },
+  ];
+  const b = drawnBounds(main);
+  const plan = tilePlan({ bounds: b, paper: "A4", landscape: true,
+    scaleDenom: 500 });
+  const lineOf = (opts) => pageDrawList(main, plan.tiles[0], {
+    scaleDenom: 500, marginMm: plan.marginMm, labels: false, styles, ...opts,
+  }).find((i) => i.kind === "polyline");
+
+  /* No standard chosen: the base rule stands and the operator's does
+     not apply \u2014 exactly as the canvas resolves with none chosen. */
+  const base = lineOf({});
+  if (!base || base.colour !== "#2ccc00" || !base.dashMm) {
+    fail("with no operator standard, the sheet does not draw the base "
+      + "style the screen draws");
+  }
+  /* The operator's standard chosen: their rule outranks the base one
+     on paper as it does on screen. */
+  const org = lineOf({ organisationId: 7 });
+  if (!org || org.colour !== "#9333ea" || org.dashMm) {
+    fail("with an operator standard chosen, the sheet ignores the "
+      + "operator's rule and prints the base style \u2014 the drawing on "
+      + "paper is not the drawing on screen");
+  }
+  /* A different operator's standard: rule scoped to another does not
+     bleed across. */
+  const other = lineOf({ organisationId: 9 });
+  if (!other || other.colour !== "#2ccc00") {
+    fail("an operator's rule applies under a different operator's "
+      + "standard");
+  }
+}
+
 /* ── Wired up, and the old path gone ──
 
    The browser's own print of a canvas was a picture of the drawing at
@@ -563,6 +612,12 @@ const bounds = drawnBounds(world);
   if (!/showLabels,\s*\n\s*labelKinds,/.test(canvas)) {
     fail("the print options do not carry the screen's label switches, so "
       + "the sheet labels by rules of its own");
+  }
+  /* And the operator standard, or every org-scoped rule falls off the
+     sheet. */
+  if (!/organisationId: standard \|\| null/.test(canvas)) {
+    fail("the print options do not carry the operator standard, so a "
+      + "drawing worked to an operator's rules prints the base styles");
   }
   /* And the raster path is gone. */
   if (/printView\(/.test(canvas)) {

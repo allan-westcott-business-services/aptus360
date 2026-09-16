@@ -5093,6 +5093,13 @@ characters is a hundred lines of prose and no rules at all.
      fails if they differ, and separately that nothing is drawn outside
      the picture.
 
+     **The mark draws no name.** It wrote "Section 1" along the trench,
+     which on a drawing carrying several is annotation about
+     annotation — and the shape already says what it is. The Label
+     stays on the FEATURE: it names the section in the dialogue, which
+     is where a number is read. Drawn and stored are different
+     questions, and only the first one changed.
+
      **Place Cross-Section moved to the TRENCH menu.** It was offered
      from each utility menu beside Print to Scale, on the reasoning
      that somebody printing would want one — which put it in three

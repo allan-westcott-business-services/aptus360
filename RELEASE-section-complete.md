@@ -10,18 +10,15 @@
     checksectionmark.mjs
     HANDOVER.md
 
-## New this round — Place Cross-Section is on the Trench menu
+## New this round — no name beside the mark
 
-Removed from the Water, Gas and Electric menus. A section mark goes on
-a trench, reports what the trench holds, and belongs to none of the
-utilities it draws — offering it from each of them put it in three
-wrong places at once.
+"Section 1" no longer prints along the trench. The shape says what the
+mark is, and a drawing with several of them does not need three words
+of annotation about annotation beside each.
 
-It now sits on the **Trench** menu above the Checks group, and is
-disabled with a reason when no trench is drawn, like the checks beside
-it.
-
-Print to Scale stays on the utility menus, where it was asked for.
+The Label stays on the feature: it still names the section in the
+dialogue the mark opens, and the build still numbers marks as it places
+them. Only what is DRAWN changed.
 
 ## Where everything is
 

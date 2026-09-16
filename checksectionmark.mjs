@@ -616,6 +616,30 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
   }
 }
 
+// 7j. The mark carries no name on the drawing.
+//
+//     It drew "Section 1" alongside the bar, which on a drawing with
+//     several of them is annotation about annotation. The shape says
+//     what it is. The Label stays on the FEATURE — it names the section
+//     in the dialogue, where a number is actually read — so this is
+//     about what is drawn, not about what is stored.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf('if (f.Feature_Role === "sectionmark") {');
+  const draw = at >= 0 ? canvas.slice(at, canvas.indexOf("\n          if (f.Feature_Role === \"servicevalve\")", at)) : "";
+  if (!draw) {
+    fail("the section mark's drawing cannot be found where it was");
+  } else if (/fillText\(f\.Label/.test(draw)) {
+    fail("the mark writes its name beside itself again");
+  }
+
+  /* But it still HAS one, and the build still numbers them. */
+  if (!/Label: `Section \$\{n\}`/.test(canvas)) {
+    fail("a placed mark is no longer named, so the section it opens has "
+      + "nothing to call itself");
+  }
+}
+
 // 8. Wired: placeable, drawn square to its trench, and right-clicking
 //    it shows the section.
 {

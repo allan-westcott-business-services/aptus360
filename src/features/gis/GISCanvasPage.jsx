@@ -4834,19 +4834,15 @@ export default function GISCanvasPage() {
             }
             ctx.restore();
 
-            /* Its name, set clear of the bar along the trench so it
-               does not sit on the dig it marks. */
-            if (f.Label && labelShown(f, on) && vs > 2.5) {
-              const rad = (Number(f.Attributes?.Angle_Deg) || 0) * (Math.PI / 180);
-              ctx.save();
-              ctx.fillStyle = on ? "#1d4ed8" : styleFor(f, { labelColour: fill }).labelColour;
-              ctx.font = "700 11px ui-monospace, Menlo, monospace";
-              ctx.textAlign = "center";
-              ctx.fillText(f.Label,
-                p.x + Math.cos(rad) * (SECTION_LEN_M * 0.75) * vs,
-                p.y + Math.sin(rad) * (SECTION_LEN_M * 0.75) * vs);
-              ctx.restore();
-            }
+            /* No name beside it.
+
+               The mark carried "Section 1" along the trench, which on a
+               drawing with several of them is three words of annotation
+               about annotation. The mark says what it is by its shape;
+               the Label is still on the feature and still names the
+               section in the dialogue that opens from it, which is
+               where a number is actually read. */
+
             return;
           }
 

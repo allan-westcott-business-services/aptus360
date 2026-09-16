@@ -4820,6 +4820,32 @@ characters is a hundred lines of prose and no rules at all.
      takes a bare layer, `lt:`, `role:` or `layer:role:`, and a key in
      the wrong shape hides nothing while looking entirely plausible.
 
+140. **A moved label was never saved.** Reported as "I have to keep
+     moving the cable labels back after every refresh", and it was
+     exactly that: the position was never written.
+
+     The move handler had TWO `d.mode === "label"` branches. The first
+     applies the offset and RETURNS; the second — which is where
+     `d.moved = true` lived — was therefore unreachable. So no label
+     drag was ever marked as moved, and the release handler's first
+     test is `if (!d.moved) { select the line; return; }`. Every drag
+     released as a click: line selected, nothing saved. It looked
+     perfect until the page reloaded, because the label follows the
+     pointer on local state whether or not anything is written.
+
+     The flag is now set inside the live branch, past the same DRAG_PX
+     threshold a pan uses so a click with a shake in it still reads as
+     a click, and the dead branch is gone.
+
+     Two general lessons. **Dead code that looks like it is working is
+     worse than missing code** — the second branch read exactly like
+     the thing that would have made this work, which is presumably why
+     it survived review. And **a bug that only shows after a reload is
+     invisible in the session that causes it**: anything written on
+     release deserves a check that the write is reachable at all.
+     `checklabelmove.mjs` holds the handler's shape, including that no
+     second label branch reappears.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

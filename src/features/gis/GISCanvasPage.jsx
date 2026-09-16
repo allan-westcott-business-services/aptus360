@@ -8751,6 +8751,24 @@ export default function GISCanvasPage() {
        took the whole drag with it. Anything added below here that needs
        no delta belongs above the line that takes one. */
     if (d.mode === "label") {
+      /* Moved, told apart from a click.
+
+         This used to be set in a second `d.mode === "label"` block
+         further down, which the return at the end of THIS one made
+         unreachable — so no label drag was ever marked as moved, and
+         the release treated every one as a click: it selected the line
+         and returned before saving. The label moved on screen because
+         that is local state, and came back on refresh because the
+         database had never been told.
+
+         Past the same threshold a pan uses, so a click with a shake in
+         it still reads as a click. Below it the label follows the
+         pointer anyway — it is only whether the release WRITES that
+         this decides. */
+      if (Math.hypot(px - d.startPx[0], py - d.startPx[1]) > DRAG_PX) {
+        d.moved = true;
+      }
+
       /* Held in metres, not pixels, so a label stays where it was put
          when the drawing is zoomed. */
       const dm = [(px - d.startPx[0]) / view.scale, (py - d.startPx[1]) / view.scale];
@@ -8787,12 +8805,6 @@ export default function GISCanvasPage() {
        so it belongs above the line that takes a delta. Snapped the same
        way anything else is dragged: a boundary point often wants to sit
        on the plot line or the back of the footway. */
-    if (d.mode === "label") {
-      /* Told apart from a click, so releasing without moving can mean
-         something different from finishing a drag. */
-      d.moved = true;
-    }
-
     if (d.mode === "boundary") {
       const { point } = resolve(raw[0], raw[1]);
       setFeatures((fs) => fs.map((f) => (f.Feature_ID === d.featureId

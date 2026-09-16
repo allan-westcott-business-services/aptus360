@@ -29,18 +29,34 @@
    corner.
 
    Working a point of the basemap page through to a point on the sheet
-   comes out as a plain scale and translate \u2014 no rotation, no shear \u2014
-   with
+   comes out as a scale and translate with
 
      s = (72/25.4) x (1000/scale) x metresPerPixel
 
    points of sheet per unit of basemap page. That one number is the
    whole georeferencing, and it is why the underlay cannot drift out of
    register with the features over it: both are placed from the same
-   tile and the same scale. */
+   tile and the same scale.
+
+   ── The page the screen showed, not the page in the file ──
+
+   Everything above is in terms of the basemap page AS DISPLAYED,
+   because that is the page the drawing was traced over. A PDF page can
+   differ from its own content stream in two ways a viewer silently
+   corrects: a /Rotate attribute (90, 180 or 270 \u2014 routine on landscape
+   scans and OS extracts) and a CropBox smaller than or offset from the
+   MediaBox. pdf.js applies both on screen; pdf-lib's embedding applies
+   NEITHER \u2014 the form is the raw content stream in raw page
+   coordinates. Left uncorrected, a /Rotate-90 basemap prints its
+   underlay a quarter turn out from the features traced over it.
+
+   So the embed is taken against the page's CropBox, and drawBasemap
+   turns the placed form by the page's own rotation, standing the form
+   in the sheet position that makes its DISPLAYED top-left corner land
+   at the georeferenced origin. */
 
 import {
-  PDFDocument, StandardFonts, rgb,
+  PDFDocument, StandardFonts, rgb, degrees,
   pushGraphicsState, popGraphicsState,
   moveTo, lineTo, closePath, stroke, fill, fillAndStroke,
   setLineWidth, setStrokingColor, setFillingColor, setDashPattern,
@@ -67,7 +83,7 @@ function colour(hex) {
 
    False where there is nothing to place, so the caller can say so
    rather than issuing a sheet quietly missing its plan. */
-function drawBasemap(page, embedded, { plan, tile, basemap }) {
+function drawBasemap(page, embedded, { plan, tile, basemap, rot = 0 }) {
   if (!embedded || !basemap) return false;
   const mpp = Number(basemap.Metres_Per_Pixel);
   if (!(mpp > 0)) return false;
@@ -77,16 +93,29 @@ function drawBasemap(page, embedded, { plan, tile, basemap }) {
   const k = 1000 / Number(plan.scaleDenom);   /* mm of paper per metre */
   const s = PT * k * mpp;                     /* pt of sheet per page unit */
 
-  const pageW = embedded.width;
-  const pageH = embedded.height;
+  /* The georeferencing is in terms of the page as DISPLAYED, so the
+     dimensions that matter are the displayed ones: a quarter-turned
+     page shows its height across and its width down. */
+  const turned = rot === 90 || rot === 270;
+  const dispW = turned ? embedded.height : embedded.width;
+  const dispH = turned ? embedded.width : embedded.height;
 
-  /* The sheet position of the basemap page's BOTTOM-left corner. The
-     y term carries the page height because the georeferenced origin is
-     the page's top-left in ground terms and its bottom-left in PDF
-     terms. */
-  const x = PT * ((ox - tile.minX) * k + plan.marginMm);
-  const y = PT * (plan.sheetH - plan.marginMm
-    - (oy + pageH * mpp - tile.minY) * k);
+  /* The sheet position of the DISPLAYED page's top-left corner \u2014 the
+     point the georeferenced origin names. */
+  const x0 = PT * ((ox - tile.minX) * k + plan.marginMm);
+  const y0 = PT * (plan.sheetH - plan.marginMm - (oy - tile.minY) * k);
+
+  /* drawPage stands the form's own bottom-left at (x, y) and turns it
+     about that point, so each rotation has its own corner to stand on
+     for the displayed page to fill the same rectangle. Worked from the
+     corner mapping the viewer applies for each /Rotate; the check
+     measures all four against pdf.js itself. */
+  const place = {
+    0: { x: x0, y: y0 - s * dispH, a: 0 },
+    90: { x: x0, y: y0, a: -90 },
+    180: { x: x0 + s * dispW, y: y0, a: 180 },
+    270: { x: x0 + s * dispW, y: y0 - s * dispH, a: 90 },
+  }[rot] || { x: x0, y: y0 - s * dispH, a: 0 };
 
   const m = plan.marginMm * PT;
   const w = plan.printW * PT;
@@ -98,7 +127,11 @@ function drawBasemap(page, embedded, { plan, tile, basemap }) {
     closePath(), clip(), endPath(),
   );
   page.drawPage(embedded, {
-    x, y, width: pageW * s, height: pageH * s,
+    x: place.x, y: place.y,
+    /* The scale is applied in the form's own axes, before the turn, so
+       these stay the UNROTATED dimensions whatever the rotation. */
+    width: embedded.width * s, height: embedded.height * s,
+    rotate: degrees(place.a),
     opacity: Number(basemap.Opacity ?? 1),
   });
   page.pushOperators(popGraphicsState());
@@ -261,19 +294,34 @@ export async function buildPdf(features, plan, opts = {}) {
   const font = await doc.embedFont(StandardFonts.Helvetica);
 
   /* Embedded ONCE and drawn on every sheet. Per page, a nine-sheet set
-     would carry nine copies of the basemap. */
+     would carry nine copies of the basemap.
+
+     Loaded rather than handed straight to embedPdf, because two facts
+     about the page live outside its content stream and the screen
+     honoured both: its /Rotate, and its CropBox. The embed is taken
+     against the CropBox so the form is the page the screen showed, and
+     the rotation is carried to drawBasemap to be applied there \u2014 a
+     form cannot carry a rotation of its own. */
   let embedded = null;
+  let rot = 0;
   if (opts.basemapBytes && opts.basemap) {
-    const [first] = await doc.embedPdf(opts.basemapBytes,
-      [Math.max(0, Number(opts.basemap.Pdf_Page || 1) - 1)]);
-    embedded = first;
+    const src = await PDFDocument.load(opts.basemapBytes);
+    const idx = Math.min(src.getPageCount() - 1,
+      Math.max(0, Number(opts.basemap.Pdf_Page || 1) - 1));
+    const srcPage = src.getPage(idx);
+    rot = ((Math.round(Number(srcPage.getRotation().angle) / 90) * 90)
+      % 360 + 360) % 360;
+    const c = srcPage.getCropBox();
+    embedded = await doc.embedPage(srcPage, {
+      left: c.x, bottom: c.y, right: c.x + c.width, top: c.y + c.height,
+    });
   }
 
   let missingBasemap = false;
   for (const { tile, items } of pages) {
     const page = doc.addPage([plan.sheetW * PT, plan.sheetH * PT]);
     if (opts.basemap
-      && !drawBasemap(page, embedded, { plan, tile, basemap: opts.basemap })) {
+      && !drawBasemap(page, embedded, { plan, tile, basemap: opts.basemap, rot })) {
       missingBasemap = true;
     }
     drawItems(page, items, plan, font);

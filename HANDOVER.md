@@ -4336,6 +4336,37 @@ something that appears once, and slice to a marker rather than a
 length** — these files carry more comment than code, so a few thousand
 characters is a hundred lines of prose and no rules at all.
 
+130. **The print embedded the page in the file; the screen showed the
+     page corrected.** Print to Scale came out with the basemap turned
+     a quarter from the features traced over it. A PDF page can differ
+     from its own content stream in two ways a viewer silently
+     corrects: a `/Rotate` attribute — routine on landscape scans and
+     OS extracts — and a CropBox offset from the MediaBox. pdf.js
+     applies both, so the calibration (`Origin_X/Y`,
+     `Metres_Per_Pixel`) and every traced feature live in the
+     *displayed* page's space. pdf-lib's `embedPdf` applies neither:
+     the form is the raw content stream, MediaBox-bounded, unrotated.
+     Both libraries were "showing the page" and disagreed about what
+     the page was.
+
+     `printPdf.js` now embeds against the CropBox and turns the placed
+     form by the page's own rotation, standing it on the corner that
+     puts its displayed top-left at the georeferenced origin. The check
+     asks pdf.js itself where the mark shows on screen
+     (`convertToViewportPoint`) rather than recomputing it with the
+     print's own arithmetic — a check that mirrors the fix inherits the
+     fix's mistake. All four rotations and an offset CropBox are
+     measured through the CTM the finished sheet actually carries;
+     reverting the fix fails five of the six.
+
+     The shape to remember: **two renderers of one file agree only on
+     what is in the content stream.** Page-level attributes — rotation,
+     crop, and for that matter UserUnit — are each renderer's own
+     business, and any hand-off from one renderer's coordinates to
+     another's must carry them across explicitly. The existing
+     registration check passed throughout, because its synthetic
+     basemap carried no attribute either renderer had to correct.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

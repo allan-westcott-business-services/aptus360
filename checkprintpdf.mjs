@@ -300,6 +300,128 @@ const bounds = drawnBounds(world);
   }
 }
 
+/* ── A rotated or cropped basemap page still lands in register ──
+
+   A PDF page can differ from its own content stream in two ways a
+   viewer silently corrects: a /Rotate attribute \u2014 routine on landscape
+   scans and OS extracts \u2014 and a CropBox offset from the MediaBox. The
+   screen honours both, so the drawing was traced over the CORRECTED
+   page; a print that embeds the raw content stream comes out a quarter
+   turn from the features over it, which is the fault this case was
+   written against.
+
+   The mark's on-screen position is asked of pdf.js itself
+   (convertToViewportPoint), the same engine that renders the canvas \u2014
+   not computed from the arithmetic the print uses, or the check would
+   inherit the print's mistake. */
+{
+  const { degrees: deg } = await import("pdf-lib");
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const mul = (a, b) => [
+    a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1],
+    a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3],
+    a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5],
+  ];
+
+  const cases = [
+    { name: "/Rotate 0", rotate: 0 },
+    { name: "/Rotate 90", rotate: 90 },
+    { name: "/Rotate 180", rotate: 180 },
+    { name: "/Rotate 270", rotate: 270 },
+    { name: "an offset CropBox", rotate: 0, crop: [40, 30, 700, 500] },
+    { name: "/Rotate 90 with an offset CropBox",
+      rotate: 90, crop: [40, 30, 700, 500] },
+  ];
+
+  for (const c of cases) {
+    const W = 1000;
+    const H = 700;
+    const markNative = [260, 210];      /* absolute page user space, y up */
+
+    const bmDoc = await PDFDocument.create();
+    const bmPage = bmDoc.addPage([W, H]);
+    bmPage.drawLine({ start: { x: markNative[0] - 10, y: markNative[1] },
+      end: { x: markNative[0] + 10, y: markNative[1] },
+      thickness: 2, color: rgb(0.8, 0.2, 0.2) });
+    if (c.crop) bmPage.setCropBox(...c.crop);
+    bmPage.setRotation(deg(c.rotate));
+    const bytes = await bmDoc.save();
+
+    /* Where the screen shows the mark: pdf.js's answer, in displayed
+       page units from the displayed top-left. */
+    const shown = await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise;
+    const vp = (await shown.getPage(1)).getViewport({ scale: 1 });
+    const [dx, dy] = vp.convertToViewportPoint(markNative[0], markNative[1]);
+
+    /* Georeference the displayed page and stand a feature on the
+       mark's ground position. */
+    const mpp = 0.5;
+    const origin = [900, 425];
+    const ground = [origin[0] + dx * mpp, origin[1] + dy * mpp];
+    const basemap = { Metres_Per_Pixel: mpp, Origin_X: origin[0],
+      Origin_Y: origin[1], Pdf_Page: 1, Opacity: 1 };
+    const world2 = [
+      { Feature_ID: 1, Feature_Type: "line", Feature_Role: "shape",
+        Layer_Key: "trench", Geometry: [ground, [ground[0] + 40, ground[1]]],
+        Attributes: { Line_Type: "trench_main" } },
+    ];
+    const b2 = drawnBounds(world2);
+    const plan2 = tilePlan({ bounds: b2, paper: "A3", landscape: true,
+      scaleDenom: 500 });
+
+    const out = await buildPdf(world2, plan2,
+      { basemap, basemapBytes: bytes, labels: false });
+    if (!out || out.missingBasemap) {
+      fail(`with ${c.name}, the basemap was not placed at all`);
+      continue;
+    }
+
+    const read = await pdfjs.getDocument({ data: new Uint8Array(out.bytes) }).promise;
+    const ops = await (await read.getPage(1)).getOperatorList();
+    const O = pdfjs.OPS;
+    let ctm = [1, 0, 0, 1, 0, 0];
+    const stack = [];
+    let formCtm = null;
+    for (let i = 0; i < ops.fnArray.length; i++) {
+      const fn = ops.fnArray[i];
+      if (fn === O.save) stack.push(ctm.slice());
+      else if (fn === O.restore) ctm = stack.pop() || ctm;
+      else if (fn === O.transform) ctm = mul(ctm, ops.argsArray[i]);
+      else if (fn === O.paintFormXObjectBegin) {
+        formCtm = mul(ctm, ops.argsArray[i][0]);
+        break;
+      }
+    }
+    if (!formCtm) {
+      fail(`with ${c.name}, the basemap is not painted as an embedded form`);
+      continue;
+    }
+
+    /* The mark, pushed through the matrix the finished sheet carries.
+       The form's own /Matrix is folded into formCtm, so the point goes
+       in as absolute page user space \u2014 the same coordinates pdf.js was
+       asked about. */
+    const PTmm = 72 / 25.4;
+    const sx = formCtm[0] * markNative[0] + formCtm[2] * markNative[1] + formCtm[4];
+    const sy = formCtm[1] * markNative[0] + formCtm[3] * markNative[1] + formCtm[5];
+    const gotX = sx / PTmm;
+    const gotY = plan2.sheetH - sy / PTmm;
+
+    const k = 1000 / plan2.scaleDenom;
+    const t = plan2.tiles[0];
+    const wantX = (ground[0] - t.minX) * k + plan2.marginMm;
+    const wantY = (ground[1] - t.minY) * k + plan2.marginMm;
+
+    if (Math.abs(gotX - wantX) > 0.05 || Math.abs(gotY - wantY) > 0.05) {
+      fail(`with ${c.name}, the basemap is out of register: its mark lands `
+        + `at ${gotX.toFixed(2)},${gotY.toFixed(2)} mm where the feature on `
+        + `the same ground point is at ${wantX.toFixed(2)},${wantY.toFixed(2)} `
+        + "\u2014 the underlay prints turned or shifted from the drawing "
+        + "traced over it");
+    }
+  }
+}
+
 /* ── Wired up, and the old path gone ──
 
    The browser's own print of a canvas was a picture of the drawing at

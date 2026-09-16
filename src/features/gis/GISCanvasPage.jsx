@@ -21977,6 +21977,53 @@ export default function GISCanvasPage() {
      here has optimistic rows on it mid-edit — a seed drawn a moment ago
      with a `tmp-` id — and a drawing sent for diagnosis should be what
      the database holds, not what this tab is part way through. */
+  /* ── What a sheet for issue shows ──
+
+     Print to Scale sets the drawing up the way a plan for issue is
+     read, then opens the dialogue. The dig, the plot seeds, the span
+     nodes and the feeder end points come off — they are working
+     information, for designing with, and on a sheet they crowd the very
+     pipes and cables somebody is trying to follow. The mains and
+     service labels go on, because a plan whose runs are not named is a
+     plan nobody can work from.
+
+     Applied to the CANVAS rather than passed to the print, for two
+     reasons. The print already draws what the screen draws (faults 131
+     and 132), so anything else would be a second opinion about what a
+     sheet shows. And it means the drawing in front of somebody IS the
+     sheet they are about to produce, before they produce it — no
+     surprises on paper.
+
+     Left applied afterwards rather than put back. A silent restore
+     would undo, unasked, whatever somebody then chose to change; the
+     layer menu is right there, and a status line says what moved. */
+  const PRINT_OFF_KEYS = ["trench", "role:plot", "role:spannode",
+    "role:feederpoint"];
+
+  function openPrintToScale() {
+    if (!projectId) return;
+
+    const was = new Set(hidden);
+    const added = PRINT_OFF_KEYS.filter((k) => !was.has(k));
+    if (added.length) setHidden([...was, ...added]);
+
+    /* The master switch too: the per-kind switches say nothing while
+       Labels itself is off. */
+    const labelsWere = showLabels && labelKinds.mains && labelKinds.services;
+    if (!showLabels) setShowLabels(true);
+    if (!labelKinds.mains) setLabelKind("mains", true);
+    if (!labelKinds.services) setLabelKind("services", true);
+
+    setPrintOpen(true);
+
+    if (added.length || !labelsWere) {
+      setStatus("Set up for issue \u2014 trench, plot seeds, span nodes and "
+        + "feeder end points off; mains and service labels on. The layer "
+        + "menu puts any of it back.");
+      setTimeout(() => setStatus(""), 9000);
+    }
+  }
+
   /* ── The drawing as CAD ──
 
      A DXF of what is ON THE SCREEN, for the same reason the print is:
@@ -23671,7 +23718,7 @@ export default function GISCanvasPage() {
                       <MenuItem label={"Print to Scale\u2026"}
                         hint="A4 to A0, at a scale a rule can check"
                         disabled={!projectId}
-                        onClick={() => setPrintOpen(true)} />
+                        onClick={openPrintToScale} />
                       <MenuItem label={"Export to AutoCAD (DXF)"}
                         hint={"The geometry as CAD \u2014 one unit to the metre, layered by utility. What is shown is what is exported"}
                         disabled={!projectId}
@@ -24820,6 +24867,19 @@ export default function GISCanvasPage() {
                               every dead end and replaces those on each
                               run; this one carries no Generated flag and
                               is left alone by a rebuild. */}
+                          {/* Print from the utility somebody is working
+                              in, rather than making them go back to the
+                              Drawing menu for it. Same handler, so a
+                              sheet started here is set up exactly as one
+                              started there \u2014 two buttons that print
+                              differently would be worse than one button
+                              in an awkward place. */}
+                          <MenuItem label={"Print to Scale\u2026"}
+                            hint={"Sets the drawing up for issue first \u2014 trench, plot seeds, span nodes and feeder end points off, mains and service labels on"}
+                            disabled={!projectId}
+                            onClick={openPrintToScale} />
+                          <div className="gm-sep" />
+
                           {key === "water" && (
                             <MenuItem
                               label="Place Wash Out"

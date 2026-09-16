@@ -4756,6 +4756,36 @@ characters is a hundred lines of prose and no rules at all.
      function shared between the screen and an export may be answering
      a question the export is not asking.
 
+     **PARKED, and worth picking up: layer mapping to the CAD team's
+     own standard.** The layer names here are derived from the
+     drawing's vocabulary (WATER-MAIN, WATER-WASHOUT). The export is
+     for an internal CAD team who keep their own layer schedule —
+     split by pipe size, cable size, fitting kind and more — so the
+     geometry currently lands on names their system does not use.
+
+     Everything a mapping needs is already on the features, which is
+     why this is a table rather than a rewrite: `Layer_Key` and
+     `Line_Type` for the utility and kind; `Attributes.Size` as text
+     plus the catalogue ids behind it (`Water_Pipe_Size_ID`,
+     `Gas_Pipe_Size_ID`, `Cable_Size_ID`/`VD_Cable_Size_ID`, and the
+     Manual_ overrides); `Feature_Role` and `Joint_Type` for fittings;
+     `Build_Status` if their standard separates proposed from existing;
+     Circuit_Letter/Way if electric layers split by circuit.
+
+     Two open decisions, both asked and not yet answered:
+       - a table in code (fast, but every standard revision is a
+         deploy) versus a DXF Layer Map in admin beside GIS Styles
+         (their CAD lead maintains it; new pipe sizes stop coming
+         through us). Leaning admin, given the standard will evolve.
+       - what a feature matching NO rule should do. Suggested a
+         visible catch-all — APTUS-UNMAPPED — so nothing is quietly
+         merged into a real layer; refusing the export outright is
+         also defensible.
+
+     Needed from them to build it: a CSV of layer name against
+     utility / type or role / size / status, or an AutoCAD LAYERS list
+     plus their naming standard.
+
      Not carried, deliberately: symbols are POINT entities with their
      label, not blocks. A symbol library means agreeing names with the
      receiving CAD team, which is a conversation rather than a guess.
@@ -4763,6 +4793,32 @@ characters is a hundred lines of prose and no rules at all.
      incoming polyline is a main needs a layer convention agreed up
      front. `checkdxf.mjs` reads the file back as group-code pairs, the
      way a parser does.
+
+139. **Print to Scale sets the drawing up for issue first.** A sheet
+     for issue is not the drawing somebody designs in. Clicking Print
+     to Scale now switches OFF the trench (the `trench` layer key,
+     which catches mains and service trench together), plot seeds,
+     span nodes and feeder end points, and switches ON the mains and
+     service labels — master Labels switch included, without which the
+     per-kind ones say nothing.
+
+     Applied to the CANVAS, not passed to the print. The print already
+     draws what the screen draws (131, 132), so anything else would be
+     a second opinion about what a sheet shows; and it means the
+     drawing in front of somebody IS the sheet they are about to
+     produce. Added to the hidden set rather than replacing it, so an
+     isolate or a hidden utility somebody chose survives.
+
+     Left applied afterwards rather than restored on close: a silent
+     restore would undo, unasked, whatever they then changed. A status
+     line says what moved and the layer menu puts any of it back.
+
+     Also offered from each utility menu, since that is where the work
+     is done — the same handler, because two Print buttons that set up
+     differently would be worse than one in an awkward place.
+     `checkprintsetup.mjs` holds the key SHAPES too: the hidden set
+     takes a bare layer, `lt:`, `role:` or `layer:role:`, and a key in
+     the wrong shape hides nothing while looking entirely plausible.
 
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the

@@ -60,6 +60,11 @@ export default function FeatureEditor({
   /* Arms the "click the plot this serves" mode, or clears the link
      when handed null. The canvas owns the click; this only asks. */
   onLinkPlot = null,
+  /* Draws the trench section this mark stands for. Defaulted, because
+     the editor is opened from several places and a section mark whose
+     button vanished for want of a prop would read as a mark that
+     cannot show one. */
+  onShowSection = null,
   /* Excavation and lay rates. Defaulted rather than required: the
      editor is opened from several places and an estimate that vanished
      because one of them forgot a prop would look like a trench with no
@@ -1396,6 +1401,20 @@ export default function FeatureEditor({
               <p className="fe-id mono" title="Feature ID">
                 {`#${feature.Feature_ID}`}
               </p>
+            )}
+
+            {/* ── The reason a section mark exists ──
+
+                In the editor, where somebody who has opened the mark is
+                already looking at it, rather than only on a right-click
+                menu they have to know about. The mark carries almost
+                nothing to edit — a label and a bearing — so the section
+                is the thing this dialogue is FOR. */}
+            {feature.Feature_Role === "sectionmark" && onShowSection && (
+              <button className="btn accent" style={{ marginTop: 8 }}
+                onClick={() => onShowSection(feature)}>
+                Show Cross-section
+              </button>
             )}
           </div>
           <button className="fe-x" onClick={onClose} aria-label="Close">&times;</button>

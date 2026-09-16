@@ -22141,13 +22141,38 @@ export default function GISCanvasPage() {
   const [sectionOf, setSectionOf] = useState(null);
 
   function showSection(mark) {
-    const id = (mark?.Attributes?.Connects || [])[0];
-    const trench = features.find((f) => f.Feature_ID === id);
+    /* ── Which trench this mark cuts ──
+
+       By the link it was placed with, and by GEOMETRY where that does
+       not answer. The link is the better account — it survives a
+       trench being moved out from under the mark — but it is not the
+       only one, and the first version trusted it alone: an id that
+       came back from the database as a string failed `===` against a
+       number, the lookup found nothing, and the button did nothing
+       anybody could see.
+
+       Numbers on both sides now, and a mark whose link is missing or
+       stale falls back to the trench it is sitting on. */
+    const want = Number((mark?.Attributes?.Connects || [])[0]);
+    let trench = Number.isFinite(want)
+      ? features.find((f) => Number(f.Feature_ID) === want)
+      : null;
+
     if (!trench) {
-      setError("That mark's trench is no longer on the drawing.");
+      const at = (mark?.Geometry || [])[0];
+      const snap = at ? snapForSection(at, features, { lineTypes }) : null;
+      trench = snap
+        ? features.find((f) => Number(f.Feature_ID) === Number(snap.lineId))
+        : null;
+    }
+
+    if (!trench) {
+      setError("This mark is not on a trench any more, so there is nothing "
+        + "to take a section through. Move it onto one, or place a new mark.");
       return;
     }
 
+    try {
     const res = contentsOf(trench, features, {
       serviceLineTypes: lineTypes.filter((t) => /service/i.test(t.Type_Key))
         .map((t) => t.Type_Key),
@@ -22164,6 +22189,13 @@ export default function GISCanvasPage() {
       atM: mark.Attributes?.Section_Along_M ?? null,
     });
     setSectionOf({ mark, trench, model, svg: sectionSvg(model) });
+    setError("");
+    } catch (e) {
+      /* Reported rather than swallowed. A button that does nothing at
+         all is the worst outcome here: there is no way to tell a
+         failure from a misclick, and somebody tries again. */
+      setError(`The section could not be drawn: ${e.message}`);
+    }
   }
 
   /* ── What a sheet for issue shows ──
@@ -26345,6 +26377,9 @@ export default function GISCanvasPage() {
           /* Handed a trench id: arms the click that names its plot.
              Handed null as the second argument: clears the link, which
              hands the plot back to Auto Service. */
+          /* The mark's own reason for existing, on the dialogue that
+             opens when somebody clicks it. */
+          onShowSection={(mark) => { setEditing(null); showSection(mark); }}
           onLinkPlot={async (lineId, clear) => {
             if (clear === null) {
               const line = features.find((f) =>

@@ -4934,6 +4934,25 @@ characters is a hundred lines of prose and no rules at all.
      six literal characters rather than a separator. Both were mine,
      both were invisible in a build that passed.
 
+     **And one it did not catch: Show Cross-section did nothing.** The
+     mark's trench was looked up with `f.Feature_ID === id` against the
+     id stored in `Connects`; an id that comes back from the database
+     as a string fails that comparison, the lookup found nothing, and
+     the early return left no trace on screen. A button that does
+     nothing at all is the worst failure there is — a misclick and a
+     bug are indistinguishable, so somebody just clicks again.
+
+     Three changes, and the second two matter more than the first:
+     `Number()` on both sides; a fallback to the trench the mark is
+     geometrically SITTING on when the link is missing or stale; and a
+     try/catch that reports rather than swallows. Anything that ends in
+     an early return with no message deserves the same look.
+
+     The button also moved into the feature editor, where somebody who
+     has opened the mark is already looking, rather than living only on
+     a right-click menu they have to know about. The right-click item
+     stays as a shortcut.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

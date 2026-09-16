@@ -212,6 +212,52 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
   }
 }
 
+// 9. The lookup that finds a mark's trench survives an id coming back
+//    as a string, and falls back to geometry when the link is gone.
+//
+//    The first version compared ids with === and trusted the link
+//    alone. An id returned from the database as a string failed that
+//    comparison, the trench was not found, and the button did nothing
+//    anybody could see — the worst failure mode there is, because a
+//    misclick and a bug look identical.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const fn = (() => {
+    const at = canvas.indexOf("function showSection(mark)");
+    return at >= 0 ? canvas.slice(at, canvas.indexOf("\n  }", at)) : "";
+  })();
+
+  if (!fn) {
+    fail("showSection cannot be found where it was \u2014 this check needs "
+      + "re-anchoring, not deleting");
+  } else {
+    if (!/Number\(f\.Feature_ID\) === want/.test(fn)) {
+      fail("a mark's trench is looked up by strict comparison of raw ids, "
+        + "so an id that comes back as a string finds nothing and the "
+        + "button silently does nothing");
+    }
+    if (!/snapForSection\(at, features, \{ lineTypes \}\)/.test(fn)) {
+      fail("a mark whose link is missing has no fallback, so a section "
+        + "cannot be drawn for one placed before links were recorded");
+    }
+    if (!/catch \(e\)/.test(fn) || !/could not be drawn/.test(fn)) {
+      fail("a failure inside the section build is swallowed rather than "
+        + "reported, which reads as a dead button");
+    }
+  }
+
+  /* And the button is where somebody who opened the mark will see it. */
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/Feature_Role === "sectionmark" && onShowSection/.test(editor)) {
+    fail("the editor does not offer the section, so the only way to see "
+      + "one is a right-click menu somebody has to know about");
+  }
+  if (!/onShowSection=\{\(mark\) =>/.test(canvas)) {
+    fail("the canvas does not hand the editor a way to show the section, "
+      + "so its button is never rendered");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Section marks lie square to their trench, and show what is in it.");
 process.exit(bad ? 1 : 0);

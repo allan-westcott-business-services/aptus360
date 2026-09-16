@@ -4953,6 +4953,29 @@ characters is a hundred lines of prose and no rules at all.
      a right-click menu they have to know about. The right-click item
      stays as a shortcut.
 
+     **Then the mark disappeared, twice over my own doing.** It was
+     created on the `trench` layer — that is what it is placed on — and
+     `classKeys` uses the layer as a hide key, so switching the trench
+     off switched off every section mark. Worse, fault 139's print
+     set-up switches the trench off deliberately, so a mark vanished
+     from exactly the sheet it was drawn for. A section mark is a note
+     ABOUT the dig, not part of it: migration **0215** adds an
+     `annotation` layer, moves the marks already placed onto it, and
+     new ones are created there. Any future annotation — north points,
+     notes, revision clouds — belongs on it for the same reason.
+
+     **And the mark was drawn wrong.** The two heads pointed back along
+     the bar at each other, which is an arrow across the trench saying
+     "this width". A section mark says "viewed this way": a straight
+     bar square to the trench with a small triangle at each END,
+     both pointing ALONG the trench in the direction of view. Without
+     it, a reader cannot tell which way round the section beneath is —
+     the same cut viewed from the far side is its mirror. `flip`
+     reverses the view without moving the bar, since it is the same
+     cut. The check asserts the apex direction against the view vector
+     rather than merely counting triangles, which is what let the first
+     version pass.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

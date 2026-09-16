@@ -114,37 +114,59 @@ export function snapForSection(point, features = [], opts = {}) {
 
 /* The mark itself, in metres about its own centre.
 
-   A bar square to the line, and an arrowhead at each end pointing back
-   along the bar — the way a section mark is drawn on every set of
-   drawings, so a reader knows which way the section is viewed.
+   A straight bar square to the trench, and at each END of the bar a
+   small triangle pointing the way the section is VIEWED — both the
+   same way, because a section is looked at from one side. That is what
+   tells a reader which way round the drawing beneath it is: the same
+   cut viewed from the other side is the mirror of it, and a mark
+   without a direction leaves somebody to guess.
+
+   The first version pointed the two heads back along the bar at each
+   other, which is an arrow through the trench rather than a section
+   mark: it says "this width" instead of "viewed this way".
+
+   `flip` turns the view the other way, for the case where the section
+   reads better from the far side.
 
    Returned as plain points so the canvas can stroke them and the print
    can record them without either knowing how the other draws. */
-export function sectionMarkShape(angleDeg = 0, lenM = SECTION_LEN_M) {
+export function sectionMarkShape(angleDeg = 0, lenM = SECTION_LEN_M, opts = {}) {
+  const { flip = false } = opts;
   const rad = (Number(angleDeg) || 0) * (Math.PI / 180);
-  /* Square to the line: the line's direction turned a quarter turn. */
-  const nx = -Math.sin(rad);
-  const ny = Math.cos(rad);
+
+  /* Along the trench, which is the way the section is viewed. */
+  const vx = Math.cos(rad) * (flip ? -1 : 1);
+  const vy = Math.sin(rad) * (flip ? -1 : 1);
+  /* Square to it, which is the way the bar lies. */
+  const bx = -Math.sin(rad);
+  const by = Math.cos(rad);
+
   const half = lenM / 2;
+  const a = [-bx * half, -by * half];
+  const b = [bx * half, by * half];
 
-  const a = [-nx * half, -ny * half];
-  const b = [nx * half, ny * half];
-
-  /* Each head is a triangle on the bar, its point at the end and its
-     base a short way in, spread either side by half its length. */
+  /* A head sits ON the bar at one end: its base is a short length of
+     the bar, and its apex stands off in the direction of view. Small —
+     a fifth of the bar — because it is a pointer, not a symbol of its
+     own, and two big triangles on a 2 m mark read as fittings. */
   const hl = lenM * SECTION_HEAD;
-  const hw = hl * 0.55;
-  const head = (tip, towards) => {
-    const bx = tip[0] + (towards[0] - tip[0]) * (hl / lenM) * 2;
-    const by = tip[1] + (towards[1] - tip[1]) * (hl / lenM) * 2;
-    /* Spread along the LINE, which is square to the bar. */
-    const sx = Math.cos(rad) * hw;
-    const sy = Math.sin(rad) * hw;
-    return [tip, [bx + sx, by + sy], [bx - sx, by - sy]];
+  const head = (end, inward) => {
+    const base0 = end;
+    const base1 = [end[0] + inward[0] * hl, end[1] + inward[1] * hl];
+    const mid = [(base0[0] + base1[0]) / 2, (base0[1] + base1[1]) / 2];
+    return [base0, base1, [mid[0] + vx * hl, mid[1] + vy * hl]];
   };
+
+  /* Inward for each end is the way back along the bar. */
+  const inA = [bx, by];
+  const inB = [-bx, -by];
 
   return {
     bar: [a, b],
-    heads: [head(a, b), head(b, a)],
+    heads: [head(a, inA), head(b, inB)],
+    /* The direction the section is viewed in, so a renderer that wants
+       to say so — a label, an arrow on a sheet — need not work it out
+       again. */
+    view: [vx, vy],
   };
 }

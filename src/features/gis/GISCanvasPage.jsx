@@ -12262,7 +12262,15 @@ export default function GISCanvasPage() {
       const n = (used.length ? Math.max(...used) : 0) + 1;
 
       await addFeature({
-        Layer_Key: "trench",
+        /* Annotation, not apparatus.
+
+           It was on the `trench` layer, because that is what it is
+           placed on — and the layer is one of the keys the drawing
+           hides by, so switching the trench off switched off every
+           section mark with it. Print to Scale switches the trench off
+           deliberately, so a mark vanished from exactly the sheet it
+           was drawn for. A note about the dig is not part of the dig. */
+        Layer_Key: "annotation",
         Feature_Type: "point",
         Feature_Role: "sectionmark",
         Geometry: [snap.at],
@@ -25102,7 +25110,7 @@ export default function GISCanvasPage() {
                           <MenuItem label={"Place Cross-Section"}
                             hint={"Click a trench. The mark is drawn 2m across it; right-click the mark to show the section"}
                             disabled={!projectId || !!busy}
-                            onClick={() => placeNode("sectionmark", "trench")} />
+                            onClick={() => placeNode("sectionmark", "annotation")} />
                           <div className="gm-sep" />
 
                           {key === "water" && (

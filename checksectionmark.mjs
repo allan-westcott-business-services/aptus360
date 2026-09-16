@@ -46,9 +46,42 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
         + "cut at an angle is through a longer trench than was dug");
     }
   }
-  const { heads } = sectionMarkShape(0);
+  const { heads, bar, view } = sectionMarkShape(0);
   if (heads.length !== 2 || heads.some((h) => h.length !== 3)) {
     fail("the mark does not carry a head at each end");
+  }
+
+  /* Both heads point the way the section is VIEWED — along the trench,
+     the same way as each other. The first version pointed them back
+     along the bar at one another, which is an arrow across the trench
+     saying "this width" rather than a section mark saying "viewed this
+     way". A mark without a direction leaves a reader to guess which
+     way round the drawing beneath it is. */
+  for (const [i, tri] of heads.entries()) {
+    const midBase = [(tri[0][0] + tri[1][0]) / 2, (tri[0][1] + tri[1][1]) / 2];
+    const apex = tri[2];
+    const dx = apex[0] - midBase[0];
+    const dy = apex[1] - midBase[1];
+    const len = Math.hypot(dx, dy) || 1;
+    const dot = (dx / len) * view[0] + (dy / len) * view[1];
+    if (dot < 0.99) {
+      fail(`head ${i} does not point the way the section is viewed`);
+    }
+  }
+  /* And they sit AT the ends of the bar, not in from them. */
+  for (const [i, tri] of heads.entries()) {
+    const end = bar[i];
+    if (Math.hypot(tri[0][0] - end[0], tri[0][1] - end[1]) > 0.001) {
+      fail(`head ${i} is not at the end of the bar`);
+    }
+  }
+
+  /* Flipped, the heads look the other way and the bar does not move:
+     the cut is the same cut, read from the other side. */
+  const back = sectionMarkShape(0, SECTION_LEN_M, { flip: true });
+  if (back.view[0] !== -1) fail("flipping does not reverse the view");
+  if (Math.abs(back.bar[0][1] - bar[0][1]) > 0.001) {
+    fail("flipping the view moves the bar — it is the same cut");
   }
 }
 
@@ -172,11 +205,41 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
   }
 }
 
+// 7b. A mark is annotation, not apparatus.
+//
+//     It was created on the `trench` layer, because that is what it is
+//     placed on — and the layer is one of the keys the drawing hides
+//     by, so switching the trench off switched off every section mark.
+//     Print to Scale switches the trench off deliberately, so a mark
+//     vanished from exactly the sheet it was drawn for.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf('Feature_Role: "sectionmark"');
+  const write = at >= 0 ? canvas.slice(Math.max(0, at - 600), at) : "";
+  if (!write) {
+    fail("the section mark's write cannot be found where it was");
+  } else if (!/Layer_Key: "annotation"/.test(write)) {
+    fail("a section mark is created on a utility layer, so hiding that "
+      + "layer — which Print to Scale does to the trench — hides the mark");
+  }
+
+  const mig = "./supabase/migrations/0215_annotation_layer.sql";
+  let sql = "";
+  try { sql = readFileSync(mig, "utf8"); } catch { /* reported below */ }
+  if (!sql) {
+    fail(`${mig} is missing — the annotation layer does not exist, so `
+      + "marks sit on a layer the Layers panel cannot show");
+  } else if (!/UPDATE "GIS_Feature"/.test(sql)) {
+    fail("marks already placed are not moved to the new layer, so they "
+      + "stay hidden with the trench");
+  }
+}
+
 // 8. Wired: placeable, drawn square to its trench, and right-clicking
 //    it shows the section.
 {
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-  if (!/placeNode\("sectionmark", "trench"\)/.test(canvas)) {
+  if (!/placeNode\("sectionmark", "annotation"\)/.test(canvas)) {
     fail("there is no way to place a cross-section mark");
   }
   if (!/snapForSection\(point, features, \{ lineTypes \}\)/.test(canvas)) {
@@ -209,6 +272,28 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
   }
   if (!check.includes("'sectionmark'")) {
     fail("the migration does not allow the section mark role");
+  }
+
+  /* ── Annotation is not apparatus ──
+
+     The layer is one of the keys the drawing hides by. A mark placed
+     on the `trench` layer disappeared whenever the trench was switched
+     off — and Print to Scale switches the trench off deliberately, so
+     it vanished from exactly the sheet it was drawn for. */
+  if (/Layer_Key: "trench",\s*\n\s*Feature_Type: "point",\s*\n\s*Feature_Role: "sectionmark"/
+    .test(canvas)) {
+    fail("a section mark is placed on the trench layer, so hiding the "
+      + "trench \u2014 which printing does \u2014 hides the mark with it");
+  }
+  if (!/Layer_Key: "annotation",/.test(canvas)) {
+    fail("a section mark has no layer of its own, so it cannot be turned "
+      + "off without turning off something it is not part of");
+  }
+  /* And the print set-up must not switch that layer off. */
+  const offKeys = (canvas.match(/const PRINT_OFF_KEYS = \[([\s\S]*?)\];/) || ["", ""])[1];
+  if (/annotation|sectionmark/.test(offKeys)) {
+    fail("printing hides annotation, so a section mark is missing from the "
+      + "sheet it was drawn for");
   }
 }
 

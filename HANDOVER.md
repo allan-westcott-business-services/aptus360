@@ -4892,6 +4892,48 @@ characters is a hundred lines of prose and no rules at all.
      pattern can silently test the wrong thing; anchor on what is
      unique to the case (here `idx: placed ? idx : null`).
 
+141. **Cross-section marks, and the section itself (feature).** Asked
+     for: a mark placed on a trench, 2 m of ground long, turned square
+     to the line, right-clicked to show the section.
+
+     `sectionMarks.js` — `snapForSection` puts the mark on the nearest
+     point ALONG a trench (not at a vertex: a section is taken wherever
+     somebody wants to look) and records the trench, the bearing OF THE
+     TRENCH, and the distance along it. `sectionMarkShape` returns the
+     bar and its two heads in metres about the centre, and both
+     renderers draw from it. The bar is square to the line because a
+     cut at any other angle is through a longer trench than was dug —
+     the check asserts the dot product at four bearings.
+
+     `njug.js` holds NJUG Volume 1 Issue 8 as DATA: cover depths per
+     utility for footway, verge and carriageway, the across-a-footway
+     positions from Figure 1, and the colour coding. Recorded as data
+     so there is one place to look when somebody asks where a number
+     came from, and one place to change it when an operator's spec
+     differs. Three things stated in the module and repeated under
+     every drawing: they are recommended minima, not law; an asset
+     owner's spec overrides them; Issue 8 is from 2013 and should be
+     checked as current. Gas is the only utility whose verge figure
+     differs from its footway one, which is why verge is a separate
+     entry rather than folded in.
+
+     `trenchSection.js` builds the section from `contentsOf` — the
+     drawing's own answer about what is in the trench — and reports
+     departures as FINDINGS rather than redrawing the design to match
+     the guidance. A drawing that silently corrects itself hides the
+     thing somebody needed to see. A run with no size is drawn nominal
+     and says so.
+
+     Built when asked for, never stored: the drawing changes under a
+     mark, and a section saved at placement would go stale while
+     looking authoritative.
+
+     Two things the suite caught that I had not: `checkscope` found
+     `clamp` used where it is not declared, and **`checkjsxescapes`
+     found `\u00b7` written loose in JSX text**, where it renders as
+     six literal characters rather than a separator. Both were mine,
+     both were invisible in a build that passed.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

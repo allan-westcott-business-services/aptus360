@@ -193,6 +193,8 @@ import {
 import { waterMainRuns, sizeTable, sizeFor } from "./waterNetwork.js";
 import { serviceValves, VALVE_WIDTH_M } from "./serviceValves.js";
 import { washOuts, snapToMain } from "./washOuts.js";
+import { snapForSection, sectionMarkShape, SECTION_LEN_M } from "./sectionMarks.js";
+import { trenchSection, sectionSvg } from "./trenchSection.js";
 import { buildDxf } from "./dxf.js";
 import { gasMainEnds, GAS_CAP_SPINE_M, GAS_CAP_ARM_M } from "./gasEnds.js";
 import {
@@ -4776,6 +4778,71 @@ export default function GISCanvasPage() {
             ctx.stroke();
             ctx.restore();
             /* Nothing else to draw: the tee is the symbol. */
+            return;
+          }
+
+          /* ── A cross-section mark ──
+
+             A bar square to the trench with an arrowhead at each end,
+             two metres of real ground long — so it scales with the
+             drawing and says the same thing on a sheet at 1:200 as at
+             1:500. The shape comes from sectionMarks.js in metres about
+             its own centre; here it is only scaled to pixels and put
+             where the mark is.
+
+             Not a symbol from the catalogue, for the reason the valve
+             gives beside it: every symbol there is drawn about its
+             centre with no direction, and a section mark means nothing
+             except square to the thing it cuts. */
+          if (f.Feature_Role === "sectionmark") {
+            const shape = sectionMarkShape(
+              Number(f.Attributes?.Angle_Deg) || 0,
+              Number(f.Attributes?.Section_Length_M) || SECTION_LEN_M,
+            );
+            const P = (q) => ({ x: p.x + q[0] * vs, y: p.y + q[1] * vs });
+
+            ctx.save();
+            ctx.strokeStyle = on ? "#1d4ed8" : fill;
+            ctx.fillStyle = on ? "#1d4ed8" : fill;
+            ctx.lineWidth = Math.max(1.5, Math.min(4, 0.05 * vs));
+            ctx.lineJoin = "round";
+
+            const a = P(shape.bar[0]);
+            const b = P(shape.bar[1]);
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+
+            /* Open heads, stroked rather than filled: on a busy drawing
+               a pair of solid triangles reads as two fittings on the
+               trench, which is the one thing this must not look like. */
+            for (const tri of shape.heads) {
+              ctx.beginPath();
+              const t0 = P(tri[0]);
+              ctx.moveTo(t0.x, t0.y);
+              for (const q of tri.slice(1)) {
+                const t = P(q);
+                ctx.lineTo(t.x, t.y);
+              }
+              ctx.closePath();
+              ctx.stroke();
+            }
+            ctx.restore();
+
+            /* Its name, set clear of the bar along the trench so it
+               does not sit on the dig it marks. */
+            if (f.Label && labelShown(f, on) && vs > 2.5) {
+              const rad = (Number(f.Attributes?.Angle_Deg) || 0) * (Math.PI / 180);
+              ctx.save();
+              ctx.fillStyle = on ? "#1d4ed8" : styleFor(f, { labelColour: fill }).labelColour;
+              ctx.font = "700 11px ui-monospace, Menlo, monospace";
+              ctx.textAlign = "center";
+              ctx.fillText(f.Label,
+                p.x + Math.cos(rad) * (SECTION_LEN_M * 0.75) * vs,
+                p.y + Math.sin(rad) * (SECTION_LEN_M * 0.75) * vs);
+              ctx.restore();
+            }
             return;
           }
 
@@ -12021,6 +12088,7 @@ export default function GISCanvasPage() {
       : role === "governor" ? "the governor"
         : role === "servicevalve" ? "the service valve"
           : role === "washout" ? "the wash out"
+            : role === "sectionmark" ? "the cross-section mark"
           : role === "pumping" ? "the pumping station"
             : role === "feederpoint" ? "the feeder end point"
               : role === "linkbox" ? "the link box"
@@ -12168,6 +12236,54 @@ export default function GISCanvasPage() {
        main follows, which is what a fitting ON a pipe should do. The
        vertex lies exactly on the line, so neither the shape nor the
        length of the main changes. */
+    /* ── A cross-section mark ──
+
+       Anywhere along a trench, not just at a vertex: a section can be
+       taken wherever somebody wants to look. Snapped onto the line so
+       the mark sits ON the dig it cuts, and refused where there is no
+       trench under the click — a section mark floating beside the
+       drawing cuts nothing and has nothing to show.
+
+       The TRENCH's bearing is stored, not the bar's. The bar is drawn
+       square to it, and storing the line's own direction keeps
+       Angle_Deg meaning what it means everywhere else on the drawing:
+       the way the thing it belongs to runs. */
+    if (role === "sectionmark") {
+      const snap = snapForSection(point, features, { lineTypes });
+      if (!snap) {
+        setError("A cross-section is taken across a trench \u2014 click on one.");
+        return;
+      }
+
+      const used = features
+        .filter((f) => f.Feature_Role === "sectionmark")
+        .map((f) => Number(String(f.Label ?? "").replace(/[^0-9]/g, "")))
+        .filter((n) => Number.isFinite(n) && n > 0);
+      const n = (used.length ? Math.max(...used) : 0) + 1;
+
+      await addFeature({
+        Layer_Key: "trench",
+        Feature_Type: "point",
+        Feature_Role: "sectionmark",
+        Geometry: [snap.at],
+        Label: `Section ${n}`,
+        Attributes: {
+          Angle_Deg: Math.round(snap.angleDeg * 10) / 10,
+          /* The trench it cuts, and how far along it the cut falls.
+             Both are what the section itself is built from: which dig
+             to read the contents of, and which stretch of it. */
+          Connects: [snap.lineId],
+          Section_Along_M: snap.alongM,
+          Section_Length_M: SECTION_LEN_M,
+        },
+      });
+
+      await load(projectId);
+      setStatus(`Section ${n} placed \u2014 right-click it to show the section`);
+      setTimeout(() => setStatus(""), 6000);
+      return;
+    }
+
     if (role === "washout") {
       const snap = snapToMain(point, features, { lineTypes });
       if (!snap) {
@@ -22012,6 +22128,44 @@ export default function GISCanvasPage() {
      here has optimistic rows on it mid-edit — a seed drawn a moment ago
      with a `tmp-` id — and a drawing sent for diagnosis should be what
      the database holds, not what this tab is part way through. */
+  /* ── The section a mark stands for ──
+
+     Built when it is asked for rather than kept: the drawing changes
+     under a mark all the time — a main relaid, a service added — and a
+     section stored at the moment the mark was placed would quietly go
+     out of date while looking authoritative.
+
+     `contentsOf` answers what is in the trench, which is the whole
+     point of the mark being ON a trench: the section is drawn from the
+     drawing rather than from anybody's recollection of it. */
+  const [sectionOf, setSectionOf] = useState(null);
+
+  function showSection(mark) {
+    const id = (mark?.Attributes?.Connects || [])[0];
+    const trench = features.find((f) => f.Feature_ID === id);
+    if (!trench) {
+      setError("That mark's trench is no longer on the drawing.");
+      return;
+    }
+
+    const res = contentsOf(trench, features, {
+      serviceLineTypes: lineTypes.filter((t) => /service/i.test(t.Type_Key))
+        .map((t) => t.Type_Key),
+      serviceTrenchTypes: lineTypes.filter((t) => t.Layer_Key === "trench"
+        && /service/i.test(t.Type_Key)).map((t) => t.Type_Key),
+    });
+    if (res.error) { setError(res.error); return; }
+
+    const model = trenchSection((res.contents || []).map((c) => c.feature ?? c), {
+      lineTypes,
+      surface: trench.Attributes?.Surface_Type
+        ?? trench.Attributes?.Surface ?? "footway",
+      label: mark.Label || "Section",
+      atM: mark.Attributes?.Section_Along_M ?? null,
+    });
+    setSectionOf({ mark, trench, model, svg: sectionSvg(model) });
+  }
+
   /* ── What a sheet for issue shows ──
 
      Print to Scale sets the drawing up the way a plan for issue is
@@ -24913,6 +25067,10 @@ export default function GISCanvasPage() {
                             hint={"Sets the drawing up for issue first \u2014 trench, plot seeds, span nodes and feeder end points off, mains and service labels on"}
                             disabled={!projectId}
                             onClick={openPrintToScale} />
+                          <MenuItem label={"Place Cross-Section"}
+                            hint={"Click a trench. The mark is drawn 2m across it; right-click the mark to show the section"}
+                            disabled={!projectId || !!busy}
+                            onClick={() => placeNode("sectionmark", "trench")} />
                           <div className="gm-sep" />
 
                           {key === "water" && (
@@ -27791,6 +27949,60 @@ export default function GISCanvasPage() {
               </div>
             )}
 
+            {sectionOf && (
+              /* The section itself. A dialogue rather than a panel: it
+                 is a drawing to be looked at and closed, and it wants
+                 the room. */
+              /* The established backdrop and panel classes, so this
+                 sits and scrolls like every other dialogue rather than
+                 inventing its own. */
+              <div className="fe-backdrop" onClick={() => setSectionOf(null)}>
+                <div className="sch" onClick={(e) => e.stopPropagation()}>
+                  <div className="sch-head">
+                    <div>
+                      <h3>{sectionOf.model.label}
+                        {sectionOf.model.atM != null
+                          && ` \u00b7 ${sectionOf.model.atM} m along`}</h3>
+                      <p className="sch-sub">
+                        Trench cross-section {"\u00b7"} {sectionOf.model.surface}
+                      </p>
+                    </div>
+                    <button className="fe-x" onClick={() => setSectionOf(null)}
+                      aria-label="Close">&times;</button>
+                  </div>
+
+                  {/* Our own SVG string, from our own module. Feature
+                      labels DO reach it \u2014 somebody's own text, typed on
+                      the drawing \u2014 and sectionSvg escapes every one of
+                      them for exactly that reason. Anything added to
+                      that module which writes drawing text must escape
+                      it too. */}
+                  <div dangerouslySetInnerHTML={{ __html: sectionOf.svg }} />
+
+                  {/* Said plainly under the drawing, because a section
+                      drawn to recommended minima is a recommendation
+                      and not a survey. Somebody reading this off a
+                      screen to a gang in a hole deserves to know
+                      which. */}
+                  <p className="hint">
+                    Positions and depths are the NJUG Volume 1 recommended
+                    minima for a {sectionOf.model.surface}. They are industry
+                    guidance, not a survey and not a specification: an asset
+                    owner&rsquo;s own requirements override them, and what is
+                    already in the ground may sit anywhere.
+                  </p>
+
+                  {sectionOf.model.findings.length > 0 && (
+                    <ul className="hint">
+                      {sectionOf.model.findings.map((fi, i) => (
+                        <li key={i}>{fi.text}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+
             {ctx && (
               /* Positioned inside the canvas wrapper, so it travels with
                  the panel rather than sitting at a page coordinate that
@@ -27803,6 +28015,15 @@ export default function GISCanvasPage() {
                 <button className="gc-item" onClick={() => {
                   setEditing(ctx.feature); setCtx(null);
                 }}>Edit</button>
+
+                {/* The whole point of the mark. First in the list under
+                    Edit, because somebody right-clicking a section mark
+                    is almost always asking for the section. */}
+                {ctx.feature.Feature_Role === "sectionmark" && (
+                  <button className="gc-item" onClick={() => {
+                    showSection(ctx.feature); setCtx(null);
+                  }}>Show Cross-section</button>
+                )}
 
                 {/* ── "Lay X" that armed the drawing tool has gone ──
 

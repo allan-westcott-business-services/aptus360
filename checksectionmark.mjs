@@ -580,6 +580,42 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
   }
 }
 
+// 7i. The ground does not move when the drawing is mirrored.
+//
+//     Everything that sits at a POSITION across the footway goes
+//     through the mirroring transform; the ground and the surface over
+//     it are the frame the positions are measured in, and do not. The
+//     first version drew both rects from X(0) — which, mirrored, is the
+//     RIGHT-hand edge — so the ground box and the grey surface bar shot
+//     off to the right of the drawing while the pipes stayed put.
+{
+  const c = [{ Feature_ID: 50, Label: "W1", Layer_Key: "water",
+    Attributes: { Line_Type: "water_main", Size: "63mm" } }];
+  const boxes = (flip) => {
+    const svg = sectionSvg(trenchSection(c, { lineTypes, flip }));
+    return [...svg.matchAll(/<rect x="([0-9.]+)" y="[0-9.-]+" width="([0-9.]+)"/g)]
+      .map((m2) => `${m2[1]}+${m2[2]}`);
+  };
+  const near = boxes(false);
+  const far = boxes(true);
+  if (!near.length) {
+    fail("the section draws no ground");
+  } else if (near.join("|") !== far.join("|")) {
+    fail("the ground and the surface move when the section is mirrored — "
+      + "they are the frame the positions are measured in, not a position");
+  }
+
+  /* And every rect stays inside the picture. */
+  const svg = sectionSvg(trenchSection(c, { lineTypes, flip: true }));
+  const width = Number(/<svg[^>]*width="(\d+)"/.exec(svg)?.[1]);
+  for (const m2 of svg.matchAll(/<rect x="([0-9.]+)" y="[0-9.-]+" width="([0-9.]+)"/g)) {
+    if (Number(m2[1]) + Number(m2[2]) > width + 0.5) {
+      fail("a mirrored section draws outside its own picture");
+      break;
+    }
+  }
+}
+
 // 8. Wired: placeable, drawn square to its trench, and right-clicking
 //    it shows the section.
 {

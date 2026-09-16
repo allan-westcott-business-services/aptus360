@@ -1,6 +1,6 @@
 # Cross-section feature — every file, in one piece
 
-The whole feature, not a delta, so nothing can be missing.
+The whole feature, so nothing can be missing.
 
     supabase/migrations/0214_section_mark_role.sql
     supabase/migrations/0215_annotation_layer.sql
@@ -12,24 +12,24 @@ The whole feature, not a delta, so nothing can be missing.
     checksectionmark.mjs
     HANDOVER.md
 
-## New this round — flipping actually mirrors, immediately
+## New this round — the ground stays put when mirrored
 
-The editor's checkbox wrote to a draft while the dialogue was built
-from the saved feature, so ticking it changed nothing until you saved
-and reopened.
+The ground box and the grey surface bar were drawn from X(0), and
+mirrored, X(0) is the right-hand edge — so both shot off to the right
+while the pipes stayed where they were.
 
-**The switch is now in the section dialogue itself**, beside the close
-button. Tick it and the drawing mirrors at once; the answer is written
-to the mark afterwards, so the triangles on the canvas turn to match
-and the next opening agrees. The editor keeps its checkbox too, and now
-hands the dialogue the unsaved draft so a tick there is honoured
-straight away.
+A rect needs a left edge and a width. Only things that sit at a
+position across the footway go through the mirroring transform; the
+ground is the frame those positions are measured in, not a position.
+
+Worth knowing for any mirrored drawing: under a reflection, a
+coordinate maps and an extent does not.
 
 ## Where everything is
 
 - **Place:** Water/Gas/Electric menu › Place Cross-Section, click a trench
 - **Show:** click the mark → Show Cross-section, or right-click it
-- **Flip:** the checkbox in the dialogue header (or in the mark's editor)
+- **Flip:** the checkbox in the dialogue header, or in the mark's editor
 
 ## Suite state
 

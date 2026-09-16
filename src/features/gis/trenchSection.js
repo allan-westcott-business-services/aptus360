@@ -218,10 +218,17 @@ export function sectionSvg(model, opts = {}) {
     + `font-family="ui-sans-serif, system-ui, sans-serif">`);
   P.push(`<rect width="${w}" height="${h}" fill="#ffffff"/>`);
 
-  /* The ground, and the made surface over it. */
-  P.push(`<rect x="${X(0)}" y="${Y(0)}" width="${gw}" height="${gh}" `
+  /* The ground, and the made surface over it.
+
+     Drawn from the LEFT EDGE, which is not X(0): mirrored, X(0) is the
+     right-hand side, so a rect placed there ran off the drawing and
+     took the grey surface bar with it. A rect needs an edge and a
+     width; only the things that sit at a position across the footway
+     go through X(). */
+  const gx = padL;
+  P.push(`<rect x="${gx}" y="${Y(0)}" width="${gw}" height="${gh}" `
     + `fill="#f8fafc" stroke="#e2e8f0"/>`);
-  P.push(`<rect x="${X(0)}" y="${Y(0) - 9}" width="${gw}" height="9" `
+  P.push(`<rect x="${gx}" y="${Y(0) - 9}" width="${gw}" height="9" `
     + `fill="#64748b"/>`);
 
   /* The two sides, inside the frame and hard against their own edges,

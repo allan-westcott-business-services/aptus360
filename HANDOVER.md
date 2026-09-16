@@ -5079,6 +5079,20 @@ characters is a hundred lines of prose and no rules at all.
      from saved state will always disagree until somebody saves. Put
      the control where the thing it changes is, or feed it the draft.
 
+     **And mirroring moved the ground.** Both rects — the ground and
+     the grey surface over it — were drawn from `X(0)`, and mirrored
+     X(0) is the RIGHT-hand edge, so they shot off to the right while
+     the pipes stayed put. A rect needs a left edge and a width; only
+     things that sit at a POSITION across the footway go through the
+     mirroring transform. The ground is the frame those positions are
+     measured in, not a position.
+
+     Worth generalising, because it will recur in any mirrored drawing:
+     under a reflecting transform, a coordinate maps and an EXTENT does
+     not. The check compares the ground rects in both directions and
+     fails if they differ, and separately that nothing is drawn outside
+     the picture.
+
      The section dialogue now carries its own box. The general point:
      **a class defined inside another component's injected stylesheet
      is not a shared class** — borrowing one couples two things that

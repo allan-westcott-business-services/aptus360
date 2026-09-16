@@ -87,14 +87,35 @@ const P = pairs(dxf);
       Number(v.pairs.find((p) => p[0] === 20)[1]),
     ];
     const got = verts.map(xy);
-    const want = [[10, 20], [110, 20], [110, 80]];
+    /* X as drawn; Y NEGATED.
+
+       The drawing stores metres in screen convention — y grows
+       downward, which is what toPx does on the canvas. CAD grows y
+       north. Writing the stored y straight out mirrors the whole
+       drawing about its X axis, which looks at a glance like a
+       180-degree rotation and is not one: the text comes out the right
+       way round while north and south are swapped, and a drawing that
+       is nearly plausible is the worst kind to hand a CAD team. */
+    const want = [[10, -20], [110, -20], [110, -80]];
     for (let i = 0; i < want.length; i++) {
       if (Math.abs(got[i][0] - want[i][0]) > 0.001
         || Math.abs(got[i][1] - want[i][1]) > 0.001) {
-        fail(`vertex ${i} exports at ${got[i]} where the drawing has `
-          + `${want[i]} \u2014 one metre must be one drawing unit, and y must `
-          + "not be flipped");
+        fail(`vertex ${i} exports at ${got[i]} where CAD needs ${want[i]} `
+          + "\u2014 one metre is one drawing unit, and y is negated because "
+          + "the drawing grows y downward and CAD grows it north");
       }
+    }
+
+    /* The shape must be the same shape, not its mirror: negating y
+       keeps every relative bearing while flipping the whole drawing,
+       so this checks the turn direction survives. A run going east
+       then south on the drawing turns clockwise; in CAD, with y north,
+       east then south is still a clockwise turn. */
+    const cross = (a, b, c) =>
+      (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
+    if (cross(...want) * cross(...got) < 0) {
+      fail("the exported run turns the other way from the drawing \u2014 it "
+        + "has been mirrored rather than moved");
     }
   }
 
@@ -165,6 +186,14 @@ const P = pairs(dxf);
   const moved = pairs(buildDxf([main], { lineTypes, styles,
     origin: [400000, 300000] }));
   const firstX = moved.find((p) => p[0] === 10 && Number(p[1]) > 1000);
+  /* And the northing is added AFTER y is negated, so an origin given
+     in CAD terms means what a surveyor means by it. */
+  const firstY = moved.find((p) => p[0] === 20 && Number(p[1]) > 1000);
+  if (!firstY || Math.abs(Number(firstY[1]) - 299980) > 0.001) {
+    fail(`a northing of 300000 puts the first vertex at ${firstY?.[1]} `
+      + "where 299980 is expected \u2014 the offset must be applied after y "
+      + "is negated, or the drawing lands mirrored about the northing");
+  }
   if (!firstX || Math.abs(Number(firstX[1]) - 400010) > 0.001) {
     fail("an origin offset is not applied, so a project with a known "
       + "easting and northing cannot be exported onto the grid");

@@ -24,6 +24,20 @@
    fact about the project rather than about this file, so it is asked
    for rather than guessed.
 
+   ── And y is negated ──
+
+   The drawing stores metres in SCREEN convention: y grows downward,
+   which is what `toPx` on the canvas does and what every pixel-facing
+   part of this codebase assumes. CAD is the other way up — y grows
+   north. Writing the stored y straight out therefore mirrors the whole
+   drawing about its X axis, which reads at a glance like a 180-degree
+   rotation and is not one: text comes out the right way round, north
+   and south are swapped, and a drawing that looks almost plausible is
+   the worst kind of wrong to hand to a CAD team.
+
+   So every y is negated on the way out, before the origin is added.
+   The offset is therefore in CAD terms: a northing is a northing.
+
    ── What a CAD user gets ──
 
    One layer per kind of thing — WATER-MAIN, TRENCH, ELECTRIC-SERVICE —
@@ -174,13 +188,13 @@ export function buildDxf(features = [], opts = {}) {
         + pair(10, "0.0") + pair(20, "0.0") + pair(30, "0.0") + pair(70, 8);
       for (const p of g) {
         ents += pair(0, "VERTEX") + pair(8, lay)
-          + pair(10, num(p[0] + ox)) + pair(20, num(p[1] + oy))
+          + pair(10, num(p[0] + ox)) + pair(20, num(-p[1] + oy))
           + pair(30, "0.000") + pair(70, 32);
       }
       ents += pair(0, "SEQEND") + pair(8, lay);
     } else {
       ents += pair(0, "POINT") + pair(8, lay)
-        + pair(10, num(g[0][0] + ox)) + pair(20, num(g[0][1] + oy))
+        + pair(10, num(g[0][0] + ox)) + pair(20, num(-g[0][1] + oy))
         + pair(30, "0.000");
     }
 
@@ -192,7 +206,7 @@ export function buildDxf(features = [], opts = {}) {
       noteLayer(tl, ap.labelColour ?? ap.colour ?? "#ffffff");
       const at = f.Feature_Type === "line" ? g[Math.floor(g.length / 2)] : g[0];
       ents += pair(0, "TEXT") + pair(8, tl)
-        + pair(10, num(at[0] + ox)) + pair(20, num(at[1] + oy))
+        + pair(10, num(at[0] + ox)) + pair(20, num(-at[1] + oy))
         + pair(30, "0.000")
         /* Half a metre of text: readable at the scales these drawings
            are plotted at, and a number the receiving drafter can

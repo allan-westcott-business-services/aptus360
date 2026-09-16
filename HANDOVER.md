@@ -4756,6 +4756,25 @@ characters is a hundred lines of prose and no rules at all.
      function shared between the screen and an export may be answering
      a question the export is not asking.
 
+     ⚠ **The drawing came out MIRRORED, and was fixed by negating y.**
+     Reported from AutoCAD: geometry flipped about the X axis — and
+     the reporter was right to say mirrored rather than rotated, which
+     is the distinction that identifies the cause. The drawing stores
+     metres in SCREEN convention (`toPx` maps metres to pixels with no
+     sign change, so y grows downward); CAD grows y north. Writing the
+     stored y straight out therefore mirrors the whole plan.
+
+     It is a nasty one because a mirrored drawing is nearly plausible:
+     text reads the right way round, lengths and angles are right, and
+     only north and south are swapped. My check had ASSERTED the bug —
+     "y must not be flipped" — which is a reminder that a check
+     encodes an assumption and is only as good as it.
+
+     The negation happens before the origin is added, so an `origin`
+     given as a real easting and northing means what a surveyor means
+     by it. `checkdxf.mjs` now also checks the turn direction of a run
+     survives, which is what tells a mirror from a move.
+
      **PARKED, and worth picking up: layer mapping to the CAD team's
      own standard.** The layer names here are derived from the
      drawing's vocabulary (WATER-MAIN, WATER-WASHOUT). The export is

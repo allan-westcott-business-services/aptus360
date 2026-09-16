@@ -6159,6 +6159,20 @@ export default function GISCanvasPage() {
                The index says which placement was grabbed. */
             labelHits.current.push({
               id: f.Feature_ID, idx: placed ? idx : null, anchor, txt,
+              /* The offset this label was DRAWN at.
+
+                 The grab used to look the offset up again from the
+                 attributes, by the index — and a feature carrying only
+                 a legacy `Label_Offset` is rendered from a SYNTHESISED
+                 placement, so the index said 0 while `Labels` did not
+                 exist. The lookup found nothing, the drag started from
+                 zero, and the label jumped back to its unmoved position
+                 the moment it was touched a second time.
+
+                 Carried from the draw instead: wherever the renderer
+                 got it from, that is where the drag starts. One source,
+                 so the two cannot disagree about where a label is. */
+              off: off ?? null,
               cx: mid.x, cy: mid.y,
               x: mid.x - w / 2, y: mid.y - 20, w, h: 15,
               /* Set below, once the angle is worked out. A rotated label
@@ -7611,15 +7625,24 @@ export default function GISCanvasPage() {
              stood, and every label became unpickable. */
           labelIdx: lab.idx ?? null,
           labelKind: lab.kind ?? null,
-          startOffset: (lab.kind === "pressure"
-            ? f?.Attributes?.Pressure_Offset
-            : lab.kind === "levels"
-              ? f?.Attributes?.Levels_Offset
-              : lab.kind === "cutout"
-                ? f?.Attributes?.Cutout_Offset
-              : lab.idx != null
-              ? f?.Attributes?.Labels?.[lab.idx]?.off
-              : f?.Attributes?.Label_Offset) ?? [0, 0],
+          /* Where the label IS, as drawn.
+
+             `lab.off` is recorded by the renderer at the moment it
+             draws, which is the only account of a label's position that
+             cannot be out of step with what is on screen. The lookups
+             behind it are for the labels whose hits predate this and
+             carry no `off` — the per-kind offsets a span node and a
+             meter hold their own. */
+          startOffset: (lab.off
+            ?? (lab.kind === "pressure"
+              ? f?.Attributes?.Pressure_Offset
+              : lab.kind === "levels"
+                ? f?.Attributes?.Levels_Offset
+                : lab.kind === "cutout"
+                  ? f?.Attributes?.Cutout_Offset
+                : lab.idx != null
+                ? f?.Attributes?.Labels?.[lab.idx]?.off
+                : f?.Attributes?.Label_Offset)) ?? [0, 0],
         };
         return;
       }

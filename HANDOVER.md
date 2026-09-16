@@ -4865,6 +4865,33 @@ characters is a hundred lines of prose and no rules at all.
      `checklabelmove.mjs` holds the handler's shape, including that no
      second label branch reappears.
 
+     **Second half, found once the first was fixed: the label jumped
+     back when grabbed again.** First drag fine, second grab and it
+     sprang to its unmoved position. A feature carrying only a legacy
+     `Label_Offset` is rendered from a SYNTHESISED placement — the
+     renderer builds `[{ at, off }]` from the legacy keys — so `placed`
+     is true and the hit records `idx: 0`, while `Attributes.Labels`
+     does not exist. The grab then looked the offset up by that index,
+     found nothing, and started the drag from `[0, 0]`.
+
+     Only visible on the SECOND drag, because the first one is what
+     writes the legacy key that creates the synthesised placement. A
+     fix for one fault exposing the next is the usual shape of this;
+     it was not a regression from 140.
+
+     The hit now carries the offset the renderer DREW at (`off: off ??
+     null`) and the grab starts from that, with the old lookups only as
+     a fallback. One account of where a label is, which is the same
+     move as every other parity fix this session: the thing that draws
+     and the thing that reads must not each work it out.
+
+     Worth noting the check I wrote for this initially passed while the
+     bug was in, because its regex matched the FIRST
+     `labelHits.current.push` in the file — the one for point labels —
+     rather than the line label's. A static check anchored on a common
+     pattern can silently test the wrong thing; anchor on what is
+     unique to the case (here `idx: placed ? idx : null`).
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

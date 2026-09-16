@@ -91,6 +91,42 @@ const branch = (() => {
   }
 }
 
+// 5. The grab starts from where the label was DRAWN.
+//
+//    A feature carrying only a legacy `Label_Offset` is rendered from
+//    a synthesised placement, so the hit records index 0 while
+//    `Labels` does not exist. A grab that looked the offset up by that
+//    index found nothing, started from zero, and the label jumped back
+//    to its unmoved position the moment it was touched a second time —
+//    after the first drag had worked perfectly.
+{
+  /* The push that records a LINE label's hit — the one that carries an
+     index into the placements, which is where the mismatch was. Found
+     by that index rather than by being the first push in the file:
+     points have their own, and matching the wrong one made this pass
+     while the bug was in. */
+  const hit = (() => {
+    const at = canvas.indexOf("idx: placed ? idx : null");
+    if (at < 0) return "";
+    const from = canvas.lastIndexOf("labelHits.current.push({", at);
+    const to = canvas.indexOf("});", at);
+    return from >= 0 && to > from ? canvas.slice(from, to) : "";
+  })();
+
+  if (!hit) {
+    fail("the line label's hit record cannot be found where it was");
+  } else if (!/off: off \?\? null/.test(hit)) {
+    fail("a label's hit does not carry the offset it was drawn at, so the "
+      + "grab has to look it up again and can disagree with the screen");
+  }
+
+  if (!/startOffset: \(lab\.off/.test(canvas)) {
+    fail("the drag does not start from the offset the label was drawn at "
+      + "\u2014 a second grab jumps the label back to whatever the lookup "
+      + "finds, or to zero when it finds nothing");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "A moved label is saved, and a click on one is not.");
 process.exit(bad ? 1 : 0);

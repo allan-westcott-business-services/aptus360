@@ -4367,6 +4367,35 @@ characters is a hundred lines of prose and no rules at all.
      registration check passed throughout, because its synthetic
      basemap carried no attribute either renderer had to correct.
 
+131. **The print read the raw drawing; the screen read the filtered
+     one.** Hidden layers printed. So did the rest of the estate when
+     one circuit was isolated, which is worse, because isolating a
+     circuit and printing is precisely how one circuit's plan would be
+     issued. The canvas draws its `visible` memo — hidden keys, circuit
+     and way isolates, the lighting view, the live-trench filter — and
+     the print handlers were handed `features`.
+
+     The fix is one word in three places: `savePdfSheets`,
+     `printPdfSheets` and the `PrintModal` prop all read `visible` now.
+     The modal matters as much as the handlers — sheets costed over
+     hidden geometry frame and price paper for lines that will not be
+     on it. Reusing the canvas's own memo rather than re-deriving the
+     predicate is the point: a rule added to what the screen shows is a
+     rule added to what the sheet shows, with no second copy to drift.
+     `withAssumedMeters` runs on the filtered set, so hiding electric
+     also synthesises no board flats.
+
+     The check slices `GISCanvasPage.jsx` to the two handlers before
+     matching, because `withAssumedMeters` has other callers — the
+     levels and the circuit report — that rightly read the raw drawing,
+     and the previous check's file-wide regex would have matched one of
+     those and passed while the print read the wrong set. The slice
+     fails loudly if its anchors move, per the anchoring note above.
+
+     Same family as "Four readers of one drawing": the screen learned
+     what visibility means, and a second reader of the same drawing
+     carried no idea of it while looking perfectly correct.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

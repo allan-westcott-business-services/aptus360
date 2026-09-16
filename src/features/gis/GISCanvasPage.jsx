@@ -11212,8 +11212,22 @@ export default function GISCanvasPage() {
     filename: `${project?.Contract_Number || "drawing"}.pdf`,
   }), [layers, styles, lineTypes, utilities, basemap, basemapBytes, project]);
 
+  /* ── The print is of the drawing AS SHOWN ──
+
+     Both handlers read `visible`, not `features`, so whatever the
+     screen is answering \u2014 hidden layers, a circuit or way isolate, the
+     lighting view, the live-trench filter \u2014 the paper answers too.
+     That is the point as much as the constraint: isolating one circuit
+     and printing IS how one circuit's plan is issued. Reusing the
+     canvas's own memo rather than re-deriving the predicate here means
+     the two cannot drift: a rule added to what the screen shows is a
+     rule added to what the sheet shows, with no second copy to forget.
+
+     `withAssumedMeters` runs on the filtered set, so a hidden electric
+     layer also synthesises no meters \u2014 the boards it works from are
+     gone before it looks. */
   const savePdfSheets = useCallback(async (plan) => {
-    const src = withAssumedMeters(features, {
+    const src = withAssumedMeters(visible, {
       plotList,
       configs: lookups?.propertyConfigs || [],
       propertyTypes: lookups?.propertyTypes || [],
@@ -11222,10 +11236,10 @@ export default function GISCanvasPage() {
       nrsSubTypes: lookups?.nrsSubTypes || [],
     });
     return savePdf(src, plan, await pdfOptions());
-  }, [features, plotList, lookups, nrsList, pdfOptions]);
+  }, [visible, plotList, lookups, nrsList, pdfOptions]);
 
   const printPdfSheets = useCallback(async (plan) => {
-    const src = withAssumedMeters(features, {
+    const src = withAssumedMeters(visible, {
       plotList,
       configs: lookups?.propertyConfigs || [],
       propertyTypes: lookups?.propertyTypes || [],
@@ -11234,7 +11248,7 @@ export default function GISCanvasPage() {
       nrsSubTypes: lookups?.nrsSubTypes || [],
     });
     return printPdf(src, plan, await pdfOptions());
-  }, [features, plotList, lookups, nrsList, pdfOptions]);
+  }, [visible, plotList, lookups, nrsList, pdfOptions]);
 
   /* Putting a suggested change on the drawing.
 
@@ -25970,7 +25984,10 @@ export default function GISCanvasPage() {
       )}
 
       {printOpen && (
-        <PrintModal features={features}
+        /* The visible set, matching what the handlers print: sheets
+           costed and tiled over hidden geometry would frame paper for
+           lines that will not be on it. */
+        <PrintModal features={visible}
           basemap={basemap?.Source_Kind === "pdf" ? basemap : null}
           onSave={savePdfSheets}
           onPrint={printPdfSheets}

@@ -463,9 +463,41 @@ const bounds = drawnBounds(world);
   }
   /* The flats on a board are on the sheet too: the same assumed meters
      the build and the report work from. */
-  if (!/withAssumedMeters\(features, \{[\s\S]{0,400}nrsSubTypes/.test(canvas)) {
-    fail("the sheets are drawn from the raw drawing, so a board's flats and "
-      + "its landlord supplies are missing from the print");
+  /* The flats on a board are on the sheet too: the same assumed meters
+     the build and the report work from.
+
+     Sliced to the two print handlers rather than searched for across
+     the file, because `withAssumedMeters` has other callers \u2014 the
+     levels and the circuit report among them \u2014 that rightly read the
+     raw drawing, and a match on one of those would pass this check
+     while the print read the wrong set. */
+  const from = canvas.indexOf("const savePdfSheets");
+  const upto = canvas.indexOf("Putting a suggested change on the drawing");
+  const handlers = from >= 0 && upto > from ? canvas.slice(from, upto) : "";
+  if (!handlers) {
+    fail("the print handlers cannot be found where they were \u2014 this check "
+      + "needs re-anchoring, not deleting");
+  }
+  if (!/withAssumedMeters\(visible, \{[\s\S]{0,400}nrsSubTypes/.test(handlers)) {
+    fail("the sheets are drawn without a board's flats and landlord "
+      + "supplies, or from a set other than the visible one");
+  }
+  /* ── The print is of the drawing as shown ──
+
+     Hidden layers, an isolated circuit or way, the lighting view and
+     the live-trench filter are all answered by the canvas's `visible`
+     set, and the print must read THAT set: a print of the raw drawing
+     puts every hidden layer back on paper, and isolating one circuit
+     to issue its plan prints the whole estate. */
+  if (/withAssumedMeters\(features/.test(handlers)) {
+    fail("a print handler reads the raw drawing, so hidden layers and "
+      + "isolates print anyway");
+  }
+  /* And the dialogue costs its paper over the same set, or sheets are
+     framed and priced for lines that will not be on them. */
+  if (!/<PrintModal features=\{visible\}/.test(canvas)) {
+    fail("the print dialogue is fed the raw drawing, so hidden geometry "
+      + "stretches the sheet count and the frames drawn on the canvas");
   }
   /* And the raster path is gone. */
   if (/printView\(/.test(canvas)) {

@@ -441,6 +441,50 @@ export function waterMainRuns(features = [], opts = {}) {
         cur = next;
       }
 
+      /* ── On to the end of the trench ──
+
+         The walk above prunes every node with no water beyond it, so a
+         run stopped at the LAST SERVICE rather than at the end of the
+         dig. The last few metres of trench were then bare: a length
+         somebody had drawn to be dug, with no pipe in it, no wash out
+         at its end, and nothing in the bill for pipe that would in fact
+         be laid.
+
+         So once a run reaches a leaf of the served tree it carries on
+         along the trench while the way ahead is unambiguous — one
+         onward length at a time — to where the dig actually stops.
+
+         Only from a leaf. A run that ended because the main DIVIDES or
+         because the size changed has served pipe ahead of it, and the
+         walk deals with that; extending there would lay a second pipe
+         down a length that is about to get its own.
+
+         A fork beyond the last service stops it. Two ways on with no
+         water either side is a question about intent — which leg is the
+         main and which the stub — and this is not the place to guess:
+         the bare-trench report below still names what was left, which
+         is the honest outcome.
+
+         The size does not change over the tail. Nothing is fed along
+         it, so no table lookup applies; the pipe that arrives is the
+         pipe that carries on to its end, which is what would be laid. */
+      let tail = cur;
+      let tailM = 0;
+      if (!kids(tail).length) {
+        for (;;) {
+          const onward = children.get(tail) || [];
+          if (onward.length !== 1) break;
+          const next = onward[0];
+          const key = edgeKey(tail, next);
+          if (covered.has(key)) break;
+          pts.push(nodes[next].slice());
+          edges.add(key);
+          covered.add(key);
+          tailM += dist(nodes[tail], nodes[next]);
+          tail = next;
+        }
+      }
+
       /* The count at the top of the run, which is the most it carries
          and therefore what sizes it. */
       const carries = served[first];
@@ -450,6 +494,11 @@ export function waterMainRuns(features = [], opts = {}) {
         metres: Math.round(lengthOf(pts) * 10) / 10,
         fromNode: u,
         endNode: cur,
+        /* Where the pipe actually finishes, and how much of it is
+           beyond the last service. The wash out goes at the far end of
+           the drawn pipe, which is this node rather than endNode. */
+        tailNode: tail,
+        tailM: Math.round(tailM * 10) / 10,
         /* Everything this length feeds. */
         meters: carries,
         services: teed,

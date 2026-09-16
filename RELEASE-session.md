@@ -1,63 +1,53 @@
-# Session change set — wash outs, print parity (130–135), water build type (134)
+# Session change set — wash outs, main to trench end, print parity, water build type
 
-Fifteen files. **One migration, and it is required.** Copy the tree
-over `aptus360/` — paths match, nothing deleted. Supersedes every
-earlier zip from this session.
+Seventeen files. **One migration (0213), required, and you have already
+run it.** Copy the tree over `aptus360/` — paths match, nothing deleted.
+Supersedes every earlier zip from this session.
 
-    supabase/migrations/0213_washout_role.sql   ← RUN THIS FIRST
-    src/features/gis/washOuts.js          new: where a wash out goes
-    src/features/gis/lineLabel.js         new: line label composition
+    src/features/gis/waterNetwork.js      NEW THIS ROUND: main runs to the dig's end
+    src/features/gis/washOuts.js          where a wash out goes
+    src/features/gis/lineLabel.js         line label composition
     src/features/gis/printPdf.js          paths primitive, centred text
     src/features/gis/printVector.js       symbols, sizes, labels, glyphs
-    src/features/gis/GISCanvasPage.jsx    131–136
+    src/features/gis/GISCanvasPage.jsx    131–137
     src/features/gis/FeatureEditor.jsx    134
     src/features/gis/buildStatus.js       134
     src/features/gis/joints.js            135
     src/lib/gisStyle.js                   symbols, SYMBOL_TEXT, cascade
-    src/features/admin/GisStylesAdmin.jsx wash out role, inspector
-    checkprintpdf.mjs  checkstyleinspector.mjs
-    checkbuildmaintype.mjs  checkwashouts.mjs
+    src/features/admin/GisStylesAdmin.jsx wash out role, cascade inspector
+    supabase/migrations/0213_washout_role.sql
+    checkprintpdf.mjs  checkstyleinspector.mjs  checkbuildmaintype.mjs
+    checkwashouts.mjs  checkmaintotrenchend.mjs
     HANDOVER.md
 
-## Wash outs (new)
+## New this round — the main reaches the end of the trench
 
-Build Water Network now places one at every dead END of the main —
-not at junctions, and not at the POC, which is an end by geometry and
-the one place water comes in. A size change mid-street is two runs
-meeting, not an end, and gets none. Generated ones are replaced on
-each rebuild; one placed by hand is left alone.
+The sizing walk prunes any node with nothing beyond it to serve, so a
+run stopped at the last service tee: bare dig at the end of the street,
+no wash out on it, and pipe missing from the bill. A run that ends at a
+dead end now carries on along the trench to where the dig stops, and
+the wash out goes at that new end.
 
-Drawn as a filled disc with WO inside. The colour is deliberately
-unset on the style, so it follows the water layer and always matches
-the main it terminates.
+Three deliberate limits: a run that ended at a junction or a size
+change is NOT extended (there is served pipe ahead of it); a fork
+beyond the last service stops the extension rather than guessing which
+leg is the main, and the bare-trench report still names it; and the
+size does not change over the tail — the pipe that arrives carries on.
 
-**Size and visibility:** Admin › GIS Styles → role "Wash out". The
-migration seeds it at 9 px; Symbol size, Scale symbol and the Min/Max
-scale rules all apply. Letters scale with the disc and are dropped
-when it is too small to hold them.
+## Wash outs, print parity (130–135), water build type (134)
 
-**Migration 0213 is required** — `Feature_Role` carries a CHECK
-constraint, so without it the build cannot save a wash out at all. It
-replaces the constraint with the full current role list (including
-primary, ringsub and openpoint from 0211) plus washout.
+As before: wash outs at every dead end as a disc with WO, colour
+following the water main; symbols, sizes, line labels and hand-placed
+label positions all print as the screen shows them; and the build lays
+`water_main` planned rather than the incumbent's type.
 
-## Print parity (130–135) and the water build type (134)
-
-Basemap rotation; only the visible set prints; labels obey the screen's
-switches and hand-placed positions; the operator standard travels to
-the sheet; symbols and their sizes come from the style cascade; and
-Build Water Network lays `water_main` planned rather than the
-incumbent's `water_main_existing`.
-
-**Still needed on existing drawings:** re-run Build Water Network —
-it fixes the main's type and places the wash outs in one pass.
+**On existing drawings, re-run Build Water Network.** One pass now:
+relays the mains as the right type and status, carries them to the end
+of the dig, replaces the service valves, and places the wash outs. The
+status line reports the wash out count.
 
 ## Suite state
 
-141 of 159 pass: the same 18 pre-existing failures as this session's
-baseline, with checkwashouts added and passing. Build clean.
-
-Note: `checkboundarystyle` fails at baseline because primary, ringsub
-and openpoint are drawn by the canvas but missing from the GIS Styles
-role list — a one-line fix in GisStylesAdmin.jsx that I have left
-alone as out of scope. Say the word and I'll close it.
+142 of 160 pass — the same 18 pre-existing failures as this session's
+baseline, with two new checks added and passing. Build clean. Each fix
+fails its own cases when reverted.

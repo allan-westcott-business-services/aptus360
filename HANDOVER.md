@@ -4644,6 +4644,33 @@ characters is a hundred lines of prose and no rules at all.
      outside the branch that declares it, in the canvas's letter
      drawing. Fixed by carrying the radius out beside the symbol.
 
+137. **The main stopped at the last service, not at the end of the
+     trench.** The walk in waterNetwork.js prunes every node with no
+     water beyond it (`kids` filters `served > 0`), which is right for
+     sizing and wrong for laying: a run ended at the last service tee,
+     so the final stretch of dig had no pipe in it, no wash out at its
+     end, and nothing in the bill for pipe that would in fact be laid.
+     The bare-trench report named it, which is how it survived — it was
+     reported rather than wrong.
+
+     A run that ends at a LEAF of the served tree now carries on along
+     the trench, one onward length at a time, to where the dig stops.
+     `tailNode` and `tailM` record where it finishes and how much of it
+     is past the last service.
+
+     Three rules hold it together, each with a case:
+       - only from a leaf. A run that ended because the main divides or
+         the size changed has served pipe ahead of it, and extending
+         there lays a second main down the same length.
+       - a fork beyond the last service stops it. Which leg is the main
+         is a question for the designer; the bare-trench report still
+         names what was left.
+       - the size does not change over the tail. Nothing is fed along
+         it, so the pipe that arrives is the pipe that carries on.
+
+     The wash outs follow for free: washOuts.js reads the drawn pipe,
+     so the end moving moves the wash out with it. `checkmaintotrenchend.mjs`.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

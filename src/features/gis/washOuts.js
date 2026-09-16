@@ -126,3 +126,65 @@ export function washOuts(features = [], opts = {}) {
 
   return { washouts };
 }
+
+/* ── Where a hand-placed wash out lands ──
+
+   A wash out goes ON a water main: it terminates a pipe, and one
+   floating beside a pipe is a fitting connected to nothing. So a click
+   near a main is taken to the nearest of that pipe's own points — a
+   vertex, the midpoint of a segment, or an end — rather than to
+   wherever the pointer happened to be.
+
+   Those three because they are the places a pipe can be met. An end is
+   where a wash out normally goes; a vertex is a bend somebody drew, and
+   a midpoint is the obvious place on a straight length with no drawn
+   point in it. Anything else would put the fitting a few centimetres
+   off the line, where it draws as being on the pipe and joins nothing.
+
+   Returns the point, the pipe it belongs to, and the bearing of the
+   pipe there — the same three facts the build records — or null where
+   no main is within reach, which is the caller's cue to refuse rather
+   than place a wash out in open ground. */
+export function snapToMain(point, features = [], opts = {}) {
+  const { lineTypes = [], reach = SNAP_TOL } = opts;
+  if (!Array.isArray(point) || point.length !== 2) return null;
+
+  let best = null;
+  const offer = (at, d, line, dir) => {
+    if (d > reach) return;
+    /* Ties go to whichever was offered first, and ends are offered
+       before midpoints below: a click at the very end of a pipe means
+       the end, not the middle of its last segment. */
+    if (!best || d < best.d - 1e-9) best = { d, at: [at[0], at[1]], line, dir };
+  };
+
+  for (const f of waterMains(features, lineTypes)) {
+    const g = (f.Geometry || []).filter(Array.isArray);
+    if (g.length < 2) continue;
+
+    /* Vertices, ends included — an end IS a vertex, and offering it
+       here means a click at the end of a pipe finds it whether or not
+       the pipe has a bend nearby. */
+    for (let i = 0; i < g.length; i++) {
+      const nb = i === 0 ? g[1] : g[i - 1];
+      const dir = i === 0 ? [g[1][0] - g[0][0], g[1][1] - g[0][1]]
+        : [g[i][0] - nb[0], g[i][1] - nb[1]];
+      offer(g[i], dist(g[i], point), f, dir);
+    }
+
+    /* And the middle of each segment. */
+    for (let i = 1; i < g.length; i++) {
+      const mid = [(g[i - 1][0] + g[i][0]) / 2, (g[i - 1][1] + g[i][1]) / 2];
+      offer(mid, dist(mid, point), f,
+        [g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]]);
+    }
+  }
+
+  if (!best) return null;
+  const [vx, vy] = best.dir[0] || best.dir[1] ? best.dir : [1, 0];
+  return {
+    at: best.at,
+    lineId: best.line.Feature_ID,
+    angleDeg: (Math.atan2(vy, vx) * 180) / Math.PI,
+  };
+}

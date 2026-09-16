@@ -7,7 +7,7 @@
    even though it is two runs meeting, and the POC is an end by geometry
    and the one place the water comes IN. */
 import { readFileSync } from "node:fs";
-import { washOuts } from "./src/features/gis/washOuts.js";
+import { washOuts, snapToMain } from "./src/features/gis/washOuts.js";
 import { bulkDeleteCategories } from "./src/features/gis/bulkDelete.js";
 import { SYMBOLS, SYMBOL_TEXT, symbolPath } from "./src/lib/gisStyle.js";
 
@@ -22,6 +22,8 @@ const main = (id, pts) => ({ Feature_ID: id, Feature_Type: "line",
   Layer_Key: "water", Geometry: pts, Attributes: { Line_Type: "water_main" } });
 const poc = (at) => ({ Feature_ID: 99, Feature_Type: "point",
   Feature_Role: "poc", Layer_Key: "water", Geometry: [at] });
+
+const near = (a, b, tol = 0.01) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= tol;
 
 const has = (list, at, tol = 0.01) =>
   list.some((w) => Math.hypot(w.at[0] - at[0], w.at[1] - at[1]) <= tol);
@@ -286,6 +288,87 @@ const has = (list, at, tol = 0.01) =>
   if (!/if \(role === "washout"\) continue;/.test(print)) {
     fail("the sheet writes a wash out's label beside its symbol \u2014 the "
       + "print is labelling by rules of its own again");
+  }
+}
+
+// 12. Placed by hand, onto the pipe's own points. A wash out a few
+//     centimetres off the line draws as though it were on the pipe and
+//     is joined to nothing, which is the worst of both.
+{
+  const pipe = { Feature_ID: 40, Feature_Type: "line", Layer_Key: "water",
+    Geometry: [[0, 0], [100, 0], [100, 60]],
+    Attributes: { Line_Type: "water_main" } };
+  const trench = { Feature_ID: 41, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[0, 0], [100, 0], [100, 60]],
+    Attributes: { Line_Type: "water_trench" } };
+  const world = [pipe, trench];
+  const at = (p) => snapToMain(p, world, { lineTypes });
+
+  /* An end, which is where a wash out usually goes. */
+  const end = at([101, 61]);
+  if (!end || !near(end.at, [100, 60])) {
+    fail("a click near the end of a main does not find the end");
+  } else if (end.lineId !== 40) {
+    fail("a wash out snaps to the trench rather than to the pipe");
+  }
+
+  /* A bend the designer drew. */
+  const bend = at([99, 1]);
+  if (!bend || !near(bend.at, [100, 0])) {
+    fail("a click near a bend in the main does not find the vertex");
+  }
+
+  /* And the midpoint of a straight length, which is the only point on
+     it unless somebody drew one. */
+  const mid = at([49, 2]);
+  if (!mid || !near(mid.at, [50, 0])) {
+    fail("a click part way along a straight length does not find its "
+      + "midpoint, so a wash out lands off the pipe");
+  }
+
+  /* The bearing travels, so the fitting can be drawn turned to its
+     pipe without the drawing being rebuilt to find out. */
+  if (mid && Math.abs(mid.angleDeg) > 0.01) {
+    fail("the bearing of a pipe running east is not 0 degrees");
+  }
+
+  /* Nothing within reach is refused, not placed in open ground. */
+  if (at([400, 400]) !== null) {
+    fail("a click far from any main still places a wash out \u2014 a fitting "
+      + "joined to nothing");
+  }
+
+  /* A drawing with only a trench offers nothing: the dig is not a pipe. */
+  if (snapToMain([50, 0], [trench], { lineTypes }) !== null) {
+    fail("a wash out can be placed on a trench");
+  }
+}
+
+// 13. Wired: the menu arms it, the pipe gains a vertex where it had
+//     none, and dragging the fitting stretches the pipe rather than
+//     the dig.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/placeNode\("washout", "water"\)/.test(canvas)) {
+    fail("there is no way to place a wash out by hand");
+  }
+  if (!/snapToMain\(point, features, \{ lineTypes \}\)/.test(canvas)) {
+    fail("a hand-placed wash out is not snapped to a main, so it can be "
+      + "dropped in open ground");
+  }
+  if (!/updateFeature\(projectId, pipe\.Feature_ID, \{ Geometry: next \}\)/.test(canvas)) {
+    fail("the pipe gains no vertex under a wash out placed mid-length, so "
+      + "dragging the fitting afterwards would stretch nothing");
+  }
+  if (!/pt\.Feature_Role === "washout"\s*\n\s*&& !\(line\.Layer_Key === "water" && isMainFeature/
+    .test(canvas)) {
+    fail("dragging a wash out takes the TRENCH with it \u2014 the pipe and the "
+      + "dig end at the same point, and the dig should stay where it was "
+      + "surveyed");
+  }
+  if (!/\|\| pt\.Feature_Role === "washout"/.test(canvas)) {
+    fail("a wash out follows only the ENDS of its pipe, so one placed at "
+      + "a bend or mid-length moves out from under the main");
   }
 }
 

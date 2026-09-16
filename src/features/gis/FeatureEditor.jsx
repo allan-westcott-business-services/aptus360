@@ -1410,11 +1410,30 @@ export default function FeatureEditor({
                 menu they have to know about. The mark carries almost
                 nothing to edit — a label and a bearing — so the section
                 is the thing this dialogue is FOR. */}
-            {feature.Feature_Role === "sectionmark" && onShowSection && (
-              <button className="btn accent" style={{ marginTop: 8 }}
-                onClick={() => onShowSection(feature)}>
-                Show Cross-section
-              </button>
+            {feature.Feature_Role === "sectionmark" && (
+              <div style={{ marginTop: 8 }}>
+                {onShowSection && (
+                  <button className="btn accent"
+                    onClick={() => onShowSection(feature)}>
+                    Show Cross-section
+                  </button>
+                )}
+                {/* ── Which side it is viewed from ──
+
+                    Turning the mark about does two things at once: the
+                    heads on the drawing look the other way, and the
+                    section opens as its mirror. They are one fact —
+                    which side you are standing on — so they are one
+                    switch. A section viewed from the far side with the
+                    mark still pointing the near way is a drawing that
+                    lies about itself. */}
+                <label className="fe-check" style={{ marginTop: 6 }}>
+                  <input type="checkbox"
+                    checked={!!f.Attributes.Section_Flip}
+                    onChange={(e) => setAttr("Section_Flip")(e.target.checked)} />
+                  Viewed from the other side
+                </label>
+              </div>
             )}
           </div>
           <button className="fe-x" onClick={onClose} aria-label="Close">&times;</button>

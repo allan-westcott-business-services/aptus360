@@ -5093,6 +5093,15 @@ characters is a hundred lines of prose and no rules at all.
      fails if they differ, and separately that nothing is drawn outside
      the picture.
 
+     **Place Cross-Section moved to the TRENCH menu.** It was offered
+     from each utility menu beside Print to Scale, on the reasoning
+     that somebody printing would want one — which put it in three
+     wrong places at once. A section mark goes on a trench, reports
+     what the trench holds, and belongs to none of the utilities it
+     draws. It is disabled with a reason when no trench is drawn, like
+     the checks beside it. The check counts the offers and fails at
+     anything but one.
+
      The section dialogue now carries its own box. The general point:
      **a class defined inside another component's injected stylesheet
      is not a shared class** — borrowing one couples two things that

@@ -24393,6 +24393,23 @@ export default function GISCanvasPage() {
                           dig sound" under two headings and a divider.
                           They are the same kind of question and they are
                           asked at the same moment. */}
+                      {/* ── A section is a cut through the DIG ──
+
+                          It was offered from each utility menu, beside
+                          Print to Scale, on the grounds that somebody
+                          printing would want one. Wrong menu: a section
+                          mark goes on a trench, it reports what the
+                          trench holds, and it belongs to none of the
+                          utilities it draws. Asked for from the trench,
+                          which is the thing it cuts. */}
+                      <div className="gm-sep" />
+                      <MenuItem label="Place Cross-Section"
+                        hint={hasTrench
+                          ? "Click a trench. The mark is drawn 2m across it; open it to show the section"
+                          : "No trench drawn yet"}
+                        disabled={!projectId || !!busy || !hasTrench}
+                        onClick={() => placeNode("sectionmark", "annotation")} />
+
                       <div className="gm-sep" />
                       <MenuGroup label="Checks" />
                       <MenuItem label="Check Trench Connectivity"
@@ -25142,10 +25159,6 @@ export default function GISCanvasPage() {
                             hint={"Sets the drawing up for issue first \u2014 trench, plot seeds, span nodes and feeder end points off, mains and service labels on"}
                             disabled={!projectId}
                             onClick={openPrintToScale} />
-                          <MenuItem label={"Place Cross-Section"}
-                            hint={"Click a trench. The mark is drawn 2m across it; right-click the mark to show the section"}
-                            disabled={!projectId || !!busy}
-                            onClick={() => placeNode("sectionmark", "annotation")} />
                           <div className="gm-sep" />
 
                           {key === "water" && (

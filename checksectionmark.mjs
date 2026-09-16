@@ -623,6 +623,26 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
   if (!/placeNode\("sectionmark", "annotation"\)/.test(canvas)) {
     fail("there is no way to place a cross-section mark");
   }
+  /* On the TRENCH menu, once. A section is a cut through the dig; it
+     reports what the trench holds and belongs to none of the utilities
+     it draws, so offering it from each utility menu put it in three
+     wrong places at once. */
+  const offers = (canvas.match(/label="Place Cross-Section"|label=\{"Place Cross-Section"\}/g)
+    || []).length;
+  if (offers !== 1) {
+    fail(`Place Cross-Section is offered ${offers} times — it belongs on `
+      + "the Trench menu and nowhere else");
+  }
+  const trenchMenu = (() => {
+    const at = canvas.indexOf('<Menu id="trench"');
+    return at >= 0 ? canvas.slice(at, canvas.indexOf("</Menu>", at)) : "";
+  })();
+  if (!trenchMenu) {
+    fail("the Trench menu cannot be found where it was");
+  } else if (!/Place Cross-Section/.test(trenchMenu)) {
+    fail("Place Cross-Section is not on the Trench menu, which is where "
+      + "somebody working on the dig would look for it");
+  }
   if (!/snapForSection\(point, features, \{ lineTypes \}\)/.test(canvas)) {
     fail("a mark is not snapped onto a trench");
   }

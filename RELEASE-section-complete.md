@@ -1,7 +1,5 @@
 # Cross-section feature — every file, in one piece
 
-The whole feature, so nothing can be missing.
-
     supabase/migrations/0214_section_mark_role.sql
     supabase/migrations/0215_annotation_layer.sql
     src/features/gis/sectionMarks.js
@@ -12,22 +10,22 @@ The whole feature, so nothing can be missing.
     checksectionmark.mjs
     HANDOVER.md
 
-## New this round — the ground stays put when mirrored
+## New this round — Place Cross-Section is on the Trench menu
 
-The ground box and the grey surface bar were drawn from X(0), and
-mirrored, X(0) is the right-hand edge — so both shot off to the right
-while the pipes stayed where they were.
+Removed from the Water, Gas and Electric menus. A section mark goes on
+a trench, reports what the trench holds, and belongs to none of the
+utilities it draws — offering it from each of them put it in three
+wrong places at once.
 
-A rect needs a left edge and a width. Only things that sit at a
-position across the footway go through the mirroring transform; the
-ground is the frame those positions are measured in, not a position.
+It now sits on the **Trench** menu above the Checks group, and is
+disabled with a reason when no trench is drawn, like the checks beside
+it.
 
-Worth knowing for any mirrored drawing: under a reflection, a
-coordinate maps and an extent does not.
+Print to Scale stays on the utility menus, where it was asked for.
 
 ## Where everything is
 
-- **Place:** Water/Gas/Electric menu › Place Cross-Section, click a trench
+- **Place:** Trench menu › Place Cross-Section, then click a trench
 - **Show:** click the mark → Show Cross-section, or right-click it
 - **Flip:** the checkbox in the dialogue header, or in the mark's editor
 

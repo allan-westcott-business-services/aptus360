@@ -5093,6 +5093,27 @@ characters is a hundred lines of prose and no rules at all.
      fails if they differ, and separately that nothing is drawn outside
      the picture.
 
+     **A cable's size is an AREA, not a diameter** — corrected by the
+     user after a 185mm\u00b2 LV cable drew wider than a sewer. "63mm" on a
+     water main is 63mm across; "185mm" on a cable is 185 SQUARE
+     millimetres of conductor, which is how cable is specified and
+     ordered. `diameterMm` now takes `asArea` and returns the circle of
+     that area (d = 2√(A/π), about 15mm for 185mm\u00b2); the label reads
+     "185mm\u00b2"; a run with no size is nominal in the right unit (95mm\u00b2
+     for a cable, 100mm for a pipe).
+
+     And the section SAYS what that circle is: the conductor, not the
+     finished cable. A 185mm\u00b2 four-core is nearer 50mm over the
+     sheath, and `Electric_Cable_Size` holds impedance and volt drop
+     but no overall diameter — so drawing an invented one would put a
+     measurable number on a drawing with nothing behind it. If
+     diameters are added to that catalogue later, `diameterMm` is the
+     one place that needs to read them.
+
+     Worth remembering as a class of fault: a number with a unit the
+     code does not know is not a number. This one was visible only
+     because somebody who knows cables looked at the picture.
+
      **The mark draws no name.** It wrote "Section 1" along the trench,
      which on a drawing carrying several is annotation about
      annotation — and the shape already says what it is. The Label

@@ -397,8 +397,14 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
   if (/nommm/.test(svg)) {
     fail("a nominal size prints as \"nommm\"");
   }
-  if (!/100mm nominal/.test(svg)) {
+  /* A run with no size says so, in the unit it would be specified in
+     — an area for a cable, a diameter for a pipe. */
+  if (!/nominal/.test(svg)) {
     fail("a run with no size does not say its size is nominal");
+  }
+  if (!/95mm\u00b2 nominal/.test(svg)) {
+    fail("a cable with no size is given a nominal DIAMETER rather than a "
+      + "nominal area");
   }
 
   /* Every cover figure was written at the top of the drawing rather
@@ -637,6 +643,64 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
   if (!/Label: `Section \$\{n\}`/.test(canvas)) {
     fail("a placed mark is no longer named, so the section it opens has "
       + "nothing to call itself");
+  }
+}
+
+// 7k. A cable's size is an AREA, a pipe's is a diameter.
+//
+//     "63mm" on a water main is 63mm across. "185mm" on an LV cable is
+//     185 SQUARE millimetres — the conductor's cross-sectional area,
+//     which is how cable is specified and ordered. Read as a diameter
+//     it drew a cable wider than a sewer, which is what the section was
+//     doing.
+{
+  const lt = [...lineTypes,
+    { Type_Key: "elec_lv", Layer_Key: "electric" },
+    { Type_Key: "elec_hv", Layer_Key: "electric" }];
+  const c = [
+    { Feature_ID: 60, Label: "W12", Layer_Key: "water",
+      Attributes: { Line_Type: "water_main", Size: "63mm" } },
+    { Feature_ID: 61, Label: "B11", Layer_Key: "electric",
+      Attributes: { Line_Type: "elec_lv", Size: "185mm" } },
+  ];
+  const model = trenchSection(c, { lineTypes: lt });
+  const pipe = model.items.find((i) => i.label === "W12");
+  const cable = model.items.find((i) => i.label === "B11");
+
+  if (!pipe || Math.abs(pipe.diameterMm - 63) > 0.01) {
+    fail("a 63mm water main is not drawn 63mm across");
+  }
+  if (!cable) {
+    fail("the cable is missing from the section");
+  } else {
+    /* The circle of 185mm\u00b2 is about 15.3mm across. */
+    const want = 2 * Math.sqrt(185 / Math.PI);
+    if (Math.abs(cable.diameterMm - want) > 0.1) {
+      fail(`a 185mm\u00b2 cable is drawn ${cable.diameterMm.toFixed(1)}mm `
+        + `across, not ${want.toFixed(1)}mm \u2014 its size is an area, not a `
+        + "diameter");
+    }
+    if (cable.sizeKind !== "area" || cable.areaMm2 !== 185) {
+      fail("the section does not record that a cable's figure is an area");
+    }
+  }
+
+  /* And the drawing says so, or somebody reads 15mm off a circle that
+     stands for 185mm\u00b2. */
+  const svg = sectionSvg(model);
+  if (!/185mm\u00b2/.test(svg)) {
+    fail("the cable is not labelled with its area");
+  }
+  if (/B11\s+185mm</.test(svg)) {
+    fail("the cable's area is labelled as though it were a diameter");
+  }
+
+  /* The circle is the conductor, not the finished cable, and the
+     section admits it \u2014 the catalogue holds no overall diameter, and
+     inventing one gives a number somebody can measure off. */
+  if (!model.findings.some((f) => f.kind === "cable-area")) {
+    fail("the section does not say that a cable circle shows conductor "
+      + "area rather than the finished cable");
   }
 }
 

@@ -41,20 +41,56 @@ const POSITION_OF = {
   communications_catv: "communications_catv",
 };
 
-/* A diameter to draw, in millimetres.
+/* How big to draw a run, in millimetres across.
 
-   From the size on the feature where it has one — "63mm", "180mm",
-   "90 mm" — because that is the size somebody ordered. Where there is
-   none, a nominal 100mm, drawn as nominal and said so: a section that
-   invents a diameter and does not admit it is the kind of drawing that
-   gets measured off. */
-export function diameterMm(f) {
+   ── A pipe's size is a diameter; a cable's is an AREA ──
+
+   "63mm" on a water main is 63mm across. "185mm" on an LV cable is
+   185mm SQUARED — the cross-sectional area of the conductor, which is
+   how cable is specified and ordered. Read as a diameter it draws a
+   cable the width of a small sewer, which is what a section was doing.
+
+   So a cable's figure is turned into the circle of that area:
+   d = 2 * sqrt(A / pi), which for 185mm\u00b2 is about 15mm.
+
+   ── And that circle is the conductor, not the cable ──
+
+   A finished cable is bigger than its conductors: insulation, bedding,
+   armour and sheath all add to it, and a 185mm\u00b2 four-core is nearer
+   50mm over the sheath. The drawing does not hold that figure —
+   `Electric_Cable_Size` records impedance and volt drop, not an
+   overall diameter — so the section shows the area it was given and
+   SAYS that is what it is showing. Drawing an invented overall
+   diameter would be a number somebody could measure off; drawing the
+   area and naming it is not.
+
+   If overall diameters are added to the cable catalogue later, this is
+   the one place that needs to read them. */
+export function diameterMm(f, opts = {}) {
+  const { asArea = false } = opts;
   const raw = String(f?.Attributes?.Size ?? "");
-  const m = /(\d+(?:\.\d+)?)\s*mm/i.exec(raw);
-  if (m) return { mm: Number(m[1]), stated: true };
-  const bare = /^(\d+(?:\.\d+)?)$/.exec(raw.trim());
-  if (bare) return { mm: Number(bare[1]), stated: true };
-  return { mm: 100, stated: false };
+  const m = /(\d+(?:\.\d+)?)/.exec(raw);
+
+  /* Nothing on the drawing: a nominal figure, in the unit the thing is
+     specified in. 95mm\u00b2 for a cable and 100mm for a pipe — both common
+     enough to look right on a section without pretending to be the
+     answer, which the label says plainly. */
+  if (!m) {
+    return asArea
+      ? { mm: 2 * Math.sqrt(95 / Math.PI), areaMm2: 95, stated: false, kind: "area" }
+      : { mm: 100, stated: false, kind: "diameter" };
+  }
+
+  const n = Number(m[1]);
+  if (asArea) {
+    return {
+      mm: 2 * Math.sqrt(n / Math.PI),
+      areaMm2: n,
+      stated: true,
+      kind: "area",
+    };
+  }
+  return { mm: n, stated: true, kind: "diameter" };
 }
 
 /* The section model.
@@ -99,7 +135,10 @@ export function trenchSection(contents = [], opts = {}) {
     const cover = coverFor(njugKey, surface);
     const posKey = POSITION_OF[njugKey] ?? njugKey;
     const slot = NJUG_FOOTWAY_ORDER.find((p) => p.key === posKey);
-    const dia = diameterMm(f);
+    /* Cables are specified by area, pipes by diameter. */
+    const isCable = njugKey === "electric_hv" || njugKey === "electric_lv"
+      || njugKey === "communications" || njugKey === "communications_catv";
+    const dia = diameterMm(f, { asArea: isCable });
 
     if (cover?.warning) findings.push({ kind: "warning", text: cover.warning });
     if (!cover) {
@@ -113,7 +152,7 @@ export function trenchSection(contents = [], opts = {}) {
       findings.push({
         kind: "nominal",
         text: `${f.Label || "A run"} has no size on the drawing; it is drawn `
-          + "at a nominal 100mm.",
+          + `at a nominal ${isCable ? "95mm\u00b2" : "100mm"}.`,
       });
     }
 
@@ -138,10 +177,25 @@ export function trenchSection(contents = [], opts = {}) {
       coverMaxMm: cover ? cover.max : null,
       diameterMm: dia.mm,
       diameterStated: dia.stated,
+      /* What the figure on the drawing MEANS: a diameter for a pipe,
+         an area for a cable. The drawing says which, so nobody reads
+         15mm off a circle that stands for 185mm\u00b2. */
+      sizeKind: dia.kind,
+      areaMm2: dia.areaMm2 ?? null,
       /* Stacked below the one before it in the same position, clear of
          it by its own diameter. */
       stack: n,
       colour: NJUG_COLOUR[njugKey] ?? "#475569",
+    });
+  }
+
+  if (items.some((i) => i.sizeKind === "area")) {
+    findings.push({
+      kind: "cable-area",
+      text: "Cable sizes are conductor cross-sectional areas, so a cable is "
+        + "drawn as a circle of that area. A finished cable is larger than "
+        + "its conductors \u2014 insulation, armour and sheath \u2014 and the drawing "
+        + "does not hold an overall diameter.",
     });
   }
 
@@ -280,9 +334,11 @@ export function sectionSvg(model, opts = {}) {
     }
     placed.push({ x: cx, y: ty });
 
-    const size = it.diameterStated
-      ? `${it.diameterMm}mm`
-      : `${it.diameterMm}mm nominal`;
+    const size = it.sizeKind === "area"
+      ? `${it.areaMm2 ?? Math.round(Math.PI * (it.diameterMm / 2) ** 2)}mm\u00b2`
+        + (it.diameterStated ? "" : " nominal")
+      : `${Math.round(it.diameterMm)}mm`
+        + (it.diameterStated ? "" : " nominal");
     const name = [it.label, size].filter(Boolean).join("  ");
     P.push(`<text x="${cx.toFixed(1)}" y="${ty.toFixed(1)}" font-size="9" `
       + `text-anchor="middle" fill="#0f172a">${esc(name)}</text>`);

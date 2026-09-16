@@ -4585,6 +4585,65 @@ characters is a hundred lines of prose and no rules at all.
      point — still print as their style symbol rather than their
      drawn picture. Same shape of fault as this one, not yet closed.
 
+136. **Wash outs on the water network (feature, not a fault).** Asked
+     for: a wash out at every END of pipe on a built water main — not
+     at junctions — drawn as a filled disc, the colour of the main,
+     with WO inside, and its size and visibility editable in GIS
+     Styles.
+
+     *Where.* `washOuts.js`, pure and modelled on serviceValves.js:
+     interns vertices within CONNECT_EPS, counts pipe ENDS at each node
+     and takes the nodes of degree one. Degree two is a bend OR two
+     runs meeting — and the builder cuts a run wherever the size
+     changes, so a taper mid-street is two runs and must NOT get one;
+     that case has its own check. The node nearest the water POC is
+     skipped: it is an end by geometry and the one place water comes
+     in. With no POC on the drawing every end takes one, which is the
+     honest answer rather than silently drawing none. A POC dropped on
+     the drawing but not connected (beyond SNAP_TOL) suppresses
+     nothing.
+
+     *What it looks like.* `SYMBOLS` gains "washout" (a disc) and a new
+     `SYMBOL_TEXT` map in gisStyle.js says which symbols carry letters
+     inside them. BOTH renderers read it — the canvas writes them after
+     filling, the print emits centred text — because a table each is
+     how a symbol comes to read WO on screen and nothing on paper. The
+     PDF writer gained centred text (`align: "centre"`, measured with
+     `widthOfTextAtSize`), without which two letters sit beside a 2 mm
+     disc rather than inside it.
+
+     *Colour, deliberately unset.* Neither the build nor the seeded
+     style writes one, so the cascade falls through to the water layer
+     and the disc comes out the colour of the main it terminates.
+     Setting one would freeze the two against each other and is exactly
+     what somebody would then have to remember to change twice. The
+     check enforces it.
+
+     *Editable.* Size and visibility are style fields on a row scoped
+     to the washout ROLE, seeded by migration **0213** at 9 px, and the
+     role is offered in the GIS Styles admin. That is the whole point
+     of it being a style row rather than a number in the canvas.
+
+     **Migration 0213 is required, not optional**: `Feature_Role` has a
+     CHECK constraint, so without it the build cannot save a wash out
+     at all.
+
+     ⚠ **Trap this hit, worth reading before writing the next role
+     migration.** A CHECK is replaced wholesale. The first cut of 0213
+     copied 0209's role list, which silently REVOKED 'primary',
+     'ringsub' and 'openpoint' — added by 0211 — so every one of those
+     on every drawing would have become a row its own table refuses.
+     It was invisible in the suite except as checkboundarystyle
+     appearing to START PASSING: that check reads its role list from
+     the latest constraint, so a constraint missing three roles simply
+     stopped checking them. **A pre-existing failure that turns green
+     for no reason is a symptom, not a win.** checkwashouts now asserts
+     the constraint still carries the older roles.
+
+     Also caught by the suite: `checkscope` found `r` referenced
+     outside the branch that declares it, in the canvas's letter
+     drawing. Fixed by carrying the radius out beside the symbol.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

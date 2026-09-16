@@ -34,7 +34,7 @@
    only noticed on site. */
 
 import {
-  resolveStyle, appearance, subjectOf, symbolPath, STROKE_ONLY,
+  resolveStyle, appearance, subjectOf, symbolPath, STROKE_ONLY, SYMBOL_TEXT,
 } from "../../lib/gisStyle.js";
 import { isBottleEnd, symbolSpin } from "./joints.js";
 import { VALVE_WIDTH_M } from "./serviceValves.js";
@@ -354,6 +354,34 @@ export function pageDrawList(features = [], tile, {
       widthMm: STROKE_ONLY.has(sym) ? Math.max(0.3, rMm * 0.3) : 0.25,
       id: f.Feature_ID,
     });
+
+    /* ── Letters inside the symbol ──
+
+       A wash out is a disc with WO in it, and the letters are what make
+       it one. Emitted from the same SYMBOL_TEXT the screen writes from,
+       centred on the point: the writer measures the glyphs and sets
+       them about the middle, which is the only way two letters land
+       inside a 2 mm disc rather than beside it.
+
+       White, to be read against a disc filled with the main's colour,
+       and sized from the symbol's own radius so shrinking a wash out in
+       the style editor shrinks its letters with it. A symbol too small
+       to hold them legibly goes without, as on screen \u2014 the shape and
+       the colour still say which fitting it is. */
+    const glyph = SYMBOL_TEXT[sym];
+    if (glyph && rMm >= 0.9) {
+      out.push({
+        kind: "text",
+        at: [p0[0], p0[1]],
+        text: glyph,
+        /* Points from millimetres: a cap height of about six tenths of
+           the radius, which is what the canvas draws. */
+        sizePt: Math.max(2.5, rMm * 0.95 * 2.83465),
+        colour: "#ffffff",
+        align: "centre",
+        id: f.Feature_ID,
+      });
+    }
   }
 
   if (labels) {

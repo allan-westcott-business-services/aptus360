@@ -35,7 +35,8 @@ import { listPlacementPlots } from "../../api/gis.js";
 import PlacementPanel from "./PlacementPanel.jsx";
 import AddPlotsModal from "./AddPlotsModal.jsx";
 import { bedColour } from "../../lib/bedColours.js";
-import { resolveStyle, appearance, subjectOf, symbolPath, markerPositions, STROKE_ONLY }
+import { resolveStyle, appearance, subjectOf, symbolPath, markerPositions, STROKE_ONLY,
+  SYMBOL_TEXT }
   from "../../lib/gisStyle.js";
 import { splitByBoundary, boundaryPolygons, pointInAny, pointInPolygon, surfaceFor,
   planClassification, ON_SITE, OFF_SITE } from "./boundary.js";
@@ -191,6 +192,7 @@ import {
 } from "./gasNetwork.js";
 import { waterMainRuns, sizeTable, sizeFor } from "./waterNetwork.js";
 import { serviceValves, VALVE_WIDTH_M } from "./serviceValves.js";
+import { washOuts } from "./washOuts.js";
 import { gasMainEnds, GAS_CAP_SPINE_M, GAS_CAP_ARM_M } from "./gasEnds.js";
 import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
@@ -4634,6 +4636,12 @@ export default function GISCanvasPage() {
            grey, so a point with no style row saying anything is painted
            exactly as it was. */
         let fill = isSeed ? ss.colour : colour;
+        /* Which symbol the generic branch drew, and at what radius, for
+           the letters written into it below. Carried out of the branch
+           rather than read from it: the branch is where the cascade is
+           resolved, and both facts are needed after it closes. */
+        let symbolDrawn = null;
+        let symbolDrawnR = 0;
 
         if (isSeed) {
           symbolPath(ctx, ss.symbol, p.x, p.y, ss.symbolPx);
@@ -5386,6 +5394,8 @@ export default function GISCanvasPage() {
              fitting is called on the drawing, and a bottle end rendered
              as the layer's default circle cannot be told from a POC. */
           const sym = isBottleEnd(f) ? "bottleend" : ps.symbol;
+          symbolDrawn = sym;
+          symbolDrawnR = r;
 
           symbolPath(ctx, sym, p.x, p.y, r);
           if (STROKE_ONLY.has(sym)) {
@@ -5400,6 +5410,35 @@ export default function GISCanvasPage() {
         ctx.strokeStyle = "#fff";
         ctx.lineWidth = 2;
         ctx.stroke();
+
+        /* ── Letters inside the symbol ──
+
+           A wash out is a filled disc with WO in it, and the letters
+           are what make it one rather than any other round fitting on
+           the drawing. From SYMBOL_TEXT so the sheet writes the same
+           letters in the same symbols \u2014 a table here and another there
+           is how a symbol comes to read WO on screen and nothing on
+           paper.
+
+           White, because the disc is filled with the main's own colour
+           and the letters have to be read against it. Sized from the
+           radius rather than fixed, so they shrink with the symbol when
+           somebody sets it smaller in the style editor instead of
+           spilling out of the shape meant to contain them. Below a
+           handful of pixels they are left off: two letters rendered at
+           three pixels are a smudge that makes the disc look dirty
+           rather than labelled. */
+        if (!isSeed && SYMBOL_TEXT[symbolDrawn] && symbolDrawnR >= 5) {
+          ctx.save();
+          ctx.fillStyle = "#fff";
+          ctx.font = `700 ${Math.round(symbolDrawnR * 0.95)}px `
+            + "ui-sans-serif, system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(SYMBOL_TEXT[symbolDrawn], p.x, p.y);
+          ctx.restore();
+          ctx.textBaseline = "alphabetic";
+        }
 
         /* Corner to corner, over the top of everything the symbol drew.
 
@@ -19539,6 +19578,53 @@ export default function GISCanvasPage() {
         valveCount += 1;
       }
 
+      /* ── Wash outs ──
+
+         One at every dead end of the main, so each blind leg can be
+         flushed and drained before it is handed over. Not at junctions,
+         which are not ends, and not at the POC, which is an end by
+         geometry and the one place the water comes IN.
+
+         Generated and replaced on every rebuild, exactly like the
+         valves above and for the same reason: a wash out belongs to the
+         network that was built, so redrawing the main redraws them. One
+         placed by hand carries no Generated flag and is left alone.
+
+         Where the symbol comes from: the style cascade, by the washout
+         ROLE, which is what makes its size and visibility something set
+         in Admin \u203a GIS Styles rather than a number in this file. No
+         colour is written here either \u2014 with none set on the role's own
+         style row the cascade falls through to the water layer, so the
+         disc comes out the colour of the main it terminates and the two
+         change together. */
+      const oldWashOuts = all.filter((f) => f.Feature_Role === "washout"
+        && f.Layer_Key === "water"
+        && !!f.Attributes?.Generated);
+      if (oldWashOuts.length) {
+        await deleteFeatures(projectId, oldWashOuts.map((f) => f.Feature_ID));
+      }
+
+      const { washouts } = washOuts(all, { lineTypes });
+      let washCount = 0;
+      for (const [i, w] of washouts.entries()) {
+        await addFeature({
+          Layer_Key: "water",
+          Feature_Type: "point",
+          Feature_Role: "washout",
+          Geometry: [w.at],
+          Label: `WO ${i + 1}`,
+          Attributes: {
+            /* The bearing of the pipe arriving at the end. The disc does
+               not need it, but a fitting that records how it lies can be
+               drawn turned later without every drawing being rebuilt to
+               find out. */
+            Angle_Deg: Math.round(w.angleDeg * 10) / 10,
+            Generated: true,
+          },
+        });
+        washCount += 1;
+      }
+
       const links = all
         .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "spannode"
           || f.Feature_Role === "feederpoint" || f.Feature_Role === "linkbox")
@@ -19564,6 +19650,7 @@ export default function GISCanvasPage() {
       setStatus(`Water network: ${plan.runs.length} run(s), ${plan.totalM} m`
         + (looped ? `, ${looped} of them ring main sized as one` : "")
         + (valveCount ? `, ${valveCount} service valve(s)` : "")
+        + (washCount ? `, ${washCount} wash out(s)` : "")
         + `, ${plan.meters} water meter(s) \u2014 `
         + plan.bySize.map((b) => `${b.label} ${b.metres} m`).join(", ")
         + (plan.oversized.length

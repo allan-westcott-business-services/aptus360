@@ -361,11 +361,36 @@ export function symbolPath(ctx, symbol, x, y, r) {
       ctx.lineTo(x + r * 1.99, y + r * 0.26);
       break;
     }
+    /* A wash out is a plain disc; what distinguishes it is the WO
+       written inside, which the renderers add from SYMBOL_TEXT. Listed
+       rather than left to the default so the catalogue reads as a
+       deliberate shape and not as an unrecognised name falling
+       through. */
+    case "washout":
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      break;
     default:
       ctx.arc(x, y, r, 0, Math.PI * 2);
   }
 }
 
-export const SYMBOLS = ["house", "circle", "square", "triangle", "diamond", "cross", "plus", "hexagon", "bottleend"];
+export const SYMBOLS = ["house", "circle", "square", "triangle", "diamond", "cross", "plus", "hexagon", "bottleend", "washout"];
+
+/* Symbols that carry letters inside them.
+
+   A wash out is a filled disc with WO in it \u2014 the letters are what
+   makes it a wash out rather than any other round fitting on the
+   drawing, so they belong to the symbol rather than to the label beside
+   it. Stated here, once, because both renderers need to know: the
+   canvas writes them after filling the disc and the sheet emits them as
+   centred text, and a table each would be a symbol that reads WO on
+   screen and nothing on paper.
+
+   Kept to two or three characters. The glyph is sized from the symbol's
+   own radius, so a longer word would spill out of the shape that is
+   supposed to contain it. */
+export const SYMBOL_TEXT = {
+  washout: "WO",
+};
 /* Outlines only — a cross has no inside to fill. */
 export const STROKE_ONLY = new Set(["cross", "plus", "bottleend"]);

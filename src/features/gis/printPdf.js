@@ -166,8 +166,21 @@ function drawItems(page, items, plan, font) {
 
     if (it.kind === "text") {
       const [x, y] = toPt(it.at);
+      const size = it.sizePt ?? 6;
+      /* Centred where the item asks for it, which is what lets two
+         letters sit INSIDE a 2 mm disc rather than beside it. Measured
+         from the font rather than guessed: a fixed fudge would centre
+         "WO" and miss on anything else. The vertical nudge is a cap
+         height's half — pdf-lib sets text on its baseline, and a glyph
+         centred by its baseline sits a third of itself too high. */
+      const centred = it.align === "centre" || it.align === "center";
+      const w = centred ? font.widthOfTextAtSize(String(it.text), size) : 0;
       page.drawText(String(it.text), {
-        x, y, size: it.sizePt ?? 6, font, color: colour(it.colour),
+        x: centred ? x - w / 2 : x,
+        y: centred ? y - size * 0.35 : y,
+        size,
+        font,
+        color: colour(it.colour),
       });
       continue;
     }

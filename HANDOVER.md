@@ -5065,6 +5065,20 @@ characters is a hundred lines of prose and no rules at all.
      SVG paints a white rectangle, and the notes under it sat straight
      on the map.
 
+     **And the flip did nothing visible.** The editor's checkbox wrote
+     to its DRAFT, and the dialogue was built from the SAVED feature,
+     so ticking it changed nothing until a save and a reopen — which
+     nobody would guess. Two changes: the editor hands `showSection`
+     the draft rather than the stored feature, and the dialogue carries
+     its own switch, which redraws the section AT ONCE and writes the
+     answer to the mark afterwards. Redrawing first matters: a drawing
+     that waits on a round trip before mirroring reads as a control
+     that does not work.
+
+     The general shape: a control that edits a draft and a view built
+     from saved state will always disagree until somebody saves. Put
+     the control where the thing it changes is, or feed it the draft.
+
      The section dialogue now carries its own box. The general point:
      **a class defined inside another component's injected stylesheet
      is not a shared class** — borrowing one couples two things that

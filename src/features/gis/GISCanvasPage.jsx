@@ -22152,7 +22152,7 @@ export default function GISCanvasPage() {
      drawing rather than from anybody's recollection of it. */
   const [sectionOf, setSectionOf] = useState(null);
 
-  function showSection(mark) {
+  function showSection(mark, flipOverride = null) {
     /* ── Which trench this mark cuts ──
 
        By the link it was placed with, and by GEOMETRY where that does
@@ -22201,8 +22201,13 @@ export default function GISCanvasPage() {
       atM: mark.Attributes?.Section_Along_M ?? null,
       /* The same flag the mark is drawn with, so the drawing on screen
          and the section it opens agree about which way it is viewed.
-         Two switches for one fact is how they come apart. */
-      flip: !!mark.Attributes?.Section_Flip,
+         Two switches for one fact is how they come apart.
+
+         An override lets the dialogue turn its own drawing about
+         without waiting for a save and a reload — which is what
+         somebody expects when they are looking straight at it. */
+      flip: flipOverride == null
+        ? !!mark.Attributes?.Section_Flip : !!flipOverride,
     });
     setSectionOf({ mark, trench, model, svg: sectionSvg(model) });
     setError("");
@@ -22212,6 +22217,28 @@ export default function GISCanvasPage() {
          failure from a misclick, and somebody tries again. */
       setError(`The section could not be drawn: ${e.message}`);
     }
+  }
+
+  /* Turn the open section about, and keep the answer.
+
+     Redrawn immediately, because somebody looking at a drawing and
+     asking for its mirror expects the drawing to change, not to close,
+     save, reopen. Written to the mark afterwards so the mark on the
+     canvas turns to match and the next opening agrees — one fact, one
+     stored place, whichever end it was changed from. */
+  async function flipSection(next) {
+    const cur = sectionOf;
+    if (!cur) return;
+    showSection(cur.mark, next);
+    try {
+      const nowAttrs = { ...cur.mark.Attributes, Section_Flip: !!next };
+      setFeatures((fs) => fs.map((x) => (x.Feature_ID === cur.mark.Feature_ID
+        ? { ...x, Attributes: nowAttrs } : x)));
+      await bulkUpdateFeatures(projectId, [{
+        Feature_ID: cur.mark.Feature_ID,
+        Attributes: nowAttrs,
+      }]);
+    } catch (e) { setError(e.message); }
   }
 
   /* ── What a sheet for issue shows ──
@@ -28040,6 +28067,12 @@ export default function GISCanvasPage() {
                         Trench cross-section {"\u00b7"} {sectionOf.model.surfaceSaid}
                       </p>
                     </div>
+                    <label className="fe-check" style={{ marginRight: 8 }}>
+                      <input type="checkbox"
+                        checked={!!sectionOf.model.flip}
+                        onChange={(e) => flipSection(e.target.checked)} />
+                      Viewed from the other side
+                    </label>
                     <button className="fe-x" onClick={() => setSectionOf(null)}
                       aria-label="Close">&times;</button>
                   </div>

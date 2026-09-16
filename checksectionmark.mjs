@@ -367,7 +367,7 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
     fail("the mark on screen ignores the flip, so it points one way while "
       + "its section is drawn the other");
   }
-  if (!/flip: !!mark\.Attributes\?\.Section_Flip/.test(canvas)) {
+  if (!/Section_Flip : !!flipOverride/.test(canvas)) {
     fail("the section ignores the flip, so turning the mark changes "
       + "nothing but the arrows");
   }
@@ -502,7 +502,10 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
 {
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   const at = canvas.indexOf("{sectionOf && (");
-  const dialog = at >= 0 ? canvas.slice(at, at + 2600) : "";
+  /* Long enough to reach the scrolling body below the drawing. The
+     dialogue has grown; a slice that stops short reports a missing
+     feature that is there, which is worse than no check. */
+  const dialog = at >= 0 ? canvas.slice(at, at + 4200) : "";
 
   if (!dialog) {
     fail("the section dialogue cannot be found where it was");
@@ -523,6 +526,57 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
       fail("the dialogue does not scroll, so a section with many findings "
         + "runs off the bottom of it");
     }
+  }
+}
+
+// 7h. Turning it about redraws the open section, at once.
+//
+//     The checkbox in the editor wrote to a DRAFT and the dialogue was
+//     built from the SAVED feature, so ticking it changed nothing
+//     anybody could see until a save and a reopen. Somebody looking
+//     straight at a drawing and asking for its mirror expects the
+//     drawing to change.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  if (!/function showSection\(mark, flipOverride = null\)/.test(canvas)) {
+    fail("the section cannot be drawn to a flip other than the one saved "
+      + "on the mark, so the dialogue cannot turn its own drawing about");
+  }
+  if (!/function flipSection\(next\)/.test(canvas)) {
+    fail("there is no way to turn the section about from the dialogue");
+  }
+  /* Redrawn first, saved after: the drawing must not wait on the round
+     trip. */
+  const fn = (() => {
+    const at = canvas.indexOf("async function flipSection(next)");
+    return at >= 0 ? canvas.slice(at, canvas.indexOf("\n  }", at)) : "";
+  })();
+  /* Present AND first. `indexOf` returns -1 for absent, and -1 is less
+     than any real index — so an ordering test alone reads a missing
+     redraw as a correctly ordered one. That is how this check passed
+     when the redraw was deleted. */
+  const drawAt = fn ? fn.indexOf("showSection(cur.mark, next)") : -1;
+  const saveAt = fn ? fn.indexOf("bulkUpdate") : -1;
+  if (fn && drawAt < 0) {
+    fail("turning the section about does not redraw it, so the control "
+      + "appears to do nothing");
+  } else if (fn && saveAt >= 0 && drawAt > saveAt) {
+    fail("the section waits for the save before it redraws");
+  }
+  if (!/bulkUpdateFeatures/.test(fn)) {
+    fail("turning the section about is not written to the mark, so the "
+      + "mark on the canvas keeps pointing the old way");
+  }
+  if (!/checked=\{!!sectionOf\.model\.flip\}/.test(canvas)) {
+    fail("the dialogue's switch does not show the state of the drawing "
+      + "in front of it");
+  }
+
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/onShowSection\(\{ \.\.\.feature, \.\.\.f \}\)/.test(editor)) {
+    fail("the editor shows the section of the SAVED mark, so a tick that "
+      + "has not been saved yet is ignored");
   }
 }
 
@@ -599,7 +653,7 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
 {
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   const fn = (() => {
-    const at = canvas.indexOf("function showSection(mark)");
+    const at = canvas.indexOf("function showSection(mark,");
     return at >= 0 ? canvas.slice(at, canvas.indexOf("\n  }", at)) : "";
   })();
 
@@ -625,7 +679,7 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
   /* And the button is where somebody who opened the mark will see it. */
   const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
   if (!/Feature_Role === "sectionmark" &&/.test(editor)
-    || !/onShowSection\(feature\)/.test(editor)) {
+    || !/onShowSection\(\{ \.\.\.feature, \.\.\.f \}\)/.test(editor)) {
     fail("the editor does not offer the section, so the only way to see "
       + "one is a right-click menu somebody has to know about");
   }

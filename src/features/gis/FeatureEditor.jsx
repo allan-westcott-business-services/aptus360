@@ -1414,7 +1414,11 @@ export default function FeatureEditor({
               <div style={{ marginTop: 8 }}>
                 {onShowSection && (
                   <button className="btn accent"
-                    onClick={() => onShowSection(feature)}>
+                    /* The draft, not the saved feature: somebody who
+                       has just ticked "viewed from the other side" and
+                       then asked for the section means the section as
+                       they have it now. */
+                    onClick={() => onShowSection({ ...feature, ...f })}>
                     Show Cross-section
                   </button>
                 )}

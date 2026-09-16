@@ -1,50 +1,46 @@
-# Print to Scale — two fixes: basemap in register, and only what is shown
+# Print to Scale — three fixes: basemap register, visible set, labels
 
-Five files, no migrations, no schema change. Copy the tree over
-`aptus360/` — the paths match, nothing is deleted. This supersedes the
-earlier `aptus360-print-rotation.zip` if it has not been applied yet;
-if it has, applying this over it is fine — the printPdf.js and
-HANDOVER.md here carry both changes.
+Six files, no migrations, no schema change. Copy the tree over
+`aptus360/` — the paths match, nothing is deleted. Supersedes both
+earlier print zips from this session; every file here carries all
+three changes, so applying it over either is fine.
 
     src/features/gis/printPdf.js
+    src/features/gis/printVector.js
     src/features/gis/GISCanvasPage.jsx
     checkprintpdf.mjs
     HANDOVER.md
 
 ## Fault 130 — the basemap printed turned from the drawing
 
-A PDF page can differ from its own content stream by a /Rotate
-attribute and a CropBox offset. The screen (pdf.js) corrects both, so
-the calibration and traced features live in the displayed page's
-space; the print (pdf-lib) corrected neither. `printPdf.js` now embeds
-against the CropBox and turns the placed form by the page's own
-rotation. Six new registration cases in `checkprintpdf.mjs`, measured
-against pdf.js itself; reverting the fix fails five.
+The screen (pdf.js) corrects a page's /Rotate and CropBox; the print
+(pdf-lib) corrected neither. `printPdf.js` now embeds against the
+CropBox and turns the placed form by the page's own rotation. Six
+registration cases measured against pdf.js itself; reverting fails
+five.
 
 ## Fault 131 — the print showed everything; the screen did not
 
 Hidden layers printed, and an isolated circuit printed the whole
-estate. The canvas draws its `visible` memo — hidden keys, circuit and
-way isolates, the lighting view, the live-trench filter — and the
-print handlers were handed the raw `features`.
+estate. `savePdfSheets`, `printPdfSheets` and the `PrintModal` prop
+now all read the canvas's `visible` set. Isolating one circuit and
+printing now issues that circuit's plan, costed for the circuit alone.
 
-`savePdfSheets`, `printPdfSheets` and the `PrintModal` prop now all
-read `visible`. The modal matters too: sheets costed over hidden
-geometry frame and price paper for lines that will not be on it. A
-consequence worth knowing on site: **isolating one circuit and
-printing now issues that circuit's plan** — the estate stays off the
-paper, and the sheet count is costed for the circuit alone.
-`withAssumedMeters` runs on the filtered set, so hiding electric also
-synthesises no board flats.
+## Fault 132 — the print labelled by rules of its own
 
-The check slices `GISCanvasPage.jsx` to the two print handlers before
-matching, because `withAssumedMeters` has other callers that rightly
-read the raw drawing; the previous file-wide regex would have matched
-one of those and passed while the print read the wrong set.
+"Water Meter 19" printed down every street — text the screen never
+shows, because the canvas excludes meters, span nodes and feeder
+points from generic labels and puts the rest behind the master Labels
+layer and the per-kind switches. `pageDrawList` now applies the same
+exclusions and asks `labelShown` in labelKinds.js — the module the
+screen asks — with the canvas's live switch state carried through
+`pdfOptions`. What prints is what the screen was writing when Print
+was clicked: turn Labels or a kind switch off before printing and the
+sheet obeys.
 
 ## Suite state
 
 Full suite before and after: the same 18 pre-existing failures already
 on the handover's books — nothing new fails, `checkprintpdf` passes
-with all new cases, and the build is clean. Reverting either fix fails
-its cases (five and three respectively).
+with all new cases (registration, visible-set wiring, label parity),
+and the build is clean. Reverting each fix fails its own cases.

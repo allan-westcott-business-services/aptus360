@@ -422,6 +422,64 @@ const bounds = drawnBounds(world);
   }
 }
 
+/* ── The sheet writes the labels the screen writes, and only those ──
+
+   The canvas never writes a generic label against a meter, a span node
+   or a feeder point, and everything else answers to the master Labels
+   layer and the per-kind switches. The print's label pass ignored all
+   of it and wrote every feature's Label \u2014 so a sheet came out with
+   "Water Meter 19" down every street on a drawing that had never shown
+   that text to anyone. These cases hold the paper to the screen's own
+   rule, through the one module that states it. */
+{
+  const mk = (id, role, label, layer = "water", extra = {}) => ({
+    Feature_ID: id, Feature_Type: "point", Feature_Role: role,
+    Layer_Key: layer, Label: label, Geometry: [[1000 + id, 500]],
+    Attributes: {}, ...extra });
+  const pts = [
+    mk(1, "meter", "Water Meter 19"),
+    mk(2, "spannode", "S3", "trench"),
+    mk(3, "feederpoint", "A4", "electric"),
+    mk(4, "joint", "Service Joint", "electric"),
+    mk(5, "valve", "SV 10"),
+  ];
+  const b = drawnBounds(pts);
+  const plan = tilePlan({ bounds: b, paper: "A4", landscape: true,
+    scaleDenom: 500 });
+  const texts = (opts) => pageDrawList(pts, plan.tiles[0], {
+    scaleDenom: 500, marginMm: plan.marginMm, ...opts,
+  }).filter((i) => i.kind === "text").map((i) => i.text);
+
+  /* Defaults: the roles the screen never labels stay unlabelled, a
+     joint obeys its switch's default (off), and an ordinary point
+     follows the master alone. */
+  const got = texts({});
+  for (const [what, t] of [["a meter", "Water Meter 19"],
+    ["a span node", "S3"], ["a feeder point", "A4"]]) {
+    if (got.includes(t)) {
+      fail(`${what}'s label is written on the sheet \u2014 text the screen `
+        + "never shows anyone");
+    }
+  }
+  if (got.includes("Service Joint")) {
+    fail("a joint's label prints with the Joint labels switch off \u2014 the "
+      + "sheet ignores the switch the screen obeys");
+  }
+  if (!got.includes("SV 10")) {
+    fail("an ordinary point's label is missing with the master switch on");
+  }
+
+  /* The joints switch turned on writes the joint's name, as on screen. */
+  if (!texts({ labelKinds: { joints: true } }).includes("Service Joint")) {
+    fail("turning the Joint labels switch on does not put the name on paper");
+  }
+
+  /* The master off silences the lot. */
+  if (texts({ showLabels: false }).length) {
+    fail("the master Labels switch off still leaves labels on the sheet");
+  }
+}
+
 /* ── Wired up, and the old path gone ──
 
    The browser's own print of a canvas was a picture of the drawing at
@@ -498,6 +556,13 @@ const bounds = drawnBounds(world);
   if (!/<PrintModal features=\{visible\}/.test(canvas)) {
     fail("the print dialogue is fed the raw drawing, so hidden geometry "
       + "stretches the sheet count and the frames drawn on the canvas");
+  }
+  /* The screen's label switches travel with the print, or the sheet
+     re-decides what is labelled and writes text the screen never
+     shows. */
+  if (!/showLabels,\s*\n\s*labelKinds,/.test(canvas)) {
+    fail("the print options do not carry the screen's label switches, so "
+      + "the sheet labels by rules of its own");
   }
   /* And the raster path is gone. */
   if (/printView\(/.test(canvas)) {

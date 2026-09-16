@@ -11204,13 +11204,20 @@ export default function GISCanvasPage() {
     styles,
     lineTypes,
     utilities,
+    /* The screen's own label switches, so the sheet writes what the
+       screen writes: the master Labels layer and the per-kind
+       switches travel with the print rather than being re-decided
+       there. */
+    showLabels,
+    labelKinds,
     basemap: basemap?.Source_Kind === "pdf" ? basemap : null,
     basemapBytes: await basemapBytes(),
     title: [project?.Contract_Number, project?.Name].filter(Boolean).join(" \u2014 "),
     when: new Date().toLocaleDateString("en-GB",
       { day: "numeric", month: "short", year: "numeric" }),
     filename: `${project?.Contract_Number || "drawing"}.pdf`,
-  }), [layers, styles, lineTypes, utilities, basemap, basemapBytes, project]);
+  }), [layers, styles, lineTypes, utilities, showLabels, labelKinds,
+    basemap, basemapBytes, project]);
 
   /* ── The print is of the drawing AS SHOWN ──
 

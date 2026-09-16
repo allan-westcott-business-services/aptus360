@@ -4396,6 +4396,38 @@ characters is a hundred lines of prose and no rules at all.
      what visibility means, and a second reader of the same drawing
      carried no idea of it while looking perfectly correct.
 
+132. **The print labelled by rules of its own.** Sheets came out with
+     "Water Meter 19" down every street — text the screen has never
+     shown anyone, because the canvas's point-label gate excludes
+     meters (their name is answered on selection), span nodes and
+     feeder points (their codes are a drawing of their own), and puts
+     everything else behind the master Labels layer and the per-kind
+     switches in `labelKinds.js`. The print's label pass in
+     `printVector.js` read none of it: `if (labels)` wrote every
+     feature's `Label`, so a switch turned off on screen changed
+     nothing on paper.
+
+     `pageDrawList` now takes `showLabels` and `labelKinds`, applies
+     the same role exclusions the canvas applies, and asks
+     `labelShown` from labelKinds.js — the one module that states the
+     rule — for the rest. `pdfOptions` carries the canvas's live
+     switch state through, so what the print writes is what the
+     screen was writing at the moment Print was clicked. Selection is
+     the one part of the screen's rule with no meaning on paper.
+
+     The check is functional this time, because `pageDrawList` is
+     pure: a meter, a span node, a feeder point, a joint and a valve,
+     each with a Label, and the text items counted under defaults,
+     under `labelKinds: { joints: true }`, and under
+     `showLabels: false`. Reverting the fix fails five of the six
+     label cases.
+
+     Third print-parity fault in one session (130, 131, this).
+     `printVector.js`'s own header calls itself "a SECOND renderer"
+     and names the drift risk; the pattern for closing each one is
+     the same — make the print read the module the screen reads, not
+     a restatement of it.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

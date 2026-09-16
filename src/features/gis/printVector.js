@@ -34,6 +34,7 @@
    only noticed on site. */
 
 import { resolveStyle, appearance, subjectOf } from "../../lib/gisStyle.js";
+import { labelShown, DEFAULT_LABEL_KINDS } from "./labelKinds.js";
 import { mmPerMetre } from "./printSheet.js";
 
 /* Line widths on paper. A cable drawn 4 px wide on screen is not 4 mm
@@ -125,6 +126,8 @@ export function pageDrawList(features = [], tile, {
   scaleDenom = 500,
   marginMm = 5,
   labels = true,
+  showLabels = true,
+  labelKinds = DEFAULT_LABEL_KINDS,
   utilities = [],
 } = {}) {
   if (!tile) return [];
@@ -207,6 +210,25 @@ export function pageDrawList(features = [], tile, {
       const { ap } = styleOf(f);
       if (ap.visible === false) continue;
       const role = String(f.Feature_Role || "");
+      /* ── The labels the screen would write, and only those ──
+
+         The canvas never writes a generic label against a meter, a
+         span node or a feeder point \u2014 a meter's name is answered on
+         selection, and the nodes' codes are a drawing of their own \u2014
+         so a sheet that wrote them carried a column of "Water Meter
+         19" down every street that the screen had never shown anyone.
+         The rest answer to the same switches the screen answers to:
+         the master Labels layer and the per-kind switches, through the
+         one rule in labelKinds.js, so a joint's name obeys the Joint
+         labels switch on paper exactly as it does on screen. Selection
+         is the one part of the screen's rule with no meaning here \u2014
+         nothing on a sheet is selected. */
+      if (role === "meter" || role === "spannode" || role === "feederpoint") {
+        continue;
+      }
+      if (!labelShown(f, { lineTypes, showLabels, kinds: labelKinds })) {
+        continue;
+      }
       const r = (SYMBOL_MM[role] ?? SYMBOL_MM.default) / 2;
       const p = toPage(at);
       out.push({

@@ -5,7 +5,7 @@ Thirteen files, no migrations, no schema change. Copy the tree over
 zip from this session.
 
     src/features/gis/printPdf.js          130, 135 (paths primitive)
-    src/features/gis/printVector.js       132, 133, 135 (symbols, sizes, line labels)
+    src/features/gis/printVector.js       132, 133, 135 (symbols, sizes, labels)
     src/features/gis/GISCanvasPage.jsx    131–135
     src/features/gis/FeatureEditor.jsx    134 (line type stated, not offered)
     src/features/gis/buildStatus.js       134 (newMainTypeFor)
@@ -16,23 +16,26 @@ zip from this session.
     checkprintpdf.mjs  checkstyleinspector.mjs  checkbuildmaintype.mjs
     HANDOVER.md
 
-## Fault 135 — symbols, symbol SIZES, and line labels on the sheet
+## Fault 135 — symbols, sizes, line labels, label placements
 
-**Symbols.** The print kept its own role→shape table, so the style
-cascade chose a point's symbol on screen and a hard-coded map chose it
-on paper — service valves, absent from that map, printed as filled
-discs. The print now records the same `symbolPath` the canvas draws
-with and renders it through a new `paths` primitive.
+**Symbols.** The print kept its own role→shape table, so the cascade
+chose a point's symbol on screen and a hard-coded map chose it on
+paper — service valves, absent from that map, printed as filled discs.
+The print now records the same `symbolPath` the canvas draws with.
 
-**Sizes (this round).** Reading the radius from `appearance` applied
-its `Min_Symbol_Px`/`Max_Symbol_Px` clamps — screen pixels — to a
-millimetre figure, so an 8 px floor became 8 mm and meters printed as
-centimetre-wide blobs. `symbolRadiusMm` converts the clamps at
-MM_PER_PX first. A meter now prints 1.7 mm across, not 9.6 mm.
+**Sizes.** `appearance`'s `Min_Symbol_Px`/`Max_Symbol_Px` clamps are
+screen pixels; applying them to a millimetre figure turned an 8 px
+floor into 8 mm. Meters printed a centimetre wide; they now print
+1.7 mm.
 
-**Line labels.** Mains and services are labelled at the midpoint of
-the run, with size and length where the feature carries them, obeying
-the screen's Mains/Service label switches (which default off).
+**Line labels.** Mains and services are labelled with size and length,
+obeying the screen's Mains/Service switches (default off).
+
+**Placements.** Labels moved by hand on the canvas — stored in
+`Attributes.Labels` as points and offsets in metres — now print where
+they were put, legacy `Label_At`/`Label_Offset` included. The PDF's
+own text is flat vector art and not draggable in a viewer; move on the
+canvas, then reprint.
 
 Known limits, in the handover: catalogue-spelled cable names and gas
 flow stay canvas-only; the bespoke oriented fittings (tee, reducer,
@@ -52,5 +55,4 @@ any project whose water mains were generated before fault 134's fix.
 ## Suite state
 
 140 of 158 pass — the same 18 pre-existing failures as this session's
-baseline. Build clean. Reverting the print work fails 17 cases; the
-size fix alone is held by a case measuring a printed meter.
+baseline. Build clean. Each fix fails its own cases when reverted.

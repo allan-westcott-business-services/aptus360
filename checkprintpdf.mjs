@@ -719,6 +719,61 @@ const bounds = drawnBounds(world);
   if (r < 0.2) fail("a meter prints too small to see");
 }
 
+/* ── A label moved by hand stays moved on paper ──
+
+   Placements live in Attributes.Labels as points and offsets in
+   METRES, which is what lets them mean the same thing at every zoom
+   and every sheet scale. A print that ignored them would snap every
+   arranged tag back to the middle of its run — undoing, on the sheet,
+   the arranging somebody did precisely so the sheet could be read. */
+{
+  const main = { Feature_ID: 31, Feature_Type: "line", Layer_Key: "water",
+    Label: "W1", Geometry: [[1000, 500], [1100, 500]],
+    Attributes: { Line_Type: "water_main", Size: "63mm" } };
+  const lineTypes = [{ Type_Key: "water_main", Layer_Key: "water" }];
+  const kinds = { mains: true, services: true, joints: false, levels: true };
+  const k = mmPerMetre(500);
+  const plan = tilePlan({ bounds: drawnBounds([main]), paper: "A3",
+    landscape: true, scaleDenom: 500 });
+  const textAt = (attrs) => pageDrawList(
+    [{ ...main, Attributes: { ...main.Attributes, ...attrs } }],
+    plan.tiles[0],
+    { scaleDenom: 500, marginMm: plan.marginMm, lineTypes, labelKinds: kinds },
+  ).filter((i) => i.kind === "text");
+
+  const auto = textAt({});
+  const moved = textAt({ Labels: [{ at: [1020, 480] }] });
+  if (!moved.length) {
+    fail("a line with a hand-placed label prints no label at all");
+  } else {
+    const wantX = (1020 - plan.tiles[0].minX) * k + plan.marginMm;
+    const wantY = (480 - plan.tiles[0].minY) * k + plan.marginMm;
+    if (Math.abs(moved[0].at[0] - wantX) > 2 || Math.abs(moved[0].at[1] - wantY) > 4) {
+      fail("a label moved by hand prints back at the middle of its run \u2014 "
+        + "the sheet undoes the arranging it was made for");
+    }
+    if (Math.abs(moved[0].at[0] - auto[0].at[0]) < 1) {
+      fail("moving a label changes nothing on the sheet");
+    }
+  }
+
+  /* An offset is metres of ground too, so it scales with the sheet. */
+  const off = textAt({ Labels: [{ at: [1020, 480], off: [4, 0] }] });
+  if (off.length && Math.abs(off[0].at[0] - moved[0].at[0] - 4 * k) > 0.5) {
+    fail("a label's offset is not read as metres of ground");
+  }
+
+  /* Several placements are several labels, not one drawn twice. A tag
+     is more than one row — the size over the length — so the count is
+     of rows carrying the size, not of text items. */
+  const two = textAt({ Labels: [{ at: [1020, 500] }, { at: [1080, 500] }] });
+  const sizeRows = two.filter((t) => /63mm/.test(t.text));
+  if (sizeRows.length !== 2) {
+    fail(`two hand-placed labels print as ${sizeRows.length} \u2014 a run can `
+      + "carry more than one tag");
+  }
+}
+
 /* ── Wired up, and the old path gone ──
 
    The browser's own print of a canvas was a picture of the drawing at

@@ -416,30 +416,66 @@ export function pageDrawList(features = [], tile, {
            belonging to whatever it crosses. */
         if (total < 8) continue;
         let acc = 0;
-        let mid = pts[0];
+        let midAnchor = pts[0];
         for (let i = 1; i < pts.length; i++) {
           const seg = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
           if (acc + seg >= total / 2) {
             const t = seg ? (total / 2 - acc) / seg : 0;
-            mid = [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t,
+            midAnchor = [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t,
               pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t];
             break;
           }
           acc += seg;
         }
+
+        /* ── Where somebody PUT the label ──
+
+           A run carries one automatic label at its midpoint and any
+           number placed by hand, kept in `Attributes.Labels` as points
+           and offsets in METRES. Ground units, not pixels, which is
+           exactly why they survive onto paper: a position in metres
+           means the same thing at any zoom and at any sheet scale.
+
+           Honoured here, or a drawing somebody had arranged to be
+           readable — tags pulled off the pipes they crowded, moved
+           clear of a boundary — printed with every one of them snapped
+           back to the middle of its run. The arranging is the work, and
+           the sheet is what it was done for.
+
+           Legacy `Label_At` / `Label_Offset` read as one placement, so
+           a pipe labelled before the list existed keeps its label where
+           it was put. */
+        const placements = (() => {
+          const list = f.Attributes?.Labels;
+          if (Array.isArray(list) && list.length) return list;
+          const at0 = f.Attributes?.Label_At;
+          const off0 = f.Attributes?.Label_Offset;
+          if (at0 || off0) return [{ at: at0, off: off0 }];
+          return [null];            // the automatic one, at the midpoint
+        })();
+
         /* Stacked upward from the line, so a three-line tag grows away
            from the run rather than across it. */
         const rows = String(txt).split("\n");
-        rows.forEach((line, i) => {
-          out.push({
-            kind: "text",
-            at: [mid[0] + 0.8, mid[1] - 1.2 - (rows.length - 1 - i) * 2.2],
-            text: line,
-            sizePt: 6,
-            colour: ap.labelColour ?? "#0f172a",
-            id: f.Feature_ID,
+        for (const pl of placements) {
+          const put = Array.isArray(pl?.at) && pl.at.length === 2
+            ? toPage([Number(pl.at[0]), Number(pl.at[1])])
+            : midAnchor;
+          const off = Array.isArray(pl?.off) && pl.off.length === 2
+            ? [Number(pl.off[0]) * k, Number(pl.off[1]) * k]
+            : [0, 0];
+          const mid = [put[0] + off[0], put[1] + off[1]];
+          rows.forEach((line, i) => {
+            out.push({
+              kind: "text",
+              at: [mid[0] + 0.8, mid[1] - 1.2 - (rows.length - 1 - i) * 2.2],
+              text: line,
+              sizePt: 6,
+              colour: ap.labelColour ?? "#0f172a",
+              id: f.Feature_ID,
+            });
           });
-        });
+        }
         continue;
       }
       /* Offset by the symbol the point actually drew, so a label sits

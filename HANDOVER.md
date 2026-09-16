@@ -4558,6 +4558,24 @@ characters is a hundred lines of prose and no rules at all.
      screen's. Anything it returns that is mixed with a px-named field
      needs converting; widths already did this, symbols did not.
 
+     *Placements.* The first cut of the line labels set every tag at
+     the midpoint of its run, which would have snapped back every label
+     somebody had dragged clear of a crowded pipe or a boundary —
+     undoing on the sheet the arranging that was done for the sheet.
+     `Attributes.Labels` holds placements as points and offsets in
+     METRES, which is what makes them printable at all: ground units
+     mean the same thing at any zoom and any sheet scale. The print now
+     reads them, legacy `Label_At`/`Label_Offset` included, and draws
+     one tag per placement.
+
+     Worth being plain about what "moveable" does and does not mean
+     here: a label is moved on the CANVAS and the sheet follows. The
+     PDF itself is flat vector art — its text is not draggable in a
+     viewer, and making it so would mean emitting free-text
+     annotations, which every viewer renders differently and which no
+     plotter would honour. Reprinting after moving a label on screen is
+     the intended loop.
+
      Known and deliberate limits, stated rather than left to be
      discovered: the catalogue-spelled cable name and the gas flow (Q)
      are canvas-only, derived from lookups the print does not load, and

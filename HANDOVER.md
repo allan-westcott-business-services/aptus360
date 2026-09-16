@@ -4686,6 +4686,26 @@ characters is a hundred lines of prose and no rules at all.
      Wash outs are also in Bulk Delete now ("All wash outs", under
      Points), beside the service valves.
 
+     **Placed by hand as well as by the build** (Water › Place Wash
+     Out). `snapToMain` in washOuts.js takes the click to the nearest
+     VERTEX, segment MIDPOINT or END of a water main — the places a
+     pipe can be met — and returns null where no main is within reach,
+     which the canvas refuses rather than dropping a fitting in open
+     ground joined to nothing. A hand-placed one carries no `Generated`
+     flag, so a rebuild leaves it alone, and it is numbered after the
+     wash outs already there.
+
+     **Placement inserts a vertex in the pipe** where there was none.
+     That is what makes the rubber band work: a fitting and its pipe
+     have to share a point, or dragging the fitting stretches nothing.
+     The vertex lies exactly on the line, so neither the shape nor the
+     length of the main changes. Two rules in the drag then make it
+     behave: a wash out offers EVERY vertex of its pipe rather than
+     only the ends (one set at a bend or mid-length would otherwise be
+     left behind), and it follows water mains only — the pipe and the
+     trench end at the same point now, so the general "ends of any line
+     within reach" rule was dragging the DIG out of shape behind it.
+
      And no label beside the symbol. The generic point-label pass wrote
      `Label` against every point, so a disc already reading WO carried
      a black "WO 8" next to it — the same thing said twice, on a plan
@@ -4696,6 +4716,53 @@ characters is a hundred lines of prose and no rules at all.
      number is read rather than counted off a drawing. Service valves
      deliberately keep theirs — "SV 10" is how one is referred to on
      site, and the canvas draws only "SV" in the symbol.
+
+138. **DXF export for AutoCAD (feature).** `dxf.js`, pure: features in,
+     DXF text out. Offered as Export to AutoCAD (DXF) beside Print to
+     Scale and Download Drawing, and it exports the canvas's VISIBLE
+     set for the same reason the print does (fault 131).
+
+     Decisions worth not relitigating:
+       - **R12 (AC1009).** AutoCAD reads every version; everything else
+         reads R12 — Civil 3D, MicroStation, QGIS, free viewers. It
+         costs LWPOLYLINE, so a polyline is written POLYLINE / VERTEX /
+         SEQEND, and that is the whole price.
+       - **One metre, one drawing unit**, with `$INSUNITS` 6 (metres) so
+         a receiving drawing in millimetres scales on insert rather
+         than landing it a thousand times too small.
+       - **`origin` offsets every coordinate.** The drawing grid is
+         local. A project whose origin is a known easting and northing
+         exports straight onto the national grid; left at zero the file
+         is internally correct, to scale, and arbitrary in position.
+         Asked for rather than guessed, because it is a fact about the
+         project.
+       - **Layers from the drawing's own vocabulary** — the line type
+         key becomes WATER-MAIN, a point takes its role
+         (WATER-WASHOUT) — rather than a mapping table somebody has to
+         keep in step. Labels go on a matching -TEXT layer so a CAD
+         user can freeze annotation and keep geometry, which is the
+         first thing anybody does with a drawing they are tracing.
+       - **Colour becomes an ACI index** (a DXF layer has no hex), by
+         nearest RGB across the classic palette.
+
+     ⚠ **Trap found while building it:** the first cut skipped any
+     feature whose `appearance(...).visible` was false. That flag comes
+     from `Min_Scale`/`Max_Scale` — a rule about SCREEN ZOOM, which a
+     CAD drawing does not have — so a fitting styled to appear only
+     when zoomed in would have been dropped from the export silently:
+     the file opens, looks complete, and is missing geometry. The
+     export now reads the style for COLOUR only, and what the drawing
+     is showing stays the caller's business. The general shape: a
+     function shared between the screen and an export may be answering
+     a question the export is not asking.
+
+     Not carried, deliberately: symbols are POINT entities with their
+     label, not blocks. A symbol library means agreeing names with the
+     receiving CAD team, which is a conversation rather than a guess.
+     Import FROM DXF is a different and harder job — deciding which
+     incoming polyline is a main needs a layer convention agreed up
+     front. `checkdxf.mjs` reads the file back as group-code pairs, the
+     way a parser does.
 
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the

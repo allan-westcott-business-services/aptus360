@@ -192,7 +192,8 @@ import {
 } from "./gasNetwork.js";
 import { waterMainRuns, sizeTable, sizeFor } from "./waterNetwork.js";
 import { serviceValves, VALVE_WIDTH_M } from "./serviceValves.js";
-import { washOuts } from "./washOuts.js";
+import { washOuts, snapToMain } from "./washOuts.js";
+import { buildDxf } from "./dxf.js";
 import { gasMainEnds, GAS_CAP_SPINE_M, GAS_CAP_ARM_M } from "./gasEnds.js";
 import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
@@ -8262,6 +8263,23 @@ export default function GISCanvasPage() {
              gives a non-feeder: a trench passing through a board is
              still not dragged out of shape. */
           const isBoard = pt.Feature_Role === "msdb";
+          /* ── A wash out follows its PIPE ──
+
+             The general rule below is "the ends of any line within
+             reach", which for a wash out at the end of a main takes the
+             TRENCH end with it: the pipe and the dig finish at the same
+             point, so dragging the fitting pulled the ground open
+             somewhere new. A wash out is a thing on a pipe — the pipe
+             stretches with it, the dig stays where it was surveyed.
+
+             The same rule `linkable` applies to what it may be joined
+             to, stated here because this decides what MOVES rather than
+             what is recorded. */
+          if (pt.Feature_Role === "washout"
+            && !(line.Layer_Key === "water" && isMainFeature(line, lineTypes))) {
+            continue;
+          }
+
           if (isJoint && !isBoard && line.Layer_Key !== pt.Layer_Key) continue;
 
           /* Any joint, not only the ones that join ends: a cable
@@ -8515,8 +8533,14 @@ export default function GISCanvasPage() {
 
              The record says which cable; the distance test below says
              which of its vertices. Neither has to guess. */
+          /* A wash out offers every vertex of its pipe, not only the
+             ends. Placed by hand it can sit at a bend or part way along
+             a length — placement puts a vertex there for exactly this
+             reason — and offering only the ends would leave a fitting
+             deliberately set mid-run behind while the pipe moved. */
           const candidates = (isJoint && isFeeder && !joinsEnds)
             || (isJoint && told.has(Number(line.Feature_ID)))
+            || pt.Feature_Role === "washout"
             ? g.map((_, i) => i)
             : [0, g.length - 1];
 
@@ -11961,6 +11985,7 @@ export default function GISCanvasPage() {
     const what = role === "substation" ? "the substation"
       : role === "governor" ? "the governor"
         : role === "servicevalve" ? "the service valve"
+          : role === "washout" ? "the wash out"
           : role === "pumping" ? "the pumping station"
             : role === "feederpoint" ? "the feeder end point"
               : role === "linkbox" ? "the link box"
@@ -12085,6 +12110,87 @@ export default function GISCanvasPage() {
 
   async function placePlantAt(point, role, layerKey, armed = null) {
     let note = "";
+
+    /* ── A wash out goes on a water main, and on the pipe's own points ──
+
+       Placed by hand as well as by the build: a design may want one at
+       a bend, at the end of a leg the build has not reached yet, or
+       simply somewhere the designer says rather than where the
+       topology says.
+
+       The click is taken to the nearest vertex, segment midpoint or end
+       of a water main. A fitting a few centimetres off the line draws
+       as though it were on the pipe and is joined to nothing, which is
+       the worst of both — so a click with no main within reach is
+       refused rather than placed in open ground.
+
+       ── And the pipe gains a vertex where it did not have one ──
+
+       A wash out placed part way along a straight length has no point
+       of the pipe to hold on to, so dragging it later would stretch
+       nothing. Inserting the vertex at placement makes the fitting and
+       the pipe share a point: the drag then moves that vertex and the
+       main follows, which is what a fitting ON a pipe should do. The
+       vertex lies exactly on the line, so neither the shape nor the
+       length of the main changes. */
+    if (role === "washout") {
+      const snap = snapToMain(point, features, { lineTypes });
+      if (!snap) {
+        setError("A wash out goes on a water main \u2014 click on the pipe, at "
+          + "a bend, a midpoint or an end.");
+        return;
+      }
+
+      const pipe = features.find((f) => f.Feature_ID === snap.lineId);
+      const g = (pipe?.Geometry || []).map((q) => [q[0], q[1]]);
+      const onIt = g.some((q) =>
+        Math.hypot(q[0] - snap.at[0], q[1] - snap.at[1]) <= CONNECT_M);
+
+      if (pipe && !onIt) {
+        /* Into the segment it lies on, so the pipe keeps its shape. */
+        let cut = 1;
+        let bestD = Infinity;
+        for (let i = 1; i < g.length; i++) {
+          const a = g[i - 1];
+          const b = g[i];
+          const d = Math.hypot(a[0] - snap.at[0], a[1] - snap.at[1])
+            + Math.hypot(b[0] - snap.at[0], b[1] - snap.at[1])
+            - Math.hypot(b[0] - a[0], b[1] - a[1]);
+          if (d < bestD) { bestD = d; cut = i; }
+        }
+        const next = [...g.slice(0, cut), [snap.at[0], snap.at[1]], ...g.slice(cut)];
+        await updateFeature(projectId, pipe.Feature_ID, { Geometry: next });
+      }
+
+      /* Numbered after the ones already there, so a hand-placed wash
+         out does not take a number the build has used. */
+      const used = features
+        .filter((f) => f.Feature_Role === "washout")
+        .map((f) => Number(String(f.Label ?? "").replace(/[^0-9]/g, "")))
+        .filter((n) => Number.isFinite(n) && n > 0);
+      const n = (used.length ? Math.max(...used) : 0) + 1;
+
+      await addFeature({
+        Layer_Key: "water",
+        Feature_Type: "point",
+        Feature_Role: "washout",
+        Geometry: [snap.at],
+        Label: `WO ${n}`,
+        Attributes: {
+          Angle_Deg: Math.round(snap.angleDeg * 10) / 10,
+          /* The pipe it terminates, and nothing else \u2014 not the trench
+             the pipe lies in, whose end is at this same point. */
+          Connects: [snap.lineId],
+          /* No Generated flag: this one was put here on purpose, so a
+             rebuild leaves it alone. */
+        },
+      });
+
+      await load(projectId);
+      setStatus(`Wash out WO ${n} placed on the main`);
+      setTimeout(() => setStatus(""), 4000);
+      return;
+    }
 
     /* ── A link box sits in the cable run ──
 
@@ -21871,6 +21977,41 @@ export default function GISCanvasPage() {
      here has optimistic rows on it mid-edit — a seed drawn a moment ago
      with a `tmp-` id — and a drawing sent for diagnosis should be what
      the database holds, not what this tab is part way through. */
+  /* ── The drawing as CAD ──
+
+     A DXF of what is ON THE SCREEN, for the same reason the print is:
+     hidden layers, a circuit isolate and the lighting view are answers
+     somebody gave about what this drawing is showing, and an export
+     that quietly included everything would hand over a different
+     drawing from the one they were looking at.
+
+     R12, one metre to one drawing unit, layers per utility and type,
+     labels on their own -TEXT layers. What it does not carry \u2014 blocks
+     for symbols, and a national grid position unless the project's
+     origin is a real easting and northing \u2014 is written in dxf.js
+     beside the code that decides it. */
+  function exportDxf() {
+    if (!projectId) return;
+    try {
+      const text = buildDxf(visible, {
+        lineTypes, layers, styles, utilities,
+        organisationId: standard || null,
+      });
+      const name = `drawing-${projectId}-${new Date().toISOString().slice(0, 10)}.dxf`;
+      const blob = new Blob([text], { type: "application/dxf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus(`${visible.length} feature(s) exported as ${name} \u2014 `
+        + "one drawing unit is one metre");
+      setTimeout(() => setStatus(""), 8000);
+      setError("");
+    } catch (e) { setError(e.message); }
+  }
+
   async function downloadDrawing() {
     if (!projectId) return;
     setBusy("download");
@@ -23531,6 +23672,10 @@ export default function GISCanvasPage() {
                         hint="A4 to A0, at a scale a rule can check"
                         disabled={!projectId}
                         onClick={() => setPrintOpen(true)} />
+                      <MenuItem label={"Export to AutoCAD (DXF)"}
+                        hint={"The geometry as CAD \u2014 one unit to the metre, layered by utility. What is shown is what is exported"}
+                        disabled={!projectId}
+                        onClick={exportDxf} />
                       <MenuItem label={busy === "download" ? "Saving\u2026" : "Download Drawing"}
                         hint={"The drawing as JSON \u2014 for sending on when something needs looking at"}
                         disabled={!projectId || !!busy}
@@ -24667,6 +24812,20 @@ export default function GISCanvasPage() {
                               hint="Lays water main from the POC along mains trench, sized by the plots each length feeds. Needs a water outline design and a Water NAV Clean agreement"
                               disabled={!projectId || !!busy}
                               onClick={() => withUndo("Build Water Network", () => buildWaterNetwork())} />
+                          )}
+                          {/* One by hand, where the design wants one the
+                              build has no reason to place: at a bend, on
+                              a leg not yet reached, or simply where the
+                              designer says. The build places its own at
+                              every dead end and replaces those on each
+                              run; this one carries no Generated flag and
+                              is left alone by a rebuild. */}
+                          {key === "water" && (
+                            <MenuItem
+                              label="Place Wash Out"
+                              hint="Click a water main \u2014 snaps to a vertex, midpoint or end of the pipe. Dragging it afterwards stretches the main with it"
+                              disabled={!projectId || !!busy}
+                              onClick={() => placeNode("washout", "water")} />
                           )}
                           <div className="gm-sep" />
                           {/* Beside the build, because it reads what the

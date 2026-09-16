@@ -488,6 +488,44 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
   }
 }
 
+// 7g. The dialogue carries its own box.
+//
+//     It used `.sch`, and that CSS is injected by SchematicModal.jsx
+//     when THAT component renders — so with the schematic unmounted
+//     the rules did not exist and the panel had no background. The
+//     drawing looked boxed only because its own SVG paints a white
+//     rectangle; the notes beneath sat straight on the map.
+//
+//     Borrowing a class across components couples two things that have
+//     no reason to be mounted together, and the failure is invisible
+//     until somebody opens one without the other.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("{sectionOf && (");
+  const dialog = at >= 0 ? canvas.slice(at, at + 2600) : "";
+
+  if (!dialog) {
+    fail("the section dialogue cannot be found where it was");
+  } else {
+    if (/className="sch[ "]/.test(dialog) || /className="sch-/.test(dialog)) {
+      fail("the section dialogue still borrows the schematic's classes, "
+        + "which exist only while that component is mounted — so the "
+        + "panel has no background when it is not");
+    }
+    /* On the PANEL itself, not merely somewhere inside it: the inner
+       scroll area painting white while the panel does not is exactly
+       what this looked like on screen. */
+    if (!/background: "#fff", borderRadius: 12/.test(dialog)) {
+      fail("the dialogue panel paints no background of its own, so whatever "
+        + "is on the canvas shows through its notes");
+    }
+    if (!/overflow: "auto"/.test(dialog)) {
+      fail("the dialogue does not scroll, so a section with many findings "
+        + "runs off the bottom of it");
+    }
+  }
+}
+
 // 8. Wired: placeable, drawn square to its trench, and right-clicking
 //    it shows the section.
 {

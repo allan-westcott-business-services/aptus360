@@ -28008,19 +28008,35 @@ export default function GISCanvasPage() {
                  sits and scrolls like every other dialogue rather than
                  inventing its own. */
               <div className="fe-backdrop" onClick={() => setSectionOf(null)}>
-                {/* Sized and scrolled here rather than left to the panel
-                    class: the notes under the drawing ran off the bottom
-                    of it and over the map, which made the dialogue look
-                    broken and the drawing untrustworthy with it. */}
-                <div className="sch" onClick={(e) => e.stopPropagation()}
-                  style={{ width: "min(760px, 92vw)", maxHeight: "88vh",
-                    display: "flex", flexDirection: "column" }}>
-                  <div className="sch-head">
-                    <div>
-                      <h3>{sectionOf.model.label}
+                {/* ── Styled here, not borrowed ──
+
+                    This used `.sch`, the schematic dialogue's class —
+                    and that CSS is injected by SchematicModal.jsx when
+                    THAT component renders. With it unmounted the rules
+                    do not exist, so the panel had no background: the
+                    drawing looked boxed only because its own SVG paints
+                    a white rectangle, and the notes under it sat
+                    straight on the map.
+
+                    So this dialogue carries its own box. Borrowing a
+                    class across components couples two things that have
+                    no reason to be mounted together. */}
+                <div onClick={(e) => e.stopPropagation()}
+                  style={{ background: "#fff", borderRadius: 12,
+                    width: "min(780px, 94vw)", maxHeight: "90vh",
+                    display: "flex", flexDirection: "column",
+                    boxShadow: "0 24px 60px rgba(15,23,42,.28)",
+                    overflow: "hidden" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start",
+                    gap: 12, padding: "14px 18px 12px",
+                    borderBottom: "1px solid #e2e8f0" }}>
+                    <div style={{ flex: 1 }}>
+                      <h3 style={{ margin: 0, fontSize: 16 }}>
+                        {sectionOf.model.label}
                         {sectionOf.model.atM != null
                           && ` \u00b7 ${sectionOf.model.atM} m along`}</h3>
-                      <p className="sch-sub">
+                      <p style={{ margin: "3px 0 0", fontSize: 11.5,
+                        color: "#64748b" }}>
                         Trench cross-section {"\u00b7"} {sectionOf.model.surfaceSaid}
                       </p>
                     </div>
@@ -28028,7 +28044,8 @@ export default function GISCanvasPage() {
                       aria-label="Close">&times;</button>
                   </div>
 
-                  <div style={{ overflow: "auto", padding: "4px 12px 12px" }}>
+                  <div style={{ overflow: "auto", padding: "10px 18px 18px",
+                    background: "#fff" }}>
                     {/* Our own SVG string, from our own module. Feature
                         labels DO reach it \u2014 somebody's own text, typed on
                         the drawing \u2014 and sectionSvg escapes every one of

@@ -5057,6 +5057,22 @@ characters is a hundred lines of prose and no rules at all.
      Anything added to the surface table later is assumed, never
      silent.
 
+     **The dialogue had no background**, which looked like the bottom
+     half of it being transparent. It used `.sch`, the schematic
+     dialogue's class — and that CSS is INJECTED BY SchematicModal.jsx
+     when that component renders. With the schematic unmounted the
+     rules do not exist: the drawing looked boxed only because its own
+     SVG paints a white rectangle, and the notes under it sat straight
+     on the map.
+
+     The section dialogue now carries its own box. The general point:
+     **a class defined inside another component's injected stylesheet
+     is not a shared class** — borrowing one couples two things that
+     have no reason to be mounted together, and the failure is
+     invisible until somebody opens one without the other. Anything
+     else in this codebase reaching for `.sch`, `.fe-` or similar
+     outside its owning component deserves the same look.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

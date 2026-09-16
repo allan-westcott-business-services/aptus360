@@ -4976,6 +4976,28 @@ characters is a hundred lines of prose and no rules at all.
      rather than merely counting triangles, which is what let the first
      version pass.
 
+     **Then: "s.has is not a function".** `contentsOf` takes SETS for
+     `serviceLineTypes` and `serviceTrenchTypes`; I built a second copy
+     of them in `showSection` and made them arrays. The canvas already
+     has `serviceTypeSets`, a memo whose own comment warns that two
+     copies of this answer are how the trench editor and everything
+     else come to disagree — and I wrote the second copy anyway, in a
+     file that already had a working one. `showSection` now reads the
+     memo.
+
+     The lesson is about the CHECKS, not the bug. Every case on this
+     feature tested a piece — the shape, the snap, the depths, the
+     escaping — and every one passed while the join between them was
+     broken. A case that runs the real path (a trench with things in
+     it, through `contentsOf`, into a section, out as SVG) reproduces
+     the failure exactly, and is now in `checksectionmark.mjs`. A
+     static check cannot see a wrong argument TYPE; only running it
+     can.
+
+     The try/catch added the round before is what made this
+     diagnosable: the same bug without it was a button that did
+     nothing.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

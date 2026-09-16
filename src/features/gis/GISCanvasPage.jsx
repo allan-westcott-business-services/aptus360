@@ -22181,12 +22181,12 @@ export default function GISCanvasPage() {
     }
 
     try {
-    const res = contentsOf(trench, features, {
-      serviceLineTypes: lineTypes.filter((t) => /service/i.test(t.Type_Key))
-        .map((t) => t.Type_Key),
-      serviceTrenchTypes: lineTypes.filter((t) => t.Layer_Key === "trench"
-        && /service/i.test(t.Type_Key)).map((t) => t.Type_Key),
-    });
+    /* `serviceTypeSets`, which the trench editor already builds and
+       which `contentsOf` expects: SETS, not arrays. I wrote a second
+       copy here and made it arrays, so `.has` was not a function and
+       the section threw — the exact fault that memo's own comment warns
+       about, two copies of the answer coming apart. One source. */
+    const res = contentsOf(trench, features, serviceTypeSets);
     if (res.error) { setError(res.error); return; }
 
     const model = trenchSection((res.contents || []).map((c) => c.feature ?? c), {

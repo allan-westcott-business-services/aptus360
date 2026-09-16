@@ -14,6 +14,7 @@ import {
 } from "./src/features/gis/sectionMarks.js";
 import { trenchSection, sectionSvg, diameterMm } from "./src/features/gis/trenchSection.js";
 import { coverFor, njugKeyFor } from "./src/features/gis/njug.js";
+import { contentsOf } from "./src/features/gis/trenchContents.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -232,6 +233,72 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
   } else if (!/UPDATE "GIS_Feature"/.test(sql)) {
     fail("marks already placed are not moved to the new layer, so they "
       + "stay hidden with the trench");
+  }
+}
+
+// 7c. The whole path, end to end: a trench with things in it, through
+//     contentsOf, into a section.
+//
+//     Every case above tested a piece. The join between them is where
+//     this actually broke: contentsOf wants SETS for its service-type
+//     options and was handed arrays, so `.has` was not a function and
+//     the section threw where no static check was looking. A test that
+//     runs the pipeline catches that; one that reads the source does
+//     not.
+{
+  const world = [
+    { Feature_ID: 10, Feature_Type: "line", Layer_Key: "trench",
+      Geometry: [[0, 0], [100, 0]],
+      Attributes: { Line_Type: "water_trench" } },
+    { Feature_ID: 11, Feature_Type: "line", Layer_Key: "water",
+      Label: "W1", Geometry: [[0, 0], [100, 0]],
+      Attributes: { Line_Type: "water_main", Size: "180mm" } },
+    { Feature_ID: 12, Feature_Type: "line", Layer_Key: "electric",
+      Label: "1A", Geometry: [[0, 0.3], [100, 0.3]],
+      Attributes: { Line_Type: "elec_lv", Size: "185mm" } },
+  ];
+
+  /* Built the way the canvas builds them — Sets, because that is what
+     contentsOf asks for. */
+  const opts = {
+    serviceLineTypes: new Set(lineTypes
+      .filter((t) => t.Layer_Key !== "trench" && /service/i.test(t.Type_Key))
+      .map((t) => t.Type_Key)),
+    serviceTrenchTypes: new Set(["trench_service", ...lineTypes
+      .filter((t) => t.Layer_Key === "trench" && /service/i.test(t.Type_Key))
+      .map((t) => t.Type_Key)]),
+  };
+
+  let res;
+  try {
+    res = contentsOf(world[0], world, opts);
+  } catch (e) {
+    fail(`reading a trench's contents threw: ${e.message}`);
+    res = null;
+  }
+
+  if (res && res.error) {
+    fail(`a trench with a main and a cable in it reports: ${res.error}`);
+  } else if (res) {
+    const model = trenchSection((res.contents || []).map((c) => c.feature ?? c),
+      { lineTypes, surface: "footway", label: "Section 1", atM: 50 });
+    if (model.items.length < 2) {
+      fail(`the section draws ${model.items.length} of the two runs in the `
+        + "trench — the path from the drawing to the section drops things");
+    }
+    const svg = sectionSvg(model);
+    if (!/<svg/.test(svg) || svg.length < 400) {
+      fail("the section produces no drawing worth the name");
+    }
+  }
+
+  /* And the canvas uses the sets the trench editor already builds,
+     rather than a second copy that can be the wrong shape. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/contentsOf\(trench, features, serviceTypeSets\)/.test(canvas)) {
+    fail("the section builds its own service-type options instead of "
+      + "reading the ones already built — two copies of an answer, which "
+      + "is how this broke the first time");
   }
 }
 

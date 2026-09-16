@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Banner from "../../components/Banner.jsx";
 import { listGisStyles, saveGisStyle, deleteGisStyle } from "../../api/gis.js";
 import { getLookups } from "../../api/lookups.js";
-import { appearance, symbolPath, STROKE_ONLY, SYMBOLS } from "../../lib/gisStyle.js";
+import { appearance, symbolPath, STROKE_ONLY, SYMBOLS, explainStyle } from "../../lib/gisStyle.js";
 
 /* Styling rules for the GIS canvas.
 
@@ -157,6 +157,45 @@ export default function GisStylesAdmin() {
   const isNew = selected === "new";
   const editing = isNew || selected != null;
 
+  /* ── The inspector: the question people actually bring here ──
+
+     The preview below draws ONE rule in isolation, which answers "what
+     would this rule look like" and cannot answer "why does the drawing
+     look like THAT" — a question about the whole cascade. A rule can
+     preview perfectly and match nothing (a mistyped line-type key), or
+     match and lose every field to a more specific row (an operator's
+     rule under a chosen standard, at weight 32). Both read as "the
+     canvas ignores my style", and both cost a support round trip that
+     this panel answers in one look.
+
+     Describes a subject the way the canvas would (subjectOf builds the
+     same shape from a feature) and asks explainStyle — which narrates
+     the very cascadeOf that resolveStyle folds, so this cannot
+     disagree with what the canvas draws. */
+  const [inspOpen, setInspOpen] = useState(false);
+  const [insp, setInsp] = useState({
+    Layer_Key: "", Line_Type: "", Feature_Role: "",
+    Utility_ID: "", Organisation_ID: "", Site: "", Supply_Type: "",
+  });
+  const setInspField = (col) => (e) =>
+    setInsp((d) => ({ ...d, [col]: e.target.value }));
+
+  const inspected = useMemo(() => {
+    if (!inspOpen) return null;
+    const v = (x) => (x === "" ? null : x);
+    const subject = {
+      Layer_Key: v(insp.Layer_Key),
+      Line_Type: v(insp.Line_Type),
+      Feature_Role: v(insp.Feature_Role),
+      Site: v(insp.Site),
+      Supply_Type: v(insp.Supply_Type),
+      Utility_ID: v(insp.Utility_ID),
+    };
+    return explainStyle(subject, rows,
+      { organisationId: v(insp.Organisation_ID) });
+  }, [inspOpen, insp, rows]);
+
+
   /* What the preview draws: the row being edited on its own, since the
      cascade it sits in depends on which feature it lands on. */
   const preview = useMemo(() => {
@@ -299,6 +338,147 @@ export default function GisStylesAdmin() {
       </p>
       {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
       {status && <Banner kind="ok">{status}</Banner>}
+
+      <div className="gs-insp" style={{ margin: "10px 0 14px" }}>
+        <button className="btn ghost" onClick={() => setInspOpen((o) => !o)}>
+          {inspOpen ? "Hide the inspector" : "Why does it look like that?"}
+        </button>
+        {inspOpen && (
+          <div style={{ border: "1px solid #e2e8f0", borderRadius: 8,
+            padding: "10px 12px", marginTop: 8 }}>
+            <p className="hint" style={{ marginTop: 0 }}>
+              Describe the object as it is on the drawing and every rule that
+              applies is listed in the order they stack &mdash; the value that
+              survives each field is the one the canvas draws. A rule missing
+              from this list does not match that object, however right its own
+              preview looks.
+            </p>
+            <div className="gs-grid">
+              <div className="fld">
+                <label htmlFor="gsi-layer">Layer key</label>
+                <input id="gsi-layer" list="gs-layers" value={insp.Layer_Key}
+                  onChange={setInspField("Layer_Key")} placeholder="e.g. water" />
+              </div>
+              <div className="fld">
+                <label htmlFor="gsi-lt">Line type key</label>
+                <input id="gsi-lt" list="gs-lts" value={insp.Line_Type}
+                  onChange={setInspField("Line_Type")} placeholder="e.g. water_main" />
+              </div>
+              <div className="fld">
+                <label htmlFor="gsi-role">Point role</label>
+                <select id="gsi-role" value={insp.Feature_Role}
+                  onChange={setInspField("Feature_Role")}>
+                  {ROLES.map(([r, name]) => (
+                    <option key={r} value={r}>{r ? name : "None"}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="fld">
+                <label htmlFor="gsi-util">Utility</label>
+                <select id="gsi-util" value={insp.Utility_ID}
+                  onChange={setInspField("Utility_ID")}>
+                  <option value="">None</option>
+                  {utilities.map((u) => (
+                    <option key={u.Utility_ID} value={u.Utility_ID}>{u.Utility}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="fld">
+                <label htmlFor="gsi-op">Operator standard in force</label>
+                <select id="gsi-op" value={insp.Organisation_ID}
+                  onChange={setInspField("Organisation_ID")}>
+                  <option value="">House style (none)</option>
+                  {operators.map((o) => (
+                    <option key={o.Organisation_ID} value={o.Organisation_ID}>{o.Name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="fld">
+                <label htmlFor="gsi-site">Site</label>
+                <select id="gsi-site" value={insp.Site} onChange={setInspField("Site")}>
+                  <option value="">Any</option>
+                  <option value="On-site">On-site</option>
+                  <option value="Off-site">Off-site</option>
+                </select>
+              </div>
+            </div>
+
+            {inspected && (inspected.rows.length === 0 ? (
+              <p className="hint">
+                <strong>No rule matches this object.</strong> It draws in the
+                line type&rsquo;s own colour and width &mdash; check the keys above
+                against the drawing: a key is <code>water_main</code>, not the
+                label &ldquo;Water Main&rdquo;.
+              </p>
+            ) : (
+              <>
+                <table style={{ width: "100%", borderCollapse: "collapse",
+                  fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ textAlign: "left", color: "#475569" }}>
+                      <th style={{ padding: "4px 6px" }}>Applied</th>
+                      <th style={{ padding: "4px 6px" }}>Rule</th>
+                      <th style={{ padding: "4px 6px" }}>Specificity</th>
+                      <th style={{ padding: "4px 6px" }}>Sets</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inspected.rows.map(({ style: s, score, sets }, i) => (
+                      <tr key={s.GIS_Style_ID}
+                        style={{ borderTop: "1px solid #e2e8f0" }}>
+                        <td style={{ padding: "4px 6px", color: "#94a3b8" }}>
+                          {i + 1}{i === inspected.rows.length - 1 ? " (wins ties)" : ""}
+                        </td>
+                        <td style={{ padding: "4px 6px" }}>
+                          <button className="btn ghost" style={{ padding: "1px 6px" }}
+                            onClick={() => open(s)}>{s.Style_Name}</button>
+                        </td>
+                        <td style={{ padding: "4px 6px" }}>{score}</td>
+                        <td style={{ padding: "4px 6px" }}>
+                          {Object.entries(sets).map(([k, v2]) => {
+                            const kept = inspected.wonBy[k] === s.GIS_Style_ID;
+                            return (
+                              <span key={k} style={{ marginRight: 10,
+                                textDecoration: kept ? "none" : "line-through",
+                                color: kept ? "#0f172a" : "#94a3b8" }}
+                                title={kept ? "this value is drawn"
+                                  : "overridden by a later rule"}>
+                                {k} = {String(v2)}
+                                {k === "Colour" && (
+                                  <span style={{ display: "inline-block", width: 10,
+                                    height: 10, marginLeft: 4, borderRadius: 2,
+                                    background: String(v2), verticalAlign: "middle" }} />
+                                )}
+                              </span>
+                            );
+                          })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p style={{ margin: "8px 0 0", fontSize: 13 }}>
+                  <strong>Drawn as:</strong>{" "}
+                  {inspected.resolved.Colour && (
+                    <span style={{ display: "inline-block", width: 12, height: 12,
+                      borderRadius: 2, background: inspected.resolved.Colour,
+                      verticalAlign: "middle", marginRight: 4 }} />
+                  )}
+                  {inspected.resolved.Colour ?? "line type's own colour"}
+                  {", "}{inspected.resolved.Width_Px != null
+                    ? `${inspected.resolved.Width_Px} px`
+                    : "line type's own width"}
+                  {", "}{inspected.resolved.Dashed ? "dashed" : "solid"}
+                  {inspected.resolved.Min_Scale != null
+                    && ` \u2014 hidden below ${inspected.resolved.Min_Scale} px/m`}
+                  {inspected.resolved.Max_Scale != null
+                    && ` \u2014 hidden above ${inspected.resolved.Max_Scale} px/m`}
+                </p>
+              </>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="gs-split">
         <div className="gs-list">

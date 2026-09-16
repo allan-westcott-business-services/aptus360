@@ -4459,6 +4459,54 @@ characters is a hundred lines of prose and no rules at all.
      is a second trap of the same shape (a rule that previews and
      matches nothing).
 
+     **Postscript: the operator theory was wrong**, and the user found
+     the truth — see 134. The print-side fix above stands on its own
+     merits (org-scoped rules must print), but the purple was never an
+     operator's rule. The cascade inspector proposed above IS now
+     built — explainStyle in gisStyle.js on a shared cascadeOf, the
+     panel in GisStylesAdmin, checkstyleinspector.mjs — and would have
+     shortened this hunt to one look.
+
+134. **Build Water Network laid the incumbent's pipe.** The "wrong
+     water main style" of 133 was never a styles problem: the build
+     found its main type with
+     `/main/i.test(Type_Key) && !/service/i` and took the FIRST match
+     in Sort_Order — and `water_main_existing` (46) sorts ahead of
+     `water_main` (50). So every generated water main was the
+     incumbent's type: drawn in the incumbent's grey `#8fa8bf` (read
+     as "thin solid purple" on screen), and defaulted by
+     `defaultStatusOf` to `existing` — a pipe this job had supposedly
+     done nothing to, off the bill and outside every status flow. Gas
+     and electric only escaped because their `_existing` types happen
+     to sort AFTER the real ones — the identical fault, passing by
+     luck of an ordering anybody can change in admin. Fault 126's
+     shape again: a loose pattern over type keys.
+
+     `newMainTypeFor(lineTypes, layerKey)` in buildStatus.js — beside
+     `isExistingLineType`, the module that owns ours-vs-theirs — now
+     answers it for every build: on this layer, a main, not a service,
+     not the incumbent's by key OR label, lowest Sort_Order among what
+     remains. All five call sites (four gas readers, the water build)
+     use it; the water build also states `Build_Status: "planned"` on
+     its runs explicitly rather than riding the default that betrayed
+     it. `checkbuildmaintype.mjs` holds it functionally, including the
+     case where gas's ordering flips the way water's already was.
+
+     **And the line editors no longer offer changing a line type** —
+     stated read-only instead, at the user's direction: a line is
+     drawn as what it is, and the type decides the status list, the
+     bill and what every build reads, so retyping a drawn line
+     reclassifies work. The drawn-wrong line is deleted and redrawn.
+     (Bulk edit had already withdrawn the same field for the same
+     reason; the draw-time picker rightly remains.)
+
+     Diagnostic lesson, at my own expense: three rounds of style-
+     cascade theory for what was a data-writer bug. The screenshot's
+     "purple" was `#8fa8bf` grey-blue, and one click on the line —
+     which names its type — would have ended the hunt at once. **When
+     a drawing looks wrong, read the feature before theorising about
+     the renderer.**
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

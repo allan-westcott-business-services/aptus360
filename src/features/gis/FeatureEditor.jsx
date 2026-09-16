@@ -2669,13 +2669,16 @@ export default function FeatureEditor({
               </div>
               <div className="fld">
                 <label htmlFor="fe-type">Line type</label>
-                <select id="fe-type" value={f.Attributes.Line_Type ?? ""}
-                  onChange={(e) => setAttr("Line_Type")(e.target.value)}>
-                  <option value="">&mdash; None &mdash;</option>
-                  {lineTypes.map((t) => (
-                    <option key={t.Type_Key} value={t.Type_Key}>{t.Label}</option>
-                  ))}
-                </select>
+                {/* Stated, not offered. A line is drawn as what it is,
+                    and the type is not a property to correct afterwards:
+                    it decides the status list, what the bill charges and
+                    what every build reads, so retyping a drawn line
+                    reclassifies work \u2014 the drawn-wrong line is deleted
+                    and drawn right instead. */}
+                <input id="fe-type" readOnly
+                  value={lineTypes.find((t) =>
+                    t.Type_Key === f.Attributes.Line_Type)?.Label
+                    ?? f.Attributes.Line_Type ?? "\u2014"} />
               </div>
 
               {/* On or off site, and whether it crosses an easement.
@@ -3870,13 +3873,12 @@ export default function FeatureEditor({
               {!isTrench && (
                 <div className="fld">
                   <label htmlFor="fe-type">Line type</label>
-                  <select id="fe-type" value={f.Attributes.Line_Type ?? ""}
-                    onChange={(e) => setAttr("Line_Type")(e.target.value)}>
-                    <option value="">&mdash; None &mdash;</option>
-                    {lineTypes.map((t) => (
-                      <option key={t.Type_Key} value={t.Type_Key}>{t.Label}</option>
-                    ))}
-                  </select>
+                  {/* Stated, not offered \u2014 same reasoning as the trench
+                      row above. */}
+                  <input id="fe-type" readOnly
+                    value={lineTypes.find((t) =>
+                      t.Type_Key === f.Attributes.Line_Type)?.Label
+                      ?? f.Attributes.Line_Type ?? "\u2014"} />
                 </div>
               )}
               <div className="fe-row">

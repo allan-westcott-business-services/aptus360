@@ -175,6 +175,7 @@ import {
   isMainFeature, isMainType, LIVE_COLOUR, DEAD_COLOUR, UNSET_COLOUR,
   LIVE_BAND_M,
   isOffSite, withDefaultStatus, blocksLive, needsGround, isServiceFeature,
+  newMainTypeFor,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import { carryLine, carryPoint, claimedByAnother } from "./carryContents.js";
@@ -17746,8 +17747,7 @@ export default function GISCanvasPage() {
         return;
       }
 
-      const mainType = lineTypes.find((t) => t.Layer_Key === "gas"
-        && /main/i.test(t.Type_Key) && !/service/i.test(t.Type_Key));
+      const mainType = newMainTypeFor(lineTypes, "gas");
       const mains = src.filter((f) => f.Feature_Type === "line"
         && f.Attributes?.Line_Type === mainType?.Type_Key)
         .map((f) => ({ id: f.Feature_ID, geometry: f.Geometry || [] }));
@@ -18199,8 +18199,7 @@ export default function GISCanvasPage() {
       /* Same containment as the check reads sizes with, so Make change
          writes to exactly the features the report measured. */
       const onRun = (f) => lineFollows(sug.runPts || [], f.Geometry || []);
-      const mainType = lineTypes.find((t) => t.Layer_Key === "gas"
-        && /main/i.test(t.Type_Key) && !/service/i.test(t.Type_Key));
+      const mainType = newMainTypeFor(lineTypes, "gas");
       const rows = features
         .filter((f) => f.Feature_Type === "line"
           && f.Attributes?.Line_Type === mainType?.Type_Key
@@ -18261,8 +18260,7 @@ export default function GISCanvasPage() {
     const bore = Number(size.Diameter_mm) - 11;
     if (!(bore > 0)) return;
 
-    const mainType = lineTypes.find((t) => t.Layer_Key === "gas"
-      && /main/i.test(t.Type_Key) && !/service/i.test(t.Type_Key));
+    const mainType = newMainTypeFor(lineTypes, "gas");
     const mains = features.filter((f) => f.Feature_Type === "line"
       && f.Attributes?.Line_Type === mainType?.Type_Key);
 
@@ -18833,8 +18831,7 @@ export default function GISCanvasPage() {
        "gas_main". Renaming a line type in admin is a thing somebody may
        do, and a build that then draws pipe with a type nothing renders
        fails invisibly — the features exist, the drawing looks empty. */
-    const mainType = lineTypes.find((t) => t.Layer_Key === "gas"
-      && /main/i.test(t.Type_Key) && !/service/i.test(t.Type_Key));
+    const mainType = newMainTypeFor(lineTypes, "gas");
     if (!mainType) {
       return setError("No gas mains line type is configured \u2014 add one in "
         + "Admin \u203a GIS Styles before building.");
@@ -19306,8 +19303,7 @@ export default function GISCanvasPage() {
        from what is actually on the drawing. */
     const src = srcFeatures || features;
 
-    const mainType = lineTypes.find((t) => t.Layer_Key === "water"
-      && /main/i.test(t.Type_Key) && !/service/i.test(t.Type_Key));
+    const mainType = newMainTypeFor(lineTypes, "water");
     if (!mainType) {
       return setError("No water mains line type is configured \u2014 add one in "
         + "Admin \u203a GIS Styles before building.");
@@ -19499,6 +19495,14 @@ export default function GISCanvasPage() {
           Label: `W${i + 1}`,
           Attributes: {
             Line_Type: mainType.Type_Key,
+            /* Stated rather than left to withDefaultStatus, which would
+               say the same thing: a generated pipe is work this build
+               is proposing, and `planned` is a fact about it worth
+               carrying explicitly \u2014 the fault this line closes had the
+               build laying the INCUMBENT'S type, from which the default
+               read `existing` and the drawing showed a pipe this job
+               had supposedly done nothing to. */
+            Build_Status: "planned",
             /* The size, as both the reference and the text.
 
                The id is what the editor edits and what a schedule can

@@ -491,6 +491,32 @@ export const EXISTING_TYPE_SUFFIX = "_existing";
 export const isExistingLineType = (typeKey) =>
   String(typeKey ?? "").endsWith(EXISTING_TYPE_SUFFIX);
 
+/* The line type a build lays a NEW main as, on a given layer.
+
+   The builds found it with `/main/i.test(Type_Key)` and no more, and
+   `find` takes the first match in Sort_Order \u2014 which on water is
+   `water_main_existing`, sorted ahead of `water_main`. So Build Water
+   Network laid the incumbent's type: drawn in the incumbent's grey,
+   and defaulted by defaultStatusOf to `existing`, a pipe this job had
+   supposedly done nothing to. Gas and electric only escaped because
+   their `_existing` types happen to sort AFTER the real ones \u2014 the
+   same fault, passing by luck of a sort order anybody can change in
+   admin. Recurring fault 126's shape: a loose pattern over type keys.
+
+   So the predicate says what it means: on this layer, a main, not a
+   service, and not the incumbent's \u2014 by key or by label, since a type
+   renamed in admin keeps its key. Lowest Sort_Order wins among what
+   is left, which is stable and is the one the menus offer first. */
+export function newMainTypeFor(lineTypes = [], layerKey) {
+  return (lineTypes || [])
+    .filter((t) => t.Layer_Key === layerKey
+      && /main/i.test(t.Type_Key)
+      && !/service/i.test(t.Type_Key)
+      && !isExistingLineType(t.Type_Key)
+      && !/existing|incumbent/i.test(String(t.Label ?? "")))
+    .sort((a, b) => (a.Sort_Order ?? 0) - (b.Sort_Order ?? 0))[0] ?? null;
+}
+
 export function defaultStatusOf(f, lineTypes = []) {
   if (!f) return null;
 

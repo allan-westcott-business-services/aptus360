@@ -85,17 +85,57 @@ export function subjectOf(feature, layers = []) {
   };
 }
 
-export function resolveStyle(subject, styles = [], ctx = {}) {
-  const out = {};
-  styles
+/* The matching rules, in the order their fields are applied: least
+   specific first, ties by id. ONE ordering, read by resolveStyle to
+   fold a style and by explainStyle to say why — a second copy of this
+   sort would be the two quietly disagreeing about which rule wins. */
+export function cascadeOf(subject, styles = [], ctx = {}) {
+  return styles
     .filter((s) => styleMatches(s, subject, ctx))
     .map((s) => ({ s, score: styleScore(s) }))
     .sort((a, b) => a.score - b.score
-      || (a.s.GIS_Style_ID ?? 0) - (b.s.GIS_Style_ID ?? 0))
+      || (a.s.GIS_Style_ID ?? 0) - (b.s.GIS_Style_ID ?? 0));
+}
+
+export function resolveStyle(subject, styles = [], ctx = {}) {
+  const out = {};
+  cascadeOf(subject, styles, ctx)
     .forEach(({ s }) => {
       for (const k of FIELDS) if (s[k] != null) out[k] = s[k];
     });
   return out;
+}
+
+/* The cascade, narrated: which rules match this subject, what each one
+   contributes, and which rule ends up owning each field of the result.
+
+   Exists because the admin's preview draws one rule in isolation and
+   so cannot answer the question people actually bring to it — "why
+   does the drawing look like THAT" — which is a question about the
+   whole cascade. Everything here is derived from cascadeOf and FIELDS,
+   so it cannot disagree with what the canvas resolves.
+
+   Returns:
+     rows     — [{ style, score, sets }] in applied order, `sets` being
+                only the fields the rule carries
+     resolved — exactly resolveStyle's answer
+     wonBy    — field -> GIS_Style_ID of the rule whose value survived */
+export function explainStyle(subject, styles = [], ctx = {}) {
+  const ordered = cascadeOf(subject, styles, ctx);
+  const resolved = {};
+  const wonBy = {};
+  const rows = ordered.map(({ s, score }) => {
+    const sets = {};
+    for (const k of FIELDS) {
+      if (s[k] != null) {
+        sets[k] = s[k];
+        resolved[k] = s[k];
+        wonBy[k] = s.GIS_Style_ID ?? null;
+      }
+    }
+    return { style: s, score, sets };
+  });
+  return { rows, resolved, wonBy };
 }
 
 const clamp = (v, lo, hi) => {

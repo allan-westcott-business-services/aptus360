@@ -4998,6 +4998,65 @@ characters is a hundred lines of prose and no rules at all.
      diagnosable: the same bug without it was a button that did
      nothing.
 
+     **Turning a mark about.** `Section_Flip` on the mark, set from a
+     checkbox in its editor ("Viewed from the other side"), does two
+     things from ONE flag: the heads on the drawing look the other way,
+     and the section opens mirrored. They are one fact — which side you
+     are standing on — and two switches for it is how a drawing comes
+     to lie about itself.
+
+     What mirrors and what does not: the item positions are unchanged,
+     because they are what the guidance gives; only the DRAWING is
+     reflected, about the middle of the footway. The boundary and
+     carriageway labels travel with the sides they name — a mirrored
+     section that still says "boundary" on the road side is worse than
+     one not mirrored at all, and the check tests for exactly that.
+
+     **Then a screenshot of the real thing showed four faults**, none
+     of which the checks were looking for, because every case tested a
+     NUMBER and none tested whether the drawing could be read:
+
+       - a run with no size printed "100 nommm";
+       - every cover figure was written at the top of the drawing
+         instead of beside the run it measured, so three runs gave
+         three numbers in a stack belonging to nothing;
+       - two runs in one position had their names drawn over each
+         other;
+       - the notes under the drawing ran out of the dialogue and over
+         the map, which made the whole thing look broken.
+
+     The drawing is rewritten: dimensions written on their own lines at
+     their own heights, names pushed clear of anything already written
+     near them, the two side labels inside the frame against their own
+     edges, and the dialogue sized and scrolled rather than left to
+     grow. The checks now measure the OUTPUT — that the cover figures
+     are not all at one height, that two names in a position are not on
+     top of each other — which is the only way a layout fault is
+     catchable at all.
+
+     **And "unmade" is not an NJUG surface.** The drawing has six
+     surfaces (`footway`, `carriageway_12`, `carriageway_34`, `unmade`,
+     `verge`, `agricultural`); the guidance has three. `njugSurface`
+     maps them BY KEY, from GIS_Surface_Type, rather than by matching
+     words in a label — which breaks the day somebody renames one in
+     admin.
+
+     Three kinds of answer, and the difference between them is the
+     point:
+       - **the guidance's own** — footway, verge, both carriageways;
+       - **policy** — `unmade` follows the FOOTWAY figures, which is
+         this operator's decision and not something NJUG says. The
+         dialogue says which column was used without implying the
+         guidance named it;
+       - **assumed** — `agricultural` has no decision and no NJUG
+         column, so it reads as a verge and the section ADMITS it had
+         to choose. Ploughing is why that deserves a real answer rather
+         than a quiet default: an inferred cover on agricultural land
+         is the kind a subsoiler finds. Still open.
+
+     Anything added to the surface table later is assumed, never
+     silent.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

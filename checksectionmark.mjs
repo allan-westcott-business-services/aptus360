@@ -302,6 +302,192 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
   }
 }
 
+// 7d. Turned about, the section is its mirror.
+//
+//     The same cut seen from the other side: the same runs at the same
+//     depths, with left and right swapped. The positions themselves do
+//     NOT change — they are what the guidance gives — only the drawing
+//     is mirrored, and the boundary and carriageway labels travel with
+//     the sides they name. A mirrored section that still says
+//     "boundary" on the road side is worse than one not mirrored at
+//     all.
+{
+  const c = [{ Feature_ID: 20, Label: "W1", Layer_Key: "water",
+    Attributes: { Line_Type: "water_main", Size: "180mm" } }];
+  const near = trenchSection(c, { lineTypes });
+  const far = trenchSection(c, { lineTypes, flip: true });
+
+  if (near.items[0].xMm !== far.items[0].xMm) {
+    fail("turning the mark about moves the apparatus — the cut is the "
+      + "same cut, and only the drawing should mirror");
+  }
+
+  const xOf = (svg) => Number(/circle cx="([0-9.]+)"/.exec(svg)?.[1]);
+  const a = xOf(sectionSvg(near));
+  const b = xOf(sectionSvg(far));
+  if (!Number.isFinite(a) || !Number.isFinite(b)) {
+    fail("the section draws no apparatus to mirror");
+  } else if (Math.abs(a - b) < 1) {
+    fail("the section is not mirrored when the mark is turned about");
+  } else {
+    /* Mirrored about the middle of the FOOTWAY, not of the image: the
+       margins are not equal, so the centre of the drawing is not the
+       centre of the picture. Taken from the ground rect the section
+       draws, which is the footway itself. */
+    const ground = /<rect x="([0-9.]+)" y="[0-9.]+" width="([0-9.]+)"[^>]*fill="#f8fafc"/
+      .exec(sectionSvg(near));
+    if (!ground) {
+      fail("the section draws no ground to measure against");
+    } else {
+      const mid = Number(ground[1]) + Number(ground[2]) / 2;
+      if (Math.abs((a + b) / 2 - mid) > 1) {
+        fail("the mirrored section is not a reflection about the middle of "
+          + "the footway");
+      }
+    }
+  }
+
+  /* And the sides keep their names. */
+  const svgFar = sectionSvg(far);
+  const bPos = svgFar.indexOf("Boundary");
+  const cPos = svgFar.indexOf("Carriageway");
+  const bx = Number(/<text x="([0-9.]+)"[^>]*>Boundary/.exec(svgFar)?.[1]);
+  const cx = Number(/<text x="([0-9.]+)"[^>]*>Carriageway/.exec(svgFar)?.[1]);
+  if (bPos < 0 || cPos < 0) {
+    fail("the mirrored section loses its boundary and carriageway labels");
+  } else if (Number.isFinite(bx) && Number.isFinite(cx) && bx < cx) {
+    fail("the mirrored section puts the boundary on the road side — the "
+      + "labels must travel with the sides they name");
+  }
+
+  /* The mark and the section read the one flag, so the drawing on
+     screen cannot disagree with the section it opens. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/flip: !!f\.Attributes\?\.Section_Flip/.test(canvas)) {
+    fail("the mark on screen ignores the flip, so it points one way while "
+      + "its section is drawn the other");
+  }
+  if (!/flip: !!mark\.Attributes\?\.Section_Flip/.test(canvas)) {
+    fail("the section ignores the flip, so turning the mark changes "
+      + "nothing but the arrows");
+  }
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/setAttr\("Section_Flip"\)/.test(editor)) {
+    fail("there is no way to turn a mark about");
+  }
+}
+
+// 7e. The drawing reads. Three faults the first version shipped, each
+//     of which a reader would have had to work around:
+{
+  const c = [
+    { Feature_ID: 30, Label: "Supply from POC", Layer_Key: "electric",
+      Attributes: { Line_Type: "elec_hv" } },
+    { Feature_ID: 31, Label: "B11", Layer_Key: "electric",
+      Attributes: { Line_Type: "elec_lv" } },
+    { Feature_ID: 32, Label: "G12", Layer_Key: "gas",
+      Attributes: { Line_Type: "gas_main", Size: "125mm" } },
+  ];
+  const model = trenchSection(c, { lineTypes: [...lineTypes,
+    { Type_Key: "elec_hv", Layer_Key: "electric" },
+    { Type_Key: "elec_lv", Layer_Key: "electric" }], surface: "unmade" });
+  const svg = sectionSvg(model);
+
+  /* A size with no size on the drawing read "100 nommm". */
+  if (/nommm/.test(svg)) {
+    fail("a nominal size prints as \"nommm\"");
+  }
+  if (!/100mm nominal/.test(svg)) {
+    fail("a run with no size does not say its size is nominal");
+  }
+
+  /* Every cover figure was written at the top of the drawing rather
+     than beside the run it measured, so three runs gave three numbers
+     in a stack belonging to nothing. Each must sit at its own height. */
+  const dims = [...svg.matchAll(/<text x="[0-9.]+" y="([0-9.]+)"[^>]*>\d+mm<\/text>/g)]
+    .map((m2) => Number(m2[1]));
+  if (dims.length >= 2) {
+    const spread = Math.max(...dims) - Math.min(...dims);
+    if (spread < 4) {
+      fail("the cover figures are all written at the same height, so they "
+        + "read as a list rather than as dimensions of their own runs");
+    }
+  }
+
+  /* And two runs in one position had their names printed over each
+     other. */
+  const names = [...svg.matchAll(/<text x="([0-9.]+)" y="([0-9.]+)"[^>]*>([^<]*(?:B11|Supply from POC))<\/text>/g)]
+    .map((m2) => ({ x: Number(m2[1]), y: Number(m2[2]) }));
+  if (names.length === 2) {
+    if (Math.abs(names[0].x - names[1].x) < 60
+      && Math.abs(names[0].y - names[1].y) < 10) {
+      fail("two runs sharing a position have their names drawn on top of "
+        + "one another");
+    }
+  }
+}
+
+// 7f. A surface the guidance does not name is READ as one, and says so.
+{
+  const c = [{ Feature_ID: 40, Label: "G1", Layer_Key: "gas",
+    Attributes: { Line_Type: "gas_main", Size: "180mm" } }];
+  /* Unmade follows the FOOTWAY figures, by this operator's decision.
+     Not a guess and not the guidance: marked as policy so the section
+     can say which column it used without implying NJUG named it. */
+  const made = trenchSection(c, { lineTypes, surface: "unmade" });
+  if (made.surface !== "footway") {
+    fail(`unmade ground is worked to the ${made.surface} figures, not the `
+      + "footway ones this business has decided on");
+  }
+  if (!made.surfacePolicy) {
+    fail("unmade is not marked as mapped by policy, so the section cannot "
+      + "say which column it used");
+  }
+  if (made.surfaceAssumed) {
+    fail("a decided mapping is reported as an assumption");
+  }
+  if (made.surfaceSaid !== "unmade") {
+    fail("the section forgets what the drawing actually called the surface");
+  }
+
+  /* By KEY, from GIS_Surface_Type, not by words in a label — which
+     breaks the day somebody renames one in admin. */
+  for (const key of ["carriageway_12", "carriageway_34"]) {
+    const road = trenchSection(c, { lineTypes, surface: key });
+    if (road.surface !== "carriageway" || road.surfaceAssumed) {
+      fail(`${key} is not recognised as a carriageway`);
+    }
+  }
+  if (trenchSection(c, { lineTypes, surface: "verge" }).surface !== "verge") {
+    fail("a verge is not recognised");
+  }
+
+  /* Agricultural has no decision and no NJUG column: read as a verge
+     and ADMITTED as inferred. Ploughing is why that deserves a real
+     answer rather than a quiet default. */
+  const ag = trenchSection(c, { lineTypes, surface: "agricultural" });
+  if (!ag.surfaceAssumed) {
+    fail("agricultural land borrows a figure without saying it had to "
+      + "choose one — an inferred cover there is the kind a subsoiler "
+      + "finds");
+  }
+
+  /* And a surface added to the table later is assumed, never silent. */
+  if (!trenchSection(c, { lineTypes, surface: "somethingnew" }).surfaceAssumed) {
+    fail("a surface nobody has decided about borrows a figure quietly");
+  }
+
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/model\.surfaceAssumed && \(/.test(canvas)) {
+    fail("the dialogue does not tell the reader which surface's figures "
+      + "were used when it had to choose one");
+  }
+  if (!/model\.surfacePolicy && \(/.test(canvas)) {
+    fail("the dialogue does not say when a surface is worked to another "
+      + "surface's figures by decision rather than by the guidance");
+  }
+}
+
 // 8. Wired: placeable, drawn square to its trench, and right-clicking
 //    it shows the section.
 {
@@ -400,7 +586,8 @@ const trench = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
 
   /* And the button is where somebody who opened the mark will see it. */
   const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
-  if (!/Feature_Role === "sectionmark" && onShowSection/.test(editor)) {
+  if (!/Feature_Role === "sectionmark" &&/.test(editor)
+    || !/onShowSection\(feature\)/.test(editor)) {
     fail("the editor does not offer the section, so the only way to see "
       + "one is a right-click menu somebody has to know about");
   }

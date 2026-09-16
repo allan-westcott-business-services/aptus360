@@ -169,13 +169,77 @@ export function njugKeyFor(f, opts = {}) {
 export function coverFor(njugKey, surface = "footway") {
   const row = NJUG_COVER_MM[njugKey];
   if (!row) return null;
-  const s = String(surface || "").toLowerCase();
-  const named = s.includes("carriage") ? "carriageway"
-    : s.includes("verge") ? "verge"
-      : "footway";
+  const named = njugSurface(surface);
   /* Verge falls back to footway for every utility but gas, which is
      the only one the guidance separates. */
-  const band = row[named] ?? row.footway ?? null;
+  const band = row[named.key] ?? row.footway ?? null;
   if (!band) return null;
-  return { ...band, surface: named, label: row.label, warning: row.warning };
+  return { ...band, surface: named.key, surfaceSaid: named.said,
+    assumed: named.assumed, label: row.label, warning: row.warning };
+}
+
+/* Which of the guidance's three surfaces a drawing's surface answers
+   to.
+
+   The drawing has six and the guidance has three, so four of them need
+   a decision made about them. By KEY, from the drawing's own
+   `GIS_Surface_Type` — footway, carriageway_12, carriageway_34,
+   unmade, verge, agricultural — rather than by matching words in a
+   label, which breaks the day somebody renames one in admin.
+
+     footway          footway    the guidance's own
+     carriageway_12   carriageway
+     carriageway_34   carriageway
+     verge            verge
+     unmade           footway    the operator's decision, recorded here
+     agricultural     verge      NOT decided — read as a verge, and the
+                                 section says it had to choose
+
+   `unmade` is not an NJUG surface. It is worked to the FOOTWAY figures
+   because that is what this operator has decided, not because the
+   guidance says so — so it is marked as a policy rather than an
+   assumption, and the section says which column it used without
+   implying the guidance named it.
+
+   `agricultural` has no decision yet and no NJUG column. It reads as a
+   verge, marked assumed, which makes the section admit the depth was
+   inferred. Ploughing depth is the reason this deserves a real answer
+   rather than my guess: an inferred cover on agricultural land is the
+   kind of number that gets a main struck by a subsoiler. */
+const SURFACE_TO_NJUG = {
+  footway: { key: "footway" },
+  carriageway_12: { key: "carriageway" },
+  carriageway_34: { key: "carriageway" },
+  verge: { key: "verge" },
+  unmade: { key: "footway", policy: true },
+  agricultural: { key: "verge", assumed: true },
+};
+
+export function njugSurface(surface) {
+  const raw = String(surface || "").trim();
+  const known = SURFACE_TO_NJUG[raw.toLowerCase()];
+  if (known) {
+    return {
+      key: known.key,
+      said: raw.toLowerCase(),
+      assumed: !!known.assumed,
+      /* Mapped by somebody's decision rather than by the guidance, so
+         the section can say so without calling it a guess. */
+      policy: !!known.policy,
+    };
+  }
+
+  /* Anything added to the surface table later, or a label passed where
+     a key was expected. Matched on words as a last resort and always
+     marked assumed: a surface nobody has decided about should not
+     borrow a figure quietly. */
+  const s = raw.toLowerCase();
+  if (s.includes("carriage") || s.includes("road")) {
+    return { key: "carriageway", said: s, assumed: true, policy: false };
+  }
+  if (s.includes("verge")) return { key: "verge", said: s, assumed: true, policy: false };
+  if (s.includes("foot") || s.includes("path")) {
+    return { key: "footway", said: s, assumed: true, policy: false };
+  }
+  return { key: "footway", said: s || "footway", assumed: true, policy: false };
 }

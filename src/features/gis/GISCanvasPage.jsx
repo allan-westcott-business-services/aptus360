@@ -4798,6 +4798,10 @@ export default function GISCanvasPage() {
             const shape = sectionMarkShape(
               Number(f.Attributes?.Angle_Deg) || 0,
               Number(f.Attributes?.Section_Length_M) || SECTION_LEN_M,
+              /* Turned about, so the heads look the other way. The bar
+                 does not move: it is the same cut, read from the other
+                 side. */
+              { flip: !!f.Attributes?.Section_Flip },
             );
             const P = (q) => ({ x: p.x + q[0] * vs, y: p.y + q[1] * vs });
 
@@ -22195,6 +22199,10 @@ export default function GISCanvasPage() {
         ?? trench.Attributes?.Surface ?? "footway",
       label: mark.Label || "Section",
       atM: mark.Attributes?.Section_Along_M ?? null,
+      /* The same flag the mark is drawn with, so the drawing on screen
+         and the section it opens agree about which way it is viewed.
+         Two switches for one fact is how they come apart. */
+      flip: !!mark.Attributes?.Section_Flip,
     });
     setSectionOf({ mark, trench, model, svg: sectionSvg(model) });
     setError("");
@@ -28000,48 +28008,84 @@ export default function GISCanvasPage() {
                  sits and scrolls like every other dialogue rather than
                  inventing its own. */
               <div className="fe-backdrop" onClick={() => setSectionOf(null)}>
-                <div className="sch" onClick={(e) => e.stopPropagation()}>
+                {/* Sized and scrolled here rather than left to the panel
+                    class: the notes under the drawing ran off the bottom
+                    of it and over the map, which made the dialogue look
+                    broken and the drawing untrustworthy with it. */}
+                <div className="sch" onClick={(e) => e.stopPropagation()}
+                  style={{ width: "min(760px, 92vw)", maxHeight: "88vh",
+                    display: "flex", flexDirection: "column" }}>
                   <div className="sch-head">
                     <div>
                       <h3>{sectionOf.model.label}
                         {sectionOf.model.atM != null
                           && ` \u00b7 ${sectionOf.model.atM} m along`}</h3>
                       <p className="sch-sub">
-                        Trench cross-section {"\u00b7"} {sectionOf.model.surface}
+                        Trench cross-section {"\u00b7"} {sectionOf.model.surfaceSaid}
                       </p>
                     </div>
                     <button className="fe-x" onClick={() => setSectionOf(null)}
                       aria-label="Close">&times;</button>
                   </div>
 
-                  {/* Our own SVG string, from our own module. Feature
-                      labels DO reach it \u2014 somebody's own text, typed on
-                      the drawing \u2014 and sectionSvg escapes every one of
-                      them for exactly that reason. Anything added to
-                      that module which writes drawing text must escape
-                      it too. */}
-                  <div dangerouslySetInnerHTML={{ __html: sectionOf.svg }} />
+                  <div style={{ overflow: "auto", padding: "4px 12px 12px" }}>
+                    {/* Our own SVG string, from our own module. Feature
+                        labels DO reach it \u2014 somebody's own text, typed on
+                        the drawing \u2014 and sectionSvg escapes every one of
+                        them for exactly that reason. Anything added to
+                        that module which writes drawing text must escape
+                        it too. */}
+                    <div dangerouslySetInnerHTML={{ __html: sectionOf.svg }} />
 
-                  {/* Said plainly under the drawing, because a section
-                      drawn to recommended minima is a recommendation
-                      and not a survey. Somebody reading this off a
-                      screen to a gang in a hole deserves to know
-                      which. */}
-                  <p className="hint">
-                    Positions and depths are the NJUG Volume 1 recommended
-                    minima for a {sectionOf.model.surface}. They are industry
-                    guidance, not a survey and not a specification: an asset
-                    owner&rsquo;s own requirements override them, and what is
-                    already in the ground may sit anywhere.
-                  </p>
+                    {/* Said plainly under the drawing, because a section
+                        drawn to recommended minima is a recommendation
+                        and not a survey. Somebody reading this off a
+                        screen to a gang in a hole deserves to know
+                        which. */}
+                    <p className="hint">
+                      Positions and depths are the NJUG Volume 1 recommended
+                      minima for a {sectionOf.model.surface}. They are industry
+                      guidance, not a survey and not a specification: an asset
+                      owner&rsquo;s own requirements override them, and what is
+                      already in the ground may sit anywhere.
+                    </p>
 
-                  {sectionOf.model.findings.length > 0 && (
-                    <ul className="hint">
-                      {sectionOf.model.findings.map((fi, i) => (
-                        <li key={i}>{fi.text}</li>
-                      ))}
-                    </ul>
-                  )}
+                    {/* Which column was read, where the drawing's surface
+                        is not one the guidance names. An inferred depth
+                        that does not admit it was inferred is the kind of
+                        number that gets built to. */}
+                    {/* Worked to another surface's figures by a decision
+                        of this business rather than by the guidance.
+                        Said quietly and without alarm \u2014 it is not a
+                        guess \u2014 but said, because the column used is not
+                        the one the surface is called. */}
+                    {sectionOf.model.surfacePolicy && (
+                      <p className="hint">
+                        <strong>{sectionOf.model.surfaceSaid}</strong> ground is
+                        worked to the{" "}
+                        <strong>{sectionOf.model.surface}</strong> figures here.
+                        NJUG does not name it; this is your own standard.
+                      </p>
+                    )}
+
+                    {sectionOf.model.surfaceAssumed && (
+                      <p className="hint">
+                        <strong>{sectionOf.model.surfaceSaid}</strong> is not one
+                        of the three surfaces the guidance covers, so the{" "}
+                        <strong>{sectionOf.model.surface}</strong> figures are
+                        shown. Confirm that is the right reading for this
+                        ground before working to it.
+                      </p>
+                    )}
+
+                    {sectionOf.model.findings.length > 0 && (
+                      <ul className="hint">
+                        {sectionOf.model.findings.map((fi, i) => (
+                          <li key={i}>{fi.text}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

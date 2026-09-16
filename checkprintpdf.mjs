@@ -76,7 +76,16 @@ const bounds = drawnBounds(world);
   const plan = tilePlan({ bounds, paper: "A3", landscape: true, scaleDenom: 500 });
   const items = pageDrawList(world, plan.tiles[0], {
     scaleDenom: 500, marginMm: plan.marginMm, labels: false });
-  const pts = items.flatMap((i) => (i.pts ? i.pts : [i.at]));
+  /* Every point the page draws, whatever primitive carries it. A
+     symbol arrives as recorded subpaths rather than a centre and a
+     radius, so this checks the ink itself rather than a point it is
+     drawn around \u2014 a 3 mm square whose corner crosses the border is
+     caught where a centre test would have passed it. */
+  const pts = items.flatMap((i) => {
+    if (i.pts) return i.pts;
+    if (i.subs) return i.subs.flatMap((sub) => sub.pts || []);
+    return i.at ? [i.at] : [];
+  });
   const m = plan.marginMm;
   for (const [x, y] of pts) {
     if (x < m - 0.01 || y < m - 0.01
@@ -526,6 +535,152 @@ const bounds = drawnBounds(world);
   if (!other || other.colour !== "#2ccc00") {
     fail("an operator's rule applies under a different operator's "
       + "standard");
+  }
+}
+
+/* ── The symbol on the sheet is the symbol on the screen ──
+
+   The point pass drew a shape looked up from a table of roles kept in
+   printVector, so the style cascade decided what a point looked like
+   on screen and a hard-coded map decided it on paper. A service valve
+   had no row in that map and printed as a filled disc where the screen
+   showed a bar across the main \u2014 which is what was reported. */
+{
+  const pipe = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "water",
+    Geometry: [[1000, 500], [1100, 500]],
+    Attributes: { Line_Type: "water_main", Size: "63mm" } };
+  const meter = { Feature_ID: 2, Feature_Type: "point", Feature_Role: "meter",
+    Layer_Key: "water", Label: "M1", Geometry: [[1020, 500]] };
+  const valve = { Feature_ID: 3, Feature_Type: "point",
+    Feature_Role: "servicevalve", Layer_Key: "water", Label: "SV 10",
+    Geometry: [[1050, 500]], Attributes: { Angle_Deg: 0 } };
+  const styles = [
+    { GIS_Style_ID: 1, Style_Name: "Meter", Feature_Role: "meter",
+      Symbol: "square", Symbol_Size_Px: 8, Colour: "#2ccc00" },
+  ];
+  const world = [pipe, meter, valve];
+  const plan = tilePlan({ bounds: drawnBounds(world), paper: "A3",
+    landscape: true, scaleDenom: 500 });
+  const items = pageDrawList(world, plan.tiles[0], {
+    scaleDenom: 500, marginMm: plan.marginMm, styles, labels: false });
+
+  const shapeOf = (id) => items.find((i) => i.kind === "paths" && i.id === id);
+
+  /* A meter whose style says square prints a square: four corners,
+     closed, not a twelve-sided ring. */
+  const m = shapeOf(2);
+  if (!m) {
+    fail("a meter draws no symbol on the sheet at all");
+  } else {
+    const pts = m.subs[0]?.pts ?? [];
+    if (pts.length !== 4 || !m.subs[0].closed) {
+      fail(`a meter styled as a square prints a ${pts.length}-point shape \u2014 `
+        + "the sheet is not drawing the style's symbol");
+    }
+    if (m.colour !== "#2ccc00") fail("the symbol ignores the style's colour");
+  }
+
+  /* A service valve prints as a bar across its pipe, a metre of ground
+     wide, not as a disc. */
+  const v = shapeOf(3);
+  if (!v) {
+    fail("a service valve draws nothing on the sheet");
+  } else {
+    const pts = v.subs[0]?.pts ?? [];
+    if (pts.length !== 2 || v.fill) {
+      fail("a service valve prints as a filled blob rather than a bar "
+        + "across the main \u2014 the reported fault");
+    } else {
+      const k = mmPerMetre(500);
+      const len = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]);
+      if (Math.abs(len - k) > 0.05) {
+        fail(`the valve bar is ${len.toFixed(2)} mm where a metre of ground `
+          + `is ${k.toFixed(2)} mm`);
+      }
+      /* Square to a pipe running east: the bar runs north-south. */
+      if (Math.abs(pts[1][0] - pts[0][0]) > 0.01) {
+        fail("the valve bar is not square to the pipe it sits in");
+      }
+    }
+  }
+
+  /* And the old role table is gone, not merely bypassed. */
+  const src = readFileSync("./src/features/gis/printVector.js", "utf8");
+  if (/const SHAPE = \{/.test(src)) {
+    fail("the role-to-shape table survives \u2014 a second opinion about what "
+      + "a point looks like, which is the drift this file warns about");
+  }
+}
+
+/* A stroke-only symbol is not filled, and a bottle end keeps its
+   bars: filling an open path paints a wedge between its ends. */
+{
+  const cross = { Feature_ID: 7, Feature_Type: "point", Feature_Role: "poc",
+    Layer_Key: "electric", Geometry: [[1000, 500]] };
+  const styles = [{ GIS_Style_ID: 1, Style_Name: "POC", Feature_Role: "poc",
+    Symbol: "cross", Symbol_Size_Px: 9 }];
+  const plan = tilePlan({ bounds: drawnBounds([cross]), paper: "A4",
+    landscape: true, scaleDenom: 500 });
+  const [item] = pageDrawList([cross], plan.tiles[0], {
+    scaleDenom: 500, marginMm: plan.marginMm, styles, labels: false });
+  if (!item || item.kind !== "paths") {
+    fail("a cross-styled point draws nothing");
+  } else if (item.fill) {
+    fail("a cross is filled \u2014 it has no inside, and filling one paints a "
+      + "triangle across the symbol");
+  } else if (item.subs.length !== 2) {
+    fail("a cross prints as one stroke rather than two");
+  }
+}
+
+/* ── Mains and services are named on the sheet ──
+
+   The sheet labelled points and skipped every line, so a drawing went
+   out with its pipes and cables anonymous. The switches that decide
+   this are the screen's own, already honoured; this holds that a line
+   whose labels are switched ON is actually written. */
+{
+  const main = { Feature_ID: 11, Feature_Type: "line", Layer_Key: "water",
+    Label: "W1", Geometry: [[1000, 500], [1100, 500]],
+    Attributes: { Line_Type: "water_main", Size: "63mm" } };
+  const lineTypes = [{ Type_Key: "water_main", Label: "Water Main",
+    Layer_Key: "water" }];
+  const plan = tilePlan({ bounds: drawnBounds([main]), paper: "A3",
+    landscape: true, scaleDenom: 500 });
+  const at = (opts) => pageDrawList([main], plan.tiles[0], {
+    scaleDenom: 500, marginMm: plan.marginMm, lineTypes, ...opts,
+  }).filter((i) => i.kind === "text");
+
+  /* With the Mains labels switch ON, as the screen has it when
+     somebody turns that layer on. */
+  const kinds = { mains: true, services: true, joints: false, levels: true };
+  const on = at({ labelKinds: kinds });
+  if (!on.length) {
+    fail("a water main prints with no label at all \u2014 the sheet names its "
+      + "points and leaves every pipe anonymous");
+  } else {
+    if (!on.some((t) => /63mm/.test(t.text))) {
+      fail("the main's label does not say what size it is, which is the "
+        + "figure somebody orders from");
+    }
+    /* Half way ALONG the run: a 100 m pipe at 1:500 is 200 mm of paper,
+       so its midpoint is 100 mm in from the first vertex. */
+    const mid = plan.marginMm + 100 * mmPerMetre(500);
+    if (on.some((t) => Math.abs(t.at[0] - mid) > 6)) {
+      fail("the label is not set half way along the run");
+    }
+  }
+
+  /* And it answers to the screen's switch, like everything else. */
+  const off = at({ labelKinds: kinds, showLabels: false });
+  /* And to its own kind switch, not just the master one. */
+  const kindOff = at({ labelKinds: { ...kinds, mains: false } });
+  if (kindOff.length) {
+    fail("a main is labelled on paper with Mains labels switched off");
+  }
+  if (off.length) {
+    fail("a line is labelled on paper with the screen's labels switched "
+      + "off \u2014 the sheet is deciding for itself again");
   }
 }
 

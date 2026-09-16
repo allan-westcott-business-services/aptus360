@@ -108,6 +108,60 @@ export function bottleEndAngle(joint, features = [], opts = {}) {
   return isTemporaryBottleEnd(joint) ? along + Math.PI / 2 : along;
 }
 
+/* Which way the cable under a joint runs, in radians.
+
+   The nearest segment of the nearest line on the same layer, which is
+   the cable the joint sits on. Nothing within reach leaves it square to
+   the page — the honest answer when there is no cable to align to.
+
+   Here rather than in the canvas because the print needs the same
+   answer. A joint drawn square to the page on paper and turned to its
+   cable on screen is two drawings of one fact, and the print is the one
+   that goes to the operator.
+
+   Not negated, for the reason bottleEndAngle records at length: the
+   canvas and the drawing share an axis convention, so a vector's angle
+   in metres is already its angle on the page. */
+export function jointAngle(joint, features = [], opts = {}) {
+  const { reach = 3 } = opts;
+  const at = (joint?.Geometry || [])[0];
+  if (!at) return 0;
+
+  let best = null;
+  for (const f of features) {
+    if (f.Feature_Type !== "line") continue;
+    if (f.Layer_Key !== joint.Layer_Key) continue;
+    const g = f.Geometry || [];
+    for (let i = 1; i < g.length; i++) {
+      const a = g[i - 1];
+      const b = g[i];
+      const vx = b[0] - a[0];
+      const vy = b[1] - a[1];
+      const len2 = vx * vx + vy * vy;
+      if (!len2) continue;
+      const t = Math.max(0, Math.min(1,
+        ((at[0] - a[0]) * vx + (at[1] - a[1]) * vy) / len2));
+      const q = [a[0] + vx * t, a[1] + vy * t];
+      const d = Math.hypot(at[0] - q[0], at[1] - q[1]);
+      if (d > reach) continue;
+      if (!best || d < best.d) best = { d, vx, vy };
+    }
+  }
+  return best ? Math.atan2(best.vy, best.vx) : 0;
+}
+
+/* The angle a point symbol is drawn at: a bottle end turns to the
+   cable it seals, any other joint to the cable it sits on, and
+   everything else stays square to the page.
+
+   One rule, so the sheet and the screen turn a symbol the same way. */
+export function symbolSpin(f, features = [], opts = {}) {
+  if (f?.Feature_Role !== "joint") return 0;
+  return isBottleEnd(f)
+    ? (bottleEndAngle(f, features, opts) ?? jointAngle(f, features))
+    : jointAngle(f, features);
+}
+
 /* Whether a joint is a bottle end.
 
    In joints.js rather than in the canvas because three places ask it —

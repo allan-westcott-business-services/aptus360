@@ -122,8 +122,9 @@ import {
 import {
   planJoints, reconcileJoints, JOINT_KINDS, isBottleEnd, bottleEndAngle,
   jointAtEnd, jointAtPoint, withCable, withoutCable, jointCables,
-  JOIN_REACH_M, cablesHeldAt,
+  JOIN_REACH_M, cablesHeldAt, jointAngle as jointAngleOf,
 } from "./joints.js";
+import { lineTag } from "./lineLabel.js";
 import { alpha } from "../../lib/colour.js";
 import PrintModal from "./PrintModal.jsx";
 import {
@@ -1510,50 +1511,12 @@ export default function GISCanvasPage() {
      joint sits on. Nothing found leaves it square to the page, which is
      the old behaviour and the honest answer when there is no cable to
      align to. */
-  const jointAngle = useCallback((joint) => {
-    const at = (joint.Geometry || [])[0];
-    if (!at) return 0;
-    let best = null;
-    for (const f of features) {
-      if (f.Feature_Type !== "line") continue;
-      if (f.Layer_Key !== joint.Layer_Key) continue;
-      const g = f.Geometry || [];
-      for (let i = 1; i < g.length; i++) {
-        const a = g[i - 1];
-        const b = g[i];
-        const vx = b[0] - a[0];
-        const vy = b[1] - a[1];
-        const len2 = vx * vx + vy * vy;
-        if (!len2) continue;
-        const t = Math.max(0, Math.min(1,
-          ((at[0] - a[0]) * vx + (at[1] - a[1]) * vy) / len2));
-        const q = [a[0] + vx * t, a[1] + vy * t];
-        const d = Math.hypot(at[0] - q[0], at[1] - q[1]);
-        if (d > 3) continue;
-        if (!best || d < best.d) best = { d, vx, vy };
-      }
-    }
-    /* Not negated. This read "screen y grows downward while the
-       drawing's grows up", which is not what toPx does:
+  /* Both from joints.js, so the print turns a symbol exactly as the
+     screen does \u2014 the geometry is the same fact on either. Wrapped
+     here only to bind the drawing they are read against. */
+  const jointAngle = useCallback(
+    (joint) => jointAngleOf(joint, features), [features]);
 
-           x = m[0] * scale + view.x
-           y = m[1] * scale + view.y
-
-       No flip. The two share an axis convention, so a vector's angle in
-       metres is already its angle in pixels and atan2 is what
-       ctx.rotate wants. The negation reflected every joint about the
-       horizontal instead of turning it — invisible on a horizontal run
-       and on anything at 45 degrees, and wrong everywhere else. A square
-       joint is symmetric enough that it read as "leaning slightly odd"
-       rather than as a fault, which is why it survived. The bottle end,
-       which has a front and a back, is what made it obvious. */
-    return best ? Math.atan2(best.vy, best.vx) : 0;
-  }, [features]);
-
-  /* The angle for a bottle end, from joints.js so it can be tested
-     against a known cable. Falls back to jointAngle where no feeder end
-     is near enough — one dropped by hand away from a cable still lies
-     flat rather than snapping to due east. */
   const bottleEndSpin = useCallback((joint) => (
     bottleEndAngle(joint, features, { reach: SPAN_REACH_M }) ?? jointAngle(joint)
   ), [features, jointAngle]);
@@ -5964,9 +5927,9 @@ export default function GISCanvasPage() {
              stops showing it without anybody editing the trench. */
           const circuit = isTrenchType(a.Line_Type, lineTypes)
             ? null : a.Circuit_Letter;
-          const tag = circuit
-            ? `${a.Way ?? ""}${circuit}`
-            : (a.Way ? `${a.Way}${a.Hop_Letter ?? ""}` : "");
+          /* From lineLabel.js, so the sheet tags a run exactly as the
+             screen does rather than by a second copy of this rule. */
+          const tag = lineTag(f, lineTypes);
 
           const spelled = circuit
             ? `${a.Way ? `Way ${a.Way} · ` : ""}Circuit ${circuit}`

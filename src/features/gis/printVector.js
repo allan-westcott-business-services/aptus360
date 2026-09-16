@@ -33,7 +33,12 @@
    a mirror image of the drawing, which is the kind of fault that is
    only noticed on site. */
 
-import { resolveStyle, appearance, subjectOf } from "../../lib/gisStyle.js";
+import {
+  resolveStyle, appearance, subjectOf, symbolPath, STROKE_ONLY,
+} from "../../lib/gisStyle.js";
+import { isBottleEnd, symbolSpin } from "./joints.js";
+import { VALVE_WIDTH_M } from "./serviceValves.js";
+import { lineLabelText } from "./lineLabel.js";
 import { labelShown, DEFAULT_LABEL_KINDS } from "./labelKinds.js";
 import { mmPerMetre } from "./printSheet.js";
 
@@ -46,46 +51,68 @@ const MM_PER_PX = 0.18;
 const MIN_W_MM = 0.12;
 const MAX_W_MM = 1.6;
 
-/* Symbol sizes on paper, by role. Millimetres, so they are the same
-   size on an A4 as on an A0 — a 2 mm disc is a 2 mm disc, which is
-   what makes a printed plan readable at any sheet size. */
-const SYMBOL_MM = {
-  substation: 3.2,
-  poc: 2.6,
-  msdb: 2.8,
-  hdcutout: 2.4,
-  joint: 1.8,
-  meter: 1.4,
-  plot: 1.6,
-  nrs: 1.8,
-  spannode: 1.2,
-  feederpoint: 1.6,
-  linkbox: 2.6,
-  primary: 3.4,
-  ringsub: 2.8,
-  openpoint: 2.2,
-  default: 1.6,
-};
+/* ── Symbols on paper ──
 
-/* Which roles are drawn as which shape. Deliberately plain: a plan is
-   read by its labels and its colours, and a shape per kind is enough
-   to tell a joint from a meter at a glance. */
-const SHAPE = {
-  substation: "square",
-  primary: "square",
-  ringsub: "square",
-  msdb: "square",
-  linkbox: "square",
-  poc: "disc",
-  meter: "disc",
-  plot: "disc",
-  nrs: "disc",
-  spannode: "disc",
-  feederpoint: "disc",
-  joint: "diamond",
-  hdcutout: "diamond",
-  openpoint: "diamond",
-};
+   The screen draws a point with the symbol its style cascade resolves:
+   a meter is a square, a joint a circle, a bottle end its three bars,
+   and a DNO that draws meters as hexagons gets hexagons. The sheet drew
+   a shape looked up from a table of roles kept here \u2014 so a service
+   valve, which has no row in it, printed as a filled disc where the
+   screen showed a bar across the main, and a style that changed a
+   symbol changed the screen and nothing else.
+
+   So the symbol comes from the same place the screen's does, and is
+   drawn by the same `symbolPath`, replayed onto the page through the
+   recorder below. One drawer, two surfaces: a symbol added to
+   gisStyle.js appears on paper without anything here being touched.
+
+   Sizes still need a rule of their own. A style says either "this many
+   millimetres of ground", which the page scale turns into millimetres
+   of paper directly, or "this many pixels", which is a screen
+   measurement and is converted at MM_PER_PX like every width here. */
+const SYMBOL_FALLBACK_MM = 1.6;
+
+/* A canvas-shaped sink that keeps the path instead of painting it.
+
+   `symbolPath` speaks the 2D context's language \u2014 beginPath, moveTo,
+   rect, arc \u2014 and this answers to the same names, recording points in
+   millimetres about the symbol's own centre. Arcs become twelve-sided
+   rings, which at 1.5 mm on paper is a circle to any eye and to most
+   printers.
+
+   The alternative was a second symbol drawer for the PDF, which is
+   exactly the drift this file's header warns about: the screen would
+   gain a shape and the sheet would keep drawing the old one. */
+function pathRecorder() {
+  const subs = [];
+  let cur = null;
+  const push = (x, y) => { if (cur) cur.pts.push([x, y]); };
+  return {
+    subs,
+    beginPath() { subs.length = 0; cur = null; },
+    moveTo(x, y) { cur = { pts: [[x, y]], closed: false }; subs.push(cur); },
+    lineTo(x, y) { if (!cur) this.moveTo(x, y); else push(x, y); },
+    closePath() { if (cur) cur.closed = true; },
+    rect(x, y, w, h) {
+      this.moveTo(x, y);
+      push(x + w, y); push(x + w, y + h); push(x, y + h);
+      this.closePath();
+      cur = null;
+    },
+    arc(x, y, r, a0, a1) {
+      const n = 12;
+      const span = a1 - a0;
+      for (let i = 0; i <= n; i++) {
+        const a = a0 + (span * i) / n;
+        const px = x + r * Math.cos(a);
+        const py = y + r * Math.sin(a);
+        i ? push(px, py) : this.moveTo(px, py);
+      }
+      this.closePath();
+      cur = null;
+    },
+  };
+}
 
 const isLine = (f) => (f?.Geometry || []).length > 1;
 
@@ -191,29 +218,112 @@ export function pageDrawList(features = [], tile, {
     if (isLine(f)) continue;
     const at = (f.Geometry || [])[0];
     if (!Array.isArray(at)) continue;
-    const { ap } = styleOf(f);
+    const { st, ap } = styleOf(f);
     if (ap.visible === false) continue;
     const role = String(f.Feature_Role || "");
+    const p0 = toPage(at);
+
+    /* ── A service valve ──
+
+       A bar across the pipe, a metre of real ground wide, turned to the
+       main it sits in. Not a symbol from the style table for the reason
+       the canvas gives beside the same code: every symbol there is
+       drawn about its own centre with no direction, and a valve means
+       nothing except square to its pipe. This is what printed as a
+       filled green disc.
+
+       No "SV" written here. The canvas draws those two letters because
+       a valve's Label is not otherwise shown at that zoom; on the sheet
+       the label pass writes "SV 10" already, and drawing both gives
+       "SV SV 10". */
+    if (role === "servicevalve") {
+      const deg = Number(f.Attributes?.Angle_Deg);
+      const rad = Number.isFinite(deg) ? (deg * Math.PI) / 180 : 0;
+      const halfMm = (VALVE_WIDTH_M / 2) * k;
+      /* Square to the pipe. The page's y grows downward exactly as the
+         screen's does — toPage is a scale and a translate with no flip
+         — so the normal is (-sin, cos) with no sign correction, which
+         is the note the canvas records against this same line. */
+      const nx = -Math.sin(rad) * halfMm;
+      const ny = Math.cos(rad) * halfMm;
+      out.push({
+        kind: "paths",
+        subs: [{ pts: [[p0[0] - nx, p0[1] - ny], [p0[0] + nx, p0[1] + ny]],
+          closed: false }],
+        colour: ap.colour ?? "#334155",
+        fill: false,
+        /* Proportional to the bar, floored so it survives a small
+           scale: a hairline valve on an A3 site plan is not there. */
+        widthMm: Math.max(0.35, halfMm * 0.22),
+        id: f.Feature_ID,
+      });
+      continue;
+    }
+
+    /* Everything else takes the symbol its style resolves, drawn by
+       the drawer the screen draws with.
+
+       A bottle end draws as itself whatever the cascade says, exactly
+       as on screen: the three bars are what the fitting is called on a
+       drawing, and one rendered as the layer's default circle cannot be
+       told from a POC. A seed plot with no symbol set falls back to the
+       house, which is the canvas's own default for one. */
+    const sym = isBottleEnd(f) ? "bottleend"
+      : (ap.symbol ?? (role === "plot" ? "house" : "circle"));
+
+    /* The radius on paper.
+
+       A style sizing its symbol in ground metres has already been
+       turned into page millimetres by `appearance` at this page's
+       scale. A style sizing it in pixels means screen pixels, which
+       become millimetres the way every width here does. A meter is
+       drawn at six tenths, as the canvas draws it. */
+    const scaled = st.Scale_Symbol && st.Symbol_Size_M != null;
+    const rawR = Number(ap.symbolPx);
+    const baseMm = Number.isFinite(rawR) && rawR > 0
+      ? (scaled ? rawR : rawR * MM_PER_PX)
+      : SYMBOL_FALLBACK_MM / 2;
+    const rMm = (role === "meter" ? baseMm * 0.6 : baseMm);
+
+    /* Recorded about the origin, turned the way the screen turns it,
+       then carried to where the point lands on the page. Turning the
+       recorded points rather than the page keeps this a plain list of
+       coordinates the writer can stroke without a transform. */
+    const rec = pathRecorder();
+    symbolPath(rec, sym, 0, 0, rMm);
+    const spin = symbolSpin(f, features);
+    const cos = Math.cos(spin);
+    const sin = Math.sin(spin);
+    const subs = rec.subs.map((sub) => ({
+      closed: sub.closed,
+      pts: sub.pts.map(([x, y]) => [
+        p0[0] + x * cos - y * sin,
+        p0[1] + x * sin + y * cos,
+      ]),
+    }));
+
     out.push({
-      kind: SHAPE[role] || "disc",
-      at: toPage(at),
-      rMm: (SYMBOL_MM[role] ?? SYMBOL_MM.default) / 2,
+      kind: "paths",
+      subs,
       colour: ap.colour ?? "#334155",
-      /* Filled unless it is a fitting: a hollow diamond reads as a
-         joint on every plan anybody has drawn. */
-      fill: !(role === "joint" || role === "hdcutout" || role === "openpoint"),
-      widthMm: 0.25,
+      /* Filled like the screen fills it: a cross and a bottle end have
+         no inside, and a hollow diamond reads as a joint on every plan
+         anybody has drawn. */
+      fill: !STROKE_ONLY.has(sym)
+        && !(role === "joint" || role === "hdcutout" || role === "openpoint"),
+      widthMm: STROKE_ONLY.has(sym) ? Math.max(0.3, rMm * 0.3) : 0.25,
       id: f.Feature_ID,
     });
   }
 
   if (labels) {
     for (const f of here) {
+      /* A line composes its own tag below and may carry none of its
+         own Label, so the Label test belongs to points only. */
       const text = f.Label;
-      if (!text) continue;
+      if (!text && !isLine(f)) continue;
       const at = (f.Geometry || [])[0];
       if (!Array.isArray(at)) continue;
-      if (isLine(f)) continue;
       const { ap } = styleOf(f);
       if (ap.visible === false) continue;
       const role = String(f.Feature_Role || "");
@@ -236,7 +346,70 @@ export function pageDrawList(features = [], tile, {
       if (!labelShown(f, { lineTypes, showLabels, kinds: labelKinds })) {
         continue;
       }
-      const r = (SYMBOL_MM[role] ?? SYMBOL_MM.default) / 2;
+
+      /* ── A main and a service say what they are ──
+
+         The sheet labelled points and skipped every line, so a drawing
+         went out with its pipes and cables anonymous \u2014 the one drawing
+         somebody digs from, and which main was which had to be counted
+         back from the POC. The screen has always tagged them, behind
+         the Mains labels and Service labels switches, and those
+         switches are already honoured above: this writes what they
+         switch on.
+
+         Composed by lineLabel.js, the rule the screen composes with,
+         and set half way ALONG the run rather than at a vertex \u2014 the
+         middle of a vertex list is only the middle of the cable when
+         the vertices happen to be evenly spaced, which a tee makes sure
+         they are not. */
+      if (isLine(f)) {
+        const txt = lineLabelText(f, { lineTypes });
+        if (!txt) continue;
+        const pts = (f.Geometry || []).filter(Array.isArray).map(toPage);
+        if (pts.length < 2) continue;
+        let total = 0;
+        for (let i = 1; i < pts.length; i++) {
+          total += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+        }
+        /* A run too short to carry its tag legibly is left alone, as it
+           is on screen: text longer than the line it names reads as
+           belonging to whatever it crosses. */
+        if (total < 8) continue;
+        let acc = 0;
+        let mid = pts[0];
+        for (let i = 1; i < pts.length; i++) {
+          const seg = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+          if (acc + seg >= total / 2) {
+            const t = seg ? (total / 2 - acc) / seg : 0;
+            mid = [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t,
+              pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t];
+            break;
+          }
+          acc += seg;
+        }
+        /* Stacked upward from the line, so a three-line tag grows away
+           from the run rather than across it. */
+        const rows = String(txt).split("\n");
+        rows.forEach((line, i) => {
+          out.push({
+            kind: "text",
+            at: [mid[0] + 0.8, mid[1] - 1.2 - (rows.length - 1 - i) * 2.2],
+            text: line,
+            sizePt: 6,
+            colour: ap.labelColour ?? "#0f172a",
+            id: f.Feature_ID,
+          });
+        });
+        continue;
+      }
+      /* Offset by the symbol the point actually drew, so a label sits
+         clear of a 3 mm substation square and tight against a 1 mm
+         joint rather than at one distance from both. */
+      const drawn = out.find((i) => i.kind === "paths" && i.id === f.Feature_ID);
+      const r = drawn
+        ? Math.max(...drawn.subs.flatMap((sub) =>
+          sub.pts.map(([x, y]) => Math.hypot(x - toPage(at)[0], y - toPage(at)[1]))))
+        : SYMBOL_FALLBACK_MM / 2;
       const p = toPage(at);
       out.push({
         kind: "text",

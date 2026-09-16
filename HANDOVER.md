@@ -4507,6 +4507,49 @@ characters is a hundred lines of prose and no rules at all.
      a drawing looks wrong, read the feature before theorising about
      the renderer.**
 
+135. **Fifth and sixth print-parity faults: symbols and line labels.**
+     Reported from a printed sheet: service valves drew as filled green
+     discs where the screen shows a bar across the main, and no pipe or
+     cable carried a label.
+
+     *Symbols.* `printVector` kept its own `SHAPE` table of role →
+     square/disc/diamond and its own `SYMBOL_MM` sizes, so the style
+     cascade decided a point's symbol on screen and a hard-coded map
+     decided it on paper: a meter styled as a square printed as a disc,
+     a DNO's hexagons printed as discs, and a service valve — which had
+     no row in the map at all — printed as the default disc. Fixed by
+     recording the very path `symbolPath` traces for the canvas
+     (`pathRecorder` in printVector, a canvas-shaped sink answering to
+     beginPath/moveTo/lineTo/rect/arc, arcs as 12-gons) and handing it
+     to the writer as a new `paths` primitive. One drawer, two
+     surfaces: a symbol added to gisStyle.js now appears on paper with
+     no change here. Service valves keep their bespoke bar, computed
+     from `VALVE_WIDTH_M` and `Angle_Deg` as on screen, without the
+     canvas's "SV" text — the label pass already writes "SV 10", and
+     both would read "SV SV 10". Joint spin travels too: `jointAngle`
+     moved out of the canvas into joints.js beside `bottleEndAngle`,
+     with `symbolSpin` as the one rule both renderers turn a symbol by.
+
+     *Line labels.* The label pass had `if (isLine(f)) continue;` — the
+     sheet labelled points and skipped every line, so a drawing went
+     out with its mains and services anonymous, which is the one
+     drawing somebody digs from. New `lineLabel.js` composes the tag
+     (`lineTag`, the circuit/way rule the canvas now reads too) and the
+     size-and-length stack, and the print sets it half way ALONG the
+     run rather than at a middle vertex. It obeys the screen's
+     switches, which were already carried (fault 132): Mains labels and
+     Service labels default OFF, so a sheet only carries them when the
+     screen does.
+
+     Known and deliberate limits, stated rather than left to be
+     discovered: the catalogue-spelled cable name and the gas flow (Q)
+     are canvas-only, derived from lookups the print does not load, and
+     a sheet needing them should be passed them rather than given a
+     second source. The remaining bespoke oriented pictures — tee,
+     reducer, HD cut-out, boards, link box, primary, ring sub, open
+     point — still print as their style symbol rather than their
+     drawn picture. Same shape of fault as this one, not yet closed.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

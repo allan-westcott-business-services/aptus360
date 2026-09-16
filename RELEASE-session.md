@@ -1,56 +1,57 @@
-# Session change set — print parity (x4), water build type, style inspector
+# Session change set — print parity (130–135), water build type (134), style inspector
 
-Eleven files, no migrations, no schema change. Copy the tree over
+Thirteen files, no migrations, no schema change. Copy the tree over
 `aptus360/` — paths match, nothing deleted. Supersedes every earlier
 zip from this session.
 
-    src/features/gis/printPdf.js          (130: basemap rotation/CropBox)
-    src/features/gis/printVector.js       (132, 133: labels + operator standard)
-    src/features/gis/GISCanvasPage.jsx    (131–134: visible set, label/standard
-                                           options, newMainTypeFor, planned status)
-    src/features/gis/FeatureEditor.jsx    (134: line type stated, not offered)
-    src/features/gis/buildStatus.js       (134: newMainTypeFor)
-    src/lib/gisStyle.js                   (cascadeOf + explainStyle)
-    src/features/admin/GisStylesAdmin.jsx (cascade inspector panel)
-    checkprintpdf.mjs
-    checkstyleinspector.mjs               (new)
-    checkbuildmaintype.mjs                (new)
-    HANDOVER.md                           (faults 130–134)
+    src/features/gis/printPdf.js          130, 135 (paths primitive)
+    src/features/gis/printVector.js       132, 133, 135 (symbols, line labels)
+    src/features/gis/GISCanvasPage.jsx    131–135
+    src/features/gis/FeatureEditor.jsx    134 (line type stated, not offered)
+    src/features/gis/buildStatus.js       134 (newMainTypeFor)
+    src/features/gis/joints.js            135 (jointAngle, symbolSpin)
+    src/features/gis/lineLabel.js         135 (new: lineTag, lineLabelText)
+    src/lib/gisStyle.js                   cascadeOf + explainStyle
+    src/features/admin/GisStylesAdmin.jsx cascade inspector
+    checkprintpdf.mjs  checkstyleinspector.mjs  checkbuildmaintype.mjs
+    HANDOVER.md
 
-## Fault 134 — Build Water Network laid the incumbent's pipe
+## Fault 135 — symbols and labels on the printed sheet
 
-The root of the "water main style" reports. The build's loose
-`/main/i` find took the first type in Sort_Order, which on water is
-`water_main_existing` — so generated mains drew in the incumbent's
-grey and defaulted to status `existing`. `newMainTypeFor` in
-buildStatus.js now answers "the type our build lays a new main as"
-for all five call sites, and the water build writes
-`Build_Status: "planned"` explicitly. Gas passed only by sort-order
-luck and is held by the same predicate and check.
+**Symbols.** The print kept its own role→shape table, so the style
+cascade chose a point's symbol on screen and a hard-coded map chose it
+on paper — service valves, absent from that map, printed as filled
+discs. The print now records the same `symbolPath` the canvas draws
+with and renders it as a new `paths` primitive, so a meter styled as a
+square prints a square and a DNO's hexagons print as hexagons. Service
+valves print their bar, square to the pipe, a metre of ground wide.
+Joint rotation moved into `joints.js` so both renderers turn a symbol
+the same way.
 
-**Existing drawings need one action:** re-run Build Water Network on
-any project whose water mains were generated before this — the
-rebuild replaces Generated runs, and they will come back as
-`water_main`, planned, in your green-dashed style.
+**Line labels.** The sheet skipped every line. Mains and services are
+now labelled at the midpoint of the run, with size and length where
+the feature carries them, obeying the screen's Mains/Service label
+switches — which default off, so a sheet carries them only when the
+screen does.
 
-Line editors now STATE a line's type read-only instead of offering to
-change it (bulk edit already had); the draw-time picker remains.
+Known limits, documented in the handover: catalogue-spelled cable
+names and gas flow (Q) stay canvas-only; the bespoke oriented fittings
+(tee, reducer, HD cut-out, boards, link box, primary, ring sub, open
+point) still print as their style symbol rather than their drawn
+picture.
 
-## Faults 130–133 — print parity (unchanged from earlier zips)
+## Faults 130–134 (unchanged from the previous zip)
 
-Basemap rotation/CropBox honoured; only the visible set prints;
-labels obey the screen's switches; the operator standard travels to
-the sheet.
+Basemap rotation/CropBox; only the visible set prints; labels obey the
+screen's switches; the operator standard travels to the sheet; and
+Build Water Network lays `water_main` planned rather than the
+incumbent's `water_main_existing`.
 
-## Cascade inspector (new, in Admin › GIS Styles)
-
-"Why does it look like that?" — describe an object as drawn and see
-every matching rule in stacking order, what each sets, which value
-survives, and the resolved result, via the same resolveStyle the
-canvas uses. A mistyped key shows as "no rule matches".
+**Still needed on existing drawings:** re-run Build Water Network on
+any project whose water mains were generated before fault 134's fix.
 
 ## Suite state
 
-140 of 158 pass — the two new checks pass and the 18 failures are the
-same pre-existing list as this session's baseline. Build clean.
-Reverting each fix fails its own cases.
+140 of 158 pass — the same 18 pre-existing failures as this session's
+baseline, unchanged in kind. Build clean. Reverting the print work
+fails 16 cases in checkprintpdf.

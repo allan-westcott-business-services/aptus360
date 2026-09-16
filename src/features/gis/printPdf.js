@@ -172,6 +172,43 @@ function drawItems(page, items, plan, font) {
       continue;
     }
 
+    /* ── A symbol as the screen drew it ──
+
+       `printVector` now records the very path `symbolPath` traces for
+       the canvas and hands it over as millimetres on the page, so the
+       shape a style resolves is the shape that prints. Nothing about
+       any particular symbol is known here: this strokes and fills what
+       it is given, which is what keeps a symbol added to gisStyle.js
+       from needing a change in the PDF writer too. */
+    if (it.kind === "paths") {
+      const subs = (it.subs || []).filter((sub) => (sub.pts || []).length > 1);
+      if (!subs.length) continue;
+      const ops = [
+        pushGraphicsState(),
+        setStrokingColor(colour(it.colour)),
+        setFillingColor(colour(it.colour)),
+        setLineWidth(Math.max(0.05, (it.widthMm ?? 0.25) * PT)),
+        setDashPattern([], 0),
+      ];
+      for (const sub of subs) {
+        const [sx, sy] = toPt(sub.pts[0]);
+        ops.push(moveTo(sx, sy));
+        for (let i = 1; i < sub.pts.length; i++) {
+          const [px, py] = toPt(sub.pts[i]);
+          ops.push(lineTo(px, py));
+        }
+        if (sub.closed) ops.push(closePath());
+      }
+      /* Filled only where the symbol has an inside AND every part of
+         it is closed: filling an open stem paints a triangle between
+         its ends, which is how a bottle end would print as a wedge. */
+      const closedAll = subs.every((sub) => sub.closed);
+      ops.push(it.fill && closedAll ? fillAndStroke() : stroke(),
+        popGraphicsState());
+      page.pushOperators(...ops);
+      continue;
+    }
+
     const [x, y] = toPt(it.at);
     const r = it.rMm * PT;
     const ops = [

@@ -273,6 +273,8 @@ export function bulkDeleteCategories(features = [], opts = {}) {
     (f) => f.Feature_Role === "feederpoint", "Points");
   add("servicevalve", "All service valves",
     (f) => f.Feature_Role === "servicevalve", "Points");
+  add("washout", "All wash outs",
+    (f) => f.Feature_Role === "washout", "Points");
   /* Substations and gas governors are not here. Each belongs to one
      utility, so "all of them" and "all of that utility's" are the same
      list under two names — and two entries that always agree are one

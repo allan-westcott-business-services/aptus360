@@ -8,6 +8,7 @@
    and the one place the water comes IN. */
 import { readFileSync } from "node:fs";
 import { washOuts } from "./src/features/gis/washOuts.js";
+import { bulkDeleteCategories } from "./src/features/gis/bulkDelete.js";
 import { SYMBOLS, SYMBOL_TEXT, symbolPath } from "./src/lib/gisStyle.js";
 
 let bad = 0;
@@ -223,6 +224,52 @@ const has = (list, at, tol = 0.01) =>
       fail("the seeded style sets no size, so a wash out starts at the "
         + "default and there is nothing in admin to adjust from");
     }
+  }
+}
+
+// 9. Deletable in bulk, like every other generated fitting. A rebuild
+//    replaces the generated ones, but a drawing somebody wants cleared
+//    of wash outs — because the design changed, or they were placed
+//    before the network was right — should not need them picked off
+//    one at a time.
+{
+  const cats = bulkDeleteCategories([
+    { Feature_ID: 1, Feature_Type: "point", Feature_Role: "washout",
+      Layer_Key: "water", Geometry: [[0, 0]] },
+    { Feature_ID: 2, Feature_Type: "point", Feature_Role: "servicevalve",
+      Layer_Key: "water", Geometry: [[1, 0]] },
+  ], { lineTypes: [], layers: [] });
+
+  const wo = cats.find((c) => c.key === "washout");
+  if (!wo) {
+    fail("Bulk Delete offers no wash out category, so they can only be "
+      + "deleted one at a time");
+  } else {
+    if (wo.count !== 1) {
+      fail(`the wash out category counts ${wo.count} of one wash out`);
+    }
+    if (wo.ids.includes(2)) {
+      fail("the wash out category takes service valves with it");
+    }
+  }
+}
+
+// 10. A wash out is a fitting on the PIPE. `connectedTo` is geometry
+//     alone, and now the main reaches the end of the trench both lines
+//     have a vertex at that point — so without a rule the wash out
+//     reads as connected to the dig.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/washoutRefuses\(a, b\) \|\| washoutRefuses\(b, a\)\) return false;/
+    .test(canvas)) {
+    fail("nothing stops a wash out being linked to the trench it lies "
+      + "in, which puts the dig into the network graph");
+  }
+  if (!/Connects: linksFor\(\{ Geometry: \[w\.at\], Feature_Role: "washout" \}, all\)/
+    .test(canvas)) {
+    fail("the build does not record what a wash out is joined to \u2014 the "
+      + "links pass runs over the drawing as it was before they existed, "
+      + "so nothing else will");
   }
 }
 

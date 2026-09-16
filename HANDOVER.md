@@ -4671,6 +4671,21 @@ characters is a hundred lines of prose and no rules at all.
      The wash outs follow for free: washOuts.js reads the drawn pipe,
      so the end moving moves the wash out with it. `checkmaintotrenchend.mjs`.
 
+     **Consequence worth knowing: it made the wash out look like part
+     of the dig.** `connectedTo` is geometry and nothing else, and once
+     the main reaches the end of the trench the pipe's last vertex and
+     the trench's last vertex are the same point — so a wash out
+     touched both and was reported as connected to the trench, which
+     reads as a fitting installed in a hole and puts the dig into a
+     graph meant to describe the network. `linkable` now refuses every
+     pairing but wash-out-to-water-main, and the build writes the wash
+     out's `Connects` at creation: the links pass at the end of the
+     build runs over the drawing as it was BEFORE the wash outs
+     existed, so nothing else would ever have filled it in.
+
+     Wash outs are also in Bulk Delete now ("All wash outs", under
+     Points), beside the service valves.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

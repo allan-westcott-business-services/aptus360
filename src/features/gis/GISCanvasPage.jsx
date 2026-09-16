@@ -10828,11 +10828,31 @@ export default function GISCanvasPage() {
      Only where both carry a circuit. A trench, a substation or a service
      cable belongs to no circuit and links to whatever it touches. */
   const linkable = useCallback((a, b) => {
+    /* ── A wash out is on the PIPE, not on the dig ──
+
+       `connectedTo` is geometry and nothing else, and since the main
+       now runs to the end of the trench the pipe's last vertex and the
+       trench's last vertex are the same point. So a wash out placed
+       there touched both and was reported as connected to the trench —
+       which reads as a fitting installed in a hole rather than on a
+       water main, and puts the dig into a graph that is meant to
+       describe the network.
+
+       It joins water mains only. Not the trench it lies in, not a
+       service, not another fitting: a wash out terminates one pipe, and
+       that pipe is the whole of what it is attached to. */
+    const isMain = (x) => x?.Feature_Type === "line"
+      && x?.Layer_Key === "water"
+      && isMainFeature(x, lineTypes);
+    const washoutRefuses = (x, y) =>
+      x?.Feature_Role === "washout" && !isMain(y);
+    if (washoutRefuses(a, b) || washoutRefuses(b, a)) return false;
+
     const ca = a?.Attributes?.Circuit_ID;
     const cb = b?.Attributes?.Circuit_ID;
     if (ca == null || cb == null) return true;
     return String(ca) === String(cb);
-  }, []);
+  }, [lineTypes]);
 
   const linksFor = useCallback((f, pool) =>
     connectedTo(f.Geometry, pool.filter((x) => linkable(f, x)), f.Feature_ID),
@@ -19619,6 +19639,14 @@ export default function GISCanvasPage() {
                drawn turned later without every drawing being rebuilt to
                find out. */
             Angle_Deg: Math.round(w.angleDeg * 10) / 10,
+            /* Joined to the main it terminates, and to nothing else.
+               Written here rather than left to the links pass below,
+               which runs over the drawing as it was BEFORE these were
+               created and so would never see them. `linkable` refuses
+               everything but a water main, so the trench the pipe lies
+               in is not claimed even though its last vertex is at this
+               same point. */
+            Connects: linksFor({ Geometry: [w.at], Feature_Role: "washout" }, all),
             Generated: true,
           },
         });

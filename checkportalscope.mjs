@@ -263,13 +263,21 @@ const mine = (() => {
     fail("a contact is not read as a portal identity, so adding somebody to "
       + "a branch still grants nothing");
   } else {
-    /* Staff first, and it must RETURN rather than merely note it: many
-       of our own people are contacts on an organisation, and reading
-       that as portal access would take a staff member out of the
-       application and into a client portal. */
-    if (!/from\("Person"\)[\s\S]{0,200}return null/.test(code)) {
-      fail("a staff member listed as a contact is treated as a portal "
-        + "account, which takes them out of the application");
+    /* ── No staff exception ──
+
+       An earlier version refused a contact whose address also belonged
+       to an active Person. Withdrawn at the user's direction: the
+       business says an address will not be both, and the guard was
+       keeping a genuine contact out of a portal they were plainly
+       entitled to because somebody had made a Person row for them.
+
+       Asserted as ABSENT rather than simply untested, because it is a
+       decision rather than an oversight: if the two ever do overlap,
+       the contact wins and that address opens the portal. */
+    if (/from\("Person"\)/.test(code)) {
+      fail("the contact lookup consults the staff table again \u2014 a "
+        + "deliberate decision was made that an address is never both, "
+        + "and the guard kept genuine contacts out");
     }
     /* Narrowest scope wins, as everywhere else. */
     if (!/rank\(a\) - rank\(b\)/.test(code)) {
@@ -340,6 +348,19 @@ const mine = (() => {
     fail("existing branch contacts are left without an organisation");
   }
 }
+
+/* Case 9 was here: it required a `door` parameter on every portal
+   request, so that somebody who is both staff and a contact got the
+   identity they asked for.
+
+   Removed with the mechanism. The business says an address will not be
+   both, so the machinery was solving a case that does not arise — and
+   the plumbing it needed (a parameter on six calls, forgotten on one
+   and failing quietly) was worse than the problem.
+
+   If the two ever do overlap, the contact wins and that address opens
+   the portal. Case 8 above asserts the staff test stays absent, so
+   that is a decision on the record rather than a gap. */
 
 console.log(bad ? `\n${bad} problem(s)`
   : "Portal scopes: organisation, branch, one site \u2014 narrowest wins.");

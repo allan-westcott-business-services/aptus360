@@ -5951,14 +5951,25 @@ characters is a hundred lines of prose and no rules at all.
      `Organisation_By_Role` — the view the rest of the app reads, so
      "is this a DNO" keeps one answer.
 
-     Two guards, both load-bearing:
-       - **Staff are excluded.** Many of our own people are contacts on
-         an organisation, and reading that as portal access would take
-         a staff member OUT of the application and into a client
-         portal — a worse fault than the one being fixed. A contact
-         whose address belongs to an active `Person` is not a portal
-         identity; somebody who genuinely needs both gets an explicit
-         Portal_Access row, which still wins.
+     One guard, and one that was withdrawn:
+       - ~~**Staff are excluded.**~~ Added on the reasoning that our own
+         people are often contacts on an organisation, so reading that
+         as portal access would take a staff member out of the
+         application. WITHDRAWN: the business says an address will
+         never be both, and the guard was keeping a genuine contact out
+         of a portal they were plainly entitled to because somebody had
+         made a `Person` row for them. A `Person` row is made for all
+         sorts of people.
+
+         Between the two I built a third thing — a `door` parameter on
+         every portal request, so somebody who was both got whichever
+         identity they had asked for. It worked, and it was machinery
+         for a case that does not arise, needing a parameter on six
+         calls that would fail quietly on the one somebody forgot. Also
+         withdrawn. The check asserts the staff test stays ABSENT, so
+         the decision is on the record rather than looking like a gap:
+         if the two ever overlap, the contact wins and that address
+         opens the portal.
        - **An organisation with no portal-serving role yields nothing.**
          Guessing "developer" would show a subcontractor a developer's
          schemes.

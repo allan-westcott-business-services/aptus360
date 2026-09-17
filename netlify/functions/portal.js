@@ -122,11 +122,6 @@ async function contactAccessFor(db, user) {
   const email = String(user?.email || "").trim().toLowerCase();
   if (!email) return null;
 
-  /* Ours? Then nothing here applies. */
-  const { data: person } = await db.from("Person")
-    .select("Person_ID").ilike("Email", email).eq("Is_Active", true).limit(1);
-  if ((person || []).length) return null;
-
   const { data, error } = await db
     .from("Organisation_Contact")
     .select("Organisation_Contact_ID,Contact_Name,Email,Organisation_ID,"
@@ -352,7 +347,22 @@ export default withAuth(async function handler(req, context, user) {
 
      `Portal_Access` rows are still read (`accessFor`) and still win
      where one exists, but only as a legacy grant for accounts made
-     before this: nothing creates them as the route in any more. */
+     before this: nothing creates them as the route in any more.
+
+     ── No staff exception, deliberately ──
+
+     An earlier version refused a contact whose address also belonged
+     to an active Person, on the grounds that our own people are often
+     listed as contacts and should not be moved out of the application.
+     Withdrawn: the business says an address will not be both, and the
+     guard was keeping a genuine contact out of a portal they were
+     plainly entitled to because somebody had made a Person row for
+     them.
+
+     If the two ever do overlap, the contact record wins and that
+     address opens the portal. Worth knowing before somebody adds a
+     colleague to a customer's contact list to keep them in the loop:
+     that is the way to take them out of the application. */
   const access = (await contactAccessFor(db, user))
     ?? (await accessFor(db, user));
 

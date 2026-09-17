@@ -438,6 +438,30 @@ const at = (f, org = null) => layerFor(f, { rules, lineTypes, organisationId: or
   if (!/setAttr\("Siting"\)/.test(editor)) {
     fail("there is no way to say whether a meter or a feeder is external");
   }
+
+  /* ── And it is rendered where those two features actually are ──
+
+     The editor has THREE status dropdowns \u2014 trench, service, main \u2014
+     and the first attempt put the siting field beside the trench one,
+     where a cable and a meter never go. It rendered for nothing and
+     looked to the user like it had disappeared.
+
+     Built once and rendered under the branches that can show it, which
+     is also what stops a second copy drifting from the first. */
+  if ((editor.match(/const sitingField/g) || []).length !== 1) {
+    fail("the siting field is built more than once, so two copies can "
+      + "drift apart");
+  }
+  for (const branch of ["isMain", "isMeter"]) {
+    if (!new RegExp(`\\{${branch} && sitingField\\}`).test(editor)) {
+      fail(`the siting field is never rendered for ${branch}, so on that `
+        + "feature it simply does not appear");
+    }
+  }
+  /* Not in the trench branch, where it means nothing. */
+  if (/isTrench && sitingField/.test(editor)) {
+    fail("a trench is offered a siting, which it is neither");
+  }
 }
 
 // 9. Wired: the migration seeds the house style, the export reads the

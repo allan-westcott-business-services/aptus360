@@ -505,6 +505,38 @@ export default function FeatureEditor({
   const isPoly = feature.Feature_Type === "polygon";
   const isSeed = feature.Feature_Role === "plot";
   const isMeter = feature.Feature_Role === "meter";
+
+  /* ── Outside the building, or inside it ──
+
+     Asked on mains feeder cables and meters, and on nothing else: the
+     two are drawn on different CAD layers and are different jobs on
+     site, while a trench is neither.
+
+     Built ONCE here and rendered beside whichever Status dropdown the
+     feature actually has. There are three — trench, service, main —
+     and the first attempt at this put the field beside the trench one,
+     where a cable and a meter never go. It rendered for nothing and
+     looked like it had disappeared.
+
+     Held in Attributes.Siting, where a fact about a feature belongs;
+     the CAD mapping matches it from there. */
+  const showSiting = isMeter
+    || (feature.Feature_Type === "line"
+      && f.Attributes?.Line_Type
+      && /^elec/.test(String(f.Attributes.Line_Type))
+      && !/service/i.test(String(f.Attributes.Line_Type)));
+
+  const sitingField = showSiting ? (
+    <div className="fld">
+      <label htmlFor="fe-siting">External or internal</label>
+      <select id="fe-siting" value={f.Attributes?.Siting ?? ""}
+        onChange={(e) => setAttr("Siting")(e.target.value)}>
+        <option value="">&mdash; Not said &mdash;</option>
+        <option value="External">External</option>
+        <option value="Internal">Internal</option>
+      </select>
+    </div>
+  ) : null;
   const isValve = feature.Feature_Role === "servicevalve";
   const isTee = feature.Feature_Role === "hvtt";
 
@@ -4313,6 +4345,11 @@ export default function FeatureEditor({
             </div>
           )}
 
+          {/* A meter has no Status dropdown of its own, so its siting
+              sits with its reference \u2014 the two facts somebody records
+              about a meter when they know where it went. */}
+          {isMeter && sitingField}
+
           {/* Which circuit this meter is on.
 
               Link to Circuit lassoes seeds and always makes a new
@@ -4701,34 +4738,6 @@ export default function FeatureEditor({
                   </select>
                 </div>
 
-                {/* ── Outside the building, or inside it ──
-
-                    Beside the status, because the two are read
-                    together: what stage this length is at, and where it
-                    sits. Wanted on mains feeder cables and meters \u2014 the
-                    two are drawn on different CAD layers and are
-                    different jobs on site \u2014 and shown on nothing else,
-                    so the field does not appear against apparatus where
-                    the question has no meaning. A trench is neither.
-
-                    Held in Attributes.Siting, where a fact about a
-                    feature belongs; the CAD mapping matches it from
-                    there. */}
-                {(feature.Feature_Role === "meter"
-                  || (feature.Feature_Type === "line"
-                    && f.Attributes?.Line_Type
-                    && /^elec/.test(String(f.Attributes.Line_Type))
-                    && !/service/i.test(String(f.Attributes.Line_Type)))) && (
-                  <div className="fld">
-                    <label htmlFor="fe-siting">External or internal</label>
-                    <select id="fe-siting" value={f.Attributes?.Siting ?? ""}
-                      onChange={(e) => setAttr("Siting")(e.target.value)}>
-                      <option value="">&mdash; Not said &mdash;</option>
-                      <option value="External">External</option>
-                      <option value="Internal">Internal</option>
-                    </select>
-                  </div>
-                )}
 
                 {/* Read-only like the dimensions, and for the same
                     reason: it follows the drawing, and a duration
@@ -4932,6 +4941,11 @@ export default function FeatureEditor({
               </p>
             </div>
           )}
+
+          {/* Beside the main's Status, because the two are read
+              together: what stage this length is at, and where it
+              sits. */}
+          {isMain && sitingField}
 
           <div className="fld">
             <label htmlFor="fe-notes">Notes</label>

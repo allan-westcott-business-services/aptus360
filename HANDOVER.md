@@ -5301,6 +5301,18 @@ characters is a hundred lines of prose and no rules at all.
      water. The layer list is filtered to the class and geometry
      already chosen.
 
+     ⚠ **And it rendered nowhere for a while.** The editor has THREE
+     Status dropdowns — trench, service and main — and "beside the
+     status" was implemented beside the TRENCH one, where a cable and a
+     meter never go. It rendered for nothing, and to the user the field
+     had simply disappeared. Now built once as `sitingField` and
+     rendered under `isMain` (beside the main's status, which is what a
+     feeder cable has) and under `isMeter` (beside the meter
+     reference, since a meter has no status dropdown of its own). The
+     check asserts it is built once and rendered in both branches:
+     "the code exists" and "the code runs" are different claims, and
+     only the second is what somebody sees.
+
      **External or Internal** is a new fact about apparatus, on mains
      feeder cables and meters to begin with: the two are drawn on
      different CAD layers and are different jobs on site. No column

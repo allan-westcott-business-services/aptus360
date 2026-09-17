@@ -1,39 +1,38 @@
-# Delta — DXF exports 2D geometry, and entities follow their layer
+# Delta — DXF: 2D geometry, BYLAYER properties, and real labels
 
-    src/features/gis/dxf.js   the fix
-    checkdxf.mjs              three new cases
+    src/features/gis/dxf.js         2D flags, BYLAYER, mains/service tags
+    src/features/gis/lineLabel.js   unchanged, included because dxf.js needs it
+    checkdxf.mjs
     HANDOVER.md
 
-No migration. This delta stands alone — dxf.js has no dependency on the
-CAD Layers work, though it is compatible with it.
+No migration. Stands alone.
 
-## Why the objects were 3D
+## Three fixes
 
-The polyline carried flag 8, and each vertex flag 32. Those are the 3D
-POLYLINE flags. Both are now 0: a plain 2D polyline at elevation zero,
-which is what a plan drawing is made of.
+**2D, not 3D.** The polyline carried flag 8 and its vertices flag 32 —
+the 3D POLYLINE flags. Both are 0 now: a plain 2D polyline at elevation
+zero.
 
-That alone explains a good part of the second problem — a 3D polyline
-will not take a linetype properly, so moving one to a layer never made
-it look like that layer.
+**BYLAYER.** Every entity states colour 256 and linetype BYLAYER
+explicitly, so moving an object to one of your layers takes that
+layer's properties. A 3D polyline would not take a linetype properly
+either, so the two faults were related.
 
-## Why properties were not inherited
+**Mains and service tags now export.** The export wrote only `Label`,
+so a main arrived as "W1" or as nothing. It now writes the same tag the
+screen and the printed sheet show — size and length on water and gas,
+way and circuit on electric — composed by the same module all three
+read.
 
-Every entity now states colour 256 (BYLAYER) and linetype BYLAYER
-explicitly. Absent, both should default to BYLAYER; "should" is doing a
-lot of work across the programs a DXF passes through, and an entity
-carrying its own colour is exactly what stops it taking a layer's.
+Each row of a tag is its own TEXT entity, because DXF TEXT holds one
+line, and the tag sits half way ALONG the run rather than at a middle
+vertex.
 
-## Please re-export and ask your CAD team to check
+## Worth checking on re-export
 
-- the lines are 2D polylines (LIST on one should say POLYLINE, not
-  3DPOLYLINE)
-- colour and linetype both report BYLAYER
-- moving an object to one of their layers now takes that layer's
-  colour and linetype
-
-If anything still holds its own properties, LIST on that object and
-send me what it says.
+- LIST on a line says POLYLINE, colour BYLAYER, linetype BYLAYER
+- pipes and cables carry their size and length as text
+- labels sit on the -TEXT layers, so they can be frozen separately
 
 ## Suite state
 

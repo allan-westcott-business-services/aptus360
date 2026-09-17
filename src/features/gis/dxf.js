@@ -58,6 +58,7 @@
 
 import { resolveStyle, appearance, subjectOf } from "../../lib/gisStyle.js";
 import { layerFor as mappedLayerFor } from "./dxfLayerMap.js";
+import { lineLabelText } from "./lineLabel.js";
 
 /* AutoCAD Color Index. The classic first seven plus a couple of greys:
    a DXF layer carries a colour NUMBER, not a hex string, so every
@@ -128,6 +129,27 @@ const num = (v) => {
 /* A DXF is pairs of lines: a group code, then its value. Everything
    below is built from this, which is why the file has no template. */
 const pair = (code, value) => `${code}\n${value}\n`;
+
+/* Half way ALONG a run, in the drawing's own metres. Not the middle
+   vertex: a run that bends near one end has its middle vertex nowhere
+   near its middle. */
+function midOf(g = []) {
+  let total = 0;
+  for (let i = 1; i < g.length; i++) {
+    total += Math.hypot(g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]);
+  }
+  let acc = 0;
+  for (let i = 1; i < g.length; i++) {
+    const seg = Math.hypot(g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]);
+    if (acc + seg >= total / 2) {
+      const t = seg ? (total / 2 - acc) / seg : 0;
+      return [g[i - 1][0] + (g[i][0] - g[i - 1][0]) * t,
+        g[i - 1][1] + (g[i][1] - g[i - 1][1]) * t];
+    }
+    acc += seg;
+  }
+  return g[0];
+}
 
 export function buildDxf(features = [], opts = {}) {
   const {
@@ -252,19 +274,51 @@ export function buildDxf(features = [], opts = {}) {
     /* Labels on a layer of their own, so a CAD user can freeze the
        annotation and keep the geometry \u2014 which is the first thing
        anybody does with a drawing they are tracing over. */
-    if (labels && f.Label) {
+    /* ── What a main or a service is CALLED ──
+
+       The same text the screen and the sheet carry, from lineLabel.js:
+       the way and circuit tag on electric, the size and length on water
+       and gas. The export used to write `Label` and nothing else, so a
+       main went into CAD as "W1" or as nothing at all — and a drawing
+       whose pipes are anonymous is the drawing somebody digs from.
+
+       Points keep their own Label, which is what names a fitting.
+
+       Composed rather than re-derived, for the reason every parity fix
+       this session had: one account of what a run is called. */
+    const text = f.Feature_Type === "line"
+      ? lineLabelText(f, { lineTypes })
+      : (f.Label ? String(f.Label) : "");
+
+    if (labels && text) {
       const tl = mapped?.textLayer ?? layerName([lay, "TEXT"]);
       noteLayer(tl, mapped?.aci != null ? mapped.aci
         : (ap.labelColour ?? ap.colour ?? "#ffffff"), mapped?.linetype);
-      const at = f.Feature_Type === "line" ? g[Math.floor(g.length / 2)] : g[0];
-      ents += pair(0, "TEXT") + pair(8, tl) + byLayer
-        + pair(10, num(at[0] + ox)) + pair(20, num(-at[1] + oy))
-        + pair(30, "0.000")
-        /* Half a metre of text: readable at the scales these drawings
-           are plotted at, and a number the receiving drafter can
-           change once for the whole layer. */
-        + pair(40, "0.500")
-        + pair(1, String(f.Label).replace(/[\r\n]+/g, " "));
+
+      /* Half way ALONG the run, not at a middle vertex \u2014 the middle of
+         a vertex list is only the middle of the pipe when the vertices
+         happen to be evenly spaced, which a tee makes sure they are
+         not. Points sit where they are. */
+      const at = f.Feature_Type === "line" ? midOf(g) : g[0];
+
+      /* A tag is more than one line \u2014 size over length \u2014 and DXF TEXT
+         holds one. Each line is its own entity, stacked upward from the
+         run so the block grows away from the pipe rather than across
+         it. Rows are drawn top-first so the order reads the same as on
+         screen. */
+      const rows = String(text).split("\n").filter(Boolean);
+      const lineH = 0.7;
+      rows.forEach((row, i) => {
+        const dy = (rows.length - 1 - i) * lineH + 0.35;
+        ents += pair(0, "TEXT") + pair(8, tl) + byLayer
+          + pair(10, num(at[0] + ox)) + pair(20, num(-(at[1]) + oy + dy))
+          + pair(30, "0.000")
+          /* Half a metre of text: readable at the scales these drawings
+             are plotted at, and a number the receiving drafter can
+             change once for the whole layer. */
+          + pair(40, "0.500")
+          + pair(1, row.replace(/[\r\n]+/g, " "));
+      });
     }
   }
 

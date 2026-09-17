@@ -183,6 +183,55 @@ const P = pairs(dxf);
   }
 }
 
+// 2c. Mains and services carry the tag the drawing shows.
+//
+//     The export wrote `Label` and nothing else, so a main went into
+//     CAD as "W1" or as nothing at all. A drawing whose pipes and
+//     cables are anonymous is the drawing somebody digs from. The text
+//     is composed by lineLabel.js — the same module the screen and the
+//     sheet use — so all three say one thing.
+{
+  const lt = [
+    { Type_Key: "water_main", Layer_Key: "water" },
+    { Type_Key: "water_service", Layer_Key: "water" },
+  ];
+  const world = [
+    { Feature_ID: 40, Feature_Type: "line", Layer_Key: "water", Label: "W1",
+      Geometry: [[0, 0], [100, 0]],
+      Attributes: { Line_Type: "water_main", Size: "180mm" } },
+    { Feature_ID: 41, Feature_Type: "line", Layer_Key: "water", Label: "S1",
+      Geometry: [[50, 0], [50, 8]],
+      Attributes: { Line_Type: "water_service", Size: "25mm" } },
+  ];
+  const out = buildDxf(world, { lineTypes: lt, styles });
+  const texts = [...out.matchAll(/\n1\n([^\n]+)\n/g)].map((m2) => m2[1]);
+
+  if (!texts.includes("180mm")) {
+    fail("a main does not carry its size into CAD");
+  }
+  if (!texts.includes("25mm")) {
+    fail("a service does not carry its size into CAD");
+  }
+  if (!texts.some((t) => /100\.0 m/.test(t))) {
+    fail("a main does not carry its length into CAD");
+  }
+
+  /* Each line of a tag is its own TEXT: DXF TEXT holds one line, and a
+     tag with an embedded newline arrives as one unreadable string. */
+  if (texts.some((t) => /\n/.test(t))) {
+    fail("a multi-line tag is written as one TEXT entity");
+  }
+
+  /* Set half way ALONG the run. The main runs 0 to 100, so its text
+     belongs near x=50 — a middle VERTEX would put it at an end. */
+  const xs = [...out.matchAll(/TEXT\n8\n[^\n]+\n62\n256\n6\nBYLAYER\n10\n([0-9.-]+)\n/g)]
+    .map((m2) => Number(m2[1]));
+  if (xs.length && !xs.some((x) => Math.abs(x - 50) < 1)) {
+    fail(`the main's tag is written at x=${xs.join(", ")}, not half way `
+      + "along the run");
+  }
+}
+
 // 3. Every layer an entity names is declared in the table. Legal in
 //    AutoCAD, refused by several other readers — and this file is meant
 //    to open everywhere.

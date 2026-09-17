@@ -5196,6 +5196,19 @@ characters is a hundred lines of prose and no rules at all.
      no comment at all. Numbers in a file format should cite the format,
      not a rationale.
 
+     **And the export carried no mains or service tags.** It wrote
+     `Label` alone, so a main went into CAD as "W1" or as nothing —
+     while the screen and the sheet both showed its size and length,
+     composed by `lineLabel.js`. The export now calls the same module:
+     one account of what a run is called, in all three places. Points
+     keep their own Label, which is what names a fitting.
+
+     Two details that matter in DXF: TEXT holds ONE line, so each row
+     of a tag is its own entity stacked upward from the run; and the
+     tag is set half way ALONG the run rather than at a middle vertex,
+     which on a run that bends near one end is nowhere near its middle.
+     Same `midOf` reasoning as the print.
+
 142. **CAD layer mapping (feature).** The DXF export named layers from
      the drawing's own vocabulary; the CAD team keeps their own
      schedule. Migration **0216** adds `DXF_Layer_Map`: one row is one

@@ -5138,6 +5138,37 @@ characters is a hundred lines of prose and no rules at all.
      else in this codebase reaching for `.sch`, `.fe-` or similar
      outside its owning component deserves the same look.
 
+143. **The DXF exported 3D objects, and nothing took its layer's
+     properties.** Both reported by a CAD team, and both produce a file
+     that opens and looks plausible — which is why neither showed up
+     here.
+
+     *3D.* The POLYLINE carried flag `70 = 8` and each VERTEX `70 = 32`.
+     Those are the 3D polyline flags. The comment I had written beside
+     them claimed 3D "keeps a reader from assuming a plan projection",
+     which was wrong twice over: a plan drawing is 2D, and a team
+     working in 2D got objects they could not edit as lines. Both flags
+     are now zero.
+
+     *Layer properties.* No entity said BYLAYER. Absent, a reader is
+     entitled to default colour and linetype to its own idea — so
+     moving an entity onto a layer left it looking exactly as it had,
+     which reads as the layer having no properties. Every entity now
+     carries `62 = 256` and `6 = BYLAYER` explicitly rather than
+     relying on the default.
+
+     *And the tables a layer depends on.* A layer naming a linetype the
+     file does not DEFINE leaves the reader to substitute. The export
+     now writes an LTYPE table defining CONTINUOUS and every linetype
+     the schedule mentions, and a STYLE table for the TEXT entities to
+     answer to, with LTYPE before LAYER because layers reference
+     linetypes.
+
+     The lesson for the checks: everything here was structurally valid
+     DXF. "The file opens" is not the test; the test is whether the
+     entities behave as the kind of object the receiving team works
+     with. Flags and BYLAYER are now asserted entity by entity.
+
 142. **CAD layer mapping (feature).** The DXF export named layers from
      the drawing's own vocabulary; the CAD team keeps their own
      schedule. Migration **0216** adds `DXF_Layer_Map`: one row is one
@@ -5215,6 +5246,63 @@ characters is a hundred lines of prose and no rules at all.
      uses a band with only an upper bound, which is where the guard
      actually earns its place. Coercion hid a bug from a test; a fixture
      has to include the case the bug needs.
+
+144. **The client portal, and the door in front of it (feature).**
+     Four audiences now sign in at the same place: Aptus staff and
+     contractors, client developers, DNOs (electric DNOs, gas
+     transporters, water undertakers) and IDNOs (IDNOs, iGTs, NAVs).
+     Migration **0218**: `Portal_Access`, `Milestone_Type`,
+     `Project_Milestone`, `Portal_Document`.
+
+     ⚠ **The square is a signpost, not a permission.** Pressing "Client
+     Developer" grants nothing. After sign-in the app asks
+     `/portal/me`, and the AUDIENCE RECORDED AGAINST THE ACCOUNT
+     decides what opens: a staff account that pressed the developer
+     square still gets the app, and a developer account that pressed
+     the staff square still gets the portal. If the landing page
+     granted anything, the landing page would be the security
+     boundary — and a boundary anybody can walk around by editing a URL
+     is not one.
+
+     Five properties the portal endpoint holds, each with a case:
+       - identity comes from the verified token, never from a body. The
+         check asserts the body is not read for email, audience,
+         customer or organisation;
+       - a project id from a portal caller is proved against their own
+         sites before anything is read, and a refusal is 404 rather
+         than 403 so nobody can enumerate project numbers;
+       - every document read or written is tied to the proved project
+         as well as its own id;
+       - storage paths are COMPOSED by the server, and a path handed
+         back after an upload is accepted only if it is the one this
+         endpoint would have issued;
+       - a developer may upload only against what we asked for, and
+         mark as reviewed only what we sent them.
+
+     Uploads go straight to storage on a signed URL, so a large layout
+     drawing does not pass through a function and time it out.
+
+     Milestones are RECORDED, not derived: the dates live in half a
+     dozen nullable places, and a portal that derived them would show a
+     blank where the truth is "not yet" and a stale date where the
+     truth is "changed". `Source` says where each came from, so a wrong
+     one can be traced. The site view lists every milestone the
+     business tracks with the reached ones filled in — a list of what
+     has happened cannot tell a developer what is still to come.
+
+     DNO and IDNO accounts are named as not built rather than dropped
+     into the staff app, which would be a network owner looking at
+     every developer's scheme.
+
+     One existing check needed re-anchoring: `checkfieldqueue` asserted
+     the Gate's old one-line `field ? <FieldApp /> : <Shell />`. The
+     field branch is now its own early return; the property is the
+     same and the case tests it in both shapes.
+
+     **Still to do:** a job that writes the milestone dates as each
+     stage completes (nothing writes them yet — staff can only enter
+     them by hand), the Portal_Access admin screen, and the DNO and
+     IDNO portals.
 
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the

@@ -293,7 +293,17 @@ const shell = readFileSync("./src/App.jsx", "utf8");
 // 13. The field app is its own surface, always behind a login.
 {
   if (!/pathname[^;]*"\/field"/.test(shell)) fail("/field does not reach the field app");
-  if (!/field \? <FieldApp \/> : <Shell \/>/.test(shell)) {
+  /* Its own surface: FieldApp is returned INSTEAD of the shell, never
+     within it. The Gate used to say `field ? <FieldApp /> : <Shell />`
+     on one line; the portal (0218) put four audiences behind the same
+     door, so the field branch is now its own early return. Same
+     property, re-anchored rather than dropped: the field app must be
+     returned on its own, and must not appear inside Shell. */
+  if (!/if \(field\) return <FieldApp \/>;/.test(shell)
+    && !/field \? <FieldApp \/> : <Shell \/>/.test(shell)) {
+    fail("the field app is not returned as a surface of its own");
+  }
+  if (/<Shell[^>]*>[\s\S]{0,400}<FieldApp/.test(shell)) {
     fail("the field app renders inside the office shell");
   }
   /* The sample-data escape lets the office app run with no backend. A

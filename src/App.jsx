@@ -6,6 +6,7 @@ import { onOpenCallOff } from "./lib/callOffIntent.js";
 import { onOpenProject } from "./lib/projectIntent.js";
 import { remember, recallOneOf } from "./lib/session.js";
 import LoginPage from "./features/auth/LoginPage.jsx";
+import AudienceLanding from "./features/portal/AudienceLanding.jsx";
 import AccountMenu from "./features/auth/AccountMenu.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Sidebar from "./components/Sidebar.jsx";
@@ -35,7 +36,10 @@ const PlanningPage = lazyPage("PlanningPage", () => import("./features/planning/
    same reason as Admin, only more so: most sessions never open it, and
    nobody should download it to look at a project. */
 const HumanResourcesPage = lazyPage("HumanResourcesPage", () => import("./features/hr/HumanResourcesPage.jsx"));
-import { USE_MOCKS } from "./api/client.js";
+/* Lazy for the plainest reason: staff never open it, and it is a
+   different application behind the same door. */
+const DeveloperPortal = lazyPage("DeveloperPortal", () => import("./features/portal/DeveloperPortal.jsx"));
+import { USE_MOCKS, http } from "./api/client.js";
 /* Not lazy: it is the first thing most sessions see, and a spinner in
    front of eight buttons would be slower than the buttons. */
 import HomePage from "./features/home/HomePage.jsx";
@@ -272,15 +276,91 @@ function isFieldApp() {
   return window.location.pathname.replace(/\/+$/, "") === "/field";
 }
 
+/* ── Four audiences, one door ──
+
+   The landing page asks who is knocking and the sign-in follows. What
+   somebody gets AFTERWARDS is decided by their account, not by the
+   square they pressed: `/portal/me` answers with the audience recorded
+   against their email, and that is what chooses the application.
+
+   So the square is a signpost. A staff account that picked "Client
+   Developer" still gets the app; a developer account that picked
+   "Aptus Staff" still gets the portal. If the front door granted
+   anything, the front door would be the security boundary — and a
+   security boundary anybody can walk around by editing a URL is not
+   one. */
 function Gate() {
-  const { session, loading, authEnabled } = useAuth();
+  const { session, loading, authEnabled, signOut } = useAuth();
   const field = isFieldApp();
+  const [audience, setAudience] = useState(() => recallOneOf("portalDoor",
+    ["staff", "developer", "dno", "idno"], null));
+  const [who, setWho] = useState(null);
+  const [asking, setAsking] = useState(false);
+
+  /* Who the ACCOUNT says this is. Asked once a session exists, and
+     only then: it is the answer that routes, so nothing routes until
+     it is in. */
+  useEffect(() => {
+    if (!session || !authEnabled || field) return undefined;
+    let live = true;
+    setAsking(true);
+    http.get("/portal/me")
+      .then((r) => { if (live) setWho(r); })
+      /* No portal record is not an error: it is a staff account, which
+         is the overwhelming majority of them. */
+      .catch(() => { if (live) setWho({ audience: null }); })
+      .finally(() => { if (live) setAsking(false); });
+    return () => { live = false; };
+  }, [session, authEnabled, field]);
 
   if (field && !authEnabled) {
     return <div className="boot">The field app needs an account. Ask the office.</div>;
   }
   if (!authEnabled) return <Shell />;
   if (loading) return <div className="boot">Loading&hellip;</div>;
-  if (!session) return <LoginPage />;
-  return field ? <FieldApp /> : <Shell />;
+
+  if (!session) {
+    /* The door first, then the sign-in. The field app has its own way
+       in and does not pass through here. */
+    if (!field && !audience) {
+      return (
+        <AudienceLanding onChoose={(id) => {
+          remember("portalDoor", id);
+          setAudience(id);
+        }} />
+      );
+    }
+    return <LoginPage />;
+  }
+
+  if (field) return <FieldApp />;
+  if (asking || !who) return <div className="boot">Loading&hellip;</div>;
+
+  if (who.audience === "developer") {
+    return (
+      <Suspense fallback={<div className="boot">Loading&hellip;</div>}>
+        <DeveloperPortal who={who} onSignOut={() => {
+          /* The door is forgotten on the way out, so the next person at
+             this browser is asked again rather than inheriting somebody
+             else's answer. */
+          remember("portalDoor", null);
+          setAudience(null);
+          signOut();
+        }} />
+      </Suspense>
+    );
+  }
+
+  if (who.audience === "dno" || who.audience === "idno") {
+    /* Named as not built rather than dropped into the staff app, which
+       would be a network owner looking at every developer's scheme. */
+    return (
+      <div className="boot">
+        The {who.audience.toUpperCase()} portal is not open yet. Your Aptus
+        contact will tell you when it is.
+      </div>
+    );
+  }
+
+  return <Shell />;
 }

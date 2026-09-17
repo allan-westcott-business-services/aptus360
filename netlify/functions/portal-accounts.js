@@ -49,6 +49,10 @@ export default withAuth(async function handler(req, context, user) {
     const audience = String(body?.audience || "");
     const organisationId = body?.organisationId ? Number(body.organisationId) : null;
     const branchId = body?.branchId ? Number(body.branchId) : null;
+    /* One site, where the account is for one site. Narrowest scope, and
+       the resolver in portal.js treats it as a ceiling: naming a
+       project means that project and nothing else. */
+    const projectId = body?.projectId ? Number(body.projectId) : null;
     const customerId = body?.customerId ? Number(body.customerId) : null;
     const fullName = String(body?.fullName || "").trim() || null;
     const password = body?.password ? String(body.password) : null;
@@ -102,6 +106,7 @@ export default withAuth(async function handler(req, context, user) {
       Audience: audience,
       Organisation_ID: organisationId,
       Branch_ID: branchId,
+      Project_ID: projectId,
       Customer_ID: customerId,
       Full_Name: fullName,
       Notes: `Created by ${email}`,

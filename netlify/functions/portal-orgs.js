@@ -102,7 +102,51 @@ export default withAuth(async function handler(req) {
       .map((o) => ({ ...o, branches: byOrg.get(Number(o.Organisation_ID)) || [] }))
       .filter((o) => o.branches.length);
 
-    return json({ organisations: out });
+    /* ── The sites each branch runs ──
+
+       For the narrowest kind of portal account: a contact who is here
+       for ONE scheme. Served from here rather than from the generic
+       admin endpoint because that endpoint's allow-list does not carry
+       Project, and a screen asking it for one gets an error it is in
+       no position to explain.
+
+       Read through `Project_Developer`, which is the RECORD of who is
+       on a scheme. `Project.Organisation_Branch_ID` is a cached copy
+       maintained by a trigger and portal.js refuses to read it for
+       deciding what an account may see; a screen that offered sites
+       from the cache would offer the wrong ones, and somebody would
+       pin a contact to a site that is not theirs.
+
+       Only for a caller who may already see these organisations, which
+       the block above has settled. */
+    const branchIds = (branches || []).map((b) => Number(b.Organisation_Branch_ID));
+    let sites = [];
+    if (branchIds.length) {
+      const { data: links, error: lErr } = await db
+        .from("Project_Developer")
+        .select("Project_ID,Organisation_Branch_ID")
+        .in("Organisation_Branch_ID", branchIds);
+      if (lErr) throw lErr;
+
+      const ids = [...new Set((links || []).map((l) => Number(l.Project_ID)))];
+      if (ids.length) {
+        const { data: projects, error: pErr } = await db
+          .from("Project")
+          .select("Project_ID,Project_Name,Site_Name")
+          .in("Project_ID", ids);
+        if (pErr) throw pErr;
+
+        const byId = new Map((projects || []).map((p) => [Number(p.Project_ID), p]));
+        sites = (links || [])
+          .map((l) => {
+            const p = byId.get(Number(l.Project_ID));
+            return p ? { ...p, Organisation_Branch_ID: Number(l.Organisation_Branch_ID) } : null;
+          })
+          .filter(Boolean);
+      }
+    }
+
+    return json({ organisations: out, sites });
   } catch (e) {
     return fail(e);
   }

@@ -5794,6 +5794,44 @@ characters is a hundred lines of prose and no rules at all.
      only reads as a square with four — a fifth leaves an orphan on a
      second row and the grid needs revisiting.
 
+147. **Portal contacts: a third scope, and a hazard found on the way.**
+     Asked for three tiers, of which two already worked: an
+     organisation contact sees every branch's sites, a branch contact
+     sees that branch's. The missing one is the narrowest — a contact
+     there for ONE scheme.
+
+     Migration **0223** adds `Portal_Access.Project_ID`. Null means the
+     row is scoped as before, so no existing account changes.
+
+     **The narrowest is a CEILING, not a floor**, and this is the part
+     worth defending. A project-scoped row also names the organisation
+     the project belongs to — because that is who the contact IS — and
+     reading that as a grant too would turn the narrowest scope into
+     the widest. `mine()` returns the project and stops, BEFORE the
+     customer and organisation passes, and the check asserts the
+     ordering rather than merely the presence of the line: after them
+     it would collect the whole group's sites on the way past.
+
+     Sites are offered in the admin from `Project_Developer` — the same
+     record `mine()` reads — so the list offered and the list granted
+     cannot disagree. Neither reads `Project.Organisation_Branch_ID`,
+     the cached copy portal.js already warns about at length.
+
+     ⚠ **Found while doing it: the Portal Accounts screen's
+     organisation and branch dropdowns were probably empty in the live
+     app.** It called `adminList("Organisation")` and
+     `adminList("Organisation_Branch")`, and NEITHER table is in the
+     admin endpoint's allow-list — so both requests were refused and
+     both failures were swallowed by `.catch(() => {})`. An empty
+     dropdown reads as "there are no branches", which is a different
+     thing from "that request was refused" and wants something
+     different done about it. The screen now reads `portal-orgs`, which
+     is the endpoint built for this, and SAYS when a lookup fails.
+
+     The general point: `.catch(() => {})` on a lookup turns a refusal
+     into an empty list, and an empty list is a plausible answer. Worth
+     grepping for elsewhere.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

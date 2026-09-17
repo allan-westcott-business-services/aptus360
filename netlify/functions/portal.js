@@ -68,6 +68,23 @@ async function mine(db, access) {
 
   const ids = new Set();
 
+  /* ── One site, and only that site ──
+
+     The narrowest scope, and a CEILING rather than a floor: where the
+     row names a project, that project is the whole of what this
+     account sees, and nothing below runs.
+
+     The row also names the organisation the project belongs to —
+     because that is who the contact IS — and reading it as a grant as
+     well would turn the narrowest scope into the widest. That is the
+     opposite of what somebody setting it intends, and the kind of
+     mistake nobody notices until a contact mentions a site they should
+     never have heard of.
+
+     Returned before the customer and organisation passes for that
+     reason, not merely as an optimisation. */
+  if (access.Project_ID != null) return [Number(access.Project_ID)];
+
   if (access.Customer_ID != null) {
     const [own, shared] = await Promise.all([
       db.from("Project").select("Project_ID").eq("Customer_ID", access.Customer_ID),

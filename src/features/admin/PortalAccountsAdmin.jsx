@@ -34,6 +34,15 @@ export default function PortalAccountsAdmin() {
   const [rows, setRows] = useState([]);
   const [orgs, setOrgs] = useState([]);
   const [branches, setBranches] = useState([]);
+  /* Sites, for the narrowest scope. Loaded whole and narrowed below:
+     the list is small enough to hold, and filtering here means the
+     choice offered is always consistent with the organisation and
+     branch already chosen. */
+  const [sites, setSites] = useState([]);
+  /* Said out loud rather than swallowed: a list that failed to load
+     looks exactly like a list with nothing in it, and the two want
+     completely different things done about them. */
+  const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -41,7 +50,7 @@ export default function PortalAccountsAdmin() {
 
   const [draft, setDraft] = useState({
     email: "", fullName: "", audience: "developer",
-    organisationId: "", branchId: "", password: "",
+    organisationId: "", branchId: "", projectId: "", password: "",
   });
 
   const load = () => adminList("Portal_Access")
@@ -50,9 +59,24 @@ export default function PortalAccountsAdmin() {
 
   useEffect(() => {
     load();
-    adminList("Organisation").then(({ rows: r = [] }) => setOrgs(r)).catch(() => {});
-    adminList("Organisation_Branch").then(({ rows: r = [] }) => setBranches(r))
-      .catch(() => {});
+    /* Organisations, their branches and the sites those branches run,
+       from the portal's own endpoint.
+
+       NOT the generic admin one: its allow-list does not carry
+       Organisation, Organisation_Branch or Project, so asking it gives
+       an error this screen would swallow and show as an empty
+       dropdown. An empty dropdown reads as "there are no branches",
+       which is a different and much more confusing thing than "that
+       request was refused". */
+    http.get("/portal-orgs")
+      .then((res) => {
+        const list = res?.organisations || [];
+        setOrgs(list.map(({ branches: _b, ...o }) => o));
+        setBranches(list.flatMap((o) => o.branches || []));
+        setSites(res?.sites || []);
+        setLoadError("");
+      })
+      .catch((e) => setLoadError(e.message));
   }, []);
 
   const orgName = (id) => orgs.find((o) => String(o.Organisation_ID) === String(id))?.Name
@@ -63,6 +87,20 @@ export default function PortalAccountsAdmin() {
 
   const branchesFor = useMemo(() => branches.filter((b) =>
     String(b.Organisation_ID) === String(draft.organisationId)), [branches, draft]);
+
+  /* The sites this contact could be pinned to: the ones their branch
+     runs, or their organisation's across every branch where no branch
+     is chosen. Read through Project_Developer, which is the record of
+     who is on a scheme — the same source portal.js uses to decide what
+     an account may see, so the list offered here and the list they get
+     cannot disagree. */
+  const projectsFor = useMemo(() => {
+    const wanted = draft.branchId
+      ? new Set([String(draft.branchId)])
+      : new Set(branchesFor.map((b) => String(b.Organisation_Branch_ID)));
+    if (!wanted.size) return [];
+    return sites.filter((p) => wanted.has(String(p.Organisation_Branch_ID)));
+  }, [sites, branchesFor, draft.branchId]);
 
   const set = (k) => (e) => setDraft((d) => ({ ...d, [k]: e.target.value }));
 
@@ -75,6 +113,7 @@ export default function PortalAccountsAdmin() {
         audience: draft.audience,
         organisationId: draft.organisationId || null,
         branchId: draft.branchId || null,
+        projectId: draft.projectId || null,
         /* Blank means invite, which is the default for a reason: a
            password we choose is a password that lives in an email
            thread. */
@@ -83,7 +122,7 @@ export default function PortalAccountsAdmin() {
       setStatus(r.message || "Account created.");
       setAdding(false);
       setDraft({ email: "", fullName: "", audience: "developer",
-        organisationId: "", branchId: "", password: "" });
+        organisationId: "", branchId: "", projectId: "", password: "" });
       await load();
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   }
@@ -107,6 +146,13 @@ export default function PortalAccountsAdmin() {
       </p>
 
       {error && <div className="banner error">{error}</div>}
+      {loadError && (
+        <div className="banner error">
+          Organisations and sites could not be loaded: {loadError}. The
+          dropdowns below will be empty until that is fixed — which is not
+          the same as there being none.
+        </div>
+      )}
       {status && <div className="banner ok">{status}</div>}
 
       {!adding ? (
@@ -136,7 +182,7 @@ export default function PortalAccountsAdmin() {
               <label htmlFor="pa-org">Organisation</label>
               <select id="pa-org" value={draft.organisationId}
                 onChange={(e) => setDraft((d) => ({ ...d,
-                  organisationId: e.target.value, branchId: "" }))}>
+                  organisationId: e.target.value, branchId: "", projectId: "" }))}>
                 <option value="">Choose{"\u2026"}</option>
                 {orgs.map((o) => (
                   <option key={o.Organisation_ID} value={o.Organisation_ID}>{o.Name}</option>
@@ -145,12 +191,45 @@ export default function PortalAccountsAdmin() {
             </div>
             <div className="fld">
               <label htmlFor="pa-branch">Branch</label>
-              <select id="pa-branch" value={draft.branchId} onChange={set("branchId")}
+              <select id="pa-branch" value={draft.branchId}
+                onChange={(e) => setDraft((d) => ({ ...d,
+                  /* A site chosen under one branch is not a site of
+                     another. */
+                  branchId: e.target.value, projectId: "" }))}
                 disabled={!draft.organisationId}>
                 <option value="">Whole organisation</option>
                 {branchesFor.map((b) => (
                   <option key={b.Organisation_Branch_ID} value={b.Organisation_Branch_ID}>
                     {b.Branch_Dropdown || b.Branch_Name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {/* ── The third scope: one site ──
+
+                Organisation, branch, project — widest to narrowest, in
+                that order, because that is how somebody decides: who
+                are they with, which office, and is this person here for
+                the whole of it or for one job.
+
+                Naming a site is a CEILING. The organisation above still
+                says who the contact is; it stops being what they may
+                see. That is said in the hint below rather than left to
+                be discovered, because the alternative reading — that
+                the two add up — is a plausible one and would show a
+                site manager the whole group's work. */}
+            <div className="fld">
+              <label htmlFor="pa-project">Site</label>
+              <select id="pa-project" value={draft.projectId ?? ""}
+                onChange={set("projectId")}
+                disabled={!draft.organisationId && !draft.branchId}>
+                <option value="">
+                  {draft.branchId ? "Every site in the branch"
+                    : "Every site in the organisation"}
+                </option>
+                {projectsFor.map((p) => (
+                  <option key={p.Project_ID} value={p.Project_ID}>
+                    {p.Project_Name || p.Site_Name || `Project ${p.Project_ID}`}
                   </option>
                 ))}
               </select>
@@ -169,6 +248,8 @@ export default function PortalAccountsAdmin() {
             you are on the phone to them.
             {" "}A branch matters where a developer has more than one office:
             they will see that branch&rsquo;s sites only.
+            {" "}Naming a site narrows it again, to that one site {"\u2014"} the
+            organisation then says who they are rather than what they see.
           </p>
 
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>

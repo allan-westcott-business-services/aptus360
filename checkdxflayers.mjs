@@ -332,7 +332,12 @@ const at = (f, org = null) => layerFor(f, { rules, lineTypes, organisationId: or
         fail(`the layer-names form asks for ${col}, which nothing reads`);
       }
     }
-    for (const col of ["Layer_Name", "Layer_Key", "Geometry_Type"]) {
+    /* Their stage vocabulary, spelled their way. */
+    if (!/options: \["Planned", "Existing", "As-Laid"\]/.test(block)) {
+      fail("the layer-names form does not offer Planned / Existing / "
+        + "As-Laid, so a schedule cannot say which stage a layer is for");
+    }
+    for (const col of ["Layer_Name", "Layer_Key", "Geometry_Type", "Status"]) {
       if (!block.includes(`col: "${col}"`)) {
         fail(`the layer-names form no longer asks for ${col}, which the `
           + "mapping form needs to narrow its list");
@@ -349,17 +354,47 @@ const at = (f, org = null) => layerFor(f, { rules, lineTypes, organisationId: or
       fail(`the entry form does not ask "${n}. ${label}" in order`);
     }
   }
-  if (!/draft\.Layer_Key === "gas"/.test(screen)
-    || !/gasSizes\.map/.test(screen)) {
-    fail("choosing Gas and Line does not show gas pipe sizes");
+  /* ── Three questions, then their layer ──
+
+     Class, geometry, the OBJECT, the CAD layer. Line type, size band
+     and build status were parts of an object rather than the question:
+     picking "Gas main 180mm" sets a line type and a size between them,
+     and asking for all three separately made somebody assemble an
+     object out of parts. */
+  for (const gone of ["dxe-lt", "dxe-status", "dxe-from", "dxe-to",
+    "dxe-sizelabel", "dxe-cabletype2", "dxe-gas", "dxe-water"]) {
+    if (screen.includes(`id="${gone}"`)) {
+      fail(`the mapping form still asks for ${gone}, which is a part of an `
+        + "object rather than an object");
+    }
   }
-  if (!/draft\.Layer_Key === "water"/.test(screen)) {
-    fail("choosing Water does not show water pipe sizes");
+  if (!screen.includes('id="dxe-object"')) {
+    fail("the mapping form does not ask for the object itself");
   }
-  /* Changing the class clears a size chosen under the old one: 125mm
-     gas is not 125mm water. */
-  if (!/Size_Label: "", Cable_Type: "",/.test(screen)) {
-    fail("changing the class keeps a size chosen under the previous one");
+
+  /* Electric and Line offers the CABLES, by their full description. */
+  if (!/cls === "electric"/.test(screen) || !/cableSizes\.map/.test(screen)) {
+    fail("choosing Electric and Line does not offer the cables from the "
+      + "specs table");
+  }
+  if (!/\[typeName\(t\), c\.Size_Label\]/.test(screen)) {
+    fail("a cable is not offered by its full description, so somebody has "
+      + "to assemble \"3c WAVE 95\" from two boxes");
+  }
+  /* Gas and water offer their own pipe, main and service. */
+  if (!/cls === "gas" \|\| cls === "water"/.test(screen)) {
+    fail("choosing Gas or Water and Line does not offer that pipe");
+  }
+  /* A point offers the fittings that class has, not every role. */
+  if (!/POINTS_BY_CLASS/.test(screen)) {
+    fail("a point offers every role in the business rather than the ones "
+      + "that class has");
+  }
+  /* Changing class or geometry clears the object chosen under the old
+     one: a cable is not a gas pipe, and 125mm gas is not 125mm water. */
+  if (!/Line_Type: "", Feature_Role: "", Size_Label: "",/.test(screen)) {
+    fail("changing the class or geometry keeps an object chosen under the "
+      + "previous one");
   }
   /* The layer's NAME is copied onto the rule, not just its id: the
      export reads a name, and a rule pointing only at a row would
@@ -372,6 +407,31 @@ const at = (f, org = null) => layerFor(f, { rules, lineTypes, organisationId: or
   const fn = readFileSync("./netlify/functions/admin.js", "utf8");
   if (!/CAD_Layer:\s+\{ pk: "CAD_Layer_ID"/.test(fn)) {
     fail("the admin endpoint refuses the CAD layer table");
+  }
+  /* And does not order by a column 0221 drops. Ordering by one that is
+     gone is an empty list and an error nobody connects to a
+     migration. */
+  if (/CAD_Layer:\s+\{ pk: "CAD_Layer_ID",\s+order: "Sort_Order"/.test(fn)) {
+    fail("the endpoint orders CAD layers by a dropped column");
+  }
+
+  const status = readFileSync("./supabase/migrations/0222_cad_layer_status.sql", "utf8");
+  if (!/ADD COLUMN IF NOT EXISTS "Status"/.test(status)) {
+    fail("CAD_Layer has no Status column");
+  }
+  /* Constrained, so a typo cannot create a fourth stage nobody
+     notices. */
+  if (!/IN \('Planned','Existing','As-Laid'\)/.test(status)) {
+    fail("the Status column accepts anything, so 'as laid' and 'As-Laid' "
+      + "become two stages");
+  }
+
+  const trim = readFileSync("./supabase/migrations/0221_cad_layer_trim.sql", "utf8");
+  for (const col of ["ACI_Colour", "Linetype", "Sort_Order", "Notes"]) {
+    if (!trim.includes(`DROP COLUMN IF EXISTS "${col}"`)) {
+      fail(`${col} is still on CAD_Layer \u2014 a column that exists invites `
+        + "data somebody reasonably expects to do something");
+    }
   }
 
   const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");

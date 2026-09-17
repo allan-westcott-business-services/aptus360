@@ -5232,10 +5232,54 @@ characters is a hundred lines of prose and no rules at all.
      nothing reads. Sort order and notes went for the same reason:
      nothing sorts by one and nothing shows the other.
 
-     The columns stay on the table, unused. Dropping them would be
-     tidier and would also throw away anything already typed into them
-     by somebody who read the old form; they cost nothing where they
-     are.
+     **0221 drops those four columns** at the user's direction. A
+     column that exists invites data: somebody fills it in, reasonably
+     expects it to do something, and is quietly wrong. An empty field
+     nothing reads is a small lie in the schema.
+
+     One thing that had to move with them: the admin endpoint ordered
+     `CAD_Layer` by `Sort_Order`. Ordering by a dropped column is an
+     empty list and an error nobody connects to a migration — it now
+     orders by `Layer_Name`, which is how a layer is looked up anyway.
+     Worth checking for whenever a column goes: the endpoint's `order`,
+     any index, any view.
+
+     **0222 adds `Status` to CAD_Layer**: Planned, Existing, As-Laid,
+     constrained so a typo cannot create a fourth stage nobody notices.
+     A CAD schedule carries each utility three times over — proposed,
+     already there, as built — and they must not be mixed; existing
+     plant drawn as proposed is the dangerous direction of that
+     mistake.
+
+     ⚠ **Their list is not ours.** `Attributes.Build_Status` is
+     planned / live / existing / abandoned: no "as-laid", and "live"
+     has no counterpart. The two answer different questions — ours is
+     the state of the ASSET, theirs is the purpose of the DRAWING. The
+     mapping form therefore SHOWS a layer's stage beside its name and
+     does not filter by it: quietly mapping one vocabulary onto the
+     other would hide a choice somebody should make with their eyes
+     open. If a mapping between them is ever wanted, it should be
+     written down deliberately, probably as a small table, not inferred
+     in code.
+
+     The MAPPING rules keep their own colour and linetype, which is a
+     different question — those are an override for a drawing that
+     needs one, and are written into the file when set.
+
+     **The mapping form asks for an OBJECT, not its parts.** First cut
+     asked class, geometry, then size, cable type, line type, build
+     status and a size band — which made somebody assemble an object
+     out of the fields it happens to be stored in. Now: class,
+     geometry, **the object**, their layer. Electric and Line offers
+     every cable in the specs by its full description ("3c WAVE 95"),
+     gas and water offer their own pipe as "Main 180mm" / "Service
+     32mm", and a Point offers the fittings THAT class has rather than
+     every role in the business.
+
+     Each option carries what it sets, so the form asks about objects
+     while the rule stores the fields the matcher reads. Line type,
+     size band and build status are gone from the form; the columns
+     remain, and rules written before this still work.
 
      **The entry form asks in the order somebody thinks in**: class,
      geometry, then the sizes THAT class has, then their layer. Gas and

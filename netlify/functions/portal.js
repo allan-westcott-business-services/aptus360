@@ -45,15 +45,199 @@ const PROJECT_COLS = "Project_ID,Display_Ref,Project_Ref,Site_Name,"
 async function accessFor(db, user) {
   const email = String(user?.email || "").trim().toLowerCase();
   if (!email) return null;
+
+  /* Project_ID is on this list because a column not selected comes back
+     undefined and goes quiet — the fault the note above records, and I
+     made it again: 0223 added a single-site scope, and without it here
+     `mine()` never saw one and quietly widened every site-scoped
+     contact to their whole branch. */
   const { data, error } = await db
     .from("Portal_Access")
     .select("Portal_Access_ID,Email,Audience,Customer_ID,Organisation_ID,"
-      + "Branch_ID,Full_Name,Is_Active")
-    .ilike("Email", email)
-    .maybeSingle();
+      + "Branch_ID,Project_ID,Full_Name,Is_Active")
+    .ilike("Email", email);
   if (error) throw error;
-  if (!data || data.Is_Active === false) return null;
-  return data;
+
+  /* ── Rows, not a row ──
+
+     This used `maybeSingle()`, which FAILS when an address matches
+     more than one — and more than one is a reasonable thing to have:
+     a contact at two branches of a group is the case the sign-in was
+     rebuilt around. The failure surfaced as "we could not work out
+     which portal this account belongs to", which reads as a broken
+     account rather than as a duplicate record.
+
+     So: active rows, and the narrowest one wins — a site scope before
+     a branch before an organisation. That is the same order `mine()`
+     resolves in, for the same reason: where somebody has been given
+     both, the narrower is the deliberate one. */
+  const rows = (data || []).filter((r) => r.Is_Active !== false);
+  if (!rows.length) return null;
+
+  const rank = (r) => (r.Project_ID != null ? 0
+    : r.Branch_ID != null ? 1
+      : 2);
+  rows.sort((a, b) => rank(a) - rank(b)
+    || (a.Portal_Access_ID ?? 0) - (b.Portal_Access_ID ?? 0));
+
+  const row = rows[0];
+  /* Spelled as it was typed, compared as it was meant. An Audience of
+     "Developer" is the same audience as "developer", and the app routes
+     on an exact match. */
+  return { ...row, Audience: String(row.Audience || "").trim().toLowerCase() };
+}
+
+/* ── A contact IS the record ──
+
+   Somebody recording a contact against a branch has already said
+   everything the portal needs: who they are, which company, which
+   office. Asking for it a second time as a "portal account" is how the
+   two came apart — a contact was added, the portal knew nothing of
+   them, and signing in put them where an account with no record goes.
+
+   So where there is no explicit grant, the contact list answers.
+   Scope, narrowest first: a project if the row names one, else a
+   branch, else the whole organisation.
+
+   ── Except for staff ──
+
+   Plenty of our own people are listed as contacts on an organisation.
+   Reading that as portal access would take a staff member OUT of the
+   application and into a client portal, which is a far worse fault
+   than the one this fixes. So a contact whose address belongs to an
+   active Person is not treated as a portal identity: staff stay staff,
+   and anybody who genuinely needs both gets an explicit Portal_Access
+   row, which still wins.
+
+   The audience comes from what the organisation IS — the roles it
+   holds — rather than from anything on the contact, because a contact
+   does not choose which kind of business they work for. */
+const AUDIENCE_BY_ROLE = {
+  customer: "developer",
+  dno: "dno", gt: "dno", wu: "dno",
+  idno: "idno", igt: "idno", iwu: "idno",
+};
+
+async function contactAccessFor(db, user) {
+  const email = String(user?.email || "").trim().toLowerCase();
+  if (!email) return null;
+
+  /* Ours? Then nothing here applies. */
+  const { data: person } = await db.from("Person")
+    .select("Person_ID").ilike("Email", email).eq("Is_Active", true).limit(1);
+  if ((person || []).length) return null;
+
+  const { data, error } = await db
+    .from("Organisation_Contact")
+    .select("Organisation_Contact_ID,Contact_Name,Email,Organisation_ID,"
+      + "Organisation_Branch_ID,Project_ID,Is_Active")
+    .ilike("Email", email);
+  if (error) throw error;
+
+  const rows = (data || []).filter((r) => r.Is_Active !== false);
+
+  /* ── A stakeholder on a project ──
+
+     The third and narrowest source: somebody named on a scheme, in the
+     stakeholder list that is kept there anyway. They see that scheme
+     and no more, whatever else they are a contact of — which is why it
+     is looked up even when an organisation contact was found, and why
+     it sorts first below.
+
+     Held on `Project_Contact` beside the rest of a project's people,
+     rather than as a portal thing: the list somebody maintains while
+     running a job is the list that should decide who can watch it. */
+  const { data: staked, error: sErr } = await db
+    .from("Project_Contact")
+    .select("Project_Contact_ID,Project_ID,Contact_Name,Email")
+    .ilike("Email", email);
+  if (sErr) throw sErr;
+
+  for (const p2 of staked || []) {
+    rows.push({
+      Organisation_Contact_ID: null,
+      Project_Contact_ID: p2.Project_Contact_ID,
+      Contact_Name: p2.Contact_Name,
+      Email: p2.Email,
+      Organisation_ID: null,
+      Organisation_Branch_ID: null,
+      Project_ID: p2.Project_ID,
+      Is_Active: true,
+    });
+  }
+
+  if (!rows.length) return null;
+
+  const rank = (r) => (r.Project_ID != null ? 0
+    : r.Organisation_Branch_ID != null ? 1
+      : 2);
+  rows.sort((a, b) => rank(a) - rank(b)
+    || (a.Organisation_Contact_ID ?? 0) - (b.Organisation_Contact_ID ?? 0));
+  const c = rows[0];
+
+  /* The organisation this contact belongs to, whether the row says so
+     directly or through its branch. */
+  /* ── A stakeholder's organisation ──
+
+     A project stakeholder names no company, so the organisation is
+     taken from the SCHEME — its main developer, through
+     Project_Developer, which is the record rather than the cached
+     column on Project. It decides which portal they see, and nothing
+     more: their scope is the project they were named on.
+
+     A scheme with no developer recorded yields nothing, rather than a
+     portal opened on a guess. */
+  let organisationId = c.Organisation_ID ?? null;
+  if (organisationId == null && c.Project_ID != null) {
+    const { data: link } = await db.from("Project_Developer")
+      .select("Organisation_Branch_ID")
+      .eq("Project_ID", c.Project_ID).limit(1);
+    const branch = link?.[0]?.Organisation_Branch_ID ?? null;
+    if (branch != null) {
+      const { data: b2 } = await db.from("Organisation_Branch")
+        .select("Organisation_ID")
+        .eq("Organisation_Branch_ID", branch).limit(1);
+      organisationId = b2?.[0]?.Organisation_ID ?? null;
+    }
+  }
+  if (organisationId == null && c.Organisation_Branch_ID != null) {
+    const { data: b } = await db.from("Organisation_Branch")
+      .select("Organisation_ID")
+      .eq("Organisation_Branch_ID", c.Organisation_Branch_ID).limit(1);
+    organisationId = b?.[0]?.Organisation_ID ?? null;
+  }
+  if (organisationId == null) return null;
+
+  /* What kind of business it is decides which portal they see, read
+     from `Organisation_By_Role` — the view portal-orgs reads and the
+     rest of the app reads, so "is this a DNO" has one answer rather
+     than one per file. */
+  const { data: roles } = await db.from("Organisation_By_Role")
+    .select("Type_Key").eq("Organisation_ID", organisationId);
+  let audience = null;
+  for (const r of roles || []) {
+    const a = AUDIENCE_BY_ROLE[String(r.Type_Key || "").toLowerCase()];
+    if (a) { audience = a; break; }
+  }
+  /* An organisation with no role we serve a portal for is not a portal
+     account. Guessing "developer" would show a subcontractor a
+     developer's schemes. */
+  if (!audience) return null;
+
+  return {
+    Portal_Access_ID: null,
+    Email: c.Email,
+    Audience: audience,
+    Customer_ID: null,
+    Organisation_ID: organisationId,
+    Branch_ID: c.Organisation_Branch_ID ?? null,
+    Project_ID: c.Project_ID ?? null,
+    Full_Name: c.Contact_Name ?? null,
+    Is_Active: true,
+    /* Said so the portal and anybody reading a log can tell an explicit
+       grant from one inferred by being somebody's contact. */
+    Source: "contact",
+  };
 }
 
 /* The projects this caller may see, as ids.
@@ -156,7 +340,21 @@ export default withAuth(async function handler(req, context, user) {
   const what = context?.params?.what || url.searchParams.get("what") || "me";
 
   try {
-    const access = await accessFor(db, user);
+    /* ── Where portal access comes from, and the only places it does ──
+
+     A contact of an organisation, a contact of one of its branches, or
+     a stakeholder on a project. Nothing else: there is no separate
+     "portal account" to keep in step with the contact list, because
+     keeping two lists in step is what nobody does.
+
+     Narrowest first, which is also most specific first: a stakeholder
+     named on a scheme means that scheme, whatever else they are.
+
+     `Portal_Access` rows are still read (`accessFor`) and still win
+     where one exists, but only as a legacy grant for accounts made
+     before this: nothing creates them as the route in any more. */
+  const access = (await contactAccessFor(db, user))
+    ?? (await accessFor(db, user));
 
     /* Who am I, and what am I allowed to open? Answered even for an
        account with no portal record, because the app needs to know

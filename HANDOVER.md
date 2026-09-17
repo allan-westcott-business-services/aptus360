@@ -5854,6 +5854,139 @@ characters is a hundred lines of prose and no rules at all.
      somebody can see, missing from the page with nothing to say why,
      is the worst outcome available.
 
+     ⚠ **And I left `))}` on the page.** Lifting the site card out into
+     its own function left the old list's closers behind, and a `))}`
+     on its own line is not a syntax error — it is a JSX TEXT node, so
+     React printed it beside the panel. The build passed and nothing
+     warned. Twice this session, both times after code was lifted out
+     of a `.map` into a function.
+
+     `checkjsxclosers.mjs` now catches the shape: a line of nothing but
+     closing parens immediately after a line that already ends `)}`. A
+     genuine closer never follows one of those — it follows the thing
+     it closes. Zero hits across 114 files and it reproduces the real
+     bug, which is the test a heuristic has to pass before it earns a
+     place: a first attempt flagged three innocent `}}` lines and was
+     narrowed rather than shipped.
+
+     **A client door opened the staff app.** Reported as "I sign in at
+     the Developer portal with a test address and land in the staff
+     app". `/portal/me` answers with no audience when the account has
+     no `Portal_Access` row, and NO ROW MEANS STAFF — which is right,
+     because staff have no portal record and there are far more of
+     them. It also meant any account without a record walked through
+     the client door into the whole internal application.
+
+     Not an escalation: it took staff credentials to do it, and the
+     server still scopes every portal request by the record. But a door
+     that promises one thing and delivers another is wrong on its own
+     terms, and it makes testing the portal with your own login
+     impossible. A client door now only ever opens a client portal; an
+     account that turns out to be staff is told so and signed out, with
+     the way back offered.
+
+     The reverse is deliberately NOT guarded: staff signing in at the
+     staff door while also having a portal record is somebody's own
+     account, and the record says what they may see.
+
+     **Then: an address that DOES have a record still landed in the
+     staff app.** Three faults in `accessFor`, found by reading it
+     rather than by guessing:
+
+       - **`Project_ID` was not on the select list.** Mine, from 0223 —
+         and the comment four lines above it records the same fault
+         (recurring fault 4): a column not selected comes back
+         undefined and goes QUIET. Every site-scoped contact would have
+         been silently widened to their whole branch.
+       - **`maybeSingle()` fails when an address matches more than one
+         row**, and more than one is reasonable: a contact at two
+         branches is the case the sign-in was just rebuilt around. It
+         surfaced as "we could not work out which portal this account
+         belongs to", which reads as a broken account rather than a
+         duplicate record. Now: active rows, narrowest scope wins —
+         site, then branch, then organisation, the same order `mine()`
+         resolves in.
+       - **The audience was returned as typed.** The app routes on an
+         exact match, so an `Audience` of "Developer" routed nowhere
+         and fell through to staff. Normalised to lower case on the way
+         out.
+
+     Any one of those explains the report; the third is the likeliest.
+     Worth checking the row itself before assuming it is fixed.
+
+     **And the row was not there at all** — which turned out to be the
+     answer, and pointed at a different fault. `portal-accounts`
+     CREATES an auth user, and creating one fails when the address
+     already has a sign-in. It often does: a staff member given access
+     to a client's site, a contact set up for another audience, anybody
+     ever invited. The whole request then failed and NOTHING was
+     recorded — and the failure looks exactly like success from the
+     outside, because the person can still sign in with the credentials
+     they already had, and lands wherever an account with no portal
+     record lands.
+
+     An existing sign-in is now reused rather than treated as an error:
+     the account exists, and what this endpoint is actually for is the
+     record that says who they are to us. The rollback was narrowed to
+     match — a failed insert must not delete an auth user this request
+     did not create, or a portal record failing would take away
+     somebody's staff login.
+
+     The shape worth remembering: an operation that half-succeeds and
+     reports nothing is worse than one that fails loudly, and "they can
+     sign in" is not evidence that setting them up worked.
+
+     **And the real answer, which none of the above was:** the contact
+     had been added under Organisations › Branches & contacts, which
+     writes `Organisation_Contact` — a different table from
+     Portal_Access entirely. Everything the portal needed was already
+     recorded; it was simply looking somewhere else.
+
+     So (0224) **a contact IS a portal identity.** `Organisation_Contact`
+     gains `Organisation_ID` and `Project_ID` beside its existing
+     branch, giving the three scopes asked for at the start; existing
+     branch rows have their organisation backfilled. `portal.js` falls
+     back to the contact list when there is no explicit grant, with
+     scope narrowest-first and the audience taken from
+     `Organisation_By_Role` — the view the rest of the app reads, so
+     "is this a DNO" keeps one answer.
+
+     Two guards, both load-bearing:
+       - **Staff are excluded.** Many of our own people are contacts on
+         an organisation, and reading that as portal access would take
+         a staff member OUT of the application and into a client
+         portal — a worse fault than the one being fixed. A contact
+         whose address belongs to an active `Person` is not a portal
+         identity; somebody who genuinely needs both gets an explicit
+         Portal_Access row, which still wins.
+       - **An organisation with no portal-serving role yields nothing.**
+         Guessing "developer" would show a subcontractor a developer's
+         schemes.
+
+     **Then the order was reversed, at the user's direction.** Access
+     comes from three places and only three:
+
+       - a contact of an ORGANISATION — every site of every branch;
+       - a contact of a BRANCH — that branch's sites;
+       - a STAKEHOLDER on a project (`Project_Contact`) — that scheme,
+         whatever else they are.
+
+     The contact list is asked FIRST and `Portal_Access` after it, as a
+     legacy grant for accounts made before this. Nothing creates one as
+     the route in any more. The reasoning is the one this whole episode
+     demonstrated: two lists to keep in step is what nobody does, and a
+     contact was added while the portal knew nothing about them.
+
+     A stakeholder names no company, so their audience comes from the
+     SCHEME's developer, through `Project_Developer` — the record, not
+     the cached column. A scheme with no developer recorded yields
+     nothing rather than a portal opened on a guess.
+
+     Worth noting the shape of this particular fix: the list somebody
+     maintains while running a job is the list that should decide who
+     can watch it. Access that has to be granted separately is access
+     that will be forgotten.
+
      Two cases in `checkportal.mjs` asserted the old form and were
      rewritten, not deleted — one required the organisation and branch
      fields, the other required the sign-in to distinguish a failed

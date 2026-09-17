@@ -78,10 +78,33 @@ export default withAuth(async function handler(req, context, user) {
       return json({ error: "That email already has portal access." }, 409);
     }
 
+    /* ── An address that can already sign in ──
+
+       Creating an auth user fails outright when one exists for that
+       address, and one often does: a staff member given portal access
+       to their own client's site, a contact who was set up for another
+       audience, anybody who has ever been invited. The whole request
+       then failed and NOTHING was recorded — which reads exactly like
+       the account was created, because the person can still sign in.
+       They sign in with the credentials they already had, land
+       wherever an account with no portal record lands, and nobody can
+       see why.
+
+       So an existing user is not an error. The account already exists;
+       what is missing is the record that says who they are to us, and
+       that is what this endpoint is really for. */
+    const { data: known } = await db.auth.admin.listUsers({ page: 1, perPage: 200 });
+    const already = (known?.users || []).find((u) =>
+      String(u.email || "").toLowerCase() === newEmail.toLowerCase());
+
     /* The auth user. Invited by default: a password we choose is a
        password that lives in an email thread. */
-    let authUser = null;
-    if (password) {
+    let authUser = already ?? null;
+    if (already) {
+      /* Nothing to create, and deliberately nothing changed either: we
+         do not reset somebody's password because they were given
+         access to a portal. */
+    } else if (password) {
       const { data, error } = await db.auth.admin.createUser({
         email: newEmail,
         password,
@@ -113,7 +136,11 @@ export default withAuth(async function handler(req, context, user) {
     });
 
     if (insErr) {
-      if (authUser?.id) {
+      /* Roll back only what this request made. Deleting an account that
+         existed before would take somebody's staff login away because a
+         portal record failed to insert — a far worse outcome than the
+         one being recovered from. */
+      if (authUser?.id && !already) {
         try { await db.auth.admin.deleteUser(authUser.id); } catch { /* reported below */ }
       }
       throw insErr;

@@ -162,6 +162,185 @@ const mine = (() => {
   }
 }
 
+// 6. The access lookup selects what the scoping reads, tolerates more
+//    than one row, and does not care about the case of the audience.
+{
+  const portalFn = readFileSync("./netlify/functions/portal.js", "utf8");
+  const at = portalFn.indexOf("async function accessFor(db, user)");
+  const fn = at >= 0 ? portalFn.slice(at, portalFn.indexOf("\n}", at)) : "";
+  /* Comments stripped before anything is asserted about the CODE. The
+     first version of this failed on the word "maybeSingle" inside the
+     comment explaining why maybeSingle was removed — a check that reads
+     prose as instructions will always end up arguing with the
+     explanation of itself. */
+  const code = fn
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+
+  if (!fn) {
+    fail("the access lookup cannot be found where it was");
+  } else {
+    /* Every column the scoping reads must be on the select list. A
+       column not selected comes back undefined and goes quiet: without
+       Project_ID here, a contact scoped to one site is silently widened
+       to their whole branch. */
+    for (const col of ["Project_ID", "Branch_ID", "Organisation_ID",
+      "Customer_ID", "Audience", "Is_Active"]) {
+      if (!new RegExp(`${col}`).test(code.slice(0, code.indexOf(".ilike")))) {
+        fail(`${col} is not selected, so the scoping reads undefined and `
+          + "quietly widens what the account can see");
+      }
+    }
+
+    /* More than one row for an address is a reasonable thing to have —
+       a contact at two branches is the case the sign-in was rebuilt
+       around — and `maybeSingle` FAILS on it, which reads as a broken
+       account rather than a duplicate record. */
+    if (/maybeSingle\(\)/.test(code)) {
+      fail("the lookup uses maybeSingle, so an address with two portal "
+        + "records fails to sign in at all");
+    }
+    if (!/rank\(a\) - rank\(b\)/.test(code)) {
+      fail("with several records, the narrowest scope does not win — the "
+        + "narrower one is the deliberate one");
+    }
+
+    /* And an audience of "Developer" is the same audience as
+       "developer". The app routes on an exact match. */
+    if (!/toLowerCase\(\)/.test(code.slice(code.indexOf("return {")))) {
+      fail("the audience is returned as typed, so a capitalised one routes "
+        + "nowhere and lands in the staff app");
+    }
+  }
+}
+
+// 7. Giving portal access to an address that can ALREADY sign in.
+//
+//    Creating an auth user fails when one exists, and one often does:
+//    a staff member given access to a client's site, a contact set up
+//    for another audience, anybody ever invited. The whole request then
+//    failed and NOTHING was recorded — which reads exactly like success,
+//    because the person can still sign in, with their old credentials,
+//    landing wherever an account with no portal record lands.
+{
+  const fn = readFileSync("./netlify/functions/portal-accounts.js", "utf8");
+  const code = fn
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+
+  if (!/listUsers/.test(code)) {
+    fail("the endpoint does not look for an existing sign-in, so giving "
+      + "portal access to anybody who already has one fails outright and "
+      + "records nothing");
+  }
+  if (!/let authUser = already/.test(code)) {
+    fail("an existing sign-in is not reused, so the request still tries to "
+      + "create one");
+  }
+  /* And the rollback only removes what this request made. Deleting an
+     account that existed before would take somebody's staff login away
+     because a portal record failed to insert. */
+  if (!/authUser\?\.id && !already/.test(code)) {
+    fail("a failed insert deletes an auth user that existed beforehand, "
+      + "which takes away a login this request did not create");
+  }
+}
+
+// 8. A CONTACT is a portal identity, and staff are not.
+//
+//    Somebody recording a contact against a branch has already said
+//    who they are, which company and which office. Asking for it again
+//    as a "portal account" is how the two came apart: a contact was
+//    added, the portal knew nothing of them, and signing in put them
+//    where an account with no record goes.
+{
+  const portalFn = readFileSync("./netlify/functions/portal.js", "utf8");
+  const at = portalFn.indexOf("async function contactAccessFor(db, user)");
+  const fn = at >= 0 ? portalFn.slice(at, portalFn.indexOf("\n}\n", at)) : "";
+  const code = fn.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+  if (!fn) {
+    fail("a contact is not read as a portal identity, so adding somebody to "
+      + "a branch still grants nothing");
+  } else {
+    /* Staff first, and it must RETURN rather than merely note it: many
+       of our own people are contacts on an organisation, and reading
+       that as portal access would take a staff member out of the
+       application and into a client portal. */
+    if (!/from\("Person"\)[\s\S]{0,200}return null/.test(code)) {
+      fail("a staff member listed as a contact is treated as a portal "
+        + "account, which takes them out of the application");
+    }
+    /* Narrowest scope wins, as everywhere else. */
+    if (!/rank\(a\) - rank\(b\)/.test(code)) {
+      fail("a contact with several records does not resolve to the "
+        + "narrowest scope");
+    }
+    /* The audience comes from what the ORGANISATION is, from the view
+       the rest of the app reads. */
+    if (!/Organisation_By_Role/.test(code)) {
+      fail("the audience is decided from something other than the role "
+        + "view, so \"is this a DNO\" gets a second answer");
+    }
+    /* And an organisation with no portal-serving role is not a portal
+       account: guessing would show a subcontractor a developer's
+       schemes. */
+    if (!/if \(!audience\) return null/.test(code)) {
+      fail("an organisation with no portal role still yields an account");
+    }
+  }
+
+  /* ── Contacts and stakeholders are the SOURCE ──
+
+     Access comes from being a contact of an organisation, of one of its
+     branches, or a stakeholder on a project. Portal_Access is read
+     after them, as a legacy grant for accounts made before this, and
+     nothing creates one as the route in any more.
+
+     This case said the opposite a moment ago — that the explicit grant
+     wins — and was withdrawn at the user's direction: two lists to keep
+     in step is what nobody does, and it is exactly how a contact came
+     to be added while the portal knew nothing about them. */
+  if (!/contactAccessFor\(db, user\)\)\s*\n?\s*\?\? \(await accessFor/.test(portalFn)) {
+    fail("the contact list is not the first source of access, so somebody "
+      + "recorded as a contact still needs a second record made for them");
+  }
+
+  /* A stakeholder on a project is the third source, and the narrowest:
+     they see that scheme whatever else they are. */
+  if (!/from\("Project_Contact"\)/.test(portalFn)) {
+    fail("a stakeholder named on a project gets no access, so the list "
+      + "somebody maintains while running a job decides nothing");
+  }
+  {
+    const at2 = portalFn.indexOf('.from("Project_Contact")');
+    const around = portalFn.slice(at2 - 1200, at2 + 800);
+    if (!/Project_ID: p2\.Project_ID/.test(around)) {
+      fail("a stakeholder is not scoped to the project they are named on");
+    }
+  }
+  /* A stakeholder names no company, so the audience comes from the
+     SCHEME's developer — and a scheme with none recorded yields
+     nothing rather than a portal opened on a guess. */
+  if (!/from\("Project_Developer"\)[\s\S]{0,300}Organisation_Branch_ID/.test(portalFn)) {
+    fail("a stakeholder's portal is decided without reference to the "
+      + "scheme's developer");
+  }
+
+  const sql = readFileSync("./supabase/migrations/0224_contact_scope.sql", "utf8");
+  for (const col of ["Organisation_ID", "Project_ID"]) {
+    if (!new RegExp(`ADD COLUMN IF NOT EXISTS "${col}"`).test(sql)) {
+      fail(`a contact cannot be scoped by ${col}`);
+    }
+  }
+  /* Existing branch contacts get their organisation filled in, or a
+     contact of a branch would not be found by an organisation-level
+     lookup. */
+  if (!/UPDATE "Organisation_Contact"/.test(sql)) {
+    fail("existing branch contacts are left without an organisation");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Portal scopes: organisation, branch, one site \u2014 narrowest wins.");
 process.exit(bad ? 1 : 0);

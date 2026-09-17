@@ -184,6 +184,62 @@ export default function DeveloperPortal({ onSignOut, who }) {
                 ))}
               </ol>
 
+              {/* ── The POC applications, in full ──
+
+                  An application draws several options and each option
+                  several quotations, so this is a small tree rather
+                  than a date. Shown whole: collapsing it would hide
+                  that three options arrived and one was chosen, which
+                  is the part a developer is actually waiting on. */}
+              {detail.poc?.length > 0 && (
+                <>
+                  <h2>Point of connection</h2>
+                  {detail.poc.map((a) => (
+                    <div key={a.id} className="pt-poc">
+                      <strong>{a.utility}</strong>
+                      <div className="pt-quiet">
+                        {a.appliedOn
+                          ? `Applied ${dateText(a.appliedOn)}`
+                          : "Not yet applied for"}
+                        {a.party ? ` to ${a.party}` : ""}
+                      </div>
+
+                      {a.options.length === 0 && (
+                        <div className="pt-quiet">No options received yet.</div>
+                      )}
+
+                      {a.options.map((o) => (
+                        <div key={o.id} className="pt-opt">
+                          <div>
+                            <strong>{o.name}</strong>
+                            {o.selected && <span className="pt-chosen">chosen</span>}
+                            <span className="pt-quiet">
+                              {o.receivedOn
+                                ? ` \u00b7 received ${dateText(o.receivedOn)}`
+                                : " \u00b7 not yet received"}
+                            </span>
+                          </div>
+                          {o.quotations.length === 0 ? (
+                            <div className="pt-quiet">No quotations yet.</div>
+                          ) : (
+                            <ul className="pt-quotes">
+                              {o.quotations.map((q) => (
+                                <li key={q.id}>
+                                  {q.ref || "Quotation"}
+                                  {q.receivedOn && ` \u00b7 ${dateText(q.receivedOn)}`}
+                                  {q.cost != null && ` \u00b7 \u00a3${Number(q.cost)
+                                    .toLocaleString("en-GB")}`}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </>
+              )}
+
               <h2>We have asked you for</h2>
               {detail.documents.filter((d) => d.Direction === "from_developer")
                 .length === 0 && <p className="pt-quiet">Nothing at the moment.</p>}
@@ -289,6 +345,13 @@ const CSS = `
 .pt-step-when { font-size: 12.5px; color: var(--muted); }
 .pt-step-party, .pt-step-detail { display: block; font-size: 12.5px;
   color: var(--muted); }
+.pt-poc { border-top: 1px solid #e2e8f0; padding: 10px 0; }
+.pt-opt { margin: 8px 0 8px 14px; padding-left: 10px;
+  border-left: 2px solid #e2e8f0; }
+.pt-quotes { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px;
+  color: var(--muted); }
+.pt-chosen { margin-left: 6px; font-size: 11px; padding: 1px 7px;
+  border-radius: 999px; background: #dcfce7; color: #166534; }
 .pt-doc { display: flex; align-items: flex-start; justify-content: space-between;
   gap: 14px; padding: 12px 0; border-top: 1px solid #e2e8f0; }
 .pt-doc-act { display: flex; gap: 8px; flex-shrink: 0; }

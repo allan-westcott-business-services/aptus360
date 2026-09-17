@@ -224,35 +224,202 @@ export default withAuth(async function handler(req, context, user) {
     }
 
     if (what === "site") {
-      const [proj, types, marks, docs] = await Promise.all([
+      const [proj, types, marks, docs, scopes, apps, utils] = await Promise.all([
         db.from("Project").select(PROJECT_COLS).eq("Project_ID", projectId).single(),
         db.from("Milestone_Type").select("*").eq("Is_Active", true).order("Sort_Order"),
         db.from("Project_Milestone").select("*").eq("Project_ID", projectId),
         db.from("Portal_Document").select("*").eq("Project_ID", projectId)
           .eq("Is_Active", true).order("Sort_Order"),
+        /* Outline design, per utility: the scope row's Actual_Date. */
+        db.from("Project_Scope")
+          .select("Project_Scope_ID,Utility_ID,Actual_Date,Target_Date")
+          .eq("Project_ID", projectId).order("Utility_ID"),
+        /* POC applications, with who each went to. */
+        db.from("POC_Application")
+          .select("POC_Application_ID,Utility_ID,Application_Date,Submitted_Date,"
+            + "DNO_Organisation_ID,IDNO_Organisation_ID")
+          .eq("Project_ID", projectId).order("POC_Application_ID"),
+        db.from("Utility").select("Utility_ID,Utility"),
       ]);
-      for (const r of [proj, types, marks, docs]) if (r.error) throw r.error;
+      for (const r of [proj, types, marks, docs, scopes, apps, utils]) {
+        if (r.error) throw r.error;
+      }
+
+      const utilityName = (id) => (utils.data || [])
+        .find((u) => Number(u.Utility_ID) === Number(id))?.Utility ?? `Utility ${id}`;
+
+      /* ── Options and quotations ──
+
+         An application draws several options and each option several
+         quotations, so this is not one date: it is a small tree, and
+         the developer is shown all of it. Collapsing it to "quotation
+         received on X" would hide the fact that three arrived and one
+         was chosen, which is the part they are waiting on. */
+      const appIds = (apps.data || []).map((a) => Number(a.POC_Application_ID));
+      let options = [];
+      let quotes = [];
+      if (appIds.length) {
+        const [o, q] = await Promise.all([
+          db.from("POC_Option")
+            .select("Option_ID,POC_Application_ID,Option_Name,Date_Received,Selected")
+            .in("POC_Application_ID", appIds).order("Option_ID"),
+          db.from("POC_Quotation")
+            .select("Quotation_ID,Option_ID,Quotation_Ref,Date_Received,Estimated_Cost")
+            .order("Quotation_ID"),
+        ]);
+        if (o.error) throw o.error;
+        if (q.error) throw q.error;
+        options = o.data || [];
+        const mineOptions = new Set(options.map((x) => Number(x.Option_ID)));
+        /* Filtered here rather than in the query: the quotations table
+           has no project on it, so the tie to this site is through the
+           options, and those are already proved. */
+        quotes = (q.data || []).filter((x) => mineOptions.has(Number(x.Option_ID)));
+      }
+
+      /* Who an application went to. The organisation names are looked
+         up once: "applied for" is half an answer without the party, and
+         it is the half a developer chases. */
+      const partyIds = [...new Set((apps.data || [])
+        .flatMap((a) => [a.DNO_Organisation_ID, a.IDNO_Organisation_ID])
+        .filter((x) => x != null).map(Number))];
+      let parties = [];
+      if (partyIds.length) {
+        const { data, error } = await db.from("Organisation")
+          .select("Organisation_ID,Name").in("Organisation_ID", partyIds);
+        if (error) throw error;
+        parties = data || [];
+      }
+      const partyName = (id) => parties
+        .find((o) => Number(o.Organisation_ID) === Number(id))?.Name ?? null;
+
+      const poc = (apps.data || []).map((a) => {
+        const mine2 = options.filter((o) =>
+          Number(o.POC_Application_ID) === Number(a.POC_Application_ID));
+        return {
+          id: a.POC_Application_ID,
+          utility: utilityName(a.Utility_ID),
+          /* Application_Date is the date asked for; Submitted_Date is
+             filled on some rows and not the other. Read in that order
+             and the source is said, so a developer chasing a date can
+             be told which field it came from. */
+          appliedOn: a.Application_Date ?? a.Submitted_Date ?? null,
+          appliedSource: a.Application_Date ? "Application_Date"
+            : (a.Submitted_Date ? "Submitted_Date" : null),
+          party: partyName(a.IDNO_Organisation_ID) ?? partyName(a.DNO_Organisation_ID),
+          options: mine2.map((o) => ({
+            id: o.Option_ID,
+            name: o.Option_Name,
+            receivedOn: o.Date_Received ?? null,
+            selected: !!o.Selected,
+            quotations: quotes
+              .filter((qq) => Number(qq.Option_ID) === Number(o.Option_ID))
+              .map((qq) => ({
+                id: qq.Quotation_ID,
+                ref: qq.Quotation_Ref,
+                receivedOn: qq.Date_Received ?? null,
+                cost: qq.Estimated_Cost ?? null,
+              })),
+          })),
+        };
+      });
+
+      /* ── Dates the system already knows ──
+
+         Derived at read time rather than copied into Project_Milestone
+         by a job. The argument for recording them was that the sources
+         are scattered and nullable; the argument against a job is that
+         a copy goes stale silently, and these four have exactly one
+         source each. So they are read from the source, and
+         Project_Milestone remains for the stages nothing records yet —
+         which staff set by hand and which therefore SHOULD be a stored
+         statement. */
+      const derived = new Map();
+
+      if (proj.data?.Date_Received) {
+        derived.set("enquiry", {
+          achievedOn: proj.data.Date_Received, source: "Project.Date_Received",
+        });
+      }
+
+      const applied = poc
+        .map((x) => x.appliedOn).filter(Boolean).sort();
+      if (applied.length) {
+        derived.set("poc_applied", {
+          achievedOn: applied[0],
+          /* Named, with the utility, where more than one application
+             exists: "submitted" on a site with gas and electric is two
+             different dates to two different people. */
+          party: poc.filter((x) => x.appliedOn)
+            .map((x) => `${x.utility}${x.party ? ` to ${x.party}` : ""}`)
+            .join("; "),
+          source: "POC_Application",
+        });
+      }
+
+      const quoted = poc
+        .flatMap((x) => x.options.flatMap((o) => [
+          o.receivedOn, ...o.quotations.map((qq) => qq.receivedOn),
+        ])).filter(Boolean).sort();
+      if (quoted.length) {
+        derived.set("poc_quoted", {
+          achievedOn: quoted[0], source: "POC_Option / POC_Quotation",
+        });
+      }
+
+      /* Outline design is per utility, so it becomes one line per
+         utility in scope rather than a single date that would have to
+         mean "all of them" or "any of them" and could not say which. */
+      const design = (scopes.data || []).map((sc) => ({
+        key: `outline_design_${sc.Utility_ID}`,
+        label: `Outline design complete \u2014 ${utilityName(sc.Utility_ID)}`,
+        achievedOn: sc.Actual_Date ?? null,
+        dueOn: sc.Target_Date ?? null,
+        source: "Project_Scope.Actual_Date",
+      }));
 
       /* Every milestone the business tracks, with the ones this site
          has reached filled in. A developer seeing only what has
          happened cannot tell what is still to come, which is most of
          what they want to know. */
       const byKey = new Map((marks.data || []).map((m) => [m.Milestone_Key, m]));
-      const milestones = (types.data || []).map((t) => {
+      const milestones = [];
+      for (const t of types.data || []) {
+        /* The one stage that is several: a line per utility in scope,
+           in place of the single outline_design row. */
+        if (t.Milestone_Key === "outline_design") {
+          for (const d of design) {
+            milestones.push({ ...d, wantsParty: false, party: null, detail: null });
+          }
+          if (!design.length) {
+            milestones.push({
+              key: t.Milestone_Key, label: t.Label, detail: t.Detail ?? null,
+              wantsParty: false, achievedOn: null, dueOn: null,
+              party: null, source: null,
+            });
+          }
+          continue;
+        }
+
         const m = byKey.get(t.Milestone_Key);
-        return {
+        const d = derived.get(t.Milestone_Key);
+        milestones.push({
           key: t.Milestone_Key,
           label: m?.Label || t.Label,
           detail: m?.Detail ?? t.Detail ?? null,
           wantsParty: !!t.Wants_Party,
-          achievedOn: m?.Achieved_On ?? null,
+          /* The SOURCE wins where there is one. A hand-entered date
+             that disagrees with the system is a date somebody typed
+             before the system knew; showing the typed one would be
+             showing the older answer. */
+          achievedOn: d?.achievedOn ?? m?.Achieved_On ?? null,
           dueOn: m?.Due_On ?? null,
-          party: m?.Party ?? null,
-          source: m?.Source ?? null,
-        };
-      });
+          party: d?.party ?? m?.Party ?? null,
+          source: d?.source ?? m?.Source ?? null,
+        });
+      }
 
-      return json({ site: proj.data, milestones, documents: docs.data || [] });
+      return json({ site: proj.data, milestones, poc, documents: docs.data || [] });
     }
 
     /* A signed link to read a document we have given them, or to put

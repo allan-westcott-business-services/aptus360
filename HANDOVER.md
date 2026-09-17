@@ -5419,15 +5419,69 @@ characters is a hundred lines of prose and no rules at all.
      repo has to a schema. Any endpoint inventing a column now fails a
      check rather than a user.
 
-     And the same reading found a better route to a developer's sites:
-     **`Project` carries `Organisation_Branch_ID` itself**, which is
-     how most schemes are recorded. `Project_Developer` covers the ones
-     with more than one developer, where the project's own branch is
-     somebody else's. Both are read; either alone leaves sites out.
+     ⚠⚠ **And I nearly scoped the portal on a CACHED column.** Reading
+     the project columns turned up `Project.Organisation_Branch_ID`,
+     which looks like the obvious route to a developer's sites, and I
+     used it. It is a cached copy of the main developer written by
+     `sync_project_main_developer()` — projects.js says so beside the
+     code that maintains it — and on the live data it has drifted
+     badly: ELEVEN unrelated schemes all carry branch 17, including
+     sites belonging to other developers entirely. The user spotted it
+     immediately; the portal would have shown one developer ten other
+     developers' projects.
 
-     **Still to do:** a job that writes the milestone dates as each
-     stage completes (nothing writes them yet — staff can only enter
-     them by hand), and the DNO and IDNO portals.
+     Scoping now reads `Project_Developer` only, which is the record
+     rather than a copy of it, and a check fails if the cached column
+     reappears in the scoping query.
+
+     The rule worth keeping: **a denormalised convenience column is
+     fine for a screen that staff can see is wrong, and is not fit to
+     decide who may see what.** Authorisation reads the record.
+
+     Separately, the cache itself is wrong on live data and worth
+     fixing — a screen reading it is showing eleven projects the wrong
+     developer.
+
+     **The dates, from the sources the business named.** Four of them,
+     and DERIVED at read time rather than copied into Project_Milestone
+     by a job:
+
+       enquiry          `Project.Date_Received`
+       poc_applied      `POC_Application.Application_Date`, falling back
+                        to `Submitted_Date` where the first is null —
+                        both are populated on live rows, and the
+                        response says which was used
+       poc_quoted       `POC_Option.Date_Received` and
+                        `POC_Quotation.Date_Received`
+       outline design   `Project_Scope.Actual_Date`, PER UTILITY
+
+     0218 argued for recording rather than deriving, on the grounds
+     that the sources were scattered. With the sources actually named
+     that argument reverses: each has exactly one, and a copy goes
+     stale silently where a read cannot. `Project_Milestone` stays for
+     the stages nothing records yet, which staff set by hand and which
+     therefore should be a stored statement. Where both exist the
+     SOURCE wins: a hand-entered date that disagrees was typed before
+     the system knew.
+
+     **Outline design is one line per utility**, not one for the site.
+     A single date would have to mean "all of them" or "any of them"
+     and could not say which, and a site with gas and electric is owed
+     both.
+
+     **POC options and quotations are shown whole.** An application
+     draws several options and each option several quotations, so it is
+     a tree rather than a date — collapsing it would hide that three
+     arrived and one was chosen, which is the part a developer is
+     waiting on. `POC_Quotation` carries no project, so the tie to the
+     site is through the options, which are already proved; a check
+     asserts that filtering happens, because without it one site's page
+     lists another's quotations.
+
+     **Still to do:** the remaining stages have no source yet
+     (accepted, detailed design, adoption, works start, energised,
+     complete) and need either a source naming or a staff screen; and
+     the DNO and IDNO portals.
 
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the

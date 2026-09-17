@@ -379,12 +379,75 @@ const sql = readFileSync("./supabase/migrations/0218_portal.sql", "utf8");
     }
   }
 
-  /* And a developer's sites are found BOTH ways: a project names its
-     developer's branch directly, and Project_Developer names them on
-     schemes with more than one. Either alone leaves sites out. */
-  if (!/from\("Project"\)\.select\("Project_ID"\)\s*\n?\s*\.in\("Organisation_Branch_ID"/.test(portal)) {
-    fail("sites are not found by the project's own branch, so a scheme "
-      + "recorded the ordinary way would be invisible to its developer");
+  /* ── Scoping reads the RECORD, never the cache ──
+
+     `Project.Organisation_Branch_ID` is a cached copy of the main
+     developer, maintained by a trigger, and on the live data it has
+     drifted: eleven unrelated schemes all carry branch 17. Using it
+     would show one developer another developer's projects.
+
+     A denormalised convenience column is fine for a screen that staff
+     can see is wrong. It is not fit to decide who may see what. */
+  if (/from\("Project"\)\.select\("Project_ID"\)[\s\S]{0,80}Organisation_Branch_ID/.test(portal)) {
+    fail("a developer's sites are found through Project's CACHED branch "
+      + "column, which has drifted on live data \u2014 authorisation must read "
+      + "Project_Developer, which is the record");
+  }
+  if (!/from\("Project_Developer"\)\.select\("Project_ID"\)/.test(portal)) {
+    fail("sites are not found through Project_Developer at all");
+  }
+}
+
+// 17. The dates come from where the system already knows them.
+//
+//     Four sources, given by the business:
+//       enquiry          Project.Date_Received
+//       poc_applied      POC_Application.Application_Date
+//       poc_quoted       POC_Option / POC_Quotation Date_Received
+//       outline design   Project_Scope.Actual_Date, PER UTILITY
+{
+  for (const [what, needle] of [
+    ["the enquiry date", /Date_Received/],
+    ["the POC application date", /from\("POC_Application"\)/],
+    ["the options received", /from\("POC_Option"\)/],
+    ["the quotations received", /from\("POC_Quotation"\)/],
+    ["the outline design dates", /from\("Project_Scope"\)/],
+  ]) {
+    if (!needle.test(portal)) fail(`${what} is not read from the system`);
+  }
+
+  /* Outline design is per utility. A single date would have to mean
+     "all of them" or "any of them" and could not say which \u2014 and a
+     developer with gas and electric on one site is owed both. */
+  if (!/outline_design_\$\{sc\.Utility_ID\}/.test(portal)) {
+    fail("outline design is one date for the whole site rather than one "
+      + "per utility, so it cannot say which utility is designed");
+  }
+
+  /* Options and quotations are shown WHOLE, not collapsed to a date.
+     Three options arriving and one being chosen is the part a
+     developer is waiting on. */
+  if (!/quotations:/.test(portal)) {
+    fail("quotations are collapsed away, so a developer cannot see what "
+      + "arrived or which option was chosen");
+  }
+  const dev = readFileSync("./src/features/portal/DeveloperPortal.jsx", "utf8");
+  if (!/detail\.poc/.test(dev)) {
+    fail("the portal does not show the POC options and quotations");
+  }
+
+  /* Quotations have no project on them, so the tie to this site is
+     through the options \u2014 which are already proved. Filtering must
+     happen, or one site's page would list another's quotations. */
+  if (!/mineOptions\.has\(Number\(x\.Option_ID\)\)/.test(portal)) {
+    fail("quotations are not tied back to this site's own options");
+  }
+
+  /* Where the system knows, the system wins: a hand-entered date that
+     disagrees was typed before the system knew. */
+  if (!/d\?\.achievedOn \?\? m\?\.Achieved_On/.test(portal)) {
+    fail("a hand-entered date outranks the system's own, which shows the "
+      + "older answer");
   }
 }
 

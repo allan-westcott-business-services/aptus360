@@ -342,17 +342,23 @@ export const ADMIN_TABLES = [
   /* The CAD team's own layer names, recorded so a mapping rule can
      pick one rather than having it typed again. Their standard, held
      by us: a plain list, edited as a plain table. */
+  /* Three questions, because three is all this list needs: what the
+     layer is called, which utility it is for, and whether it takes
+     lines or points.
+
+     Colour and linetype are deliberately NOT asked. They would only
+     matter if our DXF defined how the layer looks — and it does not:
+     the file is imported into a drawing that already has these layers,
+     and the receiving template's own colours and linetypes win. Asking
+     for them would be asking somebody to type a hundred values that
+     are never read. */
   { key: "CAD_Layer", label: "CAD Layer Names", pk: "CAD_Layer_ID", fields: [
     { col: "Layer_Name", label: "Layer name", type: "text", required: true },
     { col: "Layer_Key", label: "Class", type: "select",
       options: ["water", "gas", "electric", "trench", "lighting", "annotation"] },
     { col: "Geometry_Type", label: "Geometry", type: "select",
       options: ["Line", "Point", "Polygon"] },
-    { col: "ACI_Colour", label: "Colour (ACI)", type: "number" },
-    { col: "Linetype", label: "Linetype", type: "text" },
-    { col: "Sort_Order", label: "Sort Order", type: "number" },
     { col: "Is_Active", label: "Active", type: "checkbox" },
-    { col: "Notes", label: "Notes", type: "text" },
   ] },
   { key: "Portal_Access", label: "Portal Accounts", special: "portalaccounts" },
 ];

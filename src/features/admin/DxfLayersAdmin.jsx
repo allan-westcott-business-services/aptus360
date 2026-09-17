@@ -470,10 +470,14 @@ export default function DxfLayersAdmin() {
                       /* The NAME is copied onto the rule as well as the
                          id. The export reads a name, and a rule that
                          only pointed at a row would export nothing at
-                         all if that row were ever deleted. */
-                      CAD_Layer: row?.Layer_Name ?? d.CAD_Layer,
-                      ACI_Colour: row?.ACI_Colour ?? d.ACI_Colour,
-                      Linetype: row?.Linetype ?? d.Linetype }));
+                         all if that row were ever deleted.
+
+                         Colour and linetype are not copied: the layer
+                         list no longer records them, because the
+                         drawing this file is imported into already has
+                         these layers and its own template decides how
+                         they look. */
+                      CAD_Layer: row?.Layer_Name ?? d.CAD_Layer }));
                   }}>
                   <option value="">&mdash; type one below &mdash;</option>
                   {cadLayers

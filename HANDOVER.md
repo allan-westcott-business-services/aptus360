@@ -5223,6 +5223,20 @@ characters is a hundred lines of prose and no rules at all.
      reads a name and a rule pointing only at a row would export
      nothing if that row were deleted.
 
+     The layer-names form asks THREE questions — name, class, geometry
+     — and no more. Colour and linetype were there and are not now:
+     they would only matter if our DXF defined how a layer LOOKS, and
+     it does not. The file is imported into a drawing that already has
+     these layers, and the receiving template's own properties win.
+     Asking for them was asking somebody to type a hundred values
+     nothing reads. Sort order and notes went for the same reason:
+     nothing sorts by one and nothing shows the other.
+
+     The columns stay on the table, unused. Dropping them would be
+     tidier and would also throw away anything already typed into them
+     by somebody who read the old form; they cost nothing where they
+     are.
+
      **The entry form asks in the order somebody thinks in**: class,
      geometry, then the sizes THAT class has, then their layer. Gas and
      Line shows gas pipe sizes; water shows water; electric shows cable

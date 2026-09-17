@@ -315,6 +315,30 @@ const at = (f, org = null) => layerFor(f, { rules, lineTypes, organisationId: or
   if (!/key: "CAD_Layer"/.test(tables)) {
     fail("there is no screen for entering the CAD team's layer names");
   }
+  /* Three questions and no more. Colour and linetype would only matter
+     if our DXF defined how a layer looks, and it does not: the file is
+     imported into a drawing that already has these layers, and the
+     receiving template's own properties win. Asking for them is asking
+     somebody to type a hundred values nothing reads. */
+  {
+    const at = tables.indexOf('key: "CAD_Layer"');
+    /* A fixed window rather than up to the first "] },": an options
+       array closes with exactly that, so cutting there stopped the
+       slice half way through the fields and reported a field missing
+       that was there. */
+    const block = at >= 0 ? tables.slice(at, at + 900) : "";
+    for (const col of ["ACI_Colour", "Linetype", "Sort_Order", "Notes"]) {
+      if (block.includes(`col: "${col}"`)) {
+        fail(`the layer-names form asks for ${col}, which nothing reads`);
+      }
+    }
+    for (const col of ["Layer_Name", "Layer_Key", "Geometry_Type"]) {
+      if (!block.includes(`col: "${col}"`)) {
+        fail(`the layer-names form no longer asks for ${col}, which the `
+          + "mapping form needs to narrow its list");
+      }
+    }
+  }
 
   const screen = readFileSync("./src/features/admin/DxfLayersAdmin.jsx", "utf8");
   /* Asked in order: class, geometry, the sizes THAT class has, then

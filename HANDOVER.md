@@ -5761,6 +5761,39 @@ characters is a hundred lines of prose and no rules at all.
      return — that distinguishes a remount from a re-render, and the
      two have completely different causes.
 
+146. **The audience landing page now looks like the section one**, and
+     its four buttons sit in a two-by-two square rather than a row.
+
+     These are the two screens somebody sees before they are anywhere:
+     one asks who you are, the other what you came to do. Styled apart
+     they read as two products; styled alike they read as one door with
+     two questions behind it. The audience page had its own flatter
+     squares — a hairline border, a grey wash, left-aligned text — and
+     now carries the section page's: a true square by aspect-ratio, the
+     2px border in the area's own colour, the same hover lift and focus
+     ring.
+
+     The grid is `repeat(2, 1fr)` rather than auto-fit. Four across a
+     wide screen is a row to read along; two-by-two is one shape the
+     eye takes in at once. It still collapses to a single column under
+     560px, where a two-column square is two narrow boxes.
+
+     **The CSS is copied, not shared**, because the original keeps its
+     own inside its component and lifting it into a stylesheet was a
+     bigger change than this warranted. A copy drifts unless something
+     watches it, so `checkportallanding.mjs` compares the rules the two
+     pages share and fails if any differ — with one deliberate
+     exception, the column layout the audience page needs for its
+     blurb, which the check strips before comparing.
+
+     If a third page ever wants these squares, that is the moment to
+     lift the CSS out: two copies is a coincidence, three is a pattern.
+     That check should be deleted then, not worked around.
+
+     It also asserts there are still FOUR audiences, since a two-by-two
+     only reads as a square with four — a fifth leaves an orphan on a
+     second row and the grid needs revisiting.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

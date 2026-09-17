@@ -84,22 +84,92 @@ export default function AudienceLanding({ onChoose }) {
 }
 
 const CSS = `
-.home { max-width: 980px; margin: 0 auto; padding: 48px 20px 64px; }
-.home-head { text-align: center; margin-bottom: 28px; }
-.home-logo { height: 54px; margin-bottom: 14px; }
-.home-head h1 { margin: 0 0 6px; font-size: 26px; }
-.home-head p { margin: 0; color: var(--muted); }
-.home-grid { display: grid; gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-.area-sq { display: flex; flex-direction: column; justify-content: flex-end;
-  gap: 8px; min-height: 160px; padding: 18px; text-align: left; cursor: pointer;
-  border: 1px solid var(--area-line, #e2e8f0); border-radius: 14px;
-  background: var(--area-bg, #f8fafc); color: #0f172a;
-  transition: transform .08s ease, box-shadow .12s ease; }
-.area-sq:hover { transform: translateY(-2px);
-  box-shadow: 0 10px 28px rgba(15, 23, 42, .12); }
-.area-name { font-size: 18px; font-weight: 700; }
-.area-blurb { font-size: 12.5px; color: var(--muted); }
+/* The section landing page's styling, kept the same on purpose.
+
+   These are the two pages somebody sees before they are anywhere: one
+   asks who you are, the other asks what you came to do. Styled apart
+   they read as two different products; styled the same they read as
+   one door with two questions behind it.
+
+   Copied rather than shared, and worth being honest about why: the
+   original keeps its CSS inside its own component, and lifting it into
+   a shared stylesheet is a bigger change than this warranted. If a
+   third page ever wants the same squares, that is the moment to move
+   it \u2014 two copies is a coincidence, three is a pattern.
+
+   Narrower than the rest of the app: FOUR audiences in a two-by-two
+   square, so the whole choice is one shape the eye takes in at once
+   rather than a row to read along. */
+.home { max-width: 560px; margin: 0 auto; padding: 20px 4px 40px; }
+
+.home-head { text-align: center; margin-bottom: 22px; }
+.home-logo {
+  width: 150px; height: auto; display: block; margin: 0 auto 14px;
+}
+.home-head h1 {
+  margin: 0 0 4px; font-size: 21px; font-weight: 700; letter-spacing: -0.015em;
+}
+.home-head p { margin: 0; font-size: 12.5px; color: var(--muted); }
+
+/* Two across, not auto-fit: four audiences laid in a row would stretch
+   the choice across the screen and leave the page bottom-heavy. Fixed
+   at two so it is a square in every window wide enough for one. */
+.home-grid {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+/* The square. The outline is the identity of the audience, so it is
+   2px and in full colour rather than a hairline that would read as a
+   generic card border. */
+.area-sq {
+  position: relative; aspect-ratio: 1; min-height: 110px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px;
+  text-align: center;
+  padding: 14px;
+  background: var(--white);
+  border: 2px solid var(--sq);
+  border-radius: 14px;
+  font-family: inherit; color: var(--text); cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: transform .16s ease, box-shadow .16s ease, background-color .16s ease;
+}
+.area-sq:hover {
+  background: var(--sq-wash);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 22px var(--sq-glow);
+}
+.area-sq:active { transform: translateY(-1px); }
+.area-sq:focus-visible {
+  outline: 3px solid var(--sq-ring);
+  outline-offset: 3px;
+}
+
+.area-name {
+  font-size: 15.5px; font-weight: 700; line-height: 1.3;
+  letter-spacing: -0.01em; text-wrap: balance;
+}
+/* The blurb the section page does not have. Kept quiet: it is there
+   for somebody unsure which of the four they are, and silent for
+   everybody else. */
+.area-blurb {
+  font-size: 12px; line-height: 1.35; color: var(--muted);
+  text-wrap: balance;
+}
+
 .home-foot { margin-top: 26px; text-align: center; color: var(--muted);
   font-size: 12.5px; }
+
+@media (max-width: 560px) {
+  .home-grid { grid-template-columns: 1fr; }
+  /* A full-width square is a very tall box on a phone, so the height of
+     its text is enough there. */
+  .area-sq { aspect-ratio: auto; min-height: 0; padding: 20px 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .area-sq { transition: none; }
+  .area-sq:hover { transform: none; }
+}
 `;

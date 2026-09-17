@@ -177,6 +177,19 @@ export function buildDxf(features = [], opts = {}) {
     });
   };
 
+  /* ── Everything takes its LAYER's properties ──
+
+     Colour 256 is BYLAYER and linetype "BYLAYER" says the same for the
+     linetype. Absent, a reader is entitled to default them — and some
+     do, to colour 7 white and CONTINUOUS — which is why moving an
+     entity to a layer left it looking exactly as it did before: it was
+     carrying its own properties, not the layer's.
+
+     Said explicitly on every entity rather than relied upon. A DXF is
+     read by many programs and the ones that matter here are the ones a
+     CAD team actually uses. */
+  const byLayer = pair(62, 256) + pair(6, "BYLAYER");
+
   let ents = "";
 
   for (const f of features) {
@@ -211,20 +224,27 @@ export function buildDxf(features = [], opts = {}) {
       mapped?.linetype);
 
     if (f.Feature_Type === "line" && g.length >= 2) {
-      /* POLYLINE, its VERTEXes, then SEQEND. Flag 8 on the polyline
-         says 3D-capable, which keeps a reader from assuming a plan
-         projection it then applies twice; every z here is zero because
-         the drawing is a plan. */
-      ents += pair(0, "POLYLINE") + pair(8, lay) + pair(66, 1)
-        + pair(10, "0.0") + pair(20, "0.0") + pair(30, "0.0") + pair(70, 8);
+      /* POLYLINE, its VERTEXes, then SEQEND — flat, in 2D.
+
+         Flag 70 was 8 here and 32 on each vertex, which are the flags
+         for a 3D POLYLINE and its vertices. A plan drawing is 2D: a
+         CAD team working in 2D got objects they could not edit as
+         lines, and the reasoning in the comment that used to sit here
+         — that 3D "keeps a reader from assuming a plan projection" —
+         was wrong. Zero on both is a plain 2D polyline, which is what
+         a setting-out drawing is made of.
+
+         Every z is zero for the same reason. */
+      ents += pair(0, "POLYLINE") + pair(8, lay) + byLayer + pair(66, 1)
+        + pair(10, "0.0") + pair(20, "0.0") + pair(30, "0.0") + pair(70, 0);
       for (const p of g) {
         ents += pair(0, "VERTEX") + pair(8, lay)
           + pair(10, num(p[0] + ox)) + pair(20, num(-p[1] + oy))
-          + pair(30, "0.000") + pair(70, 32);
+          + pair(30, "0.000") + pair(70, 0);
       }
       ents += pair(0, "SEQEND") + pair(8, lay);
     } else {
-      ents += pair(0, "POINT") + pair(8, lay)
+      ents += pair(0, "POINT") + pair(8, lay) + byLayer
         + pair(10, num(g[0][0] + ox)) + pair(20, num(-g[0][1] + oy))
         + pair(30, "0.000");
     }
@@ -237,7 +257,7 @@ export function buildDxf(features = [], opts = {}) {
       noteLayer(tl, mapped?.aci != null ? mapped.aci
         : (ap.labelColour ?? ap.colour ?? "#ffffff"), mapped?.linetype);
       const at = f.Feature_Type === "line" ? g[Math.floor(g.length / 2)] : g[0];
-      ents += pair(0, "TEXT") + pair(8, tl)
+      ents += pair(0, "TEXT") + pair(8, tl) + byLayer
         + pair(10, num(at[0] + ox)) + pair(20, num(-at[1] + oy))
         + pair(30, "0.000")
         /* Half a metre of text: readable at the scales these drawings
@@ -248,11 +268,59 @@ export function buildDxf(features = [], opts = {}) {
     }
   }
 
-  /* The layer table. Colour and a continuous linetype each, because a
-     layer with neither is legal and opens grey and dashed nowhere,
-     which is not the drawing. */
+  /* ── The tables a layer depends on ──
+
+     A layer names a linetype, and a DXF that names one it has not
+     DEFINED leaves the reader to substitute — which is one of the ways
+     a drawing arrives with none of its layer properties. So every
+     linetype the schedule mentions is defined here, CONTINUOUS
+     included.
+
+     LTYPE comes before LAYER because layers reference linetypes, and
+     STYLE is defined because the TEXT entities reference STANDARD.
+     Order matters to strict readers; AutoCAD is not one of them, and
+     the point of R12 is the ones that are.
+
+     The dash patterns are a straight line for CONTINUOUS and a plain
+     dash-gap for anything else named. A house linetype with a
+     particular pattern belongs in the receiving template, and when the
+     drawing is inserted there its own definition wins; this is enough
+     for the file to stand up on its own. */
+  const linetypes = new Set(["CONTINUOUS", "BYLAYER"]);
+  for (const def of used.values()) linetypes.add(def.linetype || "CONTINUOUS");
+  linetypes.delete("BYLAYER");
+
   let table = pair(0, "SECTION") + pair(2, "TABLES")
-    + pair(0, "TABLE") + pair(2, "LAYER") + pair(70, used.size + 1)
+    + pair(0, "TABLE") + pair(2, "LTYPE") + pair(70, linetypes.size);
+  for (const name of linetypes) {
+    if (name === "CONTINUOUS") {
+      table += pair(0, "LTYPE") + pair(2, "CONTINUOUS") + pair(70, 0)
+        + pair(3, "Solid line") + pair(72, 65) + pair(73, 0) + pair(40, "0.0");
+    } else {
+      /* 9 units on, 6 off: a dash somebody can see at the scales these
+         drawings plot at. */
+      table += pair(0, "LTYPE") + pair(2, name) + pair(70, 0)
+        + pair(3, "__ __ __") + pair(72, 65) + pair(73, 2) + pair(40, "15.0")
+        + pair(49, "9.0") + pair(49, "-6.0");
+    }
+  }
+  table += pair(0, "ENDTAB");
+
+  /* The text style the TEXT entities answer to. */
+  table += pair(0, "TABLE") + pair(2, "STYLE") + pair(70, 1)
+    + pair(0, "STYLE") + pair(2, "STANDARD") + pair(70, 0)
+    + pair(40, "0.0") + pair(41, "1.0") + pair(50, "0.0") + pair(71, 0)
+    + pair(42, "2.5") + pair(3, "txt") + pair(4, "")
+    + pair(0, "ENDTAB");
+
+  /* The layer table. Colour and a linetype each, because a layer with
+     neither is legal and opens grey and dashed nowhere, which is not
+     the drawing. */
+  /* The layer table. Colour and a linetype each, because a layer with
+     neither is legal and opens grey and dashed nowhere, which is not
+     the drawing. Layer "0" is always defined: a DXF without it is
+     malformed, whatever else is in the file. */
+  table += pair(0, "TABLE") + pair(2, "LAYER") + pair(70, used.size + 1)
     + pair(0, "LAYER") + pair(2, "0") + pair(70, 0) + pair(62, 7)
     + pair(6, "CONTINUOUS");
   for (const [name, def] of used) {

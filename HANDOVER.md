@@ -5169,6 +5169,33 @@ characters is a hundred lines of prose and no rules at all.
      entities behave as the kind of object the receiving team works
      with. Flags and BYLAYER are now asserted entity by entity.
 
+143. **The DXF exported 3D objects, and entities ignored their layer.**
+     Reported together, and the first causes much of the second.
+
+     The polyline carried flag 70 = 8 and each vertex 70 = 32 — the 3D
+     POLYLINE flags. My own comment claimed 3D "keeps a reader from
+     assuming a plan projection", which was invented reasoning for a
+     wrong number. A CAD team working in 2D got objects they could not
+     edit as lines, and a 3D polyline will not take a linetype
+     properly either, so moving one onto a layer did not make it look
+     like that layer. Both are 0 now: a plain 2D polyline at elevation
+     zero, which is what a plan is.
+
+     Separately, every entity now states `62 = 256` and `6 = BYLAYER`.
+     Absent, both SHOULD default to BYLAYER — and "should" is doing a
+     lot of work across the dozen programs a DXF passes through. An
+     entity carrying its own colour is precisely what stops it taking a
+     layer's when somebody moves it, which is what was being reported.
+
+     `checkdxf.mjs` now asserts no 3D flags, BYLAYER on every drawn
+     entity, and every z at zero: a stray elevation is what makes
+     geometry unsnappable in a 2D drawing.
+
+     The lesson worth keeping: the comment was confident and wrong, and
+     a confident comment on a magic number is worth more suspicion than
+     no comment at all. Numbers in a file format should cite the format,
+     not a rationale.
+
 142. **CAD layer mapping (feature).** The DXF export named layers from
      the drawing's own vocabulary; the CAD team keeps their own
      schedule. Migration **0216** adds `DXF_Layer_Map`: one row is one

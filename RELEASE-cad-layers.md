@@ -1,53 +1,60 @@
-# CAD Layers — mapping geometry to your AutoCAD layer names
+# CAD Layers — the whole feature, in one piece
 
-    supabase/migrations/0216_dxf_layer_map.sql    ← RUN FIRST
-    supabase/migrations/0217_dxf_layer_cable.sql  ← THEN THIS
-    src/features/gis/dxfLayerMap.js        new — matching and scoring
-    src/features/gis/dxf.js                the export reads the schedule
-    src/features/gis/GISCanvasPage.jsx     loads it when exporting
-    src/features/admin/DxfLayersAdmin.jsx  new — the CAD Layers screen
-    src/features/admin/AdminPage.jsx       registers the screen
-    src/lib/adminTables.js                 adds it to the admin menu
-    netlify/functions/admin.js             allows the table
-    checkdxflayers.mjs                     new check
-    HANDOVER.md
+    supabase/migrations/0216_dxf_layer_map.sql       ← in order
+    supabase/migrations/0217_dxf_layer_cable.sql
+    supabase/migrations/0218_cad_layer_catalogue.sql
+    src/features/gis/dxfLayerMap.js   matching and scoring
+    src/features/gis/dxf.js           2D, BYLAYER, real labels, mapped layers
+    src/features/gis/lineLabel.js     (unchanged; dxf.js imports it)
+    src/features/gis/GISCanvasPage.jsx
+    src/features/gis/FeatureEditor.jsx  External/Internal field
+    src/features/admin/DxfLayersAdmin.jsx  the guided mapping form
+    src/features/admin/AdminPage.jsx  src/lib/adminTables.js
+    netlify/functions/admin.js
+    checkdxflayers.mjs  checkdxf.mjs  HANDOVER.md
 
-## Yes — a layer can align with a particular cable
+## 1. Record the CAD team's layer names
 
-A rule matches any of: utility, line type, point role, build status, a
-size band, an **exact size**, a **cable type**, and a customer.
+**Admin › CAD Layer Names.** One row per layer of theirs: the name, the
+class it belongs to (gas, water, electric, trench), the geometry type,
+and optionally its ACI colour and linetype.
 
-So "3c WAVE 95" gets its own layer, distinct from "4c WAVE 95" — which
-a size band could never separate, since both are 95mm².
+Enter their schedule here once. Everything below picks from it, so no
+layer name is ever typed twice.
 
-Cable type and size are matched as TEXT, against the names in your
-catalogue, so a rule reads the way the schedule reads. Case does not
-matter: "3C wave" is the same cable as "3c WAVE".
+## 2. Map geometry to those layers
 
-**Specificity:** customer > cable type > exact size > size band > line
-type > role > status > utility. A cable somebody set by hand is used in
-preference to the calculated one, because that is the cable that will
-be laid.
+**Admin › CAD Layers › New rule**, asked in your order:
 
-## House style first
+1. **Class** — Gas, Water, Electric, Trench
+2. **Geometry** — Line, Point, Polygon
+3. **Size** — only the sizes that class has. Gas and Line shows gas
+   pipe sizes; water shows water; electric shows cable types and the
+   sizes that type comes in
+4. **AutoCAD layer** — picked from their list, filtered to the class
+   and geometry you just chose
 
-A rule with no customer is your own standard, used for everyone. A rule
-with a customer applies only to their drawings and beats the house rule
-it competes with.
+Changing the class clears a size chosen under the old one, because
+125mm gas is not 125mm water.
 
-## Safe to apply
+## 3. External or Internal
 
-0216 seeds the house style to reproduce exactly what the export does
-today, so the next DXF is unchanged until somebody edits a rule. With
-no schedule at all, the export falls back to the old derived names.
-Anything matching nothing goes to APTUS-UNMAPPED.
+A new field on **meters** and **mains feeder cables**, in the feature
+editor. A mapping rule can match it, so internal and external meters
+can go to different layers. A rule asking for one siting will not match
+the other, nor a feature that says nothing.
 
-## The inspector
+## 4. The export
 
-Admin › CAD Layers, top panel: describe an object — including choosing
-a specific cable from your catalogue — and see every rule that applies,
-in order, and which one wins.
+Geometry is written onto its mapped layer, as a 2D polyline or point
+with colour and linetype BYLAYER — so it takes the layer's properties
+in AutoCAD. Labels go on the mapped text layer. Mains and service tags
+now carry their size and length.
+
+If your CAD team also want the layer name carried as data ON each
+object (XDATA), rather than only as its layer, say so — that is a small
+addition.
 
 ## Suite state
 
-147 of 165 pass, the same 18 pre-existing failures. Build clean.
+148 of 166 pass, the same 18 pre-existing failures. Build clean.

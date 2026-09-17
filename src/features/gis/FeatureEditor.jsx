@@ -1410,6 +1410,32 @@ export default function FeatureEditor({
                 menu they have to know about. The mark carries almost
                 nothing to edit — a label and a bearing — so the section
                 is the thing this dialogue is FOR. */}
+            {/* ── Outside the building, or inside it ──
+
+                Wanted on mains feeder cables and meters: the two are
+                drawn on different CAD layers and they are different
+                jobs on site. Offered on those, and on nothing else, so
+                the field does not appear against apparatus where the
+                question has no meaning \u2014 a trench is neither.
+
+                Held in Attributes.Siting, which is where a fact about a
+                feature belongs; the CAD mapping matches it from there. */}
+            {(feature.Feature_Role === "meter"
+              || (feature.Feature_Type === "line"
+                && f.Attributes?.Line_Type
+                && /^elec/.test(String(f.Attributes.Line_Type))
+                && !/service/i.test(String(f.Attributes.Line_Type)))) && (
+              <div className="fld" style={{ marginTop: 8 }}>
+                <label htmlFor="fe-siting">External or internal</label>
+                <select id="fe-siting" value={f.Attributes?.Siting ?? ""}
+                  onChange={(e) => setAttr("Siting")(e.target.value)}>
+                  <option value="">&mdash; Not said &mdash;</option>
+                  <option value="External">External</option>
+                  <option value="Internal">Internal</option>
+                </select>
+              </div>
+            )}
+
             {feature.Feature_Role === "sectionmark" && (
               <div style={{ marginTop: 8 }}>
                 {onShowSection && (

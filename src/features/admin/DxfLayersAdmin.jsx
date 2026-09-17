@@ -29,6 +29,7 @@ import { explainLayer, sizeUnitFor, sizeUnitLabel } from "../gis/dxfLayerMap.js"
 const BLANK = {
   Layer_Key: "", Line_Type: "", Feature_Role: "", Build_Status: "",
   Size_From: "", Size_To: "", Cable_Type: "", Size_Label: "",
+  Geometry_Type: "", Siting: "", CAD_Layer_ID: "",
   Organisation_ID: "",
   CAD_Layer: "", ACI_Colour: "", Linetype: "CONTINUOUS", Text_Layer: "",
   Sort_Order: 0, Is_Active: true, Notes: "",
@@ -48,6 +49,13 @@ export default function DxfLayersAdmin() {
      inspector can resolve one. */
   const [cableSizes, setCableSizes] = useState([]);
   const [cableTypes, setCableTypes] = useState([]);
+  /* Their layer names, and our pipe catalogues. A rule picks from
+     these rather than having every name and size typed again: two
+     hundred rules typed by hand is two hundred chances at a typo
+     nobody sees until a drawing is issued. */
+  const [cadLayers, setCadLayers] = useState([]);
+  const [gasSizes, setGasSizes] = useState([]);
+  const [waterSizes, setWaterSizes] = useState([]);
   const [sel, setSel] = useState(null);
   const [draft, setDraft] = useState(BLANK);
   const [busy, setBusy] = useState(false);
@@ -64,6 +72,9 @@ export default function DxfLayersAdmin() {
     adminList("GIS_Line_Type").then(({ rows: r = [] }) => setLineTypes(r)).catch(() => {});
     adminList("Electric_Cable_Size").then(({ rows: r = [] }) => setCableSizes(r)).catch(() => {});
     adminList("Electric_Cable_Type").then(({ rows: r = [] }) => setCableTypes(r)).catch(() => {});
+    adminList("CAD_Layer").then(({ rows: r = [] }) => setCadLayers(r)).catch(() => {});
+    adminList("Gas_Pipe_Size").then(({ rows: r = [] }) => setGasSizes(r)).catch(() => {});
+    adminList("Water_Pipe_Size").then(({ rows: r = [] }) => setWaterSizes(r)).catch(() => {});
   }, []);
 
   const orgName = (id) => orgs.find((o) => String(o.Organisation_ID) === String(id))?.Name
@@ -93,10 +104,11 @@ export default function DxfLayersAdmin() {
       const body = { ...draft };
       for (const k of ["Layer_Key", "Line_Type", "Feature_Role", "Build_Status",
         "Organisation_ID", "Linetype", "Text_Layer", "Notes",
-        "Cable_Type", "Size_Label"]) {
+        "Cable_Type", "Size_Label", "Geometry_Type", "Siting"]) {
         if (body[k] === "") body[k] = null;
       }
-      for (const k of ["Size_From", "Size_To", "ACI_Colour", "Organisation_ID"]) {
+      for (const k of ["Size_From", "Size_To", "ACI_Colour", "Organisation_ID",
+        "CAD_Layer_ID"]) {
         body[k] = body[k] === "" || body[k] == null ? null : Number(body[k]);
       }
       body.Sort_Order = Number(body.Sort_Order) || 0;
@@ -328,7 +340,155 @@ export default function DxfLayersAdmin() {
               {sel === "new" ? "New rule" : draft.CAD_Layer}
             </h3>
 
+            {/* ── Asked in the order somebody thinks in ──
+
+                Class, then geometry, then the sizes THAT class has,
+                then the CAD layer. Each answer narrows the next: pick
+                Gas and Line and the size list is gas pipe, not every
+                size in the business. A flat form of twelve fields asks
+                somebody to know the whole schema; this asks four
+                questions in the order the CAD schedule is written. */}
             <div className="gs-grid">
+              <div className="fld">
+                <label htmlFor="dxe-layer2">1. Class</label>
+                <select id="dxe-layer2" value={draft.Layer_Key ?? ""}
+                  onChange={(e) => setDraft((d) => ({ ...d,
+                    Layer_Key: e.target.value,
+                    /* A size chosen under one class means nothing under
+                       another: 125mm gas is not 125mm water, and a
+                       cable type is not a pipe at all. */
+                    Size_Label: "", Cable_Type: "",
+                    Size_From: "", Size_To: "", CAD_Layer_ID: "" }))}>
+                  <option value="">Any</option>
+                  {LAYERS.filter(Boolean).map((l) => (
+                    <option key={l} value={l}>{l}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="fld">
+                <label htmlFor="dxe-geom">2. Geometry</label>
+                <select id="dxe-geom" value={draft.Geometry_Type ?? ""}
+                  onChange={(e) => setDraft((d) => ({ ...d,
+                    Geometry_Type: e.target.value, CAD_Layer_ID: "" }))}>
+                  <option value="">Any</option>
+                  <option value="Line">Line</option>
+                  <option value="Point">Point</option>
+                  <option value="Polygon">Polygon</option>
+                </select>
+              </div>
+
+              {/* 3. The sizes THIS class has, and nothing else. Gas
+                  pipe under gas, water pipe under water, cable types
+                  and areas under electric. Shown for lines, because a
+                  point has no size worth mapping on. */}
+              {draft.Geometry_Type !== "Point" && draft.Layer_Key === "gas" && (
+                <div className="fld">
+                  <label htmlFor="dxe-gas">3. Gas pipe size</label>
+                  <select id="dxe-gas" value={draft.Size_Label ?? ""}
+                    onChange={set("Size_Label")}>
+                    <option value="">Any size</option>
+                    {gasSizes.map((z) => (
+                      <option key={z.Gas_Pipe_Size_ID} value={z.Size_Label ?? z.Size}>
+                        {z.Size_Label ?? z.Size}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {draft.Geometry_Type !== "Point" && draft.Layer_Key === "water" && (
+                <div className="fld">
+                  <label htmlFor="dxe-water">3. Water pipe size</label>
+                  <select id="dxe-water" value={draft.Size_Label ?? ""}
+                    onChange={set("Size_Label")}>
+                    <option value="">Any size</option>
+                    {waterSizes.map((z) => (
+                      <option key={z.Water_Pipe_Size_ID} value={z.Size_Label ?? z.Size}>
+                        {z.Size_Label ?? z.Size}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {draft.Layer_Key === "electric" && (
+                <>
+                  <div className="fld">
+                    <label htmlFor="dxe-cabletype2">3. Cable type</label>
+                    <select id="dxe-cabletype2" value={draft.Cable_Type ?? ""}
+                      onChange={set("Cable_Type")}>
+                      <option value="">Any type</option>
+                      {cableTypes.map((t) => (
+                        <option key={typeIdOf(t)} value={typeName(t)}>{typeName(t)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="fld">
+                    <label htmlFor="dxe-cablesize">3. Cable size</label>
+                    <select id="dxe-cablesize" value={draft.Size_Label ?? ""}
+                      onChange={set("Size_Label")}>
+                      <option value="">Any size</option>
+                      {[...new Set(cableSizes
+                        .filter((c) => !draft.Cable_Type
+                          || typeName(cableTypes.find((t) =>
+                            String(typeIdOf(t)) === String(typeIdOf(c))))
+                            .toLowerCase() === String(draft.Cable_Type).toLowerCase())
+                        .map((c) => c.Size_Label))].map((l) => (
+                        <option key={l} value={l}>{l}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {/* External or internal, where it is a question: mains
+                  feeder cables and meters. */}
+              {(draft.Layer_Key === "electric" || draft.Feature_Role === "meter") && (
+                <div className="fld">
+                  <label htmlFor="dxe-siting">External or internal</label>
+                  <select id="dxe-siting" value={draft.Siting ?? ""} onChange={set("Siting")}>
+                    <option value="">Either</option>
+                    <option value="External">External</option>
+                    <option value="Internal">Internal</option>
+                  </select>
+                </div>
+              )}
+
+              {/* 4. Their layer. Picked from the CAD team's own list,
+                  filtered to the class and geometry already chosen, so
+                  the choice is a handful rather than the whole
+                  schedule. Typing one is still allowed, for a layer
+                  they have not sent us yet. */}
+              <div className="fld">
+                <label htmlFor="dxe-pick">4. AutoCAD layer</label>
+                <select id="dxe-pick" value={draft.CAD_Layer_ID ?? ""}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    const row = cadLayers.find((c) => String(c.CAD_Layer_ID) === String(id));
+                    setDraft((d) => ({ ...d, CAD_Layer_ID: id,
+                      /* The NAME is copied onto the rule as well as the
+                         id. The export reads a name, and a rule that
+                         only pointed at a row would export nothing at
+                         all if that row were ever deleted. */
+                      CAD_Layer: row?.Layer_Name ?? d.CAD_Layer,
+                      ACI_Colour: row?.ACI_Colour ?? d.ACI_Colour,
+                      Linetype: row?.Linetype ?? d.Linetype }));
+                  }}>
+                  <option value="">&mdash; type one below &mdash;</option>
+                  {cadLayers
+                    .filter((c) => (!draft.Layer_Key || !c.Layer_Key
+                      || c.Layer_Key === draft.Layer_Key))
+                    .filter((c) => (!draft.Geometry_Type || !c.Geometry_Type
+                      || c.Geometry_Type === draft.Geometry_Type))
+                    .map((c) => (
+                      <option key={c.CAD_Layer_ID} value={c.CAD_Layer_ID}>
+                        {c.Layer_Name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
               <div className="fld">
                 <label htmlFor="dxe-cad">CAD layer name</label>
                 <input id="dxe-cad" value={draft.CAD_Layer} onChange={set("CAD_Layer")}
@@ -345,12 +505,6 @@ export default function DxfLayersAdmin() {
                 </select>
               </div>
 
-              <div className="fld">
-                <label htmlFor="dxe-layer">Utility</label>
-                <select id="dxe-layer" value={draft.Layer_Key ?? ""} onChange={set("Layer_Key")}>
-                  {LAYERS.map((l) => <option key={l} value={l}>{l || "Any"}</option>)}
-                </select>
-              </div>
               <div className="fld">
                 <label htmlFor="dxe-lt">Line type</label>
                 <input id="dxe-lt" list="dxe-lts" value={draft.Line_Type ?? ""}

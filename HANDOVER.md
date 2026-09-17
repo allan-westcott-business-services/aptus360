@@ -5209,6 +5209,40 @@ characters is a hundred lines of prose and no rules at all.
      which on a run that bends near one end is nowhere near its middle.
      Same `midOf` reasoning as the print.
 
+144. **CAD layer catalogue, guided entry, and External/Internal
+     (0220).** Three things asked together, all in service of one
+     workflow: somebody sitting with the CAD team's schedule and
+     entering it without having to remember anything.
+
+     **Their layer names are a table** (`CAD_Layer`: name, class,
+     geometry, colour, linetype). The mapping rules named a CAD layer
+     as free text, which is fine for one rule and miserable for two
+     hundred — every name retyped, and a typo produces a layer nobody
+     notices until a drawing is issued. A rule now picks from their
+     list. It stores the NAME as well as the id, because the export
+     reads a name and a rule pointing only at a row would export
+     nothing if that row were deleted.
+
+     **The entry form asks in the order somebody thinks in**: class,
+     geometry, then the sizes THAT class has, then their layer. Gas and
+     Line shows gas pipe sizes; water shows water; electric shows cable
+     types and the sizes that type comes in. Changing the class clears
+     a size chosen under the old one, because 125mm gas is not 125mm
+     water. The layer list is filtered to the class and geometry
+     already chosen.
+
+     **External or Internal** is a new fact about apparatus, on mains
+     feeder cables and meters to begin with: the two are drawn on
+     different CAD layers and are different jobs on site. No column
+     needed on the feature — it lives in `Attributes.Siting` with
+     everything else a feature knows about itself — and `DXF_Layer_Map`
+     gained a `Siting` column so a rule can match it. A rule asking for
+     one siting matches neither the other nor a feature that says
+     nothing, which is the case the check holds.
+
+     Also `Geometry_Type` on a rule, since a schedule that separates
+     lines from points cannot be written without it.
+
 142. **CAD layer mapping (feature).** The DXF export named layers from
      the drawing's own vocabulary; the CAD team keeps their own
      schedule. Migration **0216** adds `DXF_Layer_Map`: one row is one

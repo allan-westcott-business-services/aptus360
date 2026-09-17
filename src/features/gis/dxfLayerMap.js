@@ -75,6 +75,20 @@ export function ruleMatches(rule, subject, ctx = {}) {
   if (rule.Cable_Type && !same(rule.Cable_Type, subject.cableType)) return false;
   if (rule.Size_Label && !same(rule.Size_Label, subject.sizeLabel)) return false;
 
+  /* Line, point or polygon. A schedule that separates them needs a
+     rule that can say so: WATER-MAIN is a line and WATER-VALVE is a
+     point, and a rule naming only the utility cannot tell them
+     apart. */
+  if (rule.Geometry_Type && !same(rule.Geometry_Type, subject.geometry)) {
+    return false;
+  }
+
+  /* Outside the building or inside it. Only some apparatus carries
+     this \u2014 mains feeder cables and meters to begin with \u2014 and a rule
+     that asks for it cannot match something that does not have it,
+     rather than matching everything without one. */
+  if (rule.Siting && !same(rule.Siting, subject.siting)) return false;
+
   const from = num(rule.Size_From);
   const to = num(rule.Size_To);
   if (from != null || to != null) {
@@ -105,6 +119,11 @@ export function ruleScore(rule) {
   /* An exact size beats a band that contains it, and a named cable
      type beats both: "this cable" is a more specific claim than "a
      cable of about this size". */
+  if (rule.Geometry_Type) n += 2;
+  /* Inside or outside is a strong claim about a particular thing: an
+     internal meter is a different job from an external one, and a
+     schedule that separates them means it. */
+  if (rule.Siting) n += 12;
   if (rule.Size_Label) n += 24;
   if (rule.Cable_Type) n += 32;
   if (rule.Organisation_ID != null) n += 64;
@@ -158,6 +177,13 @@ export function subjectOf(f, lineTypes = [], opts = {}) {
     status: a.Build_Status ?? null,
     size: sizeOf(f) ?? labelNum,
     cableType: type?.Cable_Type ?? type?.Type_Name ?? null,
+    /* Line, point or polygon, in the words a CAD schedule uses rather
+       than the drawing's own Feature_Type. */
+    geometry: f?.Feature_Type === "line" ? "Line"
+      : f?.Feature_Type === "polygon" ? "Polygon"
+        : f?.Feature_Type === "point" ? "Point" : null,
+    /* External or Internal, where the feature carries it. */
+    siting: a.Siting ?? null,
     /* The catalogue's own spelling where there is one, and whatever is
        written on the feature otherwise — a pipe size is on the feature
        and has no catalogue row to consult. */

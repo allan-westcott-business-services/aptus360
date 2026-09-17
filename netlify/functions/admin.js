@@ -17,6 +17,10 @@ const TABLES = {
      the rates above: a layer name that needs a deploy to correct will
      be wrong on a drawing somebody has already sent. */
   DXF_Layer_Map:    { pk: "DXF_Layer_Map_ID",    order: "Sort_Order" },
+  /* The CAD team's own layer names (0218). Their standard, held by us:
+     a mapping rule picks a layer from here rather than retyping a name
+     two hundred times. */
+  CAD_Layer:        { pk: "CAD_Layer_ID",        order: "Sort_Order" },
 
   /* Portal accounts (0218). Listed and edited here so staff can see
      who has access and switch somebody off; CREATING one is not done

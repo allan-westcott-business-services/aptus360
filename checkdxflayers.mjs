@@ -251,6 +251,111 @@ const at = (f, org = null) => layerFor(f, { rules, lineTypes, organisationId: or
   }
 }
 
+// 8c. External or internal, and geometry type.
+//
+//     A new fact about some apparatus: outside the building or inside
+//     it. Wanted on mains feeder cables and meters, because the two are
+//     drawn on different CAD layers and are different jobs on site.
+{
+  const meterRules = [
+    { DXF_Layer_Map_ID: 30, Layer_Key: "electric", CAD_Layer: "ELECTRIC" },
+    { DXF_Layer_Map_ID: 31, Feature_Role: "meter", CAD_Layer: "METERS" },
+    { DXF_Layer_Map_ID: 32, Feature_Role: "meter", Siting: "Internal",
+      CAD_Layer: "METERS-INTERNAL" },
+    { DXF_Layer_Map_ID: 33, Geometry_Type: "Line", Layer_Key: "electric",
+      CAD_Layer: "ELECTRIC-LINES" },
+  ];
+  const meter = (siting) => ({ Feature_Type: "point", Feature_Role: "meter",
+    Layer_Key: "electric", Attributes: siting ? { Siting: siting } : {} });
+  const where = (f) => layerFor(f, { rules: meterRules, lineTypes }).layer;
+
+  if (where(meter("Internal")) !== "METERS-INTERNAL") {
+    fail("an internal meter does not take its own layer");
+  }
+  /* An external meter has no rule of its own here, so it falls to the
+     general meter rule rather than borrowing the internal one. */
+  if (where(meter("External")) !== "METERS") {
+    fail("an external meter takes the INTERNAL layer \u2014 a rule asking for "
+      + "one siting must not match the other");
+  }
+  /* And a meter with nothing said about it matches no siting rule. */
+  if (where(meter(null)) === "METERS-INTERNAL") {
+    fail("a meter with no siting matches a rule that asks for one");
+  }
+
+  /* Geometry type: a schedule separating lines from points needs a rule
+     that can say which. */
+  const cable = { Feature_Type: "line", Layer_Key: "electric",
+    Attributes: { Line_Type: "elec_lv" } };
+  if (where(cable) !== "ELECTRIC-LINES") {
+    fail("a cable does not take the rule scoped to lines");
+  }
+  if (where(meter(null)) === "ELECTRIC-LINES") {
+    fail("a point takes a rule scoped to lines");
+  }
+}
+
+// 8d. The CAD team's own layer names are a table, and the form asks in
+//     the order somebody thinks in.
+{
+  const sql = readFileSync("./supabase/migrations/0220_cad_layer_catalogue.sql", "utf8");
+  if (!/CREATE TABLE IF NOT EXISTS "CAD_Layer"/.test(sql)) {
+    fail("there is no table for the CAD team's layer names, so every rule "
+      + "retypes one");
+  }
+  if (!/"Layer_Key"\s+text/.test(sql) || !/"Geometry_Type"\s+text/.test(sql)) {
+    fail("a CAD layer does not record which class and geometry it is for, "
+      + "so the entry form cannot narrow the list");
+  }
+  if (!/ADD COLUMN IF NOT EXISTS "Siting"/.test(sql)) {
+    fail("a rule cannot match external against internal");
+  }
+
+  const tables = readFileSync("./src/lib/adminTables.js", "utf8");
+  if (!/key: "CAD_Layer"/.test(tables)) {
+    fail("there is no screen for entering the CAD team's layer names");
+  }
+
+  const screen = readFileSync("./src/features/admin/DxfLayersAdmin.jsx", "utf8");
+  /* Asked in order: class, geometry, the sizes THAT class has, then
+     their layer. */
+  for (const [n, label] of [["1", "Class"], ["2", "Geometry"],
+    ["4", "AutoCAD layer"]]) {
+    if (!screen.includes(`${n}. ${label}`)) {
+      fail(`the entry form does not ask "${n}. ${label}" in order`);
+    }
+  }
+  if (!/draft\.Layer_Key === "gas"/.test(screen)
+    || !/gasSizes\.map/.test(screen)) {
+    fail("choosing Gas and Line does not show gas pipe sizes");
+  }
+  if (!/draft\.Layer_Key === "water"/.test(screen)) {
+    fail("choosing Water does not show water pipe sizes");
+  }
+  /* Changing the class clears a size chosen under the old one: 125mm
+     gas is not 125mm water. */
+  if (!/Size_Label: "", Cable_Type: "",/.test(screen)) {
+    fail("changing the class keeps a size chosen under the previous one");
+  }
+  /* The layer's NAME is copied onto the rule, not just its id: the
+     export reads a name, and a rule pointing only at a row would
+     export nothing if that row were deleted. */
+  if (!/CAD_Layer: row\?\.Layer_Name/.test(screen)) {
+    fail("picking a layer stores only a reference, so deleting it would "
+      + "leave rules that export nothing");
+  }
+
+  const fn = readFileSync("./netlify/functions/admin.js", "utf8");
+  if (!/CAD_Layer:\s+\{ pk: "CAD_Layer_ID"/.test(fn)) {
+    fail("the admin endpoint refuses the CAD layer table");
+  }
+
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/setAttr\("Siting"\)/.test(editor)) {
+    fail("there is no way to say whether a meter or a feeder is external");
+  }
+}
+
 // 9. Wired: the migration seeds the house style, the export reads the
 //    schedule, and there is a screen to edit it.
 {

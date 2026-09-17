@@ -12,6 +12,11 @@ const TABLES = {
      correct would never get corrected, and a rate needing a DBA is not
      much better. */
   Dig_Rate:         { pk: "Dig_Rate_ID",         order: "Sort_Order" },
+
+  /* The CAD layer schedule (0216). Edited here for the same reason as
+     the rates above: a layer name that needs a deploy to correct will
+     be wrong on a drawing somebody has already sent. */
+  DXF_Layer_Map:    { pk: "DXF_Layer_Map_ID",    order: "Sort_Order" },
   Dig_Depth_Factor: { pk: "Dig_Depth_Factor_ID", order: "Depth_From_M" },
   Dig_Lay_Rate:     { pk: "Dig_Lay_Rate_ID",     order: "Utility_Key" },
   /* The six surfaces, and how much slower each is to dig than unmade

@@ -196,6 +196,7 @@ import { washOuts, snapToMain } from "./washOuts.js";
 import { snapForSection, sectionMarkShape, SECTION_LEN_M } from "./sectionMarks.js";
 import { trenchSection, sectionSvg } from "./trenchSection.js";
 import { buildDxf } from "./dxf.js";
+import { adminList } from "../../api/admin.js";
 import { gasMainEnds, GAS_CAP_SPINE_M, GAS_CAP_ARM_M } from "./gasEnds.js";
 import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
@@ -487,6 +488,11 @@ export default function GISCanvasPage() {
      projects open with. */
   const [showGrid, setShowGrid] = useState(false);
   const [styles, setStyles] = useState([]);
+  /* The CAD layer schedule (0216), loaded when an export is asked for
+     rather than with the drawing: nothing on screen depends on it, and
+     a canvas that fetched it on every open would pay for a feature
+     most sessions never use. */
+  const [layerMap, setLayerMap] = useState([]);
   const [surfaceTypes, setSurfaceTypes] = useState([]);
   /* Excavation and lay rates (0158). Empty until loaded and empty on
      mock data — digRate.js falls back to its own figures either way, so
@@ -22297,12 +22303,36 @@ export default function GISCanvasPage() {
      for symbols, and a national grid position unless the project's
      origin is a real easting and northing \u2014 is written in dxf.js
      beside the code that decides it. */
-  function exportDxf() {
+  async function exportDxf() {
     if (!projectId) return;
     try {
+      /* Fetched now, and kept for the rest of the session. An export
+         that used a stale schedule would put a drawing on last week's
+         layers with nothing to show it had. */
+      let map = layerMap;
+      if (!map.length) {
+        try {
+          const res = await adminList("DXF_Layer_Map");
+          map = (res?.rows || []).filter((r) => r.Is_Active !== false);
+          setLayerMap(map);
+        } catch {
+          /* No schedule, or no permission to read it: the export falls
+             back to the drawing's own layer names, which is what it did
+             before the schedule existed. Better a DXF on plain names
+             than no DXF at all. */
+          map = [];
+        }
+      }
       const text = buildDxf(visible, {
         lineTypes, layers, styles, utilities,
         organisationId: standard || null,
+        /* The customer's own rules apply under their standard; the
+           house style covers everything else. */
+        layerMap: map,
+        /* And the cable catalogue, so a rule can name "3c WAVE 95"
+           rather than a size band that cannot tell it from 4c WAVE 95. */
+        cableSizes: lookups?.cableSizes || [],
+        cableTypes: lookups?.cableTypes || [],
       });
       const name = `drawing-${projectId}-${new Date().toISOString().slice(0, 10)}.dxf`;
       const blob = new Blob([text], { type: "application/dxf" });
@@ -22313,7 +22343,9 @@ export default function GISCanvasPage() {
       a.click();
       URL.revokeObjectURL(url);
       setStatus(`${visible.length} feature(s) exported as ${name} \u2014 `
-        + "one drawing unit is one metre");
+        + "one drawing unit is one metre"
+        + (map.length ? `, ${map.length} layer rule(s) applied`
+          : ", layer names from the drawing"));
       setTimeout(() => setStatus(""), 8000);
       setError("");
     } catch (e) { setError(e.message); }

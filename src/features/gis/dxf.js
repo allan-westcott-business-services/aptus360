@@ -57,6 +57,7 @@
    matters for setting out, and they are exact. */
 
 import { resolveStyle, appearance, subjectOf } from "../../lib/gisStyle.js";
+import { layerFor as mappedLayerFor } from "./dxfLayerMap.js";
 
 /* AutoCAD Color Index. The classic first seven plus a couple of greys:
    a DXF layer carries a colour NUMBER, not a hex string, so every
@@ -137,6 +138,18 @@ export function buildDxf(features = [], opts = {}) {
     organisationId = null,
     origin = [0, 0],
     labels = true,
+    /* The CAD team's own layer schedule, as rows from DXF_Layer_Map.
+       Given none, the export names layers from the drawing's own
+       vocabulary exactly as it always did — so this can be added to a
+       live system without anybody's next export shifting. */
+    layerMap = [],
+    unmapped = "APTUS-UNMAPPED",
+    /* The cable catalogue, so a rule can name a particular cable —
+       "3c WAVE 95" — and not merely a size band. Without it a cable
+       rule simply never matches, which is why the export passes them
+       rather than resolving ids itself. */
+    cableSizes = [],
+    cableTypes = [],
   } = opts;
 
   const ox = Number(origin[0]) || 0;
@@ -153,8 +166,15 @@ export function buildDxf(features = [], opts = {}) {
      told about, but several other readers do not, and this file is
      meant to open everywhere. */
   const used = new Map();
-  const noteLayer = (name, colour) => {
-    if (!used.has(name)) used.set(name, aciFor(colour));
+  const noteLayer = (name, colour, linetype) => {
+    if (used.has(name)) return;
+    /* A colour already given as an index is used as given — a CAD
+       schedule states ACI numbers, and converting one to a hex and back
+       would move it. */
+    used.set(name, {
+      aci: typeof colour === "number" ? colour : aciFor(colour),
+      linetype: linetype || "CONTINUOUS",
+    });
   };
 
   let ents = "";
@@ -176,8 +196,19 @@ export function buildDxf(features = [], opts = {}) {
        That is a question about the drawing; this is a question about
        the screen. */
     const ap = styleOf(f);
-    const lay = layerFor(f, lineTypes);
-    noteLayer(lay, ap.colour ?? "#ffffff");
+    /* The schedule decides the layer, its colour and its linetype;
+       what the drawing knows decides which rule applies. With no
+       schedule loaded the old derived name stands as the fallback. */
+    const mapped = layerMap.length
+      ? mappedLayerFor(f, {
+        rules: layerMap, lineTypes, organisationId,
+        cableSizes, cableTypes,
+        fallback: (x) => layerFor(x, lineTypes), unmapped,
+      })
+      : null;
+    const lay = mapped ? mapped.layer : layerFor(f, lineTypes);
+    noteLayer(lay, mapped?.aci != null ? mapped.aci : (ap.colour ?? "#ffffff"),
+      mapped?.linetype);
 
     if (f.Feature_Type === "line" && g.length >= 2) {
       /* POLYLINE, its VERTEXes, then SEQEND. Flag 8 on the polyline
@@ -202,8 +233,9 @@ export function buildDxf(features = [], opts = {}) {
        annotation and keep the geometry \u2014 which is the first thing
        anybody does with a drawing they are tracing over. */
     if (labels && f.Label) {
-      const tl = layerName([lay, "TEXT"]);
-      noteLayer(tl, ap.labelColour ?? ap.colour ?? "#ffffff");
+      const tl = mapped?.textLayer ?? layerName([lay, "TEXT"]);
+      noteLayer(tl, mapped?.aci != null ? mapped.aci
+        : (ap.labelColour ?? ap.colour ?? "#ffffff"), mapped?.linetype);
       const at = f.Feature_Type === "line" ? g[Math.floor(g.length / 2)] : g[0];
       ents += pair(0, "TEXT") + pair(8, tl)
         + pair(10, num(at[0] + ox)) + pair(20, num(-at[1] + oy))
@@ -223,9 +255,9 @@ export function buildDxf(features = [], opts = {}) {
     + pair(0, "TABLE") + pair(2, "LAYER") + pair(70, used.size + 1)
     + pair(0, "LAYER") + pair(2, "0") + pair(70, 0) + pair(62, 7)
     + pair(6, "CONTINUOUS");
-  for (const [name, aci] of used) {
+  for (const [name, def] of used) {
     table += pair(0, "LAYER") + pair(2, name) + pair(70, 0)
-      + pair(62, aci) + pair(6, "CONTINUOUS");
+      + pair(62, def.aci) + pair(6, def.linetype);
   }
   table += pair(0, "ENDTAB") + pair(0, "ENDSEC");
 

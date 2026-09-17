@@ -334,6 +334,10 @@ export const ADMIN_TABLES = [
   { separator: true, label: "Drawings" },
   { group: true, label: "Styles" },
   { key: "GIS_Style", label: "GIS Styles", special: "gisstyles" },
+  /* Separate from GIS Styles on purpose: one says how a thing LOOKS on
+     our screen, the other what it is CALLED in somebody else's CAD.
+     They answer to different people and will diverge. */
+  { key: "DXF_Layer_Map", label: "CAD Layers", special: "dxflayers" },
 ];
 
 export const findAdminTable = (key) => ADMIN_TABLES.find((t) => !t.separator && t.key === key);

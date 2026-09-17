@@ -5138,6 +5138,84 @@ characters is a hundred lines of prose and no rules at all.
      else in this codebase reaching for `.sch`, `.fe-` or similar
      outside its owning component deserves the same look.
 
+142. **CAD layer mapping (feature).** The DXF export named layers from
+     the drawing's own vocabulary; the CAD team keeps their own
+     schedule. Migration **0216** adds `DXF_Layer_Map`: one row is one
+     rule — what it matches (layer, line type, role, build status, size
+     band, customer) and what the layer is called when it does.
+
+     A new admin screen, **CAD Layers**, deliberately separate from GIS
+     Styles: one says how a thing LOOKS on our screen, the other what
+     it is CALLED in somebody else's CAD. They answer to different
+     people and will diverge.
+
+     Decisions worth keeping:
+       - **House style first.** A rule with no `Organisation_ID` is
+         ours and applies to everyone; a rule with one belongs to that
+         customer and outranks the house rule it competes with. Scored
+         so a customer's plain rule beats any amount of house detail:
+         "this client's standard" is the stronger claim. The same shape
+         as the GIS style cascade, on purpose.
+       - **Seeded to reproduce today's output**, so applying the
+         migration changes nothing about an existing export. That is
+         why it is seeded rather than started empty.
+       - **A fallback to the derived names**, so a system with no
+         schedule exports exactly as before rather than filing
+         everything as unmapped.
+       - **Unmatched goes to APTUS-UNMAPPED**, which is obvious in
+         AutoCAD, where something plausible merged into a real layer is
+         not.
+       - **Sizes carry a unit decided by the utility** — a pipe's size
+         is a diameter in mm, a cable's an area in mm² (fault above) —
+         from one function, so the editor's label and the matcher
+         cannot disagree.
+       - **An inspector on the screen**, answering "which layer would
+         this land on" from the real matcher. Fault 133's lesson: an
+         editor that shows rules one at a time cannot answer the only
+         question anybody brings to it.
+
+     **0217: a layer for a particular CABLE.** Asked after 0216 shipped:
+     "3c WAVE 95" is a cable TYPE and a size together, and a schedule
+     that separates 3c WAVE 95 from 4c WAVE 95 cannot say so with a
+     band — they are the same 95mm². So a rule can also match
+     `Cable_Type` and `Size_Label`, as TEXT: a CAD schedule is written
+     by people against names they can read, and ids would be
+     unreadable in the editor and would break if the catalogue were
+     rebuilt. Matched case-insensitively, because "3C wave" is the same
+     cable.
+
+     Ordering: an exact size label (24) beats a band that contains it
+     (16), and a cable type (32) beats both — "this cable" is a more
+     specific claim than "a cable of about this size" — while a
+     customer (64) still outranks the lot.
+
+     The cable's identity is in the CATALOGUE, not on the feature: the
+     feature holds an id, which `subjectOf` resolves through the cable
+     size and type rows the caller passes. Two traps found doing it:
+     the live tables spell their keys `Cable_Size_ID`/`Cable_Type` while
+     0082 creates `Electric_Cable_Size_ID`/`Type_Name`, so BOTH are
+     accepted rather than betting on one (a wrong bet shows as a rule
+     that silently never matches); and the manual override is read
+     before the calculated size, because a cable somebody set by hand
+     is the cable that will be laid.
+
+     And a band now matches a cable at all: a pipe carries its size on
+     the feature, a cable carries an id, so the band number falls back
+     to the catalogue's Size_Label. Without that a 185mm² run with no
+     rule of its own went unmapped rather than into the 95–300 band it
+     belongs to — found by a check case, not by reasoning.
+
+     Two faults the suite caught in my own new screen: `checkscope`
+     found `rules` used where `rows` is declared, and `checkjsxescapes`
+     found another loose `\u00b7`. Both invisible in a passing build.
+
+     And one my first check missed: removing the "no size, no band"
+     guard did not fail, because a missing size coerces to ZERO — which
+     fails every minimum and slips under every maximum. The case now
+     uses a band with only an upper bound, which is where the guard
+     actually earns its place. Coercion hid a bug from a test; a fixture
+     has to include the case the bug needs.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

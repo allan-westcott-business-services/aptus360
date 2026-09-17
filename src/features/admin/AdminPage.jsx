@@ -14,6 +14,7 @@ import CustomersAdmin from "./CustomersAdmin.jsx";
 import TabbedTables from "./TabbedTables.jsx";
 import OrganisationsAdmin from "./OrganisationsAdmin.jsx";
 import GisStylesAdmin from "./GisStylesAdmin.jsx";
+import DxfLayersAdmin from "./DxfLayersAdmin.jsx";
 import WaterPipeSizesAdmin from "./WaterPipeSizesAdmin.jsx";
 import GasPipeSizesAdmin from "./GasPipeSizesAdmin.jsx";
 import GasDiversityAdmin from "./GasDiversityAdmin.jsx";
@@ -210,6 +211,8 @@ export default function AdminPage() {
           <AdminMenuAdmin />
         ) : table?.special === "gisstyles" ? (
           <GisStylesAdmin />
+        ) : table?.special === "dxflayers" ? (
+          <DxfLayersAdmin />
         ) : table?.special === "waterpipes" ? (
           <WaterPipeSizesAdmin />
         ) : table?.special === "gaspipes" ? (

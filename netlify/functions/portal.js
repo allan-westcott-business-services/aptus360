@@ -296,3 +296,13 @@ export default withAuth(async function handler(req, context, user) {
     return fail(e);
   }
 });
+
+/* Routed as /api/portal/<what>, which is how the app asks: the app's
+   client prefixes /api, and Netlify matches this path to this file.
+
+   Without a config a function has no route at all — it exists, deploys,
+   and answers nothing. That is what happened on the first attempt: the
+   sign-in screen asked for the organisations, got a 404, and quietly
+   showed "None listed", which reads as an empty database rather than a
+   missing route. */
+export const config = { path: "/api/portal/:what" };

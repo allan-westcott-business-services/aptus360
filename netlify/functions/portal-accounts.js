@@ -129,3 +129,5 @@ export default withAuth(async function handler(req, context, user) {
     return fail(e);
   }
 });
+
+export const config = { path: "/api/portal-accounts" };

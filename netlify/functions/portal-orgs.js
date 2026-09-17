@@ -107,3 +107,7 @@ export default withAuth(async function handler(req) {
     return fail(e);
   }
 }, { open: true });
+
+/* Open, and routed. See the note in portal.js about why a function
+   without this answers nothing. */
+export const config = { path: "/api/portal-orgs" };

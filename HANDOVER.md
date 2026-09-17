@@ -5497,6 +5497,30 @@ characters is a hundred lines of prose and no rules at all.
      if a check is failing on words rather than code, it is reading
      prose.
 
+     **The progress page became a TREE on two tabs** (Pre Contract,
+     Site Build), to a mockup: nested stages with a RAG dot each, the
+     upload action on the line that asks for the document, and the POC
+     branching per utility into applications, options and quotations.
+
+     Three decisions in it worth keeping:
+
+       - **a parent's colour is computed, never claimed.** The server
+         rolls children up: all done → done, some done → doing, none
+         done → waiting. A parent asserting it was done over an
+         outstanding child would be the page lying about itself.
+       - **grey is not red.** A stage nothing records \u2014 "invoice
+         paid", today \u2014 is grey and says "not recorded yet". Red
+         means "not done", and claiming that about something we cannot
+         see would put a developer on the phone about nothing.
+       - **the team is named.** "Team assigned" without the names is a
+         date about strangers; the project already holds the project
+         manager, estimator and account manager, with their email and
+         telephone, and the developer's next question is who to ring.
+         (This answers the question on the mockup: yes.)
+
+     Site Build is an empty tab that says so, rather than being hidden:
+     a developer should see the stage exists.
+
      **Still to do:** the remaining stages have no source yet
      (accepted, detailed design, adoption, works start, energised,
      complete) and need either a source naming or a staff screen; and

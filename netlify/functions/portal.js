@@ -32,7 +32,12 @@ const PROJECT_COLS = "Project_ID,Display_Ref,Project_Ref,Site_Name,"
      "to come" on every site — recurring fault 4 again: a column not on
      a function's select list is neither saved nor returned, and the
      symptom is silence rather than an error. */
-  + "Date_Received";
+  + "Date_Received,"
+  /* The people a developer would ring. Selected because the progress
+     page names them — and because a field read but not selected comes
+     back undefined and goes quiet, which is how the enquiry date was
+     missing. */
+  + "Project_Manager_ID,Estimator_ID,BDD_KAM_ID";
 
 /* Who this caller is, as the portal understands it. Null where the
    account has no portal record: an ordinary staff account signing in
@@ -425,7 +430,137 @@ export default withAuth(async function handler(req, context, user) {
         });
       }
 
-      return json({ site: proj.data, milestones, poc, documents: docs.data || [] });
+      /* ── The progress tree ──
+
+         A flat list of stages cannot say that the POC is half done:
+         electric quoted, water waiting. So progress is a TREE, and the
+         colour of a parent is computed from its children rather than
+         stated — a parent that claimed to be done while a child was
+         outstanding would be the drawing lying about itself.
+
+           done      everything under it is done, or it has a date
+           doing     some children done, some not
+           waiting   nothing done yet, and something is needed
+           unknown   nothing records this, and we will not pretend
+
+         `unknown` is the one worth defending. A stage with no source
+         is shown grey and says so, rather than red — red means "not
+         done", and claiming that about an invoice nobody has recorded
+         either way would put a developer on the phone about something
+         we cannot see. */
+      const roll = (children) => {
+        const known = children.filter((c) => c.status !== "unknown");
+        if (!known.length) return "unknown";
+        if (known.every((c) => c.status === "done")) return "done";
+        if (known.some((c) => c.status === "done" || c.status === "doing")) return "doing";
+        return "waiting";
+      };
+      const node = (label, opts2 = {}) => {
+        const children = opts2.children || [];
+        const status = opts2.status
+          ?? (children.length ? roll(children)
+            : (opts2.date ? "done" : (opts2.unknown ? "unknown" : "waiting")));
+        return {
+          label, date: opts2.date ?? null, status, note: opts2.note ?? null,
+          children, document: opts2.document ?? null,
+        };
+      };
+
+      /* What we have asked them for, as children of one Documentation
+         line: each is done when it has been uploaded, and carries the
+         upload action itself. */
+      const wanted = (docs.data || [])
+        .filter((d) => d.Direction === "from_developer");
+      const documentation = wanted.map((d) => node(d.Title, {
+        date: d.Uploaded_At ?? null,
+        status: d.Storage_Path ? "done" : "waiting",
+        note: d.Detail ?? null,
+        document: { id: d.Portal_Document_ID, direction: "from_developer",
+          fileName: d.File_Name ?? null, uploaded: !!d.Storage_Path },
+      }));
+
+      /* The people to ring. Named, because "team assigned" without the
+         names is a date about strangers — the developer's next question
+         is who, and the answer is already on the project. No date is
+         recorded for the assignment itself, so the line takes its
+         status from whether anybody is named at all. */
+      const teamIds = [proj.data?.Project_Manager_ID, proj.data?.Estimator_ID,
+        proj.data?.BDD_KAM_ID].filter((x) => x != null).map(Number);
+      let team = [];
+      if (teamIds.length) {
+        const { data, error } = await db.from("Person")
+          .select("Person_ID,Person_Name,Email,Telephone").in("Person_ID", teamIds);
+        if (error) throw error;
+        team = data || [];
+      }
+      const personNode = (id, role) => {
+        const who = team.find((t) => Number(t.Person_ID) === Number(id));
+        if (!who) return null;
+        return node(`${role}: ${who.Person_Name}`, {
+          status: "done",
+          note: [who.Email, who.Telephone].filter(Boolean).join("  \u00b7  ") || null,
+        });
+      };
+      const teamChildren = [
+        personNode(proj.data?.Project_Manager_ID, "Project manager"),
+        personNode(proj.data?.Estimator_ID, "Estimator"),
+        personNode(proj.data?.BDD_KAM_ID, "Account manager"),
+      ].filter(Boolean);
+
+      /* The POC, one branch per utility: what was applied for, what
+         came back, and what was chosen. */
+      const pocNodes = poc.map((a) => {
+        const kids = [
+          node("Application submitted", {
+            date: a.appliedOn,
+            note: a.party ? `to ${a.party}` : null,
+          }),
+          ...a.options.map((o) => node(
+            `${o.name}${o.selected ? " (chosen)" : ""}`,
+            {
+              date: o.receivedOn,
+              children: o.quotations.map((q) => node(q.ref || "Quotation", {
+                date: q.receivedOn,
+                note: q.cost != null
+                  ? `\u00a3${Number(q.cost).toLocaleString("en-GB")}` : null,
+              })),
+            },
+          )),
+          /* Nothing records payment yet, so it is grey and says so
+             rather than red. */
+          node("Invoice paid", { unknown: true, note: "not recorded yet" }),
+        ];
+        return node(a.utility, { children: kids });
+      });
+
+      const pre = [
+        node("Enquiry received", { date: proj.data?.Date_Received ?? null }),
+        node("Documentation", {
+          children: documentation,
+          note: documentation.length ? null : "Nothing requested yet",
+          status: documentation.length ? undefined : "unknown",
+        }),
+        node("Team assigned", {
+          children: teamChildren,
+          status: teamChildren.length ? "done" : "waiting",
+        }),
+        ...design.map((d) => node(d.label, { date: d.achievedOn, note: d.dueOn && !d.achievedOn
+          ? `expected ${d.dueOn}` : null })),
+        node("POC", {
+          children: pocNodes,
+          status: pocNodes.length ? undefined : "waiting",
+        }),
+      ];
+
+      /* Site build has no sources yet: named as empty rather than left
+         out, so a developer can see the stage exists and is not being
+         hidden from them. */
+      const build = [];
+
+      return json({
+        site: proj.data, milestones, poc, pre, build,
+        documents: docs.data || [],
+      });
     }
 
     /* A signed link to read a document we have given them, or to put

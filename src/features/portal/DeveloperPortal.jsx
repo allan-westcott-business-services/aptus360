@@ -28,6 +28,55 @@ const dateText = (d) => (d
     { day: "numeric", month: "short", year: "numeric" })
   : null);
 
+/* One line of the progress tree, and its children under it.
+
+   The dot carries the state and the words carry the fact, so the two
+   cannot disagree: nothing here decides a colour, it is told one by
+   the server, which computes a parent's from its children. A parent
+   claiming to be done over an outstanding child would be the page
+   lying about itself.
+
+   Grey means nothing records this yet — not "no", which is what red
+   means. The difference matters on a line like "invoice paid": red
+   would put somebody on the phone about something we cannot see. */
+function Node({ n, depth = 0, onUpload, onDownload, busy }) {
+  return (
+    <li className="pt-node" style={{ marginLeft: depth ? 18 : 0 }}>
+      <div className="pt-line">
+        <span className={`pt-dot pt-${n.status}`} aria-hidden="true" />
+        <span className="pt-label">{n.label}</span>
+        {n.date && <span className="pt-when">{"\u2013"} {dateText(n.date)}</span>}
+        {n.note && <span className="pt-note-inline">{n.note}</span>}
+
+        {/* The action belongs ON the line that needs it, not in a list
+            somewhere else: a request to upload something is read and
+            acted on in the same breath. */}
+        {n.document?.direction === "from_developer" && (
+          <label className="pt-mini">
+            {n.document.uploaded ? "Replace" : "Upload"}
+            <input type="file" hidden disabled={busy}
+              onChange={(e) => onUpload(n.document, e.target.files?.[0])} />
+          </label>
+        )}
+        {n.document?.direction === "to_developer" && (
+          <button className="pt-mini" onClick={() => onDownload(n.document)}>
+            Download
+          </button>
+        )}
+      </div>
+
+      {n.children?.length > 0 && (
+        <ul className="pt-kids">
+          {n.children.map((c, i) => (
+            <Node key={`${c.label}-${i}`} n={c} depth={depth + 1}
+              onUpload={onUpload} onDownload={onDownload} busy={busy} />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
 export default function DeveloperPortal({ onSignOut, who }) {
   const [sites, setSites] = useState(null);
   const [open, setOpen] = useState(null);
@@ -35,6 +84,7 @@ export default function DeveloperPortal({ onSignOut, who }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
+  const [tab, setTab] = useState("pre");
 
   useEffect(() => {
     http.get("/portal/sites")
@@ -59,18 +109,21 @@ export default function DeveloperPortal({ onSignOut, who }) {
      application, which is what keeps a large layout drawing from
      timing out a function. */
   async function upload(doc, file) {
+    /* The tree hands over `{ id }`; the review list hands over a row
+       with Portal_Document_ID. One function, so both go the same way. */
+    const id = doc.id ?? doc.Portal_Document_ID;
     if (!file) return;
     setBusy(true); setError(""); setNote("");
     try {
       const ask = await http.post(`/portal/upload?project=${open}`,
-        { id: doc.Portal_Document_ID, fileName: file.name });
+        { id, fileName: file.name });
       if (!ask?.url) throw new Error("Could not start the upload.");
 
       const put = await fetch(ask.url, { method: "PUT", body: file });
       if (!put.ok) throw new Error(`The upload failed (${put.status}).`);
 
       await http.post(`/portal/uploaded?project=${open}`,
-        { id: doc.Portal_Document_ID, path: ask.path, fileName: file.name });
+        { id, path: ask.path, fileName: file.name });
       setNote(`${file.name} sent. Thank you.`);
       await refresh();
     } catch (e) { setError(e.message); } finally { setBusy(false); }
@@ -79,8 +132,8 @@ export default function DeveloperPortal({ onSignOut, who }) {
   async function download(doc) {
     setError("");
     try {
-      const r = await http.get(
-        `/portal/download?project=${open}&id=${doc.Portal_Document_ID}`);
+      const r = await http.get(`/portal/download?project=${open}`
+        + `&id=${doc.id ?? doc.Portal_Document_ID}`);
       if (!r?.url) throw new Error("That file is not available.");
       window.open(r.url, "_blank", "noopener");
     } catch (e) { setError(e.message); }
@@ -165,139 +218,78 @@ export default function DeveloperPortal({ onSignOut, who }) {
                   detail.site?.Postcode].filter(Boolean).join(" \u00b7 ")}
               </p>
 
-              <h2>Progress</h2>
-              <ol className="pt-steps">
-                {detail.milestones.map((m) => (
-                  <li key={m.key} className={m.achievedOn ? "done" : ""}>
-                    <span className="pt-step-label">{m.label}</span>
-                    <span className="pt-step-when">
-                      {m.achievedOn
-                        ? dateText(m.achievedOn)
-                        : (m.dueOn ? `expected ${dateText(m.dueOn)}` : "to come")}
-                    </span>
-                    {/* "Applied for" is half an answer without the party
-                        it was applied to, which is the thing a developer
-                        chases. */}
-                    {m.party && <span className="pt-step-party">{m.party}</span>}
-                    {m.detail && <span className="pt-step-detail">{m.detail}</span>}
-                  </li>
-                ))}
-              </ol>
+              <div className="pt-tabs">
+                <button className={tab === "pre" ? "on" : ""}
+                  onClick={() => setTab("pre")}>Pre Contract</button>
+                <button className={tab === "build" ? "on" : ""}
+                  onClick={() => setTab("build")}>Site Build</button>
+              </div>
 
-              {/* ── The POC applications, in full ──
-
-                  An application draws several options and each option
-                  several quotations, so this is a small tree rather
-                  than a date. Shown whole: collapsing it would hide
-                  that three options arrived and one was chosen, which
-                  is the part a developer is actually waiting on. */}
-              {detail.poc?.length > 0 && (
-                <>
-                  <h2>Point of connection</h2>
-                  {detail.poc.map((a) => (
-                    <div key={a.id} className="pt-poc">
-                      <strong>{a.utility}</strong>
-                      <div className="pt-quiet">
-                        {a.appliedOn
-                          ? `Applied ${dateText(a.appliedOn)}`
-                          : "Not yet applied for"}
-                        {a.party ? ` to ${a.party}` : ""}
-                      </div>
-
-                      {a.options.length === 0 && (
-                        <div className="pt-quiet">No options received yet.</div>
-                      )}
-
-                      {a.options.map((o) => (
-                        <div key={o.id} className="pt-opt">
-                          <div>
-                            <strong>{o.name}</strong>
-                            {o.selected && <span className="pt-chosen">chosen</span>}
-                            <span className="pt-quiet">
-                              {o.receivedOn
-                                ? ` \u00b7 received ${dateText(o.receivedOn)}`
-                                : " \u00b7 not yet received"}
-                            </span>
-                          </div>
-                          {o.quotations.length === 0 ? (
-                            <div className="pt-quiet">No quotations yet.</div>
-                          ) : (
-                            <ul className="pt-quotes">
-                              {o.quotations.map((q) => (
-                                <li key={q.id}>
-                                  {q.ref || "Quotation"}
-                                  {q.receivedOn && ` \u00b7 ${dateText(q.receivedOn)}`}
-                                  {q.cost != null && ` \u00b7 \u00a3${Number(q.cost)
-                                    .toLocaleString("en-GB")}`}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+              {tab === "pre" && (
+                <ul className="pt-tree">
+                  {(detail.pre || []).map((n, i) => (
+                    <Node key={`${n.label}-${i}`} n={n}
+                      onUpload={(doc, file) => upload(doc, file)}
+                      onDownload={(doc) => download(doc)} busy={busy} />
                   ))}
-                </>
+                </ul>
               )}
 
-              <h2>We have asked you for</h2>
-              {detail.documents.filter((d) => d.Direction === "from_developer")
-                .length === 0 && <p className="pt-quiet">Nothing at the moment.</p>}
-              {detail.documents.filter((d) => d.Direction === "from_developer")
-                .map((d) => (
-                  <div key={d.Portal_Document_ID} className="pt-doc">
-                    <div>
-                      <strong>{d.Title}</strong>
-                      {d.Detail && <div className="pt-quiet">{d.Detail}</div>}
-                      {d.Due_On && (
-                        <div className="pt-quiet">Needed by {dateText(d.Due_On)}</div>
-                      )}
-                      {d.Storage_Path && (
-                        <div className="pt-ok">
-                          Sent {dateText(d.Uploaded_At)} {"\u2014"} {d.File_Name}
-                        </div>
-                      )}
-                    </div>
-                    <div className="pt-doc-act">
-                      <label className="btn accent">
-                        {d.Storage_Path ? "Replace" : "Upload"}
-                        <input type="file" hidden disabled={busy}
-                          onChange={(e) => upload(d, e.target.files?.[0])} />
-                      </label>
-                    </div>
-                  </div>
-                ))}
+              {tab === "build" && (
+                (detail.build || []).length ? (
+                  <ul className="pt-tree">
+                    {detail.build.map((n, i) => (
+                      <Node key={`${n.label}-${i}`} n={n}
+                        onUpload={(doc, file) => upload(doc, file)}
+                        onDownload={(doc) => download(doc)} busy={busy} />
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="pt-quiet">
+                    Nothing is recorded for the build yet. This tab will fill in
+                    once work starts on site.
+                  </p>
+                )
+              )}
 
-              <h2>For you to review</h2>
+              {/* Anything we have SENT them lives under the tree rather
+                  than in it: the tree is the progress of the site, and a
+                  document to review is a task, not a stage. */}
               {detail.documents.filter((d) => d.Direction === "to_developer")
-                .length === 0 && <p className="pt-quiet">Nothing at the moment.</p>}
-              {detail.documents.filter((d) => d.Direction === "to_developer")
-                .map((d) => (
-                  <div key={d.Portal_Document_ID} className="pt-doc">
-                    <div>
-                      <strong>{d.Title}</strong>
-                      {d.Detail && <div className="pt-quiet">{d.Detail}</div>}
-                      {d.Response_Needed && (
-                        <div className="pt-quiet">
-                          Please {d.Response_Needed} this
-                          {d.Due_On ? ` by ${dateText(d.Due_On)}` : ""}.
+                .length > 0 && (
+                <>
+                  <h2>For you to review</h2>
+                  {detail.documents.filter((d) => d.Direction === "to_developer")
+                    .map((d) => (
+                      <div key={d.Portal_Document_ID} className="pt-doc">
+                        <div>
+                          <strong>{d.Title}</strong>
+                          {d.Detail && <div className="pt-quiet">{d.Detail}</div>}
+                          {d.Response_Needed && (
+                            <div className="pt-quiet">
+                              Please {d.Response_Needed} this
+                              {d.Due_On ? ` by ${dateText(d.Due_On)}` : ""}.
+                            </div>
+                          )}
+                          {d.Responded_At && (
+                            <div className="pt-ok">Done {dateText(d.Responded_At)}</div>
+                          )}
                         </div>
-                      )}
-                      {d.Responded_At && (
-                        <div className="pt-ok">Done {dateText(d.Responded_At)}</div>
-                      )}
-                    </div>
-                    <div className="pt-doc-act">
-                      <button className="btn" onClick={() => download(d)}>Download</button>
-                      {d.Response_Needed && !d.Responded_At && (
-                        <button className="btn accent" disabled={busy}
-                          onClick={() => respond(d)}>
-                          Mark as {d.Response_Needed}ed
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                        <div className="pt-doc-act">
+                          <button className="btn" onClick={() => download(d)}>
+                            Download
+                          </button>
+                          {d.Response_Needed && !d.Responded_At && (
+                            <button className="btn accent" disabled={busy}
+                              onClick={() => respond(d)}>
+                              Mark as {d.Response_Needed}ed
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                </>
+              )}
 
               {/* Said once, at the bottom, because a developer acting on a
                   date needs to know where it came from. */}
@@ -345,6 +337,23 @@ const CSS = `
 .pt-step-when { font-size: 12.5px; color: var(--muted); }
 .pt-step-party, .pt-step-detail { display: block; font-size: 12.5px;
   color: var(--muted); }
+.pt-tabs { display: flex; gap: 10px; margin: 16px 0 14px; }
+.pt-tabs button { padding: 8px 20px; border-radius: 999px; cursor: pointer;
+  border: 1px solid #cbd5e1; background: #fff; font: inherit; }
+.pt-tabs button.on { background: #1e3a5f; border-color: #1e3a5f; color: #fff; }
+.pt-tree, .pt-kids { list-style: none; padding: 0; margin: 0; }
+.pt-kids { margin-top: 2px; }
+.pt-node { margin: 6px 0; }
+.pt-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pt-dot { width: 13px; height: 13px; border-radius: 50%; flex: none; }
+.pt-done { background: #22c55e; }
+.pt-doing { background: #f59e0b; }
+.pt-waiting { background: #ef4444; }
+.pt-unknown { background: #cbd5e1; }
+.pt-label { font-weight: 600; }
+.pt-when, .pt-note-inline { color: var(--muted); font-size: 12.5px; }
+.pt-mini { font-size: 12px; padding: 2px 12px; border-radius: 999px;
+  border: 1px solid #cbd5e1; background: #fff; cursor: pointer; }
 .pt-poc { border-top: 1px solid #e2e8f0; padding: 10px 0; }
 .pt-opt { margin: 8px 0 8px 14px; padding-left: 10px;
   border-left: 2px solid #e2e8f0; }

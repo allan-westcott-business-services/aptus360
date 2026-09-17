@@ -469,9 +469,21 @@ const sql = readFileSync("./supabase/migrations/0218_portal.sql", "utf8");
     fail("quotations are collapsed away, so a developer cannot see what "
       + "arrived or which option was chosen");
   }
+  /* Shown inside the progress TREE now, not as a section of its own:
+     an option is a stage of the POC, and reading it beside the
+     application it came from is the point. Re-anchored rather than
+     dropped \u2014 the property is still that a developer can see every
+     option and every quotation. */
   const dev = readFileSync("./src/features/portal/DeveloperPortal.jsx", "utf8");
-  if (!/detail\.poc/.test(dev)) {
-    fail("the portal does not show the POC options and quotations");
+  if (!/detail\.pre/.test(dev)) {
+    fail("the portal does not render the progress tree");
+  }
+  if (!/const pocNodes = poc\.map/.test(portal)) {
+    fail("the POC options and quotations are not built into the tree, so "
+      + "a developer cannot see what arrived or which was chosen");
+  }
+  if (!/o\.selected \? " \(chosen\)" : ""/.test(portal)) {
+    fail("the chosen option is not marked as chosen");
   }
 
   /* Quotations have no project on them, so the tie to this site is
@@ -486,6 +498,49 @@ const sql = readFileSync("./supabase/migrations/0218_portal.sql", "utf8");
   if (!/d\?\.achievedOn \?\? m\?\.Achieved_On/.test(portal)) {
     fail("a hand-entered date outranks the system's own, which shows the "
       + "older answer");
+  }
+}
+
+// 18. Progress is a TREE, on two tabs, and a parent's colour is
+//     computed rather than claimed.
+{
+  const dev = readFileSync("./src/features/portal/DeveloperPortal.jsx", "utf8");
+
+  if (!/Pre Contract/.test(dev) || !/Site Build/.test(dev)) {
+    fail("the progress page does not carry the two tabs");
+  }
+  if (!/function Node\(/.test(dev)) {
+    fail("progress is rendered flat, so it cannot show that the POC is "
+      + "half done \u2014 electric quoted, water waiting");
+  }
+
+  /* The colour comes from the server, computed by rolling children up.
+     A parent that claimed to be done over an outstanding child would
+     be the page lying about itself. */
+  if (!/const roll = \(children\)/.test(portal)) {
+    fail("a parent's state is not computed from its children");
+  }
+
+  /* Grey is not red. Nothing records an invoice payment yet, and red
+     means "not done" \u2014 claiming that would put a developer on the
+     phone about something we cannot see. */
+  if (!/unknown/.test(portal) || !/pt-unknown/.test(dev)) {
+    fail("a stage nothing records is shown as not done, rather than as "
+      + "not known");
+  }
+  if (!/not recorded yet/.test(portal)) {
+    fail("an unrecorded stage does not say so");
+  }
+
+  /* The action sits on the line that needs it. */
+  if (!/n\.document\?\.direction === "from_developer"/.test(dev)) {
+    fail("the upload action is not on the line that asks for the document");
+  }
+
+  /* The team is NAMED. "Team assigned" without the names is a date
+     about strangers, and the developer's next question is who. */
+  if (!/Project manager/.test(portal) || !/from\("Person"\)/.test(portal)) {
+    fail("the team line does not name anybody");
   }
 }
 

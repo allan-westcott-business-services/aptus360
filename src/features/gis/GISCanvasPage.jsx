@@ -1515,7 +1515,49 @@ export default function GISCanvasPage() {
   const cancelRef = useRef(false);
 
   // view transform: metres → pixels
+  /* ── Where somebody was looking ──
+
+     Kept per project, and restored when that project opens again.
+
+     The canvas lost its position whenever the page remounted \u2014 coming
+     back to the tab after the browser had discarded it, a deploy
+     swapping the chunk underneath, anything that unmounts the tree.
+     `view` is component state, so a remount put somebody back at the
+     default corner of a site they had been working in at 1:200. The
+     cause of a remount is various and mostly outside this page; the
+     answer that holds whatever the cause is to remember the answer.
+
+     Per PROJECT, because the position means nothing on another
+     drawing. In the session store rather than the database: it is
+     where somebody was looking, not a fact about the scheme, and it
+     should not follow them to another machine or be something a
+     colleague inherits. */
+  const viewKey = projectId ? `gisView:${projectId}` : null;
   const [view, setView] = useState({ x: 60, y: 60, scale: 4 });
+
+  /* Restored when the project changes, including on a remount — which
+     is the case this exists for. Guarded so a stored value that has
+     been edited by hand, or written by an older version, cannot leave
+     the canvas at a scale nothing can be seen at. */
+  useEffect(() => {
+    if (!viewKey) return;
+    const saved = recall(viewKey, null);
+    if (!saved) return;
+    const { x, y, scale } = saved;
+    if (![x, y, scale].every((n) => typeof n === "number" && Number.isFinite(n))) {
+      return;
+    }
+    setView({ x, y, scale: Math.max(0.05, Math.min(40, scale)) });
+  }, [viewKey]);
+
+  /* And remembered as it changes. Written on a short delay: a pan is a
+     hundred view updates and a hundred writes to storage would be a
+     hundred JSON serialisations for one gesture. */
+  useEffect(() => {
+    if (!viewKey) return undefined;
+    const t = setTimeout(() => remember(viewKey, view), 400);
+    return () => clearTimeout(t);
+  }, [viewKey, view]);
   /* Which way the cable under a joint runs, in radians.
 
      The nearest segment of the nearest line, which is the cable the

@@ -5726,6 +5726,41 @@ characters is a hundred lines of prose and no rules at all.
      complete) and need either a source naming or a staff screen; and
      the DNO and IDNO portals.
 
+145. **The canvas lost its position when the tab came back.** Reported
+     as "I move away from the browser and return, and the GIS Canvas
+     refreshes and I lose the zoom".
+
+     `view` is component state, so anything that unmounts the page puts
+     somebody back at the default corner of a site they were working in
+     at 1:200. I could not pin the remount statically — the visibility
+     listener in AuthContext only bumps an idle timer, and lazyPage's
+     reload only fires on a stale chunk at import — and the honest
+     reading is that the cause is various and mostly outside this page:
+     a browser discarding a background tab, a deploy swapping the chunk
+     underneath, an error boundary.
+
+     So the answer is to remember the answer. `gisView:<projectId>` in
+     the session store, restored when the project changes (which
+     includes a remount), written on a 400ms delay because a pan is a
+     hundred view updates and a hundred serialisations for one gesture.
+
+     Three guards on the way back IN, which is where a remembered value
+     can do damage: the scale is clamped to the same 0.05–40 the rest
+     of the page uses, every field is checked for being a finite
+     number, and a value that is neither is ignored rather than setting
+     the view to NaN — which draws nothing and reads as a broken
+     canvas.
+
+     Per project and in the session store deliberately: where somebody
+     was looking is not a fact about the scheme, and should not follow
+     them to another machine or be inherited by a colleague opening the
+     drawing. `checkviewmemory.mjs`.
+
+     If the underlying remount is ever worth chasing, the thing to
+     instrument is whether GISCanvasPage's mount effect runs on tab
+     return — that distinguishes a remount from a re-render, and the
+     two have completely different causes.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

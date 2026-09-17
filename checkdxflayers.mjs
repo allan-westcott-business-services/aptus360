@@ -452,11 +452,38 @@ const at = (f, org = null) => layerFor(f, { rules, lineTypes, organisationId: or
     fail("the siting field is built more than once, so two copies can "
       + "drift apart");
   }
-  for (const branch of ["isMain", "isMeter"]) {
-    if (!new RegExp(`\\{${branch} && sitingField\\}`).test(editor)) {
-      fail(`the siting field is never rendered for ${branch}, so on that `
-        + "feature it simply does not appear");
+  if (!/\{isMeter && sitingField\}/.test(editor)) {
+    fail("the siting field is never rendered for a meter, so on that "
+      + "feature it simply does not appear");
+  }
+  /* On a main it is rendered INSIDE the status row, not after it: the
+     two are answered in the same breath — what stage this length is
+     at, and where it sits — and stacked they read as two unrelated
+     questions. */
+  {
+    const at = editor.indexOf("{isMain && (");
+    const block = at >= 0 ? editor.slice(at, at + 2400) : "";
+    if (!block) {
+      fail("the main's status block cannot be found where it was");
+    } else {
+      if (!/className="fe-row"/.test(block)) {
+        fail("the main's status and siting are not on one row");
+      }
+      if (block.indexOf("{sitingField}") < block.indexOf('id="fe-main-status"')) {
+        fail("the siting field is drawn to the LEFT of the status dropdown");
+      }
+      if (!/\{sitingField\}/.test(block)) {
+        fail("the siting field is not inside the main's status row");
+      }
     }
+  }
+
+  /* And the unset option says what every other unset option in this
+     panel says. A phrase used once is one somebody stops to read. */
+  if (/Not said/.test(editor.slice(editor.indexOf("const sitingField"),
+    editor.indexOf("const sitingField") + 600))) {
+    fail("the siting field says \"Not said\" where the rest of the panel "
+      + "says \"Not set\"");
   }
   /* Not in the trench branch, where it means nothing. */
   if (/isTrench && sitingField/.test(editor)) {

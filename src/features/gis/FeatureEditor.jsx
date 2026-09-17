@@ -531,7 +531,10 @@ export default function FeatureEditor({
       <label htmlFor="fe-siting">External or internal</label>
       <select id="fe-siting" value={f.Attributes?.Siting ?? ""}
         onChange={(e) => setAttr("Siting")(e.target.value)}>
-        <option value="">&mdash; Not said &mdash;</option>
+        {/* "Not set", which is what every other unset option in this
+            panel says. This file already records why: a phrase used
+            once is one somebody has to stop and read. */}
+        <option value="">Not set</option>
         <option value="External">External</option>
         <option value="Internal">Internal</option>
       </select>
@@ -4905,6 +4908,14 @@ export default function FeatureEditor({
           )}
 
           {isMain && (
+            /* Status and siting on ONE row, side by side.
+
+               `fe-row` is the class this panel already uses for two
+               fields that belong together; its children take equal
+               width. Stacking them worked and read as two unrelated
+               questions \u2014 what stage this length is at, and where it
+               sits, are answered in the same breath. */
+            <div className="fe-row">
             <div className="fld">
               <label htmlFor="fe-main-status">Status</label>
               <select id="fe-main-status"
@@ -4940,12 +4951,10 @@ export default function FeatureEditor({
                       + "off."}
               </p>
             </div>
+            {/* To the right of the Status box, on the same row. */}
+            {sitingField}
+            </div>
           )}
-
-          {/* Beside the main's Status, because the two are read
-              together: what stage this length is at, and where it
-              sits. */}
-          {isMain && sitingField}
 
           <div className="fld">
             <label htmlFor="fe-notes">Notes</label>

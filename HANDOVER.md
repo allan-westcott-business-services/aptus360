@@ -5313,6 +5313,16 @@ characters is a hundred lines of prose and no rules at all.
      "the code exists" and "the code runs" are different claims, and
      only the second is what somebody sees.
 
+     On a main it sits INSIDE the status row (`fe-row`, the class this
+     panel already uses for two fields that belong together), to the
+     right of the Status dropdown — what stage this length is at and
+     where it sits are answered in the same breath, and stacked they
+     read as two unrelated questions. Its unset option says "Not set",
+     which is what every other unset option in the panel says; this
+     file already recorded, about a different field, that a phrase used
+     once is one somebody has to stop and read. I wrote "Not said"
+     anyway.
+
      **External or Internal** is a new fact about apparatus, on mains
      feeder cables and meters to begin with: the two are drawn on
      different CAD layers and are different jobs on site. No column

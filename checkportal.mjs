@@ -163,6 +163,135 @@ const sql = readFileSync("./supabase/migrations/0218_portal.sql", "utf8");
   }
 }
 
+// 9. The door is not remembered across a reload.
+//
+//    It was, and somebody who had once pressed a square was taken
+//    straight to a sign-in screen ever after, with no way back short
+//    of clearing their storage.
+{
+  if (/recallOneOf\("portalDoor"/.test(app)) {
+    fail("the chosen door is restored on reload, so the landing page can "
+      + "never be seen again");
+  }
+  if (!/onBack=\{/.test(app)) {
+    fail("there is no way back to the door from a sign-in screen");
+  }
+}
+
+// 10. A portal sign-in asks for the organisation and branch, because
+//     that is how this business records a contact — but neither is a
+//     credential, and neither is sent anywhere as a claim.
+{
+  const login = readFileSync("./src/features/portal/PortalLogin.jsx", "utf8");
+  if (!/Your organisation/.test(login) || !/Your branch/.test(login)) {
+    fail("the portal sign-in does not ask for organisation and branch");
+  }
+  /* The sign-in call carries the credential and nothing else. An
+     organisation sent with it would be a claim somebody could edit. */
+  if (!/signIn\(email\.trim\(\), password\)/.test(login)) {
+    fail("the portal sign-in sends something other than the credential");
+  }
+  if (/signIn\([^)]*org/i.test(login)) {
+    fail("the chosen organisation is passed as part of signing in, which "
+      + "would make this form the security boundary");
+  }
+
+  const orgs = readFileSync("./netlify/functions/portal-orgs.js", "utf8");
+
+  /* The keys are the ones in Organisation_Type, not the words people
+     use. A housing developer is recorded as `customer`; "developer" is
+     what everybody calls them and is not a key. */
+  if (!/developer: \["customer"\]/.test(orgs)) {
+    fail("the developer door does not filter on the customer role, which "
+      + "is how a housing developer is actually recorded");
+  }
+  for (const key of ["dno", "gt", "wu", "idno", "igt", "iwu"]) {
+    if (!new RegExp(`"${key}"`).test(orgs)) {
+      fail(`the operator doors do not offer the ${key} role`);
+    }
+  }
+  /* An empty result is an answer, not a reason to offer everything.
+     Falling back on empty would put every supplier and subcontractor
+     in a developer's dropdown. */
+  if (!/if \(error\) ids = null;/.test(orgs)) {
+    fail("an empty role result falls back to every organisation, which "
+      + "offers a developer the whole address book");
+  }
+  if (!/\{ open: true \}/.test(orgs)) {
+    fail("the organisation list needs a session, so a sign-in screen could "
+      + "never fill its own dropdowns");
+  }
+  /* Open, so it must be thin: names and branches, nothing about who
+     has an account. */
+  for (const leak of ["Portal_Access", "Email", "Contact"]) {
+    if (new RegExp(`select\\([^)]*${leak}`).test(orgs)) {
+      fail(`the open organisation list exposes ${leak}`);
+    }
+  }
+}
+
+// 11. Creating an account creates BOTH halves, and rolls back.
+//
+//     An auth user with no record signs in and sees nothing; a record
+//     with no auth user is an invitation nobody can accept.
+{
+  const acc = readFileSync("./netlify/functions/portal-accounts.js", "utf8");
+  if (!/auth\.admin\.(createUser|inviteUserByEmail)/.test(acc)) {
+    fail("no account is created in Supabase authentication");
+  }
+  if (!/from\("Portal_Access"\)\.insert/.test(acc)) {
+    fail("no portal record is written, so the account would sign in and "
+      + "see nothing");
+  }
+  if (!/auth\.admin\.deleteUser/.test(acc)) {
+    fail("a failed record leaves an orphan auth user behind — half an "
+      + "account is worse than none");
+  }
+  /* Staff only. This endpoint runs with the key that can create any
+     account at all. */
+  if (!/caller\.Audience !== "staff"/.test(acc)) {
+    fail("a portal account can create portal accounts");
+  }
+  if (!/inviteUserByEmail/.test(acc)) {
+    fail("there is no way to invite somebody to choose their own password");
+  }
+}
+
+// 12. And there is a SCREEN for it, not just an endpoint.
+//
+//     An endpoint with no form means onboarding a client by hand-rolled
+//     HTTP request, which nobody should be doing to set up an account.
+{
+  let screen = "";
+  try {
+    screen = readFileSync("./src/features/admin/PortalAccountsAdmin.jsx", "utf8");
+  } catch { /* reported below */ }
+
+  if (!screen) {
+    fail("there is no Portal Accounts screen, so creating a client login "
+      + "means sending a raw request by hand");
+  } else {
+    if (!/http\.post\("\/portal-accounts"/.test(screen)) {
+      fail("the screen does not create accounts through the endpoint that "
+        + "makes both halves");
+    }
+    /* Switching off, not deleting: an account that uploaded documents
+       and approved things is part of a site's history. */
+    if (/adminDelete/.test(screen)) {
+      fail("the screen deletes portal accounts, which orphans the documents "
+        + "and approvals they are attributed to");
+    }
+    if (!/Is_Active: row\.Is_Active === false/.test(screen)) {
+      fail("there is no way to switch an account off");
+    }
+  }
+
+  const tables = readFileSync("./src/lib/adminTables.js", "utf8");
+  if (!/special: "portalaccounts"/.test(tables)) {
+    fail("the screen is not in the admin menu, so nobody can reach it");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The door grants nothing; the portal scopes everything server-side.");
 process.exit(bad ? 1 : 0);

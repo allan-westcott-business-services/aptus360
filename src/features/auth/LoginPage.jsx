@@ -5,7 +5,7 @@ import { getSupabase, authEnabled } from "../../lib/supabaseClient.js";
 /* Sign in, forgot password, and the set-a-new-password step people land
    on from the reset email. One screen with three modes rather than three
    routes, since there's no router yet. */
-export default function LoginPage() {
+export default function LoginPage({ onBack = null }) {
   const { signIn, resetPassword, updatePassword, idleOut, clearIdleNotice } = useAuth();
   const [mode, setMode] = useState("signin");   // signin | forgot | reset
   const [email, setEmail] = useState("");
@@ -165,11 +165,22 @@ export default function LoginPage() {
           )}
         </div>
       </form>
+
+      {/* Back to the door, because somebody who chose the wrong square
+          should not have to clear their browser to change their mind. */}
+      {onBack && (
+        <button type="button" className="lp-back" onClick={onBack}>
+          &larr; Not staff? Choose again
+        </button>
+      )}
     </div>
   );
 }
 
 const CSS = `
+.lp-back { margin-top: 14px; background: none; border: none; cursor: pointer;
+  color: var(--muted); font-size: 12.5px; }
+.lp-back:hover { text-decoration: underline; }
 .lp { min-height: 100vh; display: flex; align-items: center; justify-content: center;
   background: var(--bg); padding: 24px; }
 /* min-height reserves the space the card will occupy, so nothing below

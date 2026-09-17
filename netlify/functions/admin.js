@@ -17,6 +17,13 @@ const TABLES = {
      the rates above: a layer name that needs a deploy to correct will
      be wrong on a drawing somebody has already sent. */
   DXF_Layer_Map:    { pk: "DXF_Layer_Map_ID",    order: "Sort_Order" },
+
+  /* Portal accounts (0218). Listed and edited here so staff can see
+     who has access and switch somebody off; CREATING one is not done
+     here, because an account needs a Supabase auth user made at the
+     same moment — that is portal-accounts.js, which does both and
+     rolls back if either fails. */
+  Portal_Access:    { pk: "Portal_Access_ID",    order: "Email" },
   Dig_Depth_Factor: { pk: "Dig_Depth_Factor_ID", order: "Depth_From_M" },
   Dig_Lay_Rate:     { pk: "Dig_Lay_Rate_ID",     order: "Utility_Key" },
   /* The six surfaces, and how much slower each is to dig than unmade

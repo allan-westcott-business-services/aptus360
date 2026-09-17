@@ -7,6 +7,7 @@ import { onOpenProject } from "./lib/projectIntent.js";
 import { remember, recallOneOf } from "./lib/session.js";
 import LoginPage from "./features/auth/LoginPage.jsx";
 import AudienceLanding from "./features/portal/AudienceLanding.jsx";
+import PortalLogin from "./features/portal/PortalLogin.jsx";
 import AccountMenu from "./features/auth/AccountMenu.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Sidebar from "./components/Sidebar.jsx";
@@ -292,8 +293,14 @@ function isFieldApp() {
 function Gate() {
   const { session, loading, authEnabled, signOut } = useAuth();
   const field = isFieldApp();
-  const [audience, setAudience] = useState(() => recallOneOf("portalDoor",
-    ["staff", "developer", "dno", "idno"], null));
+  /* NOT remembered across a reload.
+
+     It was, and that was wrong: somebody who had once pressed a square
+     was taken straight to a sign-in screen ever after, with no way
+     back to the door short of clearing their storage. The door is the
+     start of the journey, so every arrival begins there. Within a
+     visit it is state, which is all it needs to be. */
+  const [audience, setAudience] = useState(null);
   const [who, setWho] = useState(null);
   const [asking, setAsking] = useState(false);
 
@@ -324,13 +331,16 @@ function Gate() {
        in and does not pass through here. */
     if (!field && !audience) {
       return (
-        <AudienceLanding onChoose={(id) => {
-          remember("portalDoor", id);
-          setAudience(id);
-        }} />
+        <AudienceLanding onChoose={setAudience} />
       );
     }
-    return <LoginPage />;
+    /* Staff sign in as they always have. Everybody else names their
+       organisation and branch first, because that is how the business
+       records them — a contact belongs to a branch, and the branch to
+       an organisation. */
+    return audience && audience !== "staff"
+      ? <PortalLogin audience={audience} onBack={() => setAudience(null)} />
+      : <LoginPage onBack={field ? null : () => setAudience(null)} />;
   }
 
   if (field) return <FieldApp />;
@@ -343,7 +353,6 @@ function Gate() {
           /* The door is forgotten on the way out, so the next person at
              this browser is asked again rather than inheriting somebody
              else's answer. */
-          remember("portalDoor", null);
           setAudience(null);
           signOut();
         }} />

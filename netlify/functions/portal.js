@@ -32,7 +32,8 @@ async function accessFor(db, user) {
   if (!email) return null;
   const { data, error } = await db
     .from("Portal_Access")
-    .select("Portal_Access_ID,Email,Audience,Customer_ID,Organisation_ID,Full_Name,Is_Active")
+    .select("Portal_Access_ID,Email,Audience,Customer_ID,Organisation_ID,"
+      + "Branch_ID,Full_Name,Is_Active")
     .ilike("Email", email)
     .maybeSingle();
   if (error) throw error;
@@ -64,9 +65,35 @@ async function mine(db, access) {
     for (const r of shared.data || []) ids.add(Number(r.Project_ID));
   }
 
-  /* A DNO or IDNO account is scoped by organisation. The routes that
-     use it are not built yet, so this returns their empty set rather
-     than guessing at a link that has not been designed. */
+  /* An account recorded against an organisation — which is how a
+     developer contact is held: a branch of an organisation, from
+     Organisation_Branch — finds its sites through Project_Developer.
+
+     By BRANCH where the account has one, because a group with several
+     offices runs several schemes and an account tied to the whole
+     group would show Leeds the Northampton jobs. By organisation where
+     it does not, which suits a developer with one office. */
+  if (access.Organisation_ID != null && access.Audience === "developer") {
+    let q = db.from("Project_Developer").select("Project_ID,Organisation_Branch_ID");
+    if (access.Branch_ID != null) {
+      q = q.eq("Organisation_Branch_ID", access.Branch_ID);
+    } else {
+      const { data: mineBranches, error: bErr } = await db
+        .from("Organisation_Branch").select("Organisation_Branch_ID")
+        .eq("Organisation_ID", access.Organisation_ID);
+      if (bErr) throw bErr;
+      const branchIds = (mineBranches || []).map((b) => Number(b.Organisation_Branch_ID));
+      if (!branchIds.length) return [...ids];
+      q = q.in("Organisation_Branch_ID", branchIds);
+    }
+    const { data, error } = await q;
+    if (error) throw error;
+    for (const r of data || []) ids.add(Number(r.Project_ID));
+  }
+
+  /* A DNO or IDNO account is scoped by organisation too, but the
+     routes that use it are not built yet — so they get their empty
+     set rather than a link that has not been designed. */
   return [...ids];
 }
 
@@ -88,6 +115,7 @@ export default withAuth(async function handler(req, context, user) {
         name: access?.Full_Name ?? null,
         customerId: access?.Customer_ID ?? null,
         organisationId: access?.Organisation_ID ?? null,
+        branchId: access?.Branch_ID ?? null,
       });
     }
 

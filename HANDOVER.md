@@ -5299,10 +5299,78 @@ characters is a hundred lines of prose and no rules at all.
      field branch is now its own early return; the property is the
      same and the case tests it in both shapes.
 
+     **0219 and the sign-in, one round later.**
+
+     *The door was remembered across a reload*, so somebody who had
+     once pressed a square went straight to a sign-in screen ever
+     after, with no way back short of clearing their storage. It is
+     state within a visit now, not a preference: every arrival starts
+     at the door, and both sign-in screens carry a way back to it.
+
+     *A portal account belongs to a BRANCH.* 0218 scoped to a customer
+     or an organisation, which is one level coarser than the business
+     records people: an organisation has branches and a contact is
+     assigned to one. "Barratt" does not sign in; "Barratt,
+     Northampton" does. `Branch_ID` added, nullable — a developer with
+     one office is legitimately scoped to the whole organisation — and
+     a developer's sites are found through `Project_Developer` by
+     branch where they have one.
+
+     *The portal sign-in asks for organisation and branch.* Neither is
+     a credential and neither is sent as a claim: the sign-in call
+     carries the email and password only, and what somebody sees comes
+     from the record read against the verified token. They are asked
+     because it is how a contact is held, because a group with several
+     offices needs to say which, and because an account with no record
+     can then be told where we have them rather than shown an empty
+     page. The check asserts that no organisation rides along with the
+     credential — a form that could override the record would make the
+     form the security boundary.
+
+     *`portal-orgs` is OPEN*, because a sign-in screen that needed a
+     session to fill its own dropdowns could never be used. It is thin
+     on purpose: names of active organisations and their branches, and
+     nothing about who has an account. A list of who our clients are is
+     a marketing page; a list of who can sign in is not.
+
+     *`portal-accounts` creates the Supabase auth user AND the record,
+     and deletes the auth user again if the record fails.* Half an
+     account is worse than none: an auth user with no record signs in
+     and sees nothing, and nobody knows why. Invitation by default,
+     because a password we choose is a password that lives in an email
+     thread. Staff only, checked by name — this endpoint runs with the
+     key that can create any account at all.
+
+     **The role keys, confirmed from Organisation_Type.** A housing
+     developer is recorded as **`customer`** — the label is "Customer
+     (Housing Developer)" — which is worth knowing because "developer"
+     is the word everybody uses for them and is not the key. The
+     operator doors take three keys each: `dno`/`gt`/`wu`, and
+     `idno`/`igt`/`iwu`.
+
+     With the right keys the old fallback became a fault rather than a
+     kindness: offering every organisation when the filter matched
+     nothing would put every supplier and subcontractor in a
+     developer's dropdown. An EMPTY result is now an answer — the list
+     is empty and the screen says so, while still allowing sign-in,
+     because an account whose organisation is missing from a list
+     should not be locked out by it. Only a FAILED query falls back,
+     because that means the view could not be read rather than that
+     nothing matched.
+
+     **Admin › Portal Accounts** now creates them: email, name, kind,
+     organisation, branch, and an optional password. Blank password
+     sends an invitation, which the screen explains where the decision
+     is made rather than in a manual. The list switches an account off
+     rather than deleting it — an account that uploaded documents and
+     approved things is part of a site's history, and deleting the row
+     would leave those actions attributed to nobody. The Supabase
+     sign-in itself is removed from the Supabase dashboard,
+     deliberately not from here.
+
      **Still to do:** a job that writes the milestone dates as each
      stage completes (nothing writes them yet — staff can only enter
-     them by hand), the Portal_Access admin screen, and the DNO and
-     IDNO portals.
+     them by hand), and the DNO and IDNO portals.
 
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the

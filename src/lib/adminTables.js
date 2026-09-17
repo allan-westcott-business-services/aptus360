@@ -338,6 +338,7 @@ export const ADMIN_TABLES = [
      our screen, the other what it is CALLED in somebody else's CAD.
      They answer to different people and will diverge. */
   { key: "DXF_Layer_Map", label: "CAD Layers", special: "dxflayers" },
+  { key: "Portal_Access", label: "Portal Accounts", special: "portalaccounts" },
 ];
 
 export const findAdminTable = (key) => ADMIN_TABLES.find((t) => !t.separator && t.key === key);

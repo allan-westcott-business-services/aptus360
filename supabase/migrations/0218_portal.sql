@@ -3,7 +3,7 @@
 -- Until now everyone signing in was staff, and the app opened on the
 -- section menu. Four audiences now sign in at the same door:
 --
---   staff      Aptus staff and contractors \u2014 the app as it is
+--   staff      Aptus staff and contractors - the app as it is
 --   developer  a client developer, who sees THEIR sites and nothing else
 --   dno        a DNO, gas transporter or water undertaker
 --   idno       an IDNO, iGT or NAV

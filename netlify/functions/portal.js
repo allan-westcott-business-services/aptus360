@@ -232,11 +232,58 @@ export default withAuth(async function handler(req, context, user) {
         waiting.set(Number(d.Project_ID), (waiting.get(Number(d.Project_ID)) ?? 0) + 1);
       }
 
+      /* ── Which branch each site belongs to ──
+
+         So the portal can show somebody what they are attached to
+         rather than one undifferentiated list. A contact for the whole
+         group sees their offices and the sites under each; a contact
+         for one branch sees that branch; a contact for one site sees
+         the site.
+
+         From `Project_Developer` again — the record, not
+         `Project.Organisation_Branch_ID`, which is the cached copy
+         this file refuses to read for deciding access and should not
+         be trusted for labelling either. A wrong label here would tell
+         a developer that somebody else's office is running their
+         scheme. */
+      const { data: links, error: lkErr } = await db
+        .from("Project_Developer")
+        .select("Project_ID,Organisation_Branch_ID")
+        .in("Project_ID", allowed);
+      if (lkErr) throw lkErr;
+
+      const branchOf = new Map();
+      for (const l of links || []) {
+        if (l.Organisation_Branch_ID == null) continue;
+        /* First link wins. A scheme with two developers on it has two
+           rows; the account only ever sees one of them as "theirs",
+           and which is settled by the filter below. */
+        if (!branchOf.has(Number(l.Project_ID))) {
+          branchOf.set(Number(l.Project_ID), Number(l.Organisation_Branch_ID));
+        }
+      }
+
+      const branchIds = [...new Set([...branchOf.values()])];
+      let branchNames = new Map();
+      if (branchIds.length) {
+        const { data: bs, error: bnErr } = await db
+          .from("Organisation_Branch")
+          .select("Organisation_Branch_ID,Branch_Name,Branch_Dropdown")
+          .in("Organisation_Branch_ID", branchIds);
+        if (bnErr) throw bnErr;
+        branchNames = new Map((bs || []).map((b) => [
+          Number(b.Organisation_Branch_ID),
+          b.Branch_Dropdown || b.Branch_Name,
+        ]));
+      }
+
       return json({
         sites: (data || []).map((p) => ({
           ...p,
           latestMilestone: latest.get(Number(p.Project_ID)) ?? null,
           waitingOnYou: waiting.get(Number(p.Project_ID)) ?? 0,
+          branchId: branchOf.get(Number(p.Project_ID)) ?? null,
+          branchName: branchNames.get(branchOf.get(Number(p.Project_ID))) ?? null,
         })),
       });
     }

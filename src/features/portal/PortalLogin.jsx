@@ -1,67 +1,43 @@
-/* Signing in from outside Aptus.
+/* Signing in to the portal.
 
-   A client developer is not an email address to this business: they are
-   a CONTACT, at a BRANCH, of an ORGANISATION. That is how they were
-   recorded when the organisation was set up, and it is how they think
-   of themselves — "Barratt, Northampton office" — so it is what they
-   are asked for.
+   ── Email and password, and nothing else ──
 
-   ── The organisation and branch are not the credential ──
+   It used to ask for the organisation and the branch first. The code
+   admitted, in a comment beside the submit handler, that they were "a
+   convenience, not a claim": neither was sent anywhere, neither was
+   checked, and naming an organisation proved nothing. They were two
+   questions asked before the two that matter.
 
-   The password is. Naming an organisation proves nothing and grants
-   nothing: what somebody sees afterwards comes from the record held
-   against their account, which the server reads from the verified
-   token. Two reasons for asking anyway.
+   Worse for the one case they were meant to help — a contact at two
+   branches of the same group — because a dropdown of every
+   organisation on the system is a list somebody has to find themselves
+   in before they can type a password.
 
-   First, it is how the account is found when something is wrong: an
-   email that signs in but has no portal record can be told "we have
-   you at this branch — ask your Aptus contact" rather than shown an
-   empty page.
-
-   Second, a contact at two branches of the same group signs in with
-   the branch they mean, rather than getting whichever the database
-   happened to return first.
-
-   If the account's own record disagrees with what was chosen here, the
-   ACCOUNT wins and the portal says so. A form that could override the
-   record would make this screen the security boundary, which is the
-   thing the front door deliberately is not. */
-
-import { useEffect, useMemo, useState } from "react";
+   So the credential is the credential. What the account may see is
+   settled by its Portal_Access record, on the server, and the portal
+   shows it as soon as they are in: the branches they are attached to,
+   or the one site, or every branch of the group. Somebody who is at
+   two branches now sees both, rather than choosing one in advance and
+   wondering where the rest went. */
+import { useState } from "react";
 import { useAuth } from "../../lib/AuthContext.jsx";
-import { http } from "../../api/client.js";
 
+/* The titles are per audience, so the door somebody came through is
+   still named on the card they land on. */
 const TITLES = {
-  developer: "Client developer sign in",
-  dno: "Network owner sign in",
-  idno: "Independent network sign in",
+  developer: "Developer portal",
+  dno: "DNO portal",
+  idno: "IDNO portal",
 };
 
 export default function PortalLogin({ audience, onBack }) {
   const { signIn, resetPassword } = useAuth();
-  const [orgs, setOrgs] = useState(null);
-  const [orgId, setOrgId] = useState("");
-  const [branchId, setBranchId] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  useEffect(() => {
-    /* Open, and deliberately thin: names and branches of active
-       organisations, which is what is printed on their own letterhead.
-       Nothing here is a secret, and a sign-in screen that needed a
-       session to populate itself could never be used. */
-    http.get(`/portal-orgs?audience=${encodeURIComponent(audience)}`)
-      .then((r) => setOrgs(r.organisations || []))
-      .catch(() => setOrgs([]));
-  }, [audience]);
-
-  const branches = useMemo(() => {
-    const o = (orgs || []).find((x) => String(x.Organisation_ID) === String(orgId));
-    return o?.branches || [];
-  }, [orgs, orgId]);
 
   async function submit(e) {
     e.preventDefault();
@@ -97,32 +73,6 @@ export default function PortalLogin({ audience, onBack }) {
         {error && <div className="banner error">{error}</div>}
         {notice && <div className="banner ok">{notice}</div>}
 
-        <label htmlFor="pl-org">Your organisation</label>
-        <select id="pl-org" value={orgId}
-          onChange={(e) => { setOrgId(e.target.value); setBranchId(""); }}>
-          <option value="">
-            {orgs == null ? "Loading\u2026"
-              : orgs.length ? "Choose\u2026" : "None listed"}
-          </option>
-          {(orgs || []).map((o) => (
-            <option key={o.Organisation_ID} value={o.Organisation_ID}>{o.Name}</option>
-          ))}
-        </select>
-
-        <label htmlFor="pl-branch">Your branch</label>
-        <select id="pl-branch" value={branchId} disabled={!orgId}
-          onChange={(e) => setBranchId(e.target.value)}>
-          <option value="">
-            {!orgId ? "Choose an organisation first"
-              : branches.length ? "Choose\u2026" : "No branches listed"}
-          </option>
-          {branches.map((b) => (
-            <option key={b.Organisation_Branch_ID} value={b.Organisation_Branch_ID}>
-              {b.Branch_Dropdown || b.Branch_Name}
-            </option>
-          ))}
-        </select>
-
         <label htmlFor="pl-email">Email</label>
         <input id="pl-email" type="email" autoComplete="username"
           value={email} onChange={(e) => setEmail(e.target.value)} required />
@@ -130,18 +80,6 @@ export default function PortalLogin({ audience, onBack }) {
         <label htmlFor="pl-pass">Password</label>
         <input id="pl-pass" type="password" autoComplete="current-password"
           value={password} onChange={(e) => setPassword(e.target.value)} required />
-
-        {/* An empty list is a dead end, so it says why rather than
-            leaving somebody clicking an empty dropdown. Signing in is
-            still allowed: the organisation is a convenience, and an
-            account whose organisation is missing from the list should
-            not be locked out by it. */}
-        {orgs?.length === 0 && (
-          <p className="lp-foot">
-            We have no organisations listed for this door yet. You can still
-            sign in; tell your Aptus contact so we can put it right.
-          </p>
-        )}
 
         <button className="btn accent" type="submit" disabled={busy}>
           {busy ? "Signing in\u2026" : "Sign in"}

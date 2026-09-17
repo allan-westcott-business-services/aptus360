@@ -124,6 +124,44 @@ const mine = (() => {
   }
 }
 
+// 5. And what they are attached to is shown once they are in.
+//
+//    The sign-in no longer asks which branch they are at, so the portal
+//    has to say. A contact for a whole group sees their offices with
+//    the sites under each; one branch or one site needs no headings,
+//    and a single heading over a single list is furniture.
+{
+  const portalFn = readFileSync("./netlify/functions/portal.js", "utf8");
+  if (!/branchName: branchNames\.get/.test(portalFn)) {
+    fail("a site does not carry the branch it belongs to, so the portal "
+      + "cannot show somebody what they are attached to");
+  }
+  /* From the record, not the cached column \u2014 a wrong label here would
+     tell a developer that somebody else's office runs their scheme. */
+  const at = portalFn.indexOf("const branchOf = new Map()");
+  const block = at >= 0 ? portalFn.slice(at - 800, at) : "";
+  if (block && !/from\("Project_Developer"\)/.test(block)) {
+    fail("the branch label is read from somewhere other than "
+      + "Project_Developer");
+  }
+
+  const ui = readFileSync("./src/features/portal/DeveloperPortal.jsx", "utf8");
+  if (!/byBranch\.length > 1/.test(ui)) {
+    fail("the portal does not group by branch, or groups even when there "
+      + "is only one \u2014 a single heading over a single list is furniture");
+  }
+  if (!/const siteCard/.test(ui)) {
+    fail("the grouped and flat lists draw their own cards, so the one "
+      + "nobody looks at will drift from the one they do");
+  }
+  /* A site whose branch is not recorded is grouped, not dropped: a
+     scheme somebody can see, missing from the page with nothing to say
+     why, is the worst outcome here. */
+  if (!/"Other sites"/.test(ui)) {
+    fail("a site with no branch recorded is dropped from the list");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Portal scopes: organisation, branch, one site \u2014 narrowest wins.");
 process.exit(bad ? 1 : 0);

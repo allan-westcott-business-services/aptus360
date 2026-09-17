@@ -5832,6 +5832,34 @@ characters is a hundred lines of prose and no rules at all.
      into an empty list, and an empty list is a plausible answer. Worth
      grepping for elsewhere.
 
+     **And the sign-in now asks for the credential only.** It used to
+     ask for the organisation and the branch first — and the code
+     admitted, in a comment beside its own submit handler, that they
+     were "a convenience, not a claim": never sent, never checked. Two
+     questions before the two that matter, and a dropdown of every
+     organisation on the system that somebody had to find themselves in
+     before they could type a password. Worst for the case they were
+     meant to help, a contact at two branches, who had to choose one in
+     advance and then wonder where the rest went.
+
+     What the account may see was always settled server-side by its
+     Portal_Access row. Now the portal SHOWS it once they are in:
+     `sites` returns each site's branch (from Project_Developer, not
+     the cached column — a wrong label would tell a developer that
+     somebody else's office runs their scheme), and the list is grouped
+     under a heading per branch when there is more than one. One branch
+     or one site gets no headings, because a single heading over a
+     single list is furniture, and a site whose branch is not recorded
+     is grouped under "Other sites" rather than dropped: a scheme
+     somebody can see, missing from the page with nothing to say why,
+     is the worst outcome available.
+
+     Two cases in `checkportal.mjs` asserted the old form and were
+     rewritten, not deleted — one required the organisation and branch
+     fields, the other required the sign-in to distinguish a failed
+     lookup from an empty one, which is now the admin screen's job
+     because that is where the lists went.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

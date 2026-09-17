@@ -198,13 +198,27 @@ const sql = readFileSync("./supabase/migrations/0218_portal.sql", "utf8");
   }
 }
 
-// 10. A portal sign-in asks for the organisation and branch, because
-//     that is how this business records a contact — but neither is a
-//     credential, and neither is sent anywhere as a claim.
+// 10. A portal sign-in asks for the credential and NOTHING ELSE.
+//
+//     This case used to say the opposite: that the form asks for the
+//     organisation and the branch, because that is how the business
+//     records a contact. It was withdrawn at the user's direction, and
+//     the code had already admitted the problem in a comment beside
+//     its own submit handler — the two were "a convenience, not a
+//     claim": never sent, never checked, two questions asked before
+//     the two that matter, and a list somebody had to find themselves
+//     in before they could type a password.
+//
+//     What the account may see is settled by its Portal_Access record
+//     on the server, and the portal shows it once they are in.
 {
   const login = readFileSync("./src/features/portal/PortalLogin.jsx", "utf8");
-  if (!/Your organisation/.test(login) || !/Your branch/.test(login)) {
-    fail("the portal sign-in does not ask for organisation and branch");
+  if (/Your organisation/.test(login) || /Your branch/.test(login)) {
+    fail("the portal sign-in asks for an organisation or branch again \u2014 "
+      + "neither is a credential, and neither is sent anywhere");
+  }
+  if (!/id="pl-email"/.test(login) || !/type="password"/.test(login)) {
+    fail("the portal sign-in no longer asks for an email and a password");
   }
   /* The sign-in call carries the credential and nothing else. An
      organisation sent with it would be a claim somebody could edit. */
@@ -216,6 +230,10 @@ const sql = readFileSync("./supabase/migrations/0218_portal.sql", "utf8");
       + "would make this form the security boundary");
   }
 
+  /* `portal-orgs` is still the endpoint that knows organisations,
+     branches and their sites \u2014 the ADMIN screen reads it when somebody
+     is given an account. It is no longer read by the sign-in form, so
+     what follows tests it as a lookup rather than as part of the door. */
   const orgs = readFileSync("./netlify/functions/portal-orgs.js", "utf8");
 
   /* The keys are the ones in Organisation_Type, not the words people
@@ -341,11 +359,23 @@ const sql = readFileSync("./supabase/migrations/0218_portal.sql", "utf8");
 
 // 14. An unreachable list is not an empty one, and the screen says
 //     which. The first version reported a 404 as "None listed".
+//
+//     The sign-in form no longer loads a list at all, so the rule has
+//     moved to where the lists now are: the admin screen that gives
+//     somebody an account. It reads organisations, branches and sites,
+//     and a refused request there looked exactly like "this
+//     organisation has no branches" until it was made to say so.
 {
-  const login = readFileSync("./src/features/portal/PortalLogin.jsx", "utf8");
-  if (!/listFailed/.test(login)) {
+  const accounts = readFileSync(
+    "./src/features/admin/PortalAccountsAdmin.jsx", "utf8");
+  if (!/loadError/.test(accounts)) {
     fail("a failed request for the organisations is shown as an empty list, "
       + "which sends everybody looking at the database instead of the route");
+  }
+  if (/adminList\("Organisation"\)/.test(accounts)) {
+    fail("the accounts screen asks the generic admin endpoint for "
+      + "Organisation, which its allow-list does not carry \u2014 the request "
+      + "is refused and the dropdown silently empties");
   }
 }
 

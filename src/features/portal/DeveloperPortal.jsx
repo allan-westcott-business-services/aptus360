@@ -18,7 +18,7 @@
    is shown, with dates against the ones achieved and nothing against
    the rest. */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 /* The app's own client, which carries the session token and turns an
    error body into a message. */
 import { http } from "../../api/client.js";
@@ -79,6 +79,56 @@ function Node({ n, depth = 0, onUpload, onDownload, busy }) {
 
 export default function DeveloperPortal({ onSignOut, who }) {
   const [sites, setSites] = useState(null);
+
+  /* The sites under each branch they are attached to.
+
+     Ordered by branch name so the list is stable between visits — a
+     group of offices that reshuffled every load would be unreadable —
+     and a site whose branch is not recorded is grouped under a plain
+     heading rather than dropped. Dropping it would be the worst
+     outcome: a scheme somebody can see, missing from the page, with
+     nothing to say why. */
+
+  /* One card, drawn the same whether the list is grouped by branch or
+     flat. Two copies of this would be two things to keep in step, and
+     the grouped path is the one nobody looks at until a group complains
+     about it. */
+  const siteCard = (s) => (
+
+              <button key={s.Project_ID} className="pt-site"
+                onClick={() => openSite(s.Project_ID)}>
+                {/* A site is known by its NAME and its reference \u2014
+                    Display_Ref is what is printed on everything we have
+                    sent them, so it is what they will search for. */}
+                <span className="pt-site-name">
+                  {s.Site_Name || s.Display_Ref || `Site ${s.Project_ID}`}
+                </span>
+                <span className="pt-site-sub">
+                  {[s.Display_Ref, s.Site_Address, s.Postcode]
+                    .filter(Boolean).join(" \u00b7 ")}
+                </span>
+                <span className="pt-site-stage">
+                  {s.latestMilestone
+                    ? `${s.latestMilestone.Label} \u00b7 ${dateText(s.latestMilestone.Achieved_On)}`
+                    : "Not started"}
+                </span>
+                {s.waitingOnYou > 0 && (
+                  <span className="pt-flag">
+                    {s.waitingOnYou} waiting on you
+                  </span>
+                )}
+              </button>
+  );
+
+  const byBranch = useMemo(() => {
+    const m = new Map();
+    for (const s2 of sites || []) {
+      const key = s2.branchName || "Other sites";
+      if (!m.has(key)) m.set(key, []);
+      m.get(key).push(s2);
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [sites]);
   const [open, setOpen] = useState(null);
   const [detail, setDetail] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -173,33 +223,31 @@ export default function DeveloperPortal({ onSignOut, who }) {
               put that right.
             </p>
           )}
+          {/* ── Grouped by branch, when there is more than one ──
+
+              A contact for a whole group is attached to several
+              offices, and one flat list of every scheme the group has
+              running is not what they are looking at when they open
+              this. Under a heading per branch it reads as their own
+              organisation.
+
+              One branch, or none recorded, and there are no headings:
+              a single heading above a single list is furniture. A
+              contact for one site sees one site, which needs no
+              structure at all. */}
+          {byBranch.length > 1 ? byBranch.map(([name, group]) => (
+            <div key={name}>
+              <h2 className="pt-branch">{name}</h2>
+              <div className="pt-sites">
+                {group.map((s) => siteCard(s))}
+              </div>
+            </div>
+          )) : (
           <div className="pt-sites">
-            {(sites || []).map((s) => (
-              <button key={s.Project_ID} className="pt-site"
-                onClick={() => openSite(s.Project_ID)}>
-                {/* A site is known by its NAME and its reference \u2014
-                    Display_Ref is what is printed on everything we have
-                    sent them, so it is what they will search for. */}
-                <span className="pt-site-name">
-                  {s.Site_Name || s.Display_Ref || `Site ${s.Project_ID}`}
-                </span>
-                <span className="pt-site-sub">
-                  {[s.Display_Ref, s.Site_Address, s.Postcode]
-                    .filter(Boolean).join(" \u00b7 ")}
-                </span>
-                <span className="pt-site-stage">
-                  {s.latestMilestone
-                    ? `${s.latestMilestone.Label} \u00b7 ${dateText(s.latestMilestone.Achieved_On)}`
-                    : "Not started"}
-                </span>
-                {s.waitingOnYou > 0 && (
-                  <span className="pt-flag">
-                    {s.waitingOnYou} waiting on you
-                  </span>
-                )}
-              </button>
+            {(sites || []).map((s) => siteCard(s))}
             ))}
           </div>
+          )}
         </>
       ) : (
         <>
@@ -316,6 +364,8 @@ const CSS = `
 .pt h2 { font-size: 15px; margin: 26px 0 8px; }
 .pt-quiet { color: var(--muted); font-size: 13px; margin: 2px 0; }
 .pt-note { margin-top: 24px; }
+.pt-branch { margin: 22px 0 8px; font-size: 14px; font-weight: 700;
+  color: var(--muted); letter-spacing: .01em; }
 .pt-sites { display: grid; gap: 12px; margin-top: 14px;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 .pt-site { display: flex; flex-direction: column; gap: 4px; text-align: left;

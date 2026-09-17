@@ -104,9 +104,19 @@ const lineTypes = [
   if (/setAttr\("Line_Type"\)/.test(fe)) {
     fail("a line editor still offers changing the line type");
   }
-  if (!/id="fe-type" readOnly/.test(fe)) {
-    fail("the editor no longer says what type a line is \u2014 stating it is "
-      + "not the same as offering it");
+  /* The editor showed the type read-only for a while. That has been
+     withdrawn at the user's direction: the drawing already says what a
+     line is, by colour, by style and by the menu it was drawn from,
+     and a field that can only be read spends a row of the panel on
+     something already on screen.
+     
+     What must stay true is the safety property, tested above: the type
+     cannot be CHANGED here. Displaying it was a convenience; not
+     offering it is the rule. */
+  if (/id="fe-type"/.test(fe) && !/readOnly/.test(fe.slice(
+    Math.max(0, fe.indexOf('id="fe-type"') - 200),
+    fe.indexOf('id="fe-type"') + 200))) {
+    fail("a line type field is back and is editable");
   }
 }
 

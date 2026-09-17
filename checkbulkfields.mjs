@@ -175,12 +175,24 @@ const meters = some((x) => x.Feature_Role === "meter", 4);
         + "them and moves them to another layer");
     }
   }
-  /* And the single-feature editor keeps it: one line at a time can be
-     reclassified deliberately, with its own panel redrawing around it. */
+  /* ── And NOWHERE offers it any more ──
+
+     This case used to say the opposite: bulk edit withdrew the field
+     and the single editor kept it, so one line at a time could be
+     reclassified deliberately. That was overtaken twice. Fault 134
+     made the single editor state the type read-only rather than offer
+     it — a line is drawn as what it is, and retyping one reclassifies
+     work through the status list and the bill — and the field has
+     since been removed altogether, because the drawing already says
+     what a line is by colour and style.
+
+     So the rule is now simple and worth stating plainly: a drawn-wrong
+     line is deleted and drawn again. Nothing anywhere edits
+     Line_Type. */
   const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
-  if (!/htmlFor="fe-type"/.test(editor)) {
-    fail("the single-feature editor lost its Line type as well, so a line "
-      + "cannot be reclassified at all");
+  if (/setAttr\("Line_Type"\)/.test(editor)) {
+    fail("the single-feature editor offers changing a line's type, which "
+      + "reclassifies work through the status list and the bill");
   }
 }
 

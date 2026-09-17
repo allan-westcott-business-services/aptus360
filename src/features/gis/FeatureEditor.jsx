@@ -1410,32 +1410,6 @@ export default function FeatureEditor({
                 menu they have to know about. The mark carries almost
                 nothing to edit — a label and a bearing — so the section
                 is the thing this dialogue is FOR. */}
-            {/* ── Outside the building, or inside it ──
-
-                Wanted on mains feeder cables and meters: the two are
-                drawn on different CAD layers and they are different
-                jobs on site. Offered on those, and on nothing else, so
-                the field does not appear against apparatus where the
-                question has no meaning \u2014 a trench is neither.
-
-                Held in Attributes.Siting, which is where a fact about a
-                feature belongs; the CAD mapping matches it from there. */}
-            {(feature.Feature_Role === "meter"
-              || (feature.Feature_Type === "line"
-                && f.Attributes?.Line_Type
-                && /^elec/.test(String(f.Attributes.Line_Type))
-                && !/service/i.test(String(f.Attributes.Line_Type)))) && (
-              <div className="fld" style={{ marginTop: 8 }}>
-                <label htmlFor="fe-siting">External or internal</label>
-                <select id="fe-siting" value={f.Attributes?.Siting ?? ""}
-                  onChange={(e) => setAttr("Siting")(e.target.value)}>
-                  <option value="">&mdash; Not said &mdash;</option>
-                  <option value="External">External</option>
-                  <option value="Internal">Internal</option>
-                </select>
-              </div>
-            )}
-
             {feature.Feature_Role === "sectionmark" && (
               <div style={{ marginTop: 8 }}>
                 {onShowSection && (
@@ -2735,19 +2709,16 @@ export default function FeatureEditor({
                 <input id="fe-label" value={f.Label}
                   onChange={(e) => setF((p) => ({ ...p, Label: e.target.value }))} />
               </div>
-              <div className="fld">
-                <label htmlFor="fe-type">Line type</label>
-                {/* Stated, not offered. A line is drawn as what it is,
-                    and the type is not a property to correct afterwards:
-                    it decides the status list, what the bill charges and
-                    what every build reads, so retyping a drawn line
-                    reclassifies work \u2014 the drawn-wrong line is deleted
-                    and drawn right instead. */}
-                <input id="fe-type" readOnly
-                  value={lineTypes.find((t) =>
-                    t.Type_Key === f.Attributes.Line_Type)?.Label
-                    ?? f.Attributes.Line_Type ?? "\u2014"} />
-              </div>
+              {/* No line type field.
+
+                  It was shown read-only, on the grounds that somebody
+                  should be able to see what a line is. In practice the
+                  drawing already says so \u2014 by colour, by style, by the
+                  menu it was drawn from \u2014 and a field that can only be
+                  read is a row of the panel spent saying what is
+                  already on screen. Removed at the user's direction;
+                  the type itself is unchanged and still decides the
+                  status list, the bill and what every build reads. */}
 
               {/* On or off site, and whether it crosses an easement.
 
@@ -3938,17 +3909,6 @@ export default function FeatureEditor({
 
               {/* Line type is in the row above for a trench, alongside
                   the layer and the label. */}
-              {!isTrench && (
-                <div className="fld">
-                  <label htmlFor="fe-type">Line type</label>
-                  {/* Stated, not offered \u2014 same reasoning as the trench
-                      row above. */}
-                  <input id="fe-type" readOnly
-                    value={lineTypes.find((t) =>
-                      t.Type_Key === f.Attributes.Line_Type)?.Label
-                      ?? f.Attributes.Line_Type ?? "\u2014"} />
-                </div>
-              )}
               <div className="fe-row">
                 {isTrench ? (
                   <>
@@ -4740,6 +4700,35 @@ export default function FeatureEditor({
                     ))}
                   </select>
                 </div>
+
+                {/* ── Outside the building, or inside it ──
+
+                    Beside the status, because the two are read
+                    together: what stage this length is at, and where it
+                    sits. Wanted on mains feeder cables and meters \u2014 the
+                    two are drawn on different CAD layers and are
+                    different jobs on site \u2014 and shown on nothing else,
+                    so the field does not appear against apparatus where
+                    the question has no meaning. A trench is neither.
+
+                    Held in Attributes.Siting, where a fact about a
+                    feature belongs; the CAD mapping matches it from
+                    there. */}
+                {(feature.Feature_Role === "meter"
+                  || (feature.Feature_Type === "line"
+                    && f.Attributes?.Line_Type
+                    && /^elec/.test(String(f.Attributes.Line_Type))
+                    && !/service/i.test(String(f.Attributes.Line_Type)))) && (
+                  <div className="fld">
+                    <label htmlFor="fe-siting">External or internal</label>
+                    <select id="fe-siting" value={f.Attributes?.Siting ?? ""}
+                      onChange={(e) => setAttr("Siting")(e.target.value)}>
+                      <option value="">&mdash; Not said &mdash;</option>
+                      <option value="External">External</option>
+                      <option value="Internal">Internal</option>
+                    </select>
+                  </div>
+                )}
 
                 {/* Read-only like the dimensions, and for the same
                     reason: it follows the drawing, and a duration

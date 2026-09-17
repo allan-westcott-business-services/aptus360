@@ -4500,6 +4500,18 @@ characters is a hundred lines of prose and no rules at all.
      (Bulk edit had already withdrawn the same field for the same
      reason; the draw-time picker rightly remains.)
 
+     **Later: the read-only field went too.** The drawing already says
+     what a line is — colour, style, the menu it was drawn from — and a
+     field that can only be read spends a row of the panel saying what
+     is on screen. Nothing anywhere edits `Line_Type` now, which is the
+     rule worth remembering; two checks asserted the old arrangement
+     (`checkbuildmaintype` wanted the read-only field, `checkbulkfields`
+     wanted the editor to keep it so a line could be reclassified) and
+     both were rewritten to the current rule rather than deleted. A
+     check that encodes a decision has to be revisited when the
+     decision is, and saying so in it is better than quietly dropping
+     the case.
+
      Diagnostic lesson, at my own expense: three rounds of style-
      cascade theory for what was a data-writer bug. The screenshot's
      "purple" was `#8fa8bf` grey-blue, and one click on the line —

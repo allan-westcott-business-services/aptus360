@@ -90,23 +90,29 @@ async function mine(db, access) {
     }
 
     if (branchIds.length) {
-      /* TWO routes to a site, and both are needed.
+      /* ── Project_Developer ONLY, and this matters ──
 
-         A project names its developer's branch directly
-         (Project.Organisation_Branch_ID), which is how most are
-         recorded. And Project_Developer names them for schemes with
-         more than one developer, where the project's own branch is
-         somebody else's. Either alone leaves sites out. */
-      const [own, shared] = await Promise.all([
-        db.from("Project").select("Project_ID")
-          .in("Organisation_Branch_ID", branchIds),
-        db.from("Project_Developer").select("Project_ID")
-          .in("Organisation_Branch_ID", branchIds),
-      ]);
-      if (own.error) throw own.error;
-      if (shared.error) throw shared.error;
-      for (const r of own.data || []) ids.add(Number(r.Project_ID));
-      for (const r of shared.data || []) ids.add(Number(r.Project_ID));
+         `Project.Organisation_Branch_ID` looks like the obvious route
+         and must not be used. It is a CACHED COPY of the main
+         developer, written by sync_project_main_developer(), and
+         projects.js says so beside the code that maintains it. A cache
+         drifts, and this one has: on the live data eleven unrelated
+         schemes all carry branch 17, including sites belonging to
+         other developers entirely.
+
+         Reading it would have shown one developer another developer's
+         projects. `Project_Developer` is the record rather than the
+         copy of it, so it is the only thing asked.
+
+         The general rule, worth more than this instance: a
+         denormalised convenience column is fine for a screen that
+         staff can see is wrong, and is not fit to decide who may see
+         what. Authorisation reads the record. */
+      const { data, error } = await db
+        .from("Project_Developer").select("Project_ID")
+        .in("Organisation_Branch_ID", branchIds);
+      if (error) throw error;
+      for (const r of data || []) ids.add(Number(r.Project_ID));
     }
   }
 
@@ -129,6 +135,19 @@ export default withAuth(async function handler(req, context, user) {
        that in order to send somebody to the right place. */
     if (what === "me") {
       return json({
+        /* A marker for WHICH version of this file is answering.
+
+           Added because a fix and a deployed fix are different things,
+           and telling them apart cost a round trip: the portal showed
+           twelve sites where it should have shown one, and the only
+           way to know whether the new code was live was to count them.
+
+           `scope` says how a developer's sites are found. Anything but
+           "project_developer" means an older build is still serving:
+           the cached Project.Organisation_Branch_ID column has drifted
+           on live data, and scoping on it shows one developer another
+           developer's sites. */
+        scope: "project_developer",
         email: user?.email ?? null,
         audience: access?.Audience ?? null,
         name: access?.Full_Name ?? null,

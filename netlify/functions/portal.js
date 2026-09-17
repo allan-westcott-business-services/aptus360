@@ -243,7 +243,8 @@ export default withAuth(async function handler(req, context, user) {
           .eq("Is_Active", true).order("Sort_Order"),
         /* Outline design, per utility: the scope row's Actual_Date. */
         db.from("Project_Scope")
-          .select("Project_Scope_ID,Utility_ID,Actual_Date,Target_Date")
+          .select("Project_Scope_ID,Utility_ID,Actual_Date,Target_Date,"
+            + "Date_Sent,Designer_ID,Design_Status_ID,Secured_Date")
           .eq("Project_ID", projectId).order("Utility_ID"),
         /* POC applications, with who each went to. */
         db.from("POC_Application")
@@ -449,17 +450,38 @@ export default withAuth(async function handler(req, context, user) {
          either way would put a developer on the phone about something
          we cannot see. */
       const roll = (children) => {
-        const known = children.filter((c) => c.status !== "unknown");
-        if (!known.length) return "unknown";
-        if (known.every((c) => c.status === "done")) return "done";
-        if (known.some((c) => c.status === "done" || c.status === "doing")) return "doing";
+        if (!children.length) return "unknown";
+        const done = children.filter((c) => c.status === "done").length;
+        const unknown = children.filter((c) => c.status === "unknown").length;
+
+        /* Green ONLY when every child is done. An earlier version
+           ignored unknown children when deciding, so a design branch
+           with two stages recorded and three untracked came out green —
+           "Outline Design complete" over an approval nobody has. A
+           parent is finished when its children are finished, and an
+           unknown child is not a finished one.
+
+           Everything between is amber: something has happened and
+           something has not, which is what a developer needs to see. */
+        if (done === children.length) return "done";
+        if (unknown === children.length) return "unknown";
+        if (done > 0 || children.some((c) => c.status === "doing")) return "doing";
         return "waiting";
       };
       const node = (label, opts2 = {}) => {
         const children = opts2.children || [];
+        /* No date means NOT KNOWN, and grey.
+
+           It used to mean red \u2014 "not done" \u2014 which is a claim the
+           system cannot support about a stage nothing records. A
+           developer reading red asks why it has not happened; the
+           honest answer for most of these is that we do not track it
+           yet. Red is kept for one thing only: a document we have
+           asked THEM for and not received, which genuinely is
+           outstanding, and which they can act on from that same line. */
         const status = opts2.status
           ?? (children.length ? roll(children)
-            : (opts2.date ? "done" : (opts2.unknown ? "unknown" : "waiting")));
+            : (opts2.date ? "done" : "unknown"));
         return {
           label, date: opts2.date ?? null, status, note: opts2.note ?? null,
           children, document: opts2.document ?? null,
@@ -533,22 +555,98 @@ export default withAuth(async function handler(req, context, user) {
         return node(a.utility, { children: kids });
       });
 
+      /* ── Designers, for the lines that name one ── */
+      const designerIds = [...new Set((scopes.data || [])
+        .map((sc) => sc.Designer_ID).filter((x) => x != null).map(Number))];
+      let designers = [];
+      if (designerIds.length) {
+        const { data, error } = await db.from("Person")
+          .select("Person_ID,Person_Name").in("Person_ID", designerIds);
+        if (error) throw error;
+        designers = data || [];
+      }
+      const designerName = (id) => designers
+        .find((d) => Number(d.Person_ID) === Number(id))?.Person_Name ?? null;
+
+      /* ── A design branch, per utility ──
+
+         The same five stages for outline and for contract design,
+         because they are the same job done twice. Only outline has
+         sources today; contract design has none, and its lines are
+         grey rather than red for the reason the whole page now
+         follows: no date means not known, not "not done". */
+      const designBranch = (sc, { sources = true } = {}) => {
+        const who = designerName(sc.Designer_ID);
+        return node(utilityName(sc.Utility_ID), {
+          children: [
+            node("Designer assigned", {
+              /* A fact without a date. Known is known: showing it grey
+                 because no date was recorded would hide a name the
+                 developer can use. */
+              status: sources && who ? "done" : "unknown",
+              note: sources ? who : null,
+            }),
+            node("Design started", { unknown: true }),
+            node("Design completed", {
+              date: sources ? (sc.Actual_Date ?? null) : null,
+              status: sources && sc.Actual_Date ? "done" : "unknown",
+              note: sources && !sc.Actual_Date && sc.Target_Date
+                ? `target ${sc.Target_Date}` : null,
+            }),
+            node("Sent to client", {
+              date: sources ? (sc.Date_Sent ?? null) : null,
+              status: sources && sc.Date_Sent ? "done" : "unknown",
+            }),
+            node("Approved by client", { unknown: true }),
+          ],
+        });
+      };
+
+      const scopeRows = scopes.data || [];
+
       const pre = [
-        node("Enquiry received", { date: proj.data?.Date_Received ?? null }),
+        node("Enquiry received", {
+          date: proj.data?.Date_Received ?? null,
+          status: proj.data?.Date_Received ? "done" : "unknown",
+        }),
+
         node("Documentation", {
           children: documentation,
           note: documentation.length ? null : "Nothing requested yet",
           status: documentation.length ? undefined : "unknown",
         }),
+
         node("Team assigned", {
           children: teamChildren,
-          status: teamChildren.length ? "done" : "waiting",
+          status: teamChildren.length ? "done" : "unknown",
         }),
-        ...design.map((d) => node(d.label, { date: d.achievedOn, note: d.dueOn && !d.achievedOn
-          ? `expected ${d.dueOn}` : null })),
+
+        /* POC above the design, because that is the order the work
+           happens in and the order a developer asks about it. */
         node("POC", {
           children: pocNodes,
-          status: pocNodes.length ? undefined : "waiting",
+          status: pocNodes.length ? undefined : "unknown",
+        }),
+
+        node("Outline Design", {
+          children: scopeRows.map((sc) => designBranch(sc)),
+          status: scopeRows.length ? undefined : "unknown",
+        }),
+
+        /* Nothing records the quotation stages yet. Named so the
+           developer can see they exist and are coming, grey so nobody
+           reads an absence as a refusal. */
+        node("Quotation", {
+          children: [
+            node("Quotation completed", { unknown: true }),
+            node("Sent to client", { unknown: true }),
+            node("Quotation approved by client", { unknown: true }),
+          ],
+        }),
+
+        node("Contract Design", {
+          children: scopeRows.map((sc) => designBranch(sc, { sources: false })),
+          status: scopeRows.length ? undefined : "unknown",
         }),
       ];
 

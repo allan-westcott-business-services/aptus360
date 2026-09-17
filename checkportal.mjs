@@ -520,6 +520,52 @@ const sql = readFileSync("./supabase/migrations/0218_portal.sql", "utf8");
   if (!/const roll = \(children\)/.test(portal)) {
     fail("a parent's state is not computed from its children");
   }
+  /* Green ONLY when every child is done. An earlier version ignored
+     unknown children, so a design branch with two stages recorded and
+     three untracked came out green — "Outline Design complete" over an
+     approval nobody has. */
+  if (!/if \(done === children\.length\) return "done";/.test(portal)) {
+    fail("a parent goes green while children are still unknown, which "
+      + "reports a stage as complete over an approval nobody has");
+  }
+
+  /* The order the work happens in: POC before the design. */
+  const preBlock = portal.slice(portal.indexOf("const pre = ["));
+  const pocAt = preBlock.indexOf('node("POC"');
+  const designAt = preBlock.indexOf('node("Outline Design"');
+  /* Present first, THEN ordered. `indexOf` answers -1 for absent, and
+     -1 is less than any real position — so an order test alone reads a
+     missing section as a correctly placed one. That is the third time
+     this trap has come up in this file's history; it is worth reading
+     twice whenever two indexes are compared. */
+  if (pocAt < 0) fail("the Pre Contract tab has no POC stage");
+  else if (designAt >= 0 && pocAt > designAt) {
+    fail("the design is listed above the POC, which is not the order the "
+      + "work happens in");
+  }
+  for (const stage of ["Outline Design", "Quotation", "Contract Design"]) {
+    if (!preBlock.includes(`node("${stage}"`)) {
+      fail(`the Pre Contract tab has no ${stage} stage`);
+    }
+  }
+  for (const step of ["Designer assigned", "Design started", "Design completed",
+    "Sent to client", "Approved by client"]) {
+    if (!portal.includes(`node("${step}"`)) {
+      fail(`a design branch is missing "${step}"`);
+    }
+  }
+
+  /* Undated means GREY. Red is kept for one thing: a document we have
+     asked them for and not received, which genuinely is outstanding
+     and which they can act on from that line. */
+  if (/opts2\.unknown \? "unknown" : "waiting"/.test(portal)) {
+    fail("an undated stage is shown red, which asserts \"not done\" about "
+      + "something nothing records");
+  }
+  if (!/status: d\.Storage_Path \? "done" : "waiting"/.test(portal)) {
+    fail("a document we asked for and have not received is not shown as "
+      + "outstanding, so nothing on the page needs action");
+  }
 
   /* Grey is not red. Nothing records an invoice payment yet, and red
      means "not done" \u2014 claiming that would put a developer on the

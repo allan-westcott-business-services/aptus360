@@ -5521,6 +5521,40 @@ characters is a hundred lines of prose and no rules at all.
      Site Build is an empty tab that says so, rather than being hidden:
      a developer should see the stage exists.
 
+     **Restructured again, to the business's own order:** Enquiry,
+     Documentation, Team assigned, POC, Outline Design, Quotation,
+     Contract Design. POC sits ABOVE the design because that is the
+     order the work happens in and the order a developer asks about it.
+     Outline Design and Contract Design are headers with a utility
+     branch each, and five stages under every utility: designer
+     assigned, design started, design completed, sent to client,
+     approved by client.
+
+     **Every stage is shown, and an undated one is GREY.** Red used to
+     mean "no date" and now means one thing only: a document we have
+     asked THEM for and not received, which genuinely is outstanding
+     and which they can act on from that line. Red on a stage nothing
+     records would have a developer ringing to ask why it had not
+     happened, when the honest answer is that we do not track it.
+
+     Sources today: design completed (`Actual_Date`), sent to client
+     (`Date_Sent`), designer assigned (`Designer_ID`, shown by name).
+     Design started, approved by client, all three Quotation stages and
+     every Contract Design stage have no source and are grey.
+
+     ⚠ **And the rollup was wrong in a way that would have mattered.**
+     The first version ignored unknown children when colouring a
+     parent, so a design branch with two stages recorded and three
+     untracked came out GREEN — "Outline Design complete" over an
+     approval nobody has. A parent is finished when its children are
+     finished, and an unknown child is not a finished one. Green now
+     requires every child done; anything between is amber.
+
+     The `indexOf` trap appeared a third time while checking the
+     section order: -1 for absent is less than any real position, so an
+     order test alone passes when a section is missing entirely.
+     Presence first, then order.
+
      **Still to do:** the remaining stages have no source yet
      (accepted, detailed design, adoption, works start, energised,
      complete) and need either a source naming or a staff screen; and

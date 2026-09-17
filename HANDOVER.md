@@ -5478,6 +5478,25 @@ characters is a hundred lines of prose and no rules at all.
      asserts that filtering happens, because without it one site's page
      lists another's quotations.
 
+     ⚠ **And the enquiry date did not appear, because it was never
+     SELECTED.** `Date_Received` was derived from and left out of
+     `PROJECT_COLS`, so it arrived undefined and the stage showed "to
+     come" on every site. Recurring fault 4 in a new place — a column
+     absent from a function's select list is neither saved nor
+     returned — and the symptom is silence rather than an error, which
+     is what makes it worth a check rather than a memory.
+
+     `checkportal` now asserts that every field read off a project row
+     appears in the list the query asked for.
+
+     Twice while writing that check, the check failed on its own
+     explanation: the first version read the comment INSIDE
+     `PROJECT_COLS` as column names, and the second read a quoted
+     phrase within that comment. A static check that parses source has
+     to strip comments before it parses, and the lesson generalises —
+     if a check is failing on words rather than code, it is reading
+     prose.
+
      **Still to do:** the remaining stages have no source yet
      (accepted, detailed design, adoption, works start, energised,
      complete) and need either a source naming or a staff screen; and

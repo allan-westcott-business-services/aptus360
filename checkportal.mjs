@@ -21,6 +21,26 @@ let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
 
 const portal = readFileSync("./netlify/functions/portal.js", "utf8");
+
+/* The columns PROJECT_COLS asks for.
+
+   Taken from the QUOTED parts only. The first version captured
+   everything between the `=` and the `;`, which swallowed a comment
+   that sits inside the constant and reported its prose as column
+   names — a check failing on its own explanation, for the second time
+   this session. */
+const projectColumns = (() => {
+  const raw = (portal.match(/const PROJECT_COLS = ([\s\S]*?);/) || ["", ""])[1];
+  /* Comments stripped FIRST. The comment inside this constant contains
+     a quoted phrase of its own, and a check that read it reported "to
+     come" as a database column \u2014 the same self-inflicted failure as
+     the version before it, one layer down. */
+  const stmt = raw.replace(/\/\*[\s\S]*?\*\//g, "");
+  return [...stmt.matchAll(/"([^"]*)"/g)]
+    .flatMap((m) => m[1].split(","))
+    .map((x) => x.trim())
+    .filter(Boolean);
+})();
 const app = readFileSync("./src/App.jsx", "utf8");
 const landing = readFileSync("./src/features/portal/AudienceLanding.jsx", "utf8");
 const dev = readFileSync("./src/features/portal/DeveloperPortal.jsx", "utf8");
@@ -368,9 +388,7 @@ const sql = readFileSync("./supabase/migrations/0218_portal.sql", "utf8");
     fail("the project column list cannot be read, so this check cannot "
       + "do its job \u2014 re-anchor it rather than deleting it");
   } else {
-    const asked = (portal.match(/const PROJECT_COLS = "([^;]*);/) || ["", ""])[1];
-    for (const col of asked.match(/[A-Za-z_]+/g) || []) {
-      if (col.length < 4 || col === "PROJECT_COLS") continue;
+    for (const col of projectColumns) {
       if (!known.has(col)) {
         fail(`the portal asks a project for "${col}", which is not a column `
           + "it has \u2014 the query fails at run time, for whoever opens the "
@@ -406,6 +424,26 @@ const sql = readFileSync("./supabase/migrations/0218_portal.sql", "utf8");
 //       poc_quoted       POC_Option / POC_Quotation Date_Received
 //       outline design   Project_Scope.Actual_Date, PER UTILITY
 {
+  /* ── Read from, therefore selected ──
+
+     `Date_Received` was derived from and never SELECTED, so the field
+     arrived undefined and the enquiry stage showed "to come" on every
+     site. Recurring fault 4 in a new place: a column absent from a
+     function's select list is neither saved nor returned, and the
+     symptom is silence rather than an error.
+
+     So every field the code reads off a project row must be in the
+     list it asked for. */
+  {
+    const read = [...portal.matchAll(/proj\.data\?\.([A-Za-z_]+)/g)].map((m) => m[1]);
+    for (const field of new Set(read)) {
+      if (!projectColumns.includes(field)) {
+        fail(`the portal reads "${field}" off a project but never selects it, `
+          + "so it arrives undefined and whatever depends on it goes quiet");
+      }
+    }
+  }
+
   for (const [what, needle] of [
     ["the enquiry date", /Date_Received/],
     ["the POC application date", /from\("POC_Application"\)/],

@@ -26,7 +26,13 @@ import { supabase, json, fail, withAuth } from "./_supabase.js";
    by its SITE NAME and by Display_Ref, which is the reference printed
    on everything a developer will have seen from us. */
 const PROJECT_COLS = "Project_ID,Display_Ref,Project_Ref,Site_Name,"
-  + "Site_Address,Postcode,Project_Status_ID,Customer_ID,Organisation_Branch_ID";
+  + "Site_Address,Postcode,Project_Status_ID,Customer_ID,Organisation_Branch_ID,"
+  /* Date_Received is the enquiry milestone. It was derived from and
+     never SELECTED, so the field arrived undefined and the stage showed
+     "to come" on every site — recurring fault 4 again: a column not on
+     a function's select list is neither saved nor returned, and the
+     symptom is silence rather than an error. */
+  + "Date_Received";
 
 /* Who this caller is, as the portal understands it. Null where the
    account has no portal record: an ordinary staff account signing in

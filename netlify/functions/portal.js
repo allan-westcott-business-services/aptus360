@@ -21,8 +21,12 @@
 
 import { supabase, json, fail, withAuth } from "./_supabase.js";
 
-const PROJECT_COLS = "Project_ID,Project_Name,Project_Number,Customer_ID,"
-  + "Site_Address,Postcode,Status";
+/* The columns a project actually has. `Project_Name` and
+   `Project_Number` were guesses and neither exists: a project is known
+   by its SITE NAME and by Display_Ref, which is the reference printed
+   on everything a developer will have seen from us. */
+const PROJECT_COLS = "Project_ID,Display_Ref,Project_Ref,Site_Name,"
+  + "Site_Address,Postcode,Project_Status_ID,Customer_ID,Organisation_Branch_ID";
 
 /* Who this caller is, as the portal understands it. Null where the
    account has no portal record: an ordinary staff account signing in
@@ -74,21 +78,36 @@ async function mine(db, access) {
      group would show Leeds the Northampton jobs. By organisation where
      it does not, which suits a developer with one office. */
   if (access.Organisation_ID != null && access.Audience === "developer") {
-    let q = db.from("Project_Developer").select("Project_ID,Organisation_Branch_ID");
-    if (access.Branch_ID != null) {
-      q = q.eq("Organisation_Branch_ID", access.Branch_ID);
-    } else {
+    /* Which branches count as theirs: the one on their record, or every
+       branch of their organisation where the record names none. */
+    let branchIds = access.Branch_ID != null ? [Number(access.Branch_ID)] : null;
+    if (branchIds === null) {
       const { data: mineBranches, error: bErr } = await db
         .from("Organisation_Branch").select("Organisation_Branch_ID")
         .eq("Organisation_ID", access.Organisation_ID);
       if (bErr) throw bErr;
-      const branchIds = (mineBranches || []).map((b) => Number(b.Organisation_Branch_ID));
-      if (!branchIds.length) return [...ids];
-      q = q.in("Organisation_Branch_ID", branchIds);
+      branchIds = (mineBranches || []).map((b) => Number(b.Organisation_Branch_ID));
     }
-    const { data, error } = await q;
-    if (error) throw error;
-    for (const r of data || []) ids.add(Number(r.Project_ID));
+
+    if (branchIds.length) {
+      /* TWO routes to a site, and both are needed.
+
+         A project names its developer's branch directly
+         (Project.Organisation_Branch_ID), which is how most are
+         recorded. And Project_Developer names them for schemes with
+         more than one developer, where the project's own branch is
+         somebody else's. Either alone leaves sites out. */
+      const [own, shared] = await Promise.all([
+        db.from("Project").select("Project_ID")
+          .in("Organisation_Branch_ID", branchIds),
+        db.from("Project_Developer").select("Project_ID")
+          .in("Organisation_Branch_ID", branchIds),
+      ]);
+      if (own.error) throw own.error;
+      if (shared.error) throw shared.error;
+      for (const r of own.data || []) ids.add(Number(r.Project_ID));
+      for (const r of shared.data || []) ids.add(Number(r.Project_ID));
+    }
   }
 
   /* A DNO or IDNO account is scoped by organisation too, but the
@@ -133,7 +152,7 @@ export default withAuth(async function handler(req, context, user) {
       const { data, error } = await db
         .from("Project").select(PROJECT_COLS)
         .in("Project_ID", allowed)
-        .order("Project_Name");
+        .order("Site_Name");
       if (error) throw error;
 
       /* The latest achieved milestone per site, so a list can say where

@@ -15,7 +15,7 @@
    pure function can be handed. That is a real limitation and it is
    written down: these cases prove the guards are PRESENT, not that
    they are sufficient. A penetration test proves the second thing. */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -289,6 +289,102 @@ const sql = readFileSync("./supabase/migrations/0218_portal.sql", "utf8");
   const tables = readFileSync("./src/lib/adminTables.js", "utf8");
   if (!/special: "portalaccounts"/.test(tables)) {
     fail("the screen is not in the admin menu, so nobody can reach it");
+  }
+}
+
+// 13. Every endpoint declares its ROUTE.
+//
+//     Netlify routes a function by `export const config = { path }`
+//     inside it, not by its filename — netlify.toml says so. A function
+//     without one exists, deploys, and answers nothing.
+//
+//     That is exactly how this went wrong: the sign-in screen asked for
+//     the organisations, got a 404, and showed "None listed", which
+//     reads as an empty database. Hours could go into looking at the
+//     data for a fault that was a missing line of routing.
+//
+//     Checked across ALL functions rather than just the portal's,
+//     because the next one added will have the same hole and the same
+//     silent symptom.
+{
+  const dir = "./netlify/functions";
+  const files = readdirSync(dir)
+    .filter((f) => f.endsWith(".js") && !f.startsWith("_"));
+  for (const f of files) {
+    const src = readFileSync(`${dir}/${f}`, "utf8");
+    if (!/export const config\s*=\s*\{[^}]*path/.test(src)) {
+      fail(`${f} declares no route, so nothing can reach it \u2014 it will `
+        + "deploy cleanly and answer 404");
+    }
+  }
+}
+
+// 14. An unreachable list is not an empty one, and the screen says
+//     which. The first version reported a 404 as "None listed".
+{
+  const login = readFileSync("./src/features/portal/PortalLogin.jsx", "utf8");
+  if (!/listFailed/.test(login)) {
+    fail("a failed request for the organisations is shown as an empty list, "
+      + "which sends everybody looking at the database instead of the route");
+  }
+}
+
+// 15. A failed identity call does NOT fall through to the staff app.
+//
+//     It did, and while the endpoint was unreachable every account —
+//     developer included — landed in the full application. A routing
+//     fault became an access fault. Refusing to route beats guessing:
+//     the worst case is a staff member seeing "try again"; the other
+//     way round is somebody outside the business seeing every project.
+{
+  if (!/audience: null, failed: e\.message/.test(app)) {
+    fail("a failed /portal/me is treated as \"no record\", which routes an "
+      + "outside account into the staff application");
+  }
+  if (!/who\.failed/.test(app)) {
+    fail("nothing acts on a failed identity check, so it still falls "
+      + "through to whatever comes next");
+  }
+  /* And the failure is NAMED, so somebody can tell their IT what
+     happened rather than reporting "it went to the wrong page". */
+  if (!/\{who\.failed\}/.test(app)) {
+    fail("the reason is swallowed, leaving a blank refusal");
+  }
+}
+
+// 16. Every column the portal asks a project for is a real one.
+//
+//     `Project_Name` and `Project_Number` were invented \u2014 a project is
+//     known by its Site_Name and Display_Ref \u2014 and Postgres only says
+//     so at RUN time, to whoever happened to open the page. Checked
+//     against the list the projects endpoint maintains, which is the
+//     nearest thing this repo has to a schema.
+{
+  const proj = readFileSync("./netlify/functions/projects.js", "utf8");
+  const declared = (proj.match(/const PROJECT_COLUMNS = \[([\s\S]*?)\]/) || ["", ""])[1];
+  const known = new Set([...declared.matchAll(/"([A-Za-z_]+)"/g)].map((m) => m[1]));
+
+  if (known.size < 10) {
+    fail("the project column list cannot be read, so this check cannot "
+      + "do its job \u2014 re-anchor it rather than deleting it");
+  } else {
+    const asked = (portal.match(/const PROJECT_COLS = "([^;]*);/) || ["", ""])[1];
+    for (const col of asked.match(/[A-Za-z_]+/g) || []) {
+      if (col.length < 4 || col === "PROJECT_COLS") continue;
+      if (!known.has(col)) {
+        fail(`the portal asks a project for "${col}", which is not a column `
+          + "it has \u2014 the query fails at run time, for whoever opens the "
+          + "page");
+      }
+    }
+  }
+
+  /* And a developer's sites are found BOTH ways: a project names its
+     developer's branch directly, and Project_Developer names them on
+     schemes with more than one. Either alone leaves sites out. */
+  if (!/from\("Project"\)\.select\("Project_ID"\)\s*\n?\s*\.in\("Organisation_Branch_ID"/.test(portal)) {
+    fail("sites are not found by the project's own branch, so a scheme "
+      + "recorded the ordinary way would be invisible to its developer");
   }
 }
 

@@ -124,9 +124,14 @@ export default function DeveloperPortal({ onSignOut, who }) {
             {(sites || []).map((s) => (
               <button key={s.Project_ID} className="pt-site"
                 onClick={() => openSite(s.Project_ID)}>
-                <span className="pt-site-name">{s.Project_Name}</span>
+                {/* A site is known by its NAME and its reference \u2014
+                    Display_Ref is what is printed on everything we have
+                    sent them, so it is what they will search for. */}
+                <span className="pt-site-name">
+                  {s.Site_Name || s.Display_Ref || `Site ${s.Project_ID}`}
+                </span>
                 <span className="pt-site-sub">
-                  {[s.Project_Number, s.Site_Address, s.Postcode]
+                  {[s.Display_Ref, s.Site_Address, s.Postcode]
                     .filter(Boolean).join(" \u00b7 ")}
                 </span>
                 <span className="pt-site-stage">
@@ -151,9 +156,12 @@ export default function DeveloperPortal({ onSignOut, who }) {
 
           {!detail ? <p className="pt-quiet">Loading&hellip;</p> : (
             <>
-              <h1>{detail.site?.Project_Name}</h1>
+              <h1>
+                {detail.site?.Site_Name || detail.site?.Display_Ref
+                  || `Site ${detail.site?.Project_ID}`}
+              </h1>
               <p className="pt-quiet">
-                {[detail.site?.Project_Number, detail.site?.Site_Address,
+                {[detail.site?.Display_Ref, detail.site?.Site_Address,
                   detail.site?.Postcode].filter(Boolean).join(" \u00b7 ")}
               </p>
 

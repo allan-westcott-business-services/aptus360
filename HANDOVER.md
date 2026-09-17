@@ -5368,6 +5368,63 @@ characters is a hundred lines of prose and no rules at all.
      sign-in itself is removed from the Supabase dashboard,
      deliberately not from here.
 
+     ⚠ **The three new endpoints had no ROUTE.** Netlify routes a
+     function by `export const config = { path }` inside it, not by its
+     filename — netlify.toml says so in a comment. Without one a
+     function exists, deploys cleanly, and answers 404. The sign-in
+     screen asked for the organisations, got that 404, and showed
+     "None listed", which reads as an empty database: a routing fault
+     wearing a data fault's clothes.
+
+     Two fixes, and the second matters as much as the first. The
+     routes are declared (`/api/portal/:what`, `/api/portal-orgs`,
+     `/api/portal-accounts`), and the screen now tells a FAILED request
+     from an empty list — "could not load" rather than "none listed",
+     so nobody goes looking in the database for a missing line of
+     routing.
+
+     `checkportal` now audits EVERY function in netlify/functions for a
+     declared route, not just the portal's: the next one added will
+     have the same hole and the same silent symptom.
+
+     ⚠⚠ **And the same routing fault exposed a FAIL-OPEN.** The app
+     asks `/portal/me` to learn what an account is, and a failed call
+     was caught and treated as "no portal record" — which means staff.
+     So while the endpoint was unreachable, EVERY account, developer
+     included, landed in the full application: a routing fault became
+     an access fault, and the only reason it was not worse is that the
+     accounts in question were staff members' own.
+
+     A successful answer with no audience still means staff, because
+     that is what it means. A FAILED call now refuses to route: it
+     stops, names the error, and offers try-again or sign-out. Refusing
+     beats guessing — the worst case that way is a staff member seeing
+     "try again", where the other way round is somebody outside the
+     business seeing every project on the system.
+
+     The general rule worth taking from it: **when an authorisation
+     answer cannot be obtained, that is not the same as a permissive
+     answer.** Any `catch` that resolves to a default identity deserves
+     this treatment.
+
+     ⚠ **I invented project columns.** The portal asked for
+     `Project_Name` and `Project_Number`; neither exists. A project is
+     known by its `Site_Name` and by `Display_Ref`, which is the
+     reference printed on everything a developer has had from us.
+     Postgres only says so at RUN time, to whoever opens the page —
+     there is no build-time error for a column that is not there.
+
+     `checkportal` now audits the columns the portal asks for against
+     the list `projects.js` maintains, which is the nearest thing this
+     repo has to a schema. Any endpoint inventing a column now fails a
+     check rather than a user.
+
+     And the same reading found a better route to a developer's sites:
+     **`Project` carries `Organisation_Branch_ID` itself**, which is
+     how most schemes are recorded. `Project_Developer` covers the ones
+     with more than one developer, where the project's own branch is
+     somebody else's. Both are read; either alone leaves sites out.
+
      **Still to do:** a job that writes the milestone dates as each
      stage completes (nothing writes them yet — staff can only enter
      them by hand), and the DNO and IDNO portals.

@@ -418,6 +418,28 @@ const mine = (() => {
   }
 }
 
+// 10. The company is named once.
+//
+//     `Branch_Dropdown` already contains it — "Anwyl Homes
+//     (Lancashire)" — because it is written for a dropdown that has no
+//     other context. The portal heading supplies the company itself, so
+//     reading that column there said "Anwyl Homes (Anwyl Homes
+//     (Lancashire))".
+{
+  const portalFn = readFileSync("./netlify/functions/portal.js", "utf8");
+  const at = portalFn.indexOf("async function branchNameFor");
+  const fn = at >= 0 ? portalFn.slice(at, portalFn.indexOf("\n}", at)) : "";
+  if (!fn) {
+    fail("the branch name lookup cannot be found where it was");
+  } else if (/Branch_Dropdown \|\|/.test(fn)) {
+    fail("the portal shows the dropdown name, which already contains the "
+      + "company \u2014 so the heading names it twice");
+  }
+  if (!/return b \? \(b\.Branch_Name \|\| null\) : null/.test(fn)) {
+    fail("the branch's own name is not what is shown");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Portal scopes: organisation, branch, one site \u2014 narrowest wins.");
 process.exit(bad ? 1 : 0);

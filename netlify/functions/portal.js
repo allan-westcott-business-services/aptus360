@@ -127,16 +127,22 @@ async function orgNameFor(db, organisationId) {
   return data?.[0]?.Name ?? null;
 }
 
-/* The branch's name, for showing. `Branch_Dropdown` where there is one
-   — it is the spelling this business uses when naming a branch to
-   somebody outside it — and the plain name otherwise. */
+/* The branch's OWN name, for showing beside the organisation's.
+
+   `Branch_Dropdown` is the name for a dropdown, and it already carries
+   the company inside it — "Anwyl Homes (Lancashire)". Read here it
+   made the portal heading say "Anwyl Homes (Anwyl Homes (Lancashire))",
+   because the heading supplies the organisation itself.
+
+   So: `Branch_Name` — the office alone — and the heading puts the two
+   together. One place names the company. */
 async function branchNameFor(db, branchId) {
   if (branchId == null) return null;
   const { data } = await db.from("Organisation_Branch")
     .select("Branch_Name,Branch_Dropdown")
     .eq("Organisation_Branch_ID", branchId).limit(1);
   const b = data?.[0];
-  return b ? (b.Branch_Dropdown || b.Branch_Name || null) : null;
+  return b ? (b.Branch_Name || null) : null;
 }
 
 async function contactAccessFor(db, user) {
@@ -511,9 +517,12 @@ export default withAuth(async function handler(req, context, user) {
           .select("Organisation_Branch_ID,Branch_Name,Branch_Dropdown")
           .in("Organisation_Branch_ID", branchIds);
         if (bnErr) throw bnErr;
+        /* The office alone, for the same reason as above: these head
+           the groups on a page that has already said which company it
+           belongs to. */
         branchNames = new Map((bs || []).map((b) => [
           Number(b.Organisation_Branch_ID),
-          b.Branch_Dropdown || b.Branch_Name,
+          b.Branch_Name || b.Branch_Dropdown,
         ]));
       }
 

@@ -31,24 +31,36 @@
 import { useEffect, useMemo, useState } from "react";
 import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
 
-/* The `Kind` values. Written as the existing rows write them; if the
-   live data uses other spellings, they belong here rather than being
-   worked around at each use. */
+/* The `Kind` values, exactly as the database's own check constraint
+   spells them:
+
+     CHECK ("Kind" = ANY (ARRAY['text','long_text','date','number',
+                                'file','choice_one','choice_many']))
+
+   Written out here because I guessed three of them wrong first time —
+   document, choice and multi, where the database says file, choice_one
+   and choice_many — and a rejected value is not a visible failure in a
+   dropdown: the save fails, the list springs back, and it reads as a
+   control that does nothing.
+
+   If a kind is ever added, it goes in the constraint and here, and the
+   check beside this file compares the two. */
 const TYPES = [
   ["text", "Short text"],
   ["long_text", "Long text"],
   ["number", "Number"],
   ["date", "Date"],
-  ["document", "Document"],
-  ["choice", "One choice"],
-  ["multi", "Several choices"],
+  ["file", "Document"],
+  ["choice_one", "One choice"],
+  ["choice_many", "Several choices"],
 ];
 
 /* One sheet per audience, which is how the existing form table already
    describes itself. */
 const AUDIENCES = ["", "developer", "dno", "idno"];
 
-const HAS_OPTIONS = (t) => t === "choice" || t === "multi";
+/* The kinds that have answers to list. */
+const HAS_OPTIONS = (t) => t === "choice_one" || t === "choice_many";
 
 
 /* ── This screen's own layout ──
@@ -87,6 +99,13 @@ const CSS = `
    to it rather than as more questions. */
 .ef-options { margin: 12px 0 0 14px; padding-left: 14px;
   border-left: 2px solid var(--border); display: grid; gap: 12px; }
+
+/* The error stays in view. A save rejected by the database is reported
+   at the top of the pane, and somebody editing the twentieth question
+   is nowhere near the top: the dropdown springs back, no message is
+   visible, and it reads as a control that does nothing \u2014 which is
+   exactly how a wrong value in TYPES was reported. */
+.ef-error { position: sticky; top: 8px; z-index: 5; }
 
 .ef-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
 .ef-toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0 22px; }
@@ -298,7 +317,7 @@ export default function EnquiryFormsAdmin() {
         answered against.
       </p>
 
-      {error && <div className="banner error">{error}</div>}
+      {error && <div className="banner error ef-error">{error}</div>}
 
       <div className="ef-grid">
         <div className="fld">

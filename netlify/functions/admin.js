@@ -20,7 +20,18 @@ const TABLES = {
   /* The CAD team's own layer names (0218). Their standard, held by us:
      a mapping rule picks a layer from here rather than retyping a name
      two hundred times. */
-  CAD_Layer:        { pk: "CAD_Layer_ID",        order: "Sort_Order" },
+  /* Ordered by NAME, not by a sort order: 0221 drops that column,
+     because nothing sorted by it and a layer is looked up by what it
+     is called. Ordering by a column that no longer exists is an empty
+     list and an error nobody connects to a migration. */
+  CAD_Layer:        { pk: "CAD_Layer_ID",        order: "Layer_Name" },
+
+  /* The enquiry sheet (0225): what a developer is asked, edited by
+     whoever knows what to ask rather than by a deploy. */
+  Enquiry_Form:     { pk: "Enquiry_Form_ID",     order: "Form_Name" },
+  Enquiry_Section:  { pk: "Enquiry_Section_ID",  order: "Sort_Order" },
+  Enquiry_Question: { pk: "Enquiry_Question_ID", order: "Sort_Order" },
+  Enquiry_Option:   { pk: "Enquiry_Option_ID",   order: "Sort_Order" },
 
   /* Portal accounts (0218). Listed and edited here so staff can see
      who has access and switch somebody off; CREATING one is not done

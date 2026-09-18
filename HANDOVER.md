@@ -6097,6 +6097,50 @@ characters is a hundred lines of prose and no rules at all.
      the developer-facing form and the New enquiry button are still to
      build, deliberately held until the schema is confirmed.
 
+150. **Enquiry sheets (feature, part one).** A developer starts an
+     enquiry by filling in a sheet whose questions WE set, without a
+     deploy: they differ by utility, they change when a NAV changes
+     what it wants, and the person who knows what to ask is not the
+     person who can ship code.
+
+     0225 holds the questions, 0226 the answers, and they are separate
+     on purpose: a submitted enquiry outlives the form it was answered
+     against. Forms are VERSIONED and a new version is a COPY —
+     rewording a question must not rewrite what somebody already said,
+     and "what did we ask them in March" has to have an answer.
+
+     Answers settled by the user: one sheet per utility; an enquiry
+     belongs to the BRANCH (the person who typed it may leave, be
+     covered, or send on somebody's behalf); and nothing becomes a
+     project by itself — somebody here accepts it, because that
+     decision creates work, a reference and a place in a pipeline.
+
+     **Branching lives on the OPTION.** `Next_Question_ID` /
+     `Next_Section_ID` say where an ANSWER leads; both null means carry
+     on. A jump is a property of the answer given, and every other
+     arrangement — a rules table keyed on question and value, an
+     expression on the question — re-derives which answer it was.
+
+     **Forward only, by construction.** The editor offers as jump
+     targets only the questions that come AFTER, so a loop is
+     unrepresentable rather than detectable. A form that can send
+     somebody backwards can send them round, and a loop in a form
+     somebody is filling in is a trap with no way out. Cheaper to make
+     impossible than to detect.
+
+     `Chosen` on an answer holds option IDs, not labels: rewording an
+     option must not rewrite what somebody chose.
+
+     ⚠ Process note: the edit registering the four tables in the admin
+     endpoint anchored on text I had changed earlier in the session and
+     silently did nothing. The check caught it. A `python` replace
+     without an assert is a no-op waiting to happen, and I have done
+     this twice today — assert every anchor.
+
+     **Still to build:** the form renderer in the portal, submission
+     and attachments, and the accept/decline queue. The button on the
+     portal is present and disabled with a reason.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

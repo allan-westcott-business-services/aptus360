@@ -339,6 +339,11 @@ export const ADMIN_TABLES = [
      They answer to different people and will diverge. */
   { key: "DXF_Layer_Map", label: "CAD Layers", special: "dxflayers" },
 
+  /* The enquiry sheet. Its own screen rather than four generic tables:
+     a sheet is read as sections and questions, and editing it as three
+     joined lists is asking somebody to hold the join in their head. */
+  { key: "Enquiry_Form", label: "Enquiry Sheets", special: "enquiryforms" },
+
   /* The CAD team's own layer names, recorded so a mapping rule can
      pick one rather than having it typed again. Their standard, held
      by us: a plain list, edited as a plain table. */
@@ -358,6 +363,14 @@ export const ADMIN_TABLES = [
       options: ["water", "gas", "electric", "trench", "lighting", "annotation"] },
     { col: "Geometry_Type", label: "Geometry", type: "select",
       options: ["Line", "Point", "Polygon"] },
+    /* Which stage of work the layer is for. A schedule carries each
+       utility three times over — proposed, existing, as built — and
+       they must not be mixed. Their words, not ours: our own
+       Build_Status is planned/live/existing/abandoned, which answers a
+       different question (the state of the asset, not the purpose of
+       the drawing). */
+    { col: "Status", label: "Status", type: "select",
+      options: ["Planned", "Existing", "As-Laid"] },
     { col: "Is_Active", label: "Active", type: "checkbox" },
   ] },
   { key: "Portal_Access", label: "Portal Accounts", special: "portalaccounts" },

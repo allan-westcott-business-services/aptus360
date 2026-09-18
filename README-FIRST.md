@@ -1,28 +1,35 @@
-# One file: the Enquiry Sheets screen, with spacing
+# One file: the Enquiry Sheets screen
 
     src/features/admin/EnquiryFormsAdmin.jsx
 
-## Why it was squashed
+Includes yesterday's spacing fix. No migration, no SQL.
 
-The screen used layout classes from the GIS Styles admin — and that CSS
-is injected by THAT component when it renders. With it unmounted the
-rules simply do not exist, so every control stacked with no grid and no
-spacing at all.
+## Why Document / One choice / Several choices did nothing
 
-Third time this pattern has caught us today. A class defined inside
-another component's stylesheet is not a shared class; only
-src/styles.css is shared.
+I guessed three of the seven Kind values. The database accepts:
 
-## Now
+    text  long_text  date  number  file  choice_one  choice_many
 
-The screen carries its own stylesheet: a grid with real gaps, sections
-as cards with room inside them and space between them, a rule above
-each question, and the answers of a choice question indented under it
-so they read as belonging to that question rather than as more
-questions.
+I had written document, choice and multi. Selecting one of those wrote
+a value the check constraint rejects: the save failed, the dropdown
+sprang back, and it read as a control that does nothing.
 
-## Note
+Now they match the constraint exactly.
 
-This is the same file as in yesterday's enquiry-section fix, with the
-styling added. If you have not applied that one yet, this supersedes
-it — but you still need the admin.js from it.
+## And the failure is now visible
+
+The error banner is sticky. It was at the top of the pane, which is
+nowhere near somebody editing the twentieth question — the save was
+failing and reporting it off-screen. That is why this looked like
+nothing happening rather than an error.
+
+## Held by the check
+
+checkenquiryform.mjs now lists the seven kinds the constraint allows
+and fails if the editor offers anything else, or drops one. If a kind
+is ever added, it goes in the constraint AND the editor, and the check
+notices when only one of the two happened.
+
+## Suite state
+
+155 of 173 pass, the same 18 pre-existing failures. Build clean.

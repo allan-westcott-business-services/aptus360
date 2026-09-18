@@ -6045,6 +6045,22 @@ characters is a hundred lines of prose and no rules at all.
      reload, which this does not address — but it was a plaster over
      this. `checktabreturn.mjs` holds both halves.
 
+149. **Date Received was on the Add form and nowhere else.** Set when a
+     project is created and then invisible on the Details tab, so a
+     date typed wrongly on the way in could never be corrected — and it
+     is the date the KPI clock runs from.
+
+     Added at the left of the reference row, before the AP number:
+     first of the three because it is the first thing that happened, an
+     enquiry arrives and the references follow when they are issued.
+     Nothing else was needed — `Date_Received` was already writable by
+     the projects endpoint, so only the field was missing.
+
+     `checkdatereceived.mjs` holds its presence, its position relative
+     to the AP number, that it is a date input rather than free text,
+     and that its value falls back to "" rather than null (a date input
+     given null warns and then refuses to be typed into).
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

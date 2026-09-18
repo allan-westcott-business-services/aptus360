@@ -189,6 +189,23 @@ export default function ProjectDetailsForm({ projectId, onSaved }) {
           people — the AP number to the operator, the tender reference
           to the client — rather than describing the work. */}
       <div className="ref-row">
+        {/* ── When it came in ──
+
+            First of the three, because it is the first thing that
+            happened: an enquiry arrives, and the references follow when
+            they are issued. It is set on the Add form and was then
+            invisible here, so a date typed wrongly at the start could
+            never be corrected \u2014 and it is the date the whole KPI clock
+            runs from.
+
+            `type="date"`, as everywhere else in this form, and an empty
+            string rather than null for the value: a date input given
+            null warns and then refuses to be typed into. */}
+        <label className="ref-fld">
+          <span>Date Received</span>
+          <input type="date" value={f.Date_Received || ""}
+            onChange={(e) => set("Date_Received")(e.target.value || null)} />
+        </label>
         <label className="ref-fld">
           <span>AP Number</span>
           <input value={f.AP_Number || ""}

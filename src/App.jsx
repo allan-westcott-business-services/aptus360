@@ -302,7 +302,6 @@ function Gate() {
      visit it is state, which is all it needs to be. */
   const [audience, setAudience] = useState(null);
   const [who, setWho] = useState(null);
-  const [asking, setAsking] = useState(false);
 
   /* Who the ACCOUNT says this is. Asked once a session exists, and
      only then: it is the answer that routes, so nothing routes until
@@ -310,13 +309,24 @@ function Gate() {
   useEffect(() => {
     if (!session || !authEnabled || field) return undefined;
     let live = true;
-    setAsking(true);
     http.get("/portal/me")
+      /* A successful answer with no audience means no portal record,
+         which IS a staff account — the overwhelming majority of them. */
       .then((r) => { if (live) setWho(r); })
-      /* No portal record is not an error: it is a staff account, which
-         is the overwhelming majority of them. */
-      .catch(() => { if (live) setWho({ audience: null }); })
-      .finally(() => { if (live) setAsking(false); });
+      /* A FAILED call is a different thing entirely, and used to be
+         treated the same: it fell through to the staff app. So while
+         the endpoint was unreachable, every account — developer
+         included — landed in the full application. A routing fault
+         became an access fault.
+
+         Now it stops and says so. Refusing to route beats guessing:
+         the worst case here is a staff member seeing "try again",
+         where the other way round is somebody outside the business
+         seeing every project on the system. */
+      .catch((e) => { if (live) setWho({ audience: null, failed: e.message }); })
+      /* No "asking" flag any more: nothing reads it, and a state
+         nobody reads is a state somebody will one day wire back into a
+         render and blank the page with again. */
     return () => { live = false; };
   }, [session, authEnabled, field]);
 
@@ -344,7 +354,76 @@ function Gate() {
   }
 
   if (field) return <FieldApp />;
-  if (asking || !who) return <div className="boot">Loading&hellip;</div>;
+  /* Only while the answer is not yet KNOWN. It was `asking || !who`,
+     which blanked the whole application every time the check re-ran —
+     and it re-ran on every token refresh, which is to say every time
+     somebody returned to the tab. The page they were on unmounted and
+     came back empty; what they saw was the app refreshing whenever
+     they looked away.
+
+     A re-check now happens behind whatever is on screen. There is
+     already an answer, and a refreshed token does not change it. */
+  if (!who) return <div className="boot">Loading&hellip;</div>;
+
+  if (who.failed) {
+    /* Named, not swallowed. Somebody reading this can tell their IT
+       what happened, and nobody is quietly given the wrong app. */
+    return (
+      <div className="boot">
+        We could not check your account just now, so we have not opened
+        anything. Please try again in a moment.
+        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>{who.failed}</div>
+        <div style={{ marginTop: 14 }}>
+          <button className="btn ghost" onClick={() => window.location.reload()}>
+            Try again
+          </button>
+          <button className="btn ghost" onClick={() => { setAudience(null); signOut(); }}>
+            Sign out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── The door somebody came through is honoured ──
+
+     `/portal/me` answers with the audience on the account's
+     Portal_Access row, and NO row means staff — which is right, because
+     staff have no portal record and there are far more of them.
+
+     But it meant that signing in at the Developer door with an account
+     that has no portal record opened the full internal application.
+     Not an escalation: it took staff credentials to do it. Still
+     wrong, and confusing in a way that matters — somebody testing the
+     client portal with their own login concludes the portal is broken,
+     and a client who is also on staff would be shown the inside of the
+     business by a door that promised otherwise.
+
+     So a CLIENT door only ever opens a client portal. An account that
+     turns out to be staff is told plainly and offered the way back,
+     rather than being let through a door it did not ask for.
+
+     The reverse is not guarded and should not be: staff signing in at
+     the staff door with a portal record is somebody's own account, and
+     the record is what says what they may see. */
+  if (audience && audience !== "staff"
+    && (!who.audience || who.audience === "staff")) {
+    return (
+      <div className="boot">
+        <p>
+          That account is a staff account, so there is nothing for it in the
+          client portal.
+        </p>
+        <p>
+          Sign in through the staff door instead, or ask your Aptus contact
+          to set up a portal account for this address.
+        </p>
+        <button className="btn ghost" onClick={() => { setAudience(null); signOut(); }}>
+          Back to the start
+        </button>
+      </div>
+    );
+  }
 
   if (who.audience === "developer") {
     return (

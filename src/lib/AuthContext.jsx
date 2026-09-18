@@ -66,7 +66,29 @@ export function AuthProvider({ children }) {
     let live = true;
     getSupabase().then((sb) => {
       if (!live || !sb) return;
-      sub = sb.auth.onAuthStateChange((_e, s) => setSession(s)).data.subscription;
+      /* ── A refreshed token is not a new session ──
+
+         Supabase fires TOKEN_REFRESHED whenever a tab regains focus,
+         and SIGNED_IN on some returns as well. Setting state from each
+         one handed React a NEW session object every time somebody came
+         back from another tab — and everything watching `session` ran
+         again, including the routing check in App, which blanks the
+         page while it asks. The page somebody was on unmounted and
+         came back empty: what the user saw was the app refreshing
+         every time they looked away.
+
+         So the session is replaced only when it is a different
+         SESSION: a different user, or signed in versus signed out. A
+         token refresh keeps the object it had. Nothing reads the token
+         from here — the api client asks Supabase for it on each
+         request — so there is nothing to go stale. */
+      sub = sb.auth.onAuthStateChange((_e, s) => {
+        setSession((prev) => {
+          const same = prev?.user?.id && s?.user?.id
+            && prev.user.id === s.user.id;
+          return same ? prev : s;
+        });
+      }).data.subscription;
     });
     /* live guards the case where this unmounts before the client arrives:
        without it the subscription is created after cleanup has run and

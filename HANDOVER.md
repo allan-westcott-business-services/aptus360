@@ -6004,6 +6004,47 @@ characters is a hundred lines of prose and no rules at all.
      lookup from an empty one, which is now the admin screen's job
      because that is where the lists went.
 
+148. **The app threw the page away every time somebody returned to the
+     tab.** Reported twice: first as the GIS canvas losing its zoom,
+     which I patched by remembering the view (145) while saying I could
+     not find the cause; then as "every page refreshes when I come
+     back", which is the same fault seen plainly.
+
+     The cause, found by reading rather than guessing:
+
+       1. Supabase fires `TOKEN_REFRESHED` whenever a tab regains
+          focus, and `onAuthStateChange((_e, s) => setSession(s))` gave
+          React a NEW session object each time.
+       2. App's routing check depends on `session`, so it re-ran and
+          set `asking`.
+       3. `if (asking || !who) return <Loading/>` — and that return
+          UNMOUNTS THE WHOLE TREE. Whatever page somebody was on was
+          destroyed and rebuilt empty.
+
+     Two lines. The session is now replaced only when it is a different
+     SESSION — a different user, or signed in versus signed out — and a
+     token refresh keeps the object it had. Nothing reads the token
+     from the context (the api client asks Supabase per request), so
+     there is nothing to go stale. And the Loading screen is shown only
+     while the answer is not yet KNOWN, not while it is being
+     re-checked; a re-check happens behind whatever is on screen,
+     because there is already an answer and a refreshed token does not
+     change it.
+
+     `asking` was then written and never read, so it is gone: an unread
+     flag is one somebody eventually puts back into a render.
+
+     Two lessons worth keeping. **A `return` in a component body is an
+     unmount**, not a placeholder — anything above the thing that
+     renders the page can destroy it. And when a symptom is "it
+     refreshes", the question to ask first is what changes IDENTITY on
+     the event, not what re-renders: re-rendering is cheap and
+     invisible, and remounting is what loses work.
+
+     Fault 145's stored view is still worth having — it survives a real
+     reload, which this does not address — but it was a plaster over
+     this. `checktabreturn.mjs` holds both halves.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

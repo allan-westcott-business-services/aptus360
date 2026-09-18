@@ -1,23 +1,26 @@
-# One file: the company named once
+# The three files that make New Enquiry work
 
-    netlify/functions/portal.js
+    src/features/portal/DeveloperPortal.jsx   the button and the form
+    src/features/portal/enquiryFlow.js        the branching
+    netlify/functions/portal.js               serves the sheet, takes answers
 
-No migration.
+All three, or none. They are one feature:
 
-## The duplicate name
+- DeveloperPortal alone: the button enables, then fails on fetch
+- portal.js alone: the endpoints exist and nothing calls them
 
-Branch_Dropdown already contains the company — "Anwyl Homes
-(Lancashire)" — because it is written for a dropdown with no other
-context around it. The portal heading supplies the company itself, so
-reading that column there produced "Anwyl Homes (Anwyl Homes
-(Lancashire))".
+## How to know each landed
 
-The portal now reads Branch_Name, the office alone, and the heading puts
-the two together: **Anwyl Homes (Lancashire)**.
+    DeveloperPortal.jsx   search for: openEnquiry
+    enquiryFlow.js        the file exists at all
+    portal.js             search for: enquiry-form
 
-The same applies to the branch headings above each group of sites,
-which sit on a page that has already named the company.
+All three present, deploy, hard-refresh.
 
-## Suite state
+## Then
 
-155 of 173 pass, the same 18 pre-existing failures. Build clean.
+Admin › Enquiry Sheets → build a sheet → Audience "developer" → Make
+this the live sheet. The portal's New Enquiry will open it.
+
+If the button is enabled but says there is no sheet published, that
+message is correct and means the sheet is not live for that audience.

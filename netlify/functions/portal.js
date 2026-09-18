@@ -440,6 +440,110 @@ export default withAuth(async function handler(req, context, user) {
 
     const allowed = await mine(db, access);
 
+    /* ── The enquiry sheet this account is offered ──
+
+       The live form for their audience, with its questions and their
+       options. Read-only, and no answers: this is the sheet, not
+       anybody's filling-in of it.
+
+       Sent whole rather than a question at a time. A sheet is tens of
+       questions, the branching is decided on the client by
+       enquiryFlow, and a round trip per question would make a form
+       that stutters on a site office's connection. */
+    if (what === "enquiry-form") {
+      if (!access) return json({ form: null, questions: [], options: [] });
+
+      const { data: forms, error: fErr } = await db
+        .from("Enquiry_Form")
+        .select("Enquiry_Form_ID,Form_Name,Audience,Version,Is_Live")
+        .eq("Is_Live", true);
+      if (fErr) throw fErr;
+
+      /* Their audience's sheet, or one published for everybody. A sheet
+         for another audience is not offered at all: a developer asked a
+         DNO's questions would answer them, and we would have the wrong
+         information in a form nobody can tell apart from the right
+         one. */
+      const mine = (forms || []).find((f) =>
+        String(f.Audience || "").toLowerCase() === String(access.Audience || ""))
+        || (forms || []).find((f) => !f.Audience);
+      if (!mine) return json({ form: null, questions: [], options: [] });
+
+      const { data: questions, error: qErr } = await db
+        .from("Enquiry_Question")
+        .select("Enquiry_Question_ID,Enquiry_Form_ID,Section,Question,Help_Text,"
+          + "Kind,Is_Required,Sort_Order,Next_Question_ID,Is_Active")
+        .eq("Enquiry_Form_ID", mine.Enquiry_Form_ID)
+        .eq("Is_Active", true);
+      if (qErr) throw qErr;
+
+      const ids = (questions || []).map((q) => q.Enquiry_Question_ID);
+      let options = [];
+      if (ids.length) {
+        const { data: os, error: oErr } = await db
+          .from("Enquiry_Option")
+          .select("Enquiry_Option_ID,Enquiry_Question_ID,Label,Sort_Order,"
+            + "Next_Question_ID,Ends_Form,Is_Active")
+          .in("Enquiry_Question_ID", ids)
+          .eq("Is_Active", true);
+        if (oErr) throw oErr;
+        options = os || [];
+      }
+
+      return json({ form: mine, questions: questions || [], options });
+    }
+
+    /* ── Sending one in ──
+
+       The submission belongs to the BRANCH, and the branch is taken
+       from the ACCOUNT rather than from the body: a caller who could
+       name their own branch could file an enquiry against somebody
+       else's office.
+
+       Each answer stores the question AS IT WAS WORDED. That is the
+       existing design's best idea: an enquiry reads in its own terms
+       for ever, whatever happens to the sheet afterwards. */
+    if (what === "enquiry" && req.method === "POST") {
+      if (!access) return json({ error: "No portal account." }, 403);
+
+      const body = await req.json().catch(() => ({}));
+      const formId = Number(body?.formId);
+      const answers = Array.isArray(body?.answers) ? body.answers : [];
+      if (!formId) return json({ error: "Which sheet?" }, 400);
+
+      const { data: sub, error: sErr } = await db
+        .from("Enquiry_Submission")
+        .insert({
+          Enquiry_Form_ID: formId,
+          Organisation_ID: access.Organisation_ID ?? null,
+          Organisation_Branch_ID: access.Branch_ID ?? null,
+          Submitted_By: user?.email ?? null,
+          Submitted_At: new Date().toISOString(),
+          Status: "submitted",
+        })
+        .select("Enquiry_Submission_ID")
+        .single();
+      if (sErr) throw sErr;
+
+      const id = sub.Enquiry_Submission_ID;
+      if (answers.length) {
+        const { error: aErr } = await db.from("Enquiry_Answer").insert(
+          answers.slice(0, 500).map((a) => ({
+            Enquiry_Submission_ID: id,
+            Enquiry_Question_ID: Number(a.questionId),
+            /* The question as it was asked, from the sheet we just
+               served \u2014 not from the body, which a caller writes. */
+            Question_Text: String(a.questionText ?? "").slice(0, 2000),
+            Answer_Text: a.answer == null ? null : String(a.answer).slice(0, 4000),
+            Answered_At: new Date().toISOString(),
+          })),
+        );
+        if (aErr) throw aErr;
+      }
+
+      return json({ ok: true, enquiryId: id });
+    }
+
     if (what === "sites") {
       if (!allowed.length) return json({ sites: [] });
       const { data, error } = await db

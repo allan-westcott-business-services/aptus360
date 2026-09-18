@@ -19,6 +19,7 @@
    the rest. */
 
 import { useEffect, useMemo, useState } from "react";
+import { sheetOf, currentQuestion, pathOf, missingAnswers } from "./enquiryFlow.js";
 /* The app's own client, which carries the session token and turns an
    error body into a message. */
 import { http } from "../../api/client.js";
@@ -77,8 +78,145 @@ function Node({ n, depth = 0, onUpload, onDownload, busy }) {
   );
 }
 
+/* The control a question is answered with.
+
+   One place, keyed on the Kind the database stores. A `file` question
+   is shown but not yet accepted: attachments need storage plumbing
+   that is not built, and a control that looks ready and does nothing
+   is worse than one that says so. */
+function renderAnswer(q, answers, setAnswers) {
+  const set = (v) => setAnswers((a) => ({ ...a, [q.Enquiry_Question_ID]: v }));
+  const value = answers[q.Enquiry_Question_ID] ?? "";
+
+  if (q.Kind === "long_text") {
+    return <textarea id="pt-answer" rows={4} value={value}
+      onChange={(e) => set(e.target.value)} />;
+  }
+  if (q.Kind === "number") {
+    return <input id="pt-answer" type="number" value={value}
+      onChange={(e) => set(e.target.value)} />;
+  }
+  if (q.Kind === "date") {
+    return <input id="pt-answer" type="date" value={value}
+      onChange={(e) => set(e.target.value)} />;
+  }
+  if (q.Kind === "file") {
+    return (
+      <p className="pt-quiet">
+        Documents cannot be attached here yet. Send this enquiry and we will
+        ask you for it.
+      </p>
+    );
+  }
+  if (q.Kind === "choice_one") {
+    return (
+      <div className="pt-choices">
+        {q.options.map((o) => (
+          <label key={o.Enquiry_Option_ID} className="fe-check">
+            <input type="radio" name={`q${q.Enquiry_Question_ID}`}
+              checked={String(value) === String(o.Enquiry_Option_ID)}
+              onChange={() => set(o.Enquiry_Option_ID)} />
+            {o.Label}
+          </label>
+        ))}
+      </div>
+    );
+  }
+  if (q.Kind === "choice_many") {
+    const chosen = [].concat(value || []).map(String);
+    return (
+      <div className="pt-choices">
+        {q.options.map((o) => (
+          <label key={o.Enquiry_Option_ID} className="fe-check">
+            <input type="checkbox"
+              checked={chosen.includes(String(o.Enquiry_Option_ID))}
+              onChange={(e) => set(e.target.checked
+                ? [...chosen, String(o.Enquiry_Option_ID)]
+                : chosen.filter((x) => x !== String(o.Enquiry_Option_ID)))} />
+            {o.Label}
+          </label>
+        ))}
+      </div>
+    );
+  }
+  return <input id="pt-answer" value={value}
+    onChange={(e) => set(e.target.value)} />;
+}
+
 export default function DeveloperPortal({ onSignOut, who }) {
   const [sites, setSites] = useState(null);
+
+  /* ── The enquiry sheet ──
+
+     Fetched when somebody opens it, not with the page: most visits are
+     to look at a site, and a sheet nobody asked for is a request
+     nobody needed.
+
+     `answers` is the filling-in, keyed by question id, and it is what
+     enquiryFlow reads to decide which question comes next. Held here
+     and sent once, rather than saved question by question: a
+     half-submitted enquiry in the database is a thing somebody has to
+     decide what to do with, and nobody asked for drafts. */
+  const [enquiry, setEnquiry] = useState(null);
+  const [answers, setAnswers] = useState({});
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(null);
+
+  const sheet = useMemo(
+    () => (enquiry?.form
+      ? sheetOf(enquiry.questions, enquiry.options, enquiry.form.Enquiry_Form_ID)
+      : []),
+    [enquiry],
+  );
+  const asked = useMemo(() => pathOf(sheet, answers), [sheet, answers]);
+  const current = useMemo(() => currentQuestion(sheet, answers), [sheet, answers]);
+  const missing = useMemo(() => missingAnswers(sheet, answers), [sheet, answers]);
+
+  async function openEnquiry() {
+    setError("");
+    setSent(null);
+    setAnswers({});
+    try {
+      const r = await http.get("/portal/enquiry-form");
+      if (!r?.form) {
+        setError("There is no enquiry sheet published yet. Your Aptus "
+          + "contact can set one up.");
+        return;
+      }
+      setEnquiry(r);
+    } catch (e) { setError(e.message); }
+  }
+
+  async function submitEnquiry() {
+    setSending(true);
+    try {
+      /* Only what was ASKED is sent. A question the answers jumped over
+         was not asked, and filing an empty answer against it would
+         read later as though somebody had declined to answer. */
+      const payload = asked
+        .filter((q) => answers[q.Enquiry_Question_ID] != null)
+        .map((q) => {
+          const a = answers[q.Enquiry_Question_ID];
+          const labels = (v) => q.options
+            .filter((o) => [].concat(v).map(String)
+              .includes(String(o.Enquiry_Option_ID)))
+            .map((o) => o.Label).join(", ");
+          return {
+            questionId: q.Enquiry_Question_ID,
+            questionText: q.Question,
+            /* A choice is stored as its LABEL, because the answer has
+               to read years from now beside the question it answered \u2014
+               an option id would need the option to still exist and
+               still be worded the same. */
+            answer: q.options?.length ? labels(a) : a,
+          };
+        });
+      const r = await http.post("/portal/enquiry",
+        { formId: enquiry.form.Enquiry_Form_ID, answers: payload });
+      setSent(r?.enquiryId ?? true);
+      setEnquiry(null);
+    } catch (e) { setError(e.message); } finally { setSending(false); }
+  }
 
   /* The sites under each branch they are attached to.
 
@@ -252,8 +390,7 @@ export default function DeveloperPortal({ onSignOut, who }) {
               enquire and telephones instead. */}
           <div className="pt-head-row">
             <h2 className="pt-sites-h">Your sites</h2>
-            <button className="btn accent" disabled
-              title="The enquiry sheet is being set up">
+            <button className="btn accent" onClick={openEnquiry}>
               New enquiry
             </button>
           </div>
@@ -277,6 +414,84 @@ export default function DeveloperPortal({ onSignOut, who }) {
               </div>
             </div>
           )}
+          {sent && (
+            <p className="pt-quiet">
+              Thank you {"\u2014"} your enquiry has been sent. Somebody here will
+              look at it and come back to you.
+            </p>
+          )}
+
+          {enquiry?.form && (
+            /* ── The sheet, one question at a time ──
+
+                One question rather than all of them, because the next
+                question depends on this answer: showing the lot would
+                mean showing questions somebody may never be asked, and
+                then taking them away as they answer.
+
+                What has been answered stays above it, so the form reads
+                as a conversation somebody can look back over rather
+                than a box that forgets. */
+            <div className="fe-backdrop" onClick={() => setEnquiry(null)}>
+              <div className="pt-sheet" onClick={(e) => e.stopPropagation()}>
+                <div className="pt-sheet-head">
+                  <div>
+                    <h3>{enquiry.form.Form_Name}</h3>
+                    <p className="pt-quiet">New enquiry</p>
+                  </div>
+                  <button className="fe-x" onClick={() => setEnquiry(null)}
+                    aria-label="Close">&times;</button>
+                </div>
+
+                <div className="pt-sheet-body">
+                  {asked.filter((q) => q !== current).map((q) => (
+                    <div key={q.Enquiry_Question_ID} className="pt-answered">
+                      <span className="pt-answered-q">{q.Question}</span>
+                      <span className="pt-answered-a">
+                        {q.options?.length
+                          ? q.options.filter((o) => [].concat(answers[q.Enquiry_Question_ID])
+                            .map(String).includes(String(o.Enquiry_Option_ID)))
+                            .map((o) => o.Label).join(", ")
+                          : String(answers[q.Enquiry_Question_ID] ?? "")}
+                      </span>
+                    </div>
+                  ))}
+
+                  {current ? (
+                    <div className="pt-asking">
+                      <label className="pt-q" htmlFor="pt-answer">
+                        {current.Question}
+                        {current.Is_Required && <span className="pt-req"> *</span>}
+                      </label>
+                      {current.Help_Text && (
+                        <p className="pt-quiet">{current.Help_Text}</p>
+                      )}
+                      {renderAnswer(current, answers, setAnswers)}
+                    </div>
+                  ) : (
+                    <p className="pt-quiet">
+                      That is everything. Send it when you are ready.
+                    </p>
+                  )}
+                </div>
+
+                <div className="pt-sheet-foot">
+                  {/* Sendable only when everything ASKED that had to be
+                      answered has been. A question jumped over is not
+                      missing. */}
+                  <button className="btn accent"
+                    disabled={sending || !!current || missing.length > 0}
+                    onClick={submitEnquiry}>
+                    {sending ? "Sending\u2026" : "Send enquiry"}
+                  </button>
+                  <button className="btn ghost" onClick={() => setEnquiry(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {sites == null && <p className="pt-quiet">Loading&hellip;</p>}
           {sites?.length === 0 && (
             <p className="pt-quiet">
@@ -452,6 +667,25 @@ const CSS = `
 .pt-metric-n { font-size: 26px; font-weight: 700; line-height: 1.1; }
 .pt-metric-l { font-size: 12px; color: var(--muted); }
 
+.pt-sheet { background: var(--white); border-radius: 12px; width: min(620px, 94vw);
+  max-height: 88vh; display: flex; flex-direction: column;
+  box-shadow: 0 24px 60px rgba(15,23,42,.28); overflow: hidden; }
+.pt-sheet-head { display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 12px; padding: 14px 18px 12px; border-bottom: 1px solid var(--border); }
+.pt-sheet-head h3 { margin: 0; font-size: 16px; }
+.pt-sheet-body { overflow: auto; padding: 16px 18px; display: grid; gap: 16px; }
+.pt-sheet-foot { display: flex; gap: 10px; padding: 12px 18px 16px;
+  border-top: 1px solid var(--border); }
+.pt-answered { display: grid; gap: 2px; padding-bottom: 10px;
+  border-bottom: 1px dashed var(--border); }
+.pt-answered-q { font-size: 12px; color: var(--muted); }
+.pt-answered-a { font-size: 13.5px; font-weight: 600; }
+.pt-asking { display: grid; gap: 8px; }
+.pt-q { font-size: 15px; font-weight: 700; }
+.pt-req { color: #dc2626; }
+.pt-choices { display: grid; gap: 8px; }
+.pt-sheet input[type="text"], .pt-sheet input:not([type]), .pt-sheet textarea,
+.pt-sheet input[type="number"], .pt-sheet input[type="date"] { width: 100%; }
 .pt-branch { margin: 22px 0 8px; font-size: 14px; font-weight: 700;
   color: var(--muted); letter-spacing: .01em; }
 .pt-sites { display: grid; gap: 12px; margin-top: 14px;

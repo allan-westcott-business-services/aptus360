@@ -6205,9 +6205,88 @@ characters is a hundred lines of prose and no rules at all.
      without an assert is a no-op waiting to happen, and I have done
      this twice today — assert every anchor.
 
-     **Still to build:** the form renderer in the portal, submission
-     and attachments, and the accept/decline queue. The button on the
-     portal is present and disabled with a reason.
+     **Flow logic built (`enquiryFlow.js`).** Pure: questions, options
+     and the answers so far in; the path, the current question and
+     whether the sheet is complete out. The renderer will draw what it
+     decides, which is what lets branching be tested without a browser
+     or a database — `checkenquiryflow.mjs` does exactly the case that
+     was asked for ("if Yes, skip 4 and jump to 5") and seven others.
+
+     Decisions in it worth keeping:
+       - A jump comes from the OPTION first, the question's own
+         `Next_Question_ID` second, the order last. The answer is more
+         specific than the question.
+       - For a multi-choice, the first CHOSEN option in the SHEET's
+         order that carries a jump decides. A single answer cannot lead
+         two ways, and the order somebody happened to tick them in is
+         not a rule anyone could rely on.
+       - An unanswered question leads nowhere, so a half-filled sheet
+         shows exactly as far as somebody got rather than guessing.
+       - Only questions ON THE PATH can be missing. A question the
+         answers jumped over was not asked, and judging completeness
+         against the whole sheet is how a branching form becomes
+         unsubmittable.
+       - `pathOf` refuses to visit a question twice. The editor cannot
+         build a loop, but a hand-edited sheet could, and a form that
+         hangs has no way out for the person in it. (Note: deleting
+         that guard makes the CHECK hang rather than fail — the one
+         case in this suite that reports by timing out.)
+
+     **The renderer and submission are built**, against the real
+     columns read from the database: `Enquiry_Submission` is
+     (Form, Organisation, Branch, Submitted_By, Submitted_At, Project,
+     Status) and `Enquiry_Answer` holds `Question_Text`, `Answer_Text`
+     and `Storage_Path` — one text answer per question, no typed
+     columns.
+
+     How it works and why:
+       - The sheet is served WHOLE and the branching decided on the
+         client by `enquiryFlow`. A round trip per question makes a
+         form that stutters on a site-office connection.
+       - The sheet offered is the live one for the account's AUDIENCE,
+         or one published for everybody. Never another audience's: a
+         developer asked a DNO's questions would answer them, and we
+         would hold the wrong information in a form nobody can tell
+         from the right one.
+       - The submission's branch comes from the ACCOUNT, never the
+         body. A caller who could name their own branch could file
+         against somebody else's office.
+       - Only questions that were ASKED are sent. An empty answer
+         against a question somebody was never asked reads later as a
+         refusal to answer.
+       - A choice is stored as its LABEL. The answer has to read beside
+         its question years from now, and an option id needs the option
+         to still exist and still be worded the same.
+       - One question at a time on screen, with what has been answered
+         above it. Showing them all would mean showing questions
+         somebody may never be asked, then taking them away.
+
+     ⚠ **The form advanced as somebody typed.** `currentQuestion` reads
+     "has a value" as "answered", which is right for working out where
+     an answer LEADS and wrong for deciding when somebody has finished
+     giving it: the first letter typed into a text box counted, and the
+     form jumped to the next question mid-word.
+
+     The renderer now holds the current question explicitly (`here`)
+     and moves on a Next press, following the same jumps. Back returns
+     to the last question answered and keeps its answer. Send appears
+     only when there is no current question, rather than sitting
+     disabled beside one still being answered.
+
+     The general shape: a pure function that answers "where does this
+     lead" cannot also answer "is the person finished". The second is a
+     fact about the interface, and reading it out of the data made
+     every keystroke a decision.
+
+     **Attachments are NOT built.** A `file` question renders a plain
+     line saying we will ask for the document, rather than a control
+     that looks ready and does nothing. `Storage_Path` on the answer is
+     where it will go.
+
+     **Also not built:** the accept/decline queue on our side. The
+     submission lands with Status 'submitted' and waits. Confirm the
+     Status check constraint before relying on that spelling — the same
+     guess cost a round on `Kind`.
 
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the

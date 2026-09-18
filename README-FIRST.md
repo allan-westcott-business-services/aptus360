@@ -1,26 +1,29 @@
-# The three files that make New Enquiry work
+# One file: the form waits for you to finish typing
 
-    src/features/portal/DeveloperPortal.jsx   the button and the form
-    src/features/portal/enquiryFlow.js        the branching
-    netlify/functions/portal.js               serves the sheet, takes answers
+    src/features/portal/DeveloperPortal.jsx
 
-All three, or none. They are one feature:
+No migration. The other two files from the last zip are unchanged.
 
-- DeveloperPortal alone: the button enables, then fails on fetch
-- portal.js alone: the endpoints exist and nothing calls them
+## What was wrong
 
-## How to know each landed
+The form worked out which question to show from which questions had
+answers — so the first letter typed counted as an answer and it jumped
+to the next question mid-word.
 
-    DeveloperPortal.jsx   search for: openEnquiry
-    enquiryFlow.js        the file exists at all
-    portal.js             search for: enquiry-form
+That reading is right for "where does this answer LEAD" and wrong for
+"has this person finished answering". The second is a fact about the
+screen, not about the data.
 
-All three present, deploy, hard-refresh.
+## Now
 
-## Then
+The question in front of you is held explicitly. **Next question**
+moves on, following the jumps exactly as before. **Back** returns to
+the last one and keeps what you put.
 
-Admin › Enquiry Sheets → build a sheet → Audience "developer" → Make
-this the live sheet. The portal's New Enquiry will open it.
+A required question cannot be passed with Next. **Send enquiry**
+appears only at the end, rather than sitting greyed out beside a
+question you are still answering.
 
-If the button is enabled but says there is no sheet published, that
-message is correct and means the sheet is not live for that audience.
+## Suite state
+
+156 of 174 pass, the same 18 pre-existing failures. Build clean.

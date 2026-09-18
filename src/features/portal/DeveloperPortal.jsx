@@ -19,7 +19,7 @@
    the rest. */
 
 import { useEffect, useMemo, useState } from "react";
-import { sheetOf, currentQuestion, pathOf, missingAnswers } from "./enquiryFlow.js";
+import { sheetOf, nextFrom, pathOf, missingAnswers } from "./enquiryFlow.js";
 /* The app's own client, which carries the session token and turns an
    error body into a message. */
 import { http } from "../../api/client.js";
@@ -168,8 +168,37 @@ export default function DeveloperPortal({ onSignOut, who }) {
       : []),
     [enquiry],
   );
-  const asked = useMemo(() => pathOf(sheet, answers), [sheet, answers]);
-  const current = useMemo(() => currentQuestion(sheet, answers), [sheet, answers]);
+  /* ── Which question is in front of somebody ──
+
+     Held explicitly, rather than worked out from which questions have
+     answers. The flow module can say where an answer LEADS, but not
+     when somebody has finished giving it: read that way, the first
+     letter typed into a text box counts as an answer and the form
+     jumps to the next question mid-word.
+
+     So the form advances when they say so. `here` is the question
+     being answered; Next moves it on, following the jumps. */
+  const [here, setHere] = useState(null);
+  const [done, setDone] = useState(false);
+
+  const current = useMemo(() => {
+    if (done) return null;
+    if (!sheet.length) return null;
+    if (here == null) return sheet[0];
+    return sheet.find((q) => String(q.Enquiry_Question_ID) === String(here))
+      ?? sheet[0];
+  }, [sheet, here, done]);
+
+  /* What has been answered, up to but not including the question being
+     answered now \u2014 so the trail above reads as a conversation and the
+     current question is asked once. */
+  const asked = useMemo(() => {
+    const path = pathOf(sheet, answers);
+    const i = current
+      ? path.findIndex((q) => q.Enquiry_Question_ID === current.Enquiry_Question_ID)
+      : -1;
+    return i < 0 ? path : path.slice(0, i);
+  }, [sheet, answers, current]);
   const missing = useMemo(() => missingAnswers(sheet, answers), [sheet, answers]);
 
   async function openEnquiry() {
@@ -184,8 +213,42 @@ export default function DeveloperPortal({ onSignOut, who }) {
         return;
       }
       setEnquiry(r);
+      setHere(null);
+      setDone(false);
     } catch (e) { setError(e.message); }
   }
+
+  /* Moving on. The answer decides where to, which is the whole point of
+     the branching \u2014 and an answer that ends the sheet ends it here. */
+  function nextQuestion() {
+    if (!current) return;
+    const step = nextFrom(current, answers);
+    if (step === "end") { setDone(true); return; }
+    if (step != null) { setHere(step); return; }
+    const i = sheet.indexOf(current);
+    const after = i >= 0 ? sheet[i + 1] : null;
+    if (after) setHere(after.Enquiry_Question_ID); else setDone(true);
+  }
+
+  /* Back to the last question answered. Its answer is kept: somebody
+     going back to check what they put should not have to type it
+     again. */
+  function backQuestion() {
+    const prev = asked[asked.length - 1];
+    setDone(false);
+    if (prev) setHere(prev.Enquiry_Question_ID);
+  }
+
+  /* Whether the question in front of somebody may be left. A required
+     question must have something in it; anything else may be skipped. */
+  const answeredHere = current
+    ? (() => {
+      const a = answers[current.Enquiry_Question_ID];
+      if (a == null || a === "") return false;
+      if (Array.isArray(a) && !a.length) return false;
+      return true;
+    })()
+    : true;
 
   async function submitEnquiry() {
     setSending(true);
@@ -476,15 +539,39 @@ export default function DeveloperPortal({ onSignOut, who }) {
                 </div>
 
                 <div className="pt-sheet-foot">
-                  {/* Sendable only when everything ASKED that had to be
-                      answered has been. A question jumped over is not
-                      missing. */}
-                  <button className="btn accent"
-                    disabled={sending || !!current || missing.length > 0}
-                    onClick={submitEnquiry}>
-                    {sending ? "Sending\u2026" : "Send enquiry"}
-                  </button>
-                  <button className="btn ghost" onClick={() => setEnquiry(null)}>
+                  {current ? (
+                    <>
+                      {/* On, when they say so \u2014 not when they start
+                          typing. A required question has to have
+                          something in it first; anything else may be
+                          passed over. */}
+                      <button className="btn accent" onClick={nextQuestion}
+                        disabled={current.Is_Required && !answeredHere}>
+                        Next question
+                      </button>
+                      {asked.length > 0 && (
+                        <button className="btn ghost" onClick={backQuestion}>
+                          Back
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    /* Sendable only when everything ASKED that had to be
+                       answered has been. A question jumped over is not
+                       missing. */
+                    <>
+                      <button className="btn accent"
+                        disabled={sending || missing.length > 0}
+                        onClick={submitEnquiry}>
+                        {sending ? "Sending\u2026" : "Send enquiry"}
+                      </button>
+                      <button className="btn ghost" onClick={backQuestion}>
+                        Back
+                      </button>
+                    </>
+                  )}
+                  <button className="btn ghost" style={{ marginLeft: "auto" }}
+                    onClick={() => setEnquiry(null)}>
                     Cancel
                   </button>
                 </div>

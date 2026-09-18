@@ -23,6 +23,8 @@ const AvInvoicesPage = lazyPage("AvInvoicesPage", () => import("./features/av/Av
    would drift, and the difference between the two would be invisible
    until someone edited a branch in the wrong one. */
 const OrganisationsAdmin = lazyPage("OrganisationsAdmin", () => import("./features/admin/OrganisationsAdmin.jsx"));
+const EnquiriesAdmin = lazyPage("EnquiriesAdmin",
+  () => import("./features/admin/EnquiriesAdmin.jsx"));
 /* Also reached from Operations — see the note in navigation.js. */
 const TeamsAdmin = lazyPage("TeamsAdmin", () => import("./features/admin/TeamsAdmin.jsx"));
 const CustomerProjectsPage = lazyPage("CustomerProjectsPage", () => import("./features/customers/CustomerProjectsPage.jsx"));
@@ -174,6 +176,11 @@ function Shell() {
   else if (view === "generate-av-invoices") content = <div className="card"><GenerateAvInvoices /></div>;
   else if (view === "av-invoices") content = <div className="card"><AvInvoicesPage /></div>;
   else if (view === "organisations") content = <div className="card"><OrganisationsAdmin /></div>;
+  /* Enquiries live in Business Development, not Admin: an enquiry is
+     work not yet won, which is what this section is for. The screen is
+     the same one either way — it is the menu that says whose job it
+     is. */
+  else if (view === "enquiries") content = <div className="card"><EnquiriesAdmin /></div>;
   else if (view === "teams") content = <div className="card"><TeamsAdmin /></div>;
   else if (view === "customer-projects") content = <div className="card"><CustomerProjectsPage /></div>;
   else if (view === "vehicles") content = <div className="card"><VehiclesPage /></div>;

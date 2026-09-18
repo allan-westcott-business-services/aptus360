@@ -1,50 +1,32 @@
-# The enquiry queue — where submitted enquiries appear
+# Enquiries, in Business Development
 
-    supabase/migrations/0227_enquiry_decision.sql   ← RUN THIS
-    netlify/functions/enquiries.js       new endpoint
-    src/features/admin/EnquiriesAdmin.jsx  new screen
-    src/features/admin/AdminPage.jsx  src/lib/adminTables.js
-    checkenquiryqueue.mjs
-    HANDOVER.md
+    netlify/functions/enquiries.js         the endpoint
+    src/features/admin/EnquiriesAdmin.jsx  the screen
+    src/App.jsx                            renders it at the view
+    src/lib/navigation.js                  Enquiries is now built
+    src/lib/adminTables.js                 removed from Admin
+    src/features/admin/AdminPage.jsx       removed from Admin
+    checkenquiryqueue.mjs  HANDOVER.md
 
-## Admin › Enquiries
+0227 is already run. These six files are all that is left.
 
-The list on the left, the enquiry beside it. Each answer shows the
-question AS IT WAS WORDED when it was asked, so an enquiry from months
-ago reads in its own terms however the sheet has changed.
+## Where it is
 
-Accept or Decline, with a note. Waiting enquiries sort first; decided
-ones stay, because "what did we say to them in April" gets asked as
-often as "what is new".
+**Business Development › Enquiries.** The item was already in that
+menu marked "soon"; it is now built.
 
-## 0227
+It is NOT in Admin. Admin sets up the SHEET — the questions a developer
+is asked — and that is a different job done by different people. An
+enquiry is work not yet won, which is what Business Development is for.
+Two places to look for the same work is worse than either.
 
-Adds Decided_At, Decided_By and Decision_Note. The table recorded WHAT
-was decided but not who, when or why — the three things somebody asks
-about a decline four months later, usually because the developer has
-come back.
+## If the menu item still says "soon"
 
-Decided_By is an email rather than a person id: a decision outlives an
-employment, and a name that stops resolving is worse than an address
-that still reads.
+navigation.js did not land.
 
-## Accepting links a project; it does not create one
+## If it opens blank
 
-Creating one needs a reference, a customer and a branch decided by
-rules this endpoint does not know, and a wrong project is worse than a
-missing link. So Accept optionally takes a project number you have
-already made, and can be left blank and joined up later.
-
-If you would rather it created the project, tell me the rules for the
-reference and the customer and I will build it.
-
-## Two guards worth knowing
-
-**Staff only.** A portal account reaching this endpoint would see every
-developer's enquiries.
-
-**Decided once.** A second decision is refused rather than overwriting
-a colleague's answer and the date they gave it.
+App.jsx did not land — that is what renders the view.
 
 ## Suite state
 

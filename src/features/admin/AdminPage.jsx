@@ -16,7 +16,6 @@ import OrganisationsAdmin from "./OrganisationsAdmin.jsx";
 import GisStylesAdmin from "./GisStylesAdmin.jsx";
 import DxfLayersAdmin from "./DxfLayersAdmin.jsx";
 import EnquiryFormsAdmin from "./EnquiryFormsAdmin.jsx";
-import EnquiriesAdmin from "./EnquiriesAdmin.jsx";
 import PortalAccountsAdmin from "./PortalAccountsAdmin.jsx";
 import WaterPipeSizesAdmin from "./WaterPipeSizesAdmin.jsx";
 import GasPipeSizesAdmin from "./GasPipeSizesAdmin.jsx";
@@ -218,8 +217,7 @@ export default function AdminPage() {
           <DxfLayersAdmin />
         ) : table?.special === "enquiryforms" ? (
           <EnquiryFormsAdmin />
-        ) : table?.special === "enquiries" ? (
-          <EnquiriesAdmin />
+
         ) : table?.special === "portalaccounts" ? (
           <PortalAccountsAdmin />
         ) : table?.special === "waterpipes" ? (

@@ -6303,7 +6303,14 @@ characters is a hundred lines of prose and no rules at all.
      that looks ready and does nothing. `Storage_Path` on the answer is
      where it will go.
 
-     **The queue is built** (Admin › Enquiries, `enquiries.js`, 0227).
+     **The queue is built** (Business Development › Enquiries,
+     `enquiries.js`, 0227). It was briefly in Admin, and moved at the
+     user's direction: an enquiry is WORK NOT YET WON, which is what
+     that section is for, while Admin sets up the SHEET — the questions
+     asked — which is a different job done by different people. The
+     navigation already had an `enquiries` item marked `soon`, so the
+     move was a matter of building it out rather than adding a menu
+     entry.
      List on the left, the enquiry beside it, Accept or Decline.
 
      0227 adds `Decided_At`, `Decided_By` and `Decision_Note` — the

@@ -88,14 +88,24 @@ const code = fn.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 // 5. The screen exists, is registered, and carries its own styling.
 {
-  const tables = readFileSync("./src/lib/adminTables.js", "utf8");
-  if (!/special: "enquiries"/.test(tables)) {
-    fail("there is no Enquiries screen in the admin menu, so a submitted "
-      + "enquiry is visible only in the database");
+  /* ── In Business Development, not Admin ──
+
+     An enquiry is work not yet won, which is what that section is
+     for. Admin sets up the SHEET \u2014 the questions asked \u2014 and that is
+     a different job done by different people. */
+  const nav = readFileSync("./src/lib/navigation.js", "utf8");
+  if (!/\{ view: "enquiries", label: "Enquiries", built: true \}/.test(nav)) {
+    fail("Enquiries is not a built item in Business Development, so a "
+      + "submitted enquiry is visible only in the database");
   }
-  const page = readFileSync("./src/features/admin/AdminPage.jsx", "utf8");
-  if (!/EnquiriesAdmin/.test(page)) {
-    fail("the Enquiries screen is not wired into the admin page");
+  const app = readFileSync("./src/App.jsx", "utf8");
+  if (!/view === "enquiries"/.test(app)) {
+    fail("nothing renders the enquiries view");
+  }
+  const tables = readFileSync("./src/lib/adminTables.js", "utf8");
+  if (/special: "enquiries"/.test(tables)) {
+    fail("the queue is in the admin menu as well, so there are two places "
+      + "to look for the same work");
   }
   /* Its own CSS: a class from another admin screen's injected
      stylesheet does not exist unless that screen is mounted, which has

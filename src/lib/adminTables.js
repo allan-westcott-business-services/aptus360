@@ -344,10 +344,10 @@ export const ADMIN_TABLES = [
      joined lists is asking somebody to hold the join in their head. */
   { key: "Enquiry_Form", label: "Enquiry Sheets", special: "enquiryforms" },
 
-  /* What developers have sent in, and the decision on each. Beside the
-     sheet that produced them, because somebody reading an odd answer
-     goes straight to the question that asked for it. */
-  { key: "Enquiry_Submission", label: "Enquiries", special: "enquiries" },
+  /* Enquiries themselves are NOT here. They live in Business
+     Development, because an enquiry is work not yet won rather than
+     reference data somebody maintains. Only the SHEET — the questions
+     asked — is set up in admin. */
 
   /* The CAD team's own layer names, recorded so a mapping rule can
      pick one rather than having it typed again. Their standard, held

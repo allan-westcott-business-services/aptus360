@@ -35,7 +35,11 @@ export const AREAS = [
          somebody maintains once a quarter. */
       { view: "organisations", label: "Organisations", built: true },
       { view: "customer-feedback", label: "Customer Feedback" },
-      { view: "enquiries", label: "Enquiries", soon: true },
+      /* Built now: enquiries sent from the developer portal land here,
+         waiting for somebody to accept or decline them. It belongs in
+         this section rather than in Admin because an enquiry IS work
+         not yet won — the thing this section is for. */
+      { view: "enquiries", label: "Enquiries", built: true },
     ],
   },
   {

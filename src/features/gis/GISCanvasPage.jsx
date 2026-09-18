@@ -194,6 +194,10 @@ import { waterMainRuns, sizeTable, sizeFor } from "./waterNetwork.js";
 import { serviceValves, VALVE_WIDTH_M } from "./serviceValves.js";
 import { washOuts, snapToMain } from "./washOuts.js";
 import { snapForSection, sectionMarkShape, SECTION_LEN_M } from "./sectionMarks.js";
+import {
+  NOTE_ROLE, NOTE_DEFAULTS, noteBox, noteHandles, insideNote,
+  lineBaseline, widthFrom, scaleFrom, leaderFrom, leaderHead, defaultLeader,
+} from "./textNotes.js";
 import { trenchSection, sectionSvg } from "./trenchSection.js";
 import { buildDxf } from "./dxf.js";
 import { adminList } from "../../api/admin.js";
@@ -4622,6 +4626,19 @@ export default function GISCanvasPage() {
          someone just clicked would look like it had been deleted. */
       if (!on && !styleFor(f).visible) return;
 
+      /* ── A note is drawn by its own pass ──
+
+         At the foot of this routine, over everything, where a note put
+         on top of the work it describes stays on top of it.
+
+         Skipped here rather than merely returning after its symbol,
+         because this loop would otherwise draw it TWICE: once as a
+         point — a note has no symbol, so it would be a dot — and once
+         as that dot's Label, which for a note is the note itself,
+         eleven pixels tall in a monospace face wherever the zoom put
+         it. Neither is the note. */
+      if (f.Feature_Role === NOTE_ROLE) return;
+
       if (f.Feature_Type === "point") {
         const p = pts[0];
         const isMeter = f.Feature_Role === "meter";
@@ -7437,6 +7454,140 @@ export default function GISCanvasPage() {
       }
     }
 
+    /* ── Notes, above everything ──
+
+       A note is put where somebody wants it read, which is usually
+       over the work it is about. Drawn in its own pass after every
+       feature and every overlay, for the reason the span nodes have
+       one: anything drawn later covers it, and a note covered by the
+       drawing it annotates is a note nobody reads.
+
+       Its own pass also keeps it out of the point loop entirely — see
+       the early return there. A note has no symbol and its Label is
+       the note itself, so both of those would have drawn it a second
+       time, smaller and in the wrong place.
+
+       Everything here is sized in metres and multiplied by `vs`, so
+       the note is the same size on the ground at every zoom and on
+       the printed sheet. Nothing is in screen pixels except the floor
+       below which the text is not drawn at all. */
+    for (const f of visible) {
+      if (f.Feature_Role !== NOTE_ROLE) continue;
+      const g = f.Geometry || [];
+      if (!g.length) continue;
+      const on = selected.includes(f.Feature_ID);
+      const st = styleFor(f);
+      if (!on && !st.visible) continue;
+
+      const box = noteBox(f);
+      const ink = on ? "#1d4ed8"
+        : (box.colour ?? st.labelColour ?? st.colour ?? NOTE_DEFAULTS.colour);
+      const tl = pxOf([box.x, box.y]);
+      const wPx = box.w * vs;
+      const hPx = box.h * vs;
+
+      ctx.save();
+
+      /* ── The leader, under the plate ──
+
+         Drawn first so the plate covers the end of it: a line that
+         stops at the edge of the box reads as pointing FROM the note,
+         and one that runs under the text reads as crossing it out.
+
+         From the edge facing the target, which leaderFrom works out —
+         the same function the sheet uses, so the leader leaves the
+         note at the same corner on paper. */
+      if (box.leaderAt) {
+        const a = pxOf(leaderFrom(box, box.leaderAt));
+        const b = pxOf(box.leaderAt);
+        ctx.strokeStyle = ink;
+        ctx.fillStyle = ink;
+        ctx.lineWidth = Math.max(1, Math.min(3, box.sizeM * vs * 0.09));
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+
+        const head = leaderHead(leaderFrom(box, box.leaderAt), box.leaderAt, box.sizeM);
+        if (head) {
+          ctx.beginPath();
+          head.forEach((q, i) => {
+            const t = pxOf(q);
+            if (i) ctx.lineTo(t.x, t.y); else ctx.moveTo(t.x, t.y);
+          });
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+
+      /* The plate. Nothing is drawn where the fill is off — a border
+         round transparent text is a box somebody has to look past, and
+         the point of turning the fill off is to see the drawing. */
+      if (box.fill) {
+        ctx.fillStyle = box.fill;
+        ctx.fillRect(tl.x, tl.y, wPx, hPx);
+        ctx.strokeStyle = on ? "#1d4ed8" : "rgba(15,23,42,.22)";
+        ctx.lineWidth = on ? 2 : 1;
+        ctx.strokeRect(tl.x, tl.y, wPx, hPx);
+      } else if (on) {
+        /* Selected and unfilled still shows its extent, or there is no
+           way to see what the handles belong to. */
+        ctx.setLineDash([4, 3]);
+        ctx.strokeStyle = "#1d4ed8";
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(tl.x, tl.y, wPx, hPx);
+        ctx.setLineDash([]);
+      }
+
+      /* ── The words ──
+
+         Below four pixels a line of text is a grey smudge that costs
+         as much to draw as it would at any other zoom. The plate stays
+         — it is what says there is a note here to zoom in on. */
+      const fontPx = box.sizeM * vs;
+      if (fontPx >= 4) {
+        ctx.fillStyle = ink;
+        ctx.font = `500 ${fontPx}px ui-sans-serif, system-ui, sans-serif`;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "alphabetic";
+        box.lines.forEach((row, i) => {
+          const q = pxOf([box.x + box.padM, lineBaseline(box, i)]);
+          ctx.fillText(row, q.x, q.y);
+        });
+      }
+
+      /* ── The handles ──
+
+         Only on the selected note, and only two of them: the right
+         edge re-wraps and the bottom-right corner scales. Drawn as
+         solid squares rather than rings so they read as things to take
+         hold of, the way the vertex handles do.
+
+         The leader's own end gets a round one, because it is a point
+         on the ground rather than a corner of the box. */
+      if (on) {
+        const hs = noteHandles(box);
+        ctx.fillStyle = "#1d4ed8";
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 1.5;
+        for (const m of [hs.width, hs.scale]) {
+          const q = pxOf(m);
+          ctx.fillRect(q.x - HANDLE_PX / 2, q.y - HANDLE_PX / 2, HANDLE_PX, HANDLE_PX);
+          ctx.strokeRect(q.x - HANDLE_PX / 2, q.y - HANDLE_PX / 2, HANDLE_PX, HANDLE_PX);
+        }
+        if (box.leaderAt) {
+          const q = pxOf(box.leaderAt);
+          ctx.beginPath();
+          ctx.arc(q.x, q.y, HANDLE_PX * 0.8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+
+      ctx.restore();
+    }
+
     /* Last, so the proposal sits over the drawing rather than under the
        span node labels. */
     paintRoute();
@@ -7569,6 +7720,24 @@ export default function GISCanvasPage() {
     for (const f of visible) {
       const g = f.Geometry || [];
       let best = null;
+
+      /* ── A note is caught by its plate ──
+
+         Its geometry is one point — the top-left corner — so the
+         ordinary test would only find it within ten pixels of that
+         corner, which is the one part of a note nobody aims at.
+         Anywhere on the words is the answer somebody means.
+
+         Distance zero, so a note wins against whatever it covers. That
+         is the right way round: it was put on top on purpose, and
+         anything under it can still be reached by moving the note or
+         hiding the annotation layer. */
+      if (f.Feature_Role === NOTE_ROLE) {
+        if (insideNote(noteBox(f), toM(px, py), HIT_PX / view.scale)) {
+          out.push({ feature: f, d: 0, via: "vertex" });
+        }
+        continue;
+      }
 
       /* How big the thing is on screen, not how close the cursor is to
          a stored coordinate.
@@ -8135,6 +8304,60 @@ export default function GISCanvasPage() {
           startAt: [...grabbed.Attributes.Boundary_At],
         };
         return;
+      }
+    }
+
+    /* ── A selected note's three handles ──
+
+       Before the hit test, because all three sit ON the note: asking
+       for candidates first hands back the note every time and the
+       handles could never be caught. The boundary point above is here
+       for the same reason.
+
+       Two of them are two intentions, deliberately not one handle with
+       a modifier: the right edge re-wraps the words at the size they
+       are, the corner makes the whole note bigger. A modifier key that
+       changes what a handle does is a thing nobody discovers, and the
+       two are wanted at different moments — the wrap while fitting a
+       note into a gap on the drawing, the size while making it read at
+       the scale it will be printed at.
+
+       The third is the leader's own end, which is a point on the
+       ground rather than a part of the box. */
+    if (tool === "select" && selected.length === 1 && !drawing && !placing) {
+      const note = features.find((x) => x.Feature_ID === selected[0]);
+      if (note?.Feature_Role === NOTE_ROLE) {
+        const box = noteBox(note);
+        const hs = noteHandles(box);
+        const near = (m) => {
+          const q = toPx(m);
+          return Math.hypot(q.x - px, q.y - py) <= HANDLE_PX + 3;
+        };
+        /* The corner is tested first. It sits at the end of the right
+           edge, so at a small note the two targets overlap — and the
+           one somebody aiming at a corner means is the corner. */
+        const mode = near(hs.scale) ? "notescale"
+          : near(hs.width) ? "notewidth"
+            : (box.leaderAt && near(box.leaderAt)) ? "noteleader" : null;
+        if (mode) {
+          /* A locked note keeps its shape, like anything else. Said out
+             loud: a handle that does not drag reads as a broken canvas. */
+          if (immovable(note)) { setError(whyLocked(note)); return; }
+          drag.current = {
+            mode,
+            featureId: note.Feature_ID,
+            startPx: [px, py],
+            /* The box and the attributes as they were.
+
+               Every frame works from the START rather than nudging
+               what it finds, so a drag that comes back to where it set
+               off leaves the note the size it was — and so there is
+               something for undo and for a failed save to put back. */
+            startBox: box,
+            startAttrs: { ...(note.Attributes || {}) },
+          };
+          return;
+        }
       }
     }
 
@@ -8883,6 +9106,41 @@ export default function GISCanvasPage() {
       d.moved = true;
     }
 
+    /* ── Re-wrapping, scaling and aiming a note ──
+
+       All three follow the cursor absolutely rather than by an offset,
+       so they belong above the line that takes a delta — the note the
+       vertex branch leaves below says to put anything of this shape
+       here.
+
+       Each writes into local state only. The release is what saves,
+       which is what keeps a drag from putting forty rows through the
+       database on the way past. */
+    if (d.mode === "notewidth" || d.mode === "notescale") {
+      const next = d.mode === "notewidth"
+        ? { Text_Width_M: widthFrom(d.startBox, raw) }
+        : (() => {
+          const s = scaleFrom(d.startBox, raw);
+          return { Text_Size_M: s.sizeM, Text_Width_M: s.widthM };
+        })();
+      setFeatures((fs) => fs.map((f) => (f.Feature_ID === d.featureId
+        ? { ...f, Attributes: { ...d.startAttrs, ...next } }
+        : f)));
+      return;
+    }
+
+    if (d.mode === "noteleader") {
+      /* Unsnapped, on purpose. A leader points at whatever it is about
+         — a gap between two things, a corner of a building, a patch of
+         ground with nothing drawn on it yet — and a point that jumped
+         onto the nearest cable would be the drawing deciding what the
+         note meant. */
+      setFeatures((fs) => fs.map((f) => (f.Feature_ID === d.featureId
+        ? { ...f, Attributes: { ...d.startAttrs, Leader_At: [raw[0], raw[1]] } }
+        : f)));
+      return;
+    }
+
     /* Vertex first, and the delta after it. A vertex drag follows the
        cursor absolutely rather than by an offset, so it carries no
        startPx — reading one above this branch threw on every move and
@@ -9125,6 +9383,36 @@ export default function GISCanvasPage() {
           Attributes: { ...f.Attributes },
         }]);
       } catch (e) { setError(e.message); await load(projectId); }
+      return;
+    }
+
+    if (d?.mode === "notewidth" || d?.mode === "notescale"
+      || d?.mode === "noteleader") {
+      const f = features.find((x) => x.Feature_ID === d.featureId);
+      if (!f) return;
+
+      /* A click that did not move writes nothing. Touching a handle to
+         see what it is should not put a row through the database —
+         the same rule the anchor and the label both keep. */
+      if (!d.moved) return;
+
+      try {
+        /* The whole attributes object, for the reason the label drag
+           records: a drag may have written any of three keys, and
+           naming one of them saved the wrong thing. */
+        const before = { ...f, Attributes: { ...d.startAttrs } };
+        await updateFeature(projectId, f.Feature_ID, { Attributes: f.Attributes });
+        await recordAction(d.mode === "noteleader" ? "Point a note's leader"
+          : d.mode === "notescale" ? "Resize a note" : "Re-wrap a note",
+          [before], [f]);
+      } catch (e) {
+        /* Put back what was there. A resize that failed to save and
+           stayed on screen is a note that changes size on the next
+           reload for no reason anybody can see. */
+        setFeatures((fs) => fs.map((x) => (x.Feature_ID === d.featureId
+          ? { ...x, Attributes: { ...d.startAttrs } } : x)));
+        setError(e.message);
+      }
       return;
     }
 
@@ -12137,6 +12425,7 @@ export default function GISCanvasPage() {
         : role === "servicevalve" ? "the service valve"
           : role === "washout" ? "the wash out"
             : role === "sectionmark" ? "the cross-section mark"
+              : role === NOTE_ROLE ? "the note"
           : role === "pumping" ? "the pumping station"
             : role === "feederpoint" ? "the feeder end point"
               : role === "linkbox" ? "the link box"
@@ -12144,8 +12433,16 @@ export default function GISCanvasPage() {
                   : role === "ringsub" ? "the ring substation"
                     : role === "openpoint" ? "the normally open point"
                       : "the POC";
-    setStatus(`Click where ${what} goes \u2014 on the main to sit on it, `
-      + "Esc to cancel");
+    /* A note sits on nothing, so it is not told to land on a main.
+
+       Every other thing placed this way belongs on a line and the
+       message is the instruction for getting it there; for a note that
+       sentence is advice to do the one thing a note should not do. */
+    setStatus(role === NOTE_ROLE
+      ? `Click where ${what} goes \u2014 anywhere there is room to read it, `
+        + "Esc to cancel"
+      : `Click where ${what} goes \u2014 on the main to sit on it, `
+        + "Esc to cancel");
   }
 
   /* Several POCs on any utility, electric included.
@@ -12296,6 +12593,48 @@ export default function GISCanvasPage() {
        square to it, and storing the line's own direction keeps
        Angle_Deg meaning what it means everywhere else on the drawing:
        the way the thing it belongs to runs. */
+    /* ── A note goes where it is clicked ──
+
+       No snap and no refusal. Every other thing placed by hand belongs
+       ON something — a section across a trench, a wash out on a main —
+       and says so by refusing a click in open ground. A note is the
+       opposite: it is put in the space BESIDE the work, because that
+       is where there is room to read it, and a note dragged onto the
+       nearest pipe would be the drawing overruling the click.
+
+       What it is about is said by the leader, which points anywhere
+       and is what this feature has instead of a snap.
+
+       The click is the top-left corner, which is where the text starts
+       — so a note lands under the cursor and grows down and right from
+       it, rather than appearing centred somewhere it was not asked
+       for. */
+    if (role === NOTE_ROLE) {
+      await addFeature({
+        Layer_Key: "annotation",
+        Feature_Type: "point",
+        Feature_Role: NOTE_ROLE,
+        Geometry: [[point[0], point[1]]],
+        /* Its own words, in Label like every other feature's name — so
+           the DXF export, the search box and any schedule read it
+           without being told about notes. Placeholder text rather than
+           an empty note: an empty one is an invisible plate somebody
+           has to find again to type into. */
+        Label: "New note",
+        Attributes: {
+          Text_Size_M: NOTE_DEFAULTS.sizeM,
+          Text_Width_M: NOTE_DEFAULTS.widthM,
+          Note_Fill: NOTE_DEFAULTS.fill,
+        },
+      });
+
+      await load(projectId);
+      setStatus("Note placed \u2014 open it to write it, drag the corner to "
+        + "size it");
+      setTimeout(() => setStatus(""), 7000);
+      return;
+    }
+
     if (role === "sectionmark") {
       const snap = snapForSection(point, features, { lineTypes });
       if (!snap) {
@@ -25415,6 +25754,30 @@ export default function GISCanvasPage() {
                       {!typesOn("lighting").length && (
                         <MenuItem label="Lighting Layer Missing" hint="run migration 0072" disabled />
                       )}
+                    </Menu>
+
+                    {/* ── Writing on the drawing ──
+
+                        Its own menu, and not a utility's. A note
+                        belongs to none of them: it says something about
+                        the job, and putting it under Electric would be
+                        asking somebody annotating a gas drawing to go
+                        to the electric menu for a pencil.
+
+                        The cross-section mark is the counter-example
+                        and stays where it is — that one goes ON a
+                        trench, reports what the trench holds, and is
+                        asked for from the thing it cuts.
+
+                        0215 named what else this menu is for when it
+                        made the annotation layer: north points, notes,
+                        revision clouds, detail bubbles. One of the four
+                        is built. */}
+                    <Menu id="annotation" label="Annotation" open={open} setOpen={setOpen}>
+                      <MenuItem label="Place Text Note"
+                        hint="Click where it goes. Drag the corner to size it, the edge to re-wrap it"
+                        disabled={!projectId || !!busy}
+                        onClick={() => placeNode(NOTE_ROLE, "annotation")} />
                     </Menu>
                     </>
                   )}

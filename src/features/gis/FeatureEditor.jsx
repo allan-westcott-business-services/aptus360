@@ -42,6 +42,9 @@ import {
   hvRingModel, feedSummary, faultCompany,
   HV_CONNECTIONS, RMU_TEE_PROTECTION,
 } from "./hvRing.js";
+import {
+  NOTE_ROLE, NOTE_DEFAULTS, noteBox, defaultLeader,
+} from "./textNotes.js";
 
 /* Editing whatever you right-clicked.
 
@@ -505,6 +508,9 @@ export default function FeatureEditor({
   const isPoly = feature.Feature_Type === "polygon";
   const isSeed = feature.Feature_Role === "plot";
   const isMeter = feature.Feature_Role === "meter";
+  /* A note written on the drawing. Nearly every field in this panel is
+     about something that was dug or laid, and none of them apply. */
+  const isNote = feature.Feature_Role === NOTE_ROLE;
 
   /* ── Outside the building, or inside it ──
 
@@ -1283,6 +1289,10 @@ export default function FeatureEditor({
        way every substation on the ring is fed would bury the one fact
        somebody opened it for. */
     : feature.Feature_Role === "hdcutout" ? "Heavy duty cut-out"
+    /* "Point" over a panel whose whole subject is words on the drawing
+       would be the header naming the least interesting true thing
+       about it. */
+    : isNote ? "Note"
     /* The board somebody has opened. "Point" over a panel of ways,
        fuses and circuits is the header naming the least interesting
        true thing about it. */
@@ -2814,7 +2824,168 @@ export default function FeatureEditor({
                   panel, where it is the first thing read rather than
                   the last. Two boxes writing one value is two places to
                   wonder which won. */}
-              {!isMsdb && (
+              {/* ── A note is its own panel ──
+
+                  Its words are in `Label` like every other feature's
+                  name, but a note is several lines of prose and a
+                  one-line box is the wrong shape to write one in: the
+                  beginning scrolls out of sight while the end is being
+                  typed, and a return key that submits the form instead
+                  of starting a line is how half a note gets saved.
+
+                  Everything else on this panel is about a thing in the
+                  ground — build status, sizes, what it connects to —
+                  and a note has none of it. */}
+              {isNote && (() => {
+                /* The box as it stands, so the panel can say how many
+                   lines the note wraps to and what it measures on the
+                   ground. Read from the DRAFT, so the figure changes as
+                   the text is typed rather than after a save. */
+                const box = noteBox({ ...feature, ...f });
+                return (
+                  <>
+                    <div className="fld">
+                      <label htmlFor="fe-note-text">Note</label>
+                      <textarea id="fe-note-text" rows={4}
+                        value={f.Label}
+                        placeholder="What this note says"
+                        onChange={(e) => setF((p) => ({ ...p, Label: e.target.value }))} />
+                      <p className="hint">
+                        {`Wraps to ${box.lines.length} line${box.lines.length === 1 ? "" : "s"}`}
+                        {" \u00b7 "}
+                        {/* Return starts a line and is kept; the wrap
+                            fills in the rest. Said here because a
+                            writer who does not know it puts their own
+                            line breaks in and then has to redo them
+                            every time the note is re-wrapped. */}
+                        Return starts a new line
+                      </p>
+                    </div>
+
+                    <div className="fe-row">
+                      {/* ── Both in metres of ground ──
+
+                          Not points, not pixels. The drawing is printed
+                          to scale, so a note sized in anything else is
+                          a different size on every sheet — the same
+                          reason the cross-section mark's bar is two
+                          metres rather than forty pixels.
+
+                          The hint says what the number means on paper,
+                          because "1.2" is not a size anybody can
+                          picture until it is millimetres at a scale. */}
+                      <div className="fld">
+                        <label htmlFor="fe-note-size">Text size (m)</label>
+                        <input id="fe-note-size" type="number" step="0.1" min="0.15"
+                          value={f.Attributes.Text_Size_M ?? NOTE_DEFAULTS.sizeM}
+                          onChange={(e) => setAttr("Text_Size_M")(
+                            e.target.value === "" ? null : Number(e.target.value))} />
+                        <p className="hint">
+                          {`${(box.sizeM * 1000 / 500).toFixed(1)} mm at 1:500`}
+                        </p>
+                      </div>
+
+                      <div className="fld">
+                        <label htmlFor="fe-note-width">Width (m)</label>
+                        <input id="fe-note-width" type="number" step="0.5" min="1"
+                          value={f.Attributes.Text_Width_M ?? NOTE_DEFAULTS.widthM}
+                          onChange={(e) => setAttr("Text_Width_M")(
+                            e.target.value === "" ? null : Number(e.target.value))} />
+                        <p className="hint">Where the words wrap</p>
+                      </div>
+                    </div>
+
+                    <div className="fe-row">
+                      {/* ── The plate behind the words ──
+
+                          A note is written over a basemap, and black
+                          text on an aerial photograph is not text. So
+                          there is a fill by default and it can be
+                          turned off where the drawing underneath is
+                          clear enough to read through.
+
+                          Off is a null rather than white, because
+                          "white" and "none" look identical on screen
+                          and print as two different things: one hides
+                          what is under it on the sheet and the other
+                          does not. */}
+                      <div className="fld">
+                        <label htmlFor="fe-note-fill">Fill</label>
+                        <input id="fe-note-fill" type="color"
+                          disabled={f.Attributes.Note_Fill === null}
+                          value={f.Attributes.Note_Fill ?? NOTE_DEFAULTS.fill}
+                          onChange={(e) => setAttr("Note_Fill")(e.target.value)} />
+                        <label className="fe-check" style={{ marginTop: 6 }}>
+                          <input type="checkbox"
+                            checked={f.Attributes.Note_Fill === null}
+                            onChange={(e) => setF((p) => ({
+                              ...p,
+                              Attributes: {
+                                ...p.Attributes,
+                                /* Explicitly null, not deleted: an
+                                   absent key reads as "not set" and
+                                   falls back to the default fill, so
+                                   removing it would turn the plate
+                                   back on. */
+                                Note_Fill: e.target.checked ? null : NOTE_DEFAULTS.fill,
+                              },
+                            }))} />
+                          No fill
+                        </label>
+                      </div>
+
+                      {/* The ink. Left unset it follows the style row,
+                          so a house colour set once in GIS Styles
+                          governs every note that has not been changed
+                          by hand. */}
+                      <div className="fld">
+                        <label htmlFor="fe-note-ink">Text colour</label>
+                        <input id="fe-note-ink" type="color"
+                          value={f.Attributes.Note_Colour ?? NOTE_DEFAULTS.colour}
+                          onChange={(e) => setAttr("Note_Colour")(e.target.value)} />
+                        {f.Attributes.Note_Colour && (
+                          <button type="button" className="btn sm"
+                            style={{ marginTop: 6 }}
+                            onClick={() => setAttr("Note_Colour")("")}>
+                            Use the style&rsquo;s colour
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ── The leader ──
+
+                        What makes a note say which thing it is about.
+                        Turned on here and AIMED on the drawing: where
+                        it points is a place on the ground, and a pair
+                        of coordinate boxes is not how anybody picks
+                        one. It appears clear of the note, where it can
+                        be seen and taken hold of straight away.
+
+                        Unsnapped by design — a leader often points at a
+                        gap, a corner or a patch of ground with nothing
+                        drawn on it yet, and a point that jumped onto
+                        the nearest cable would be the drawing deciding
+                        what the note meant. */}
+                    <div className="fld">
+                      <label className="fe-check">
+                        <input type="checkbox"
+                          checked={Array.isArray(f.Attributes.Leader_At)}
+                          onChange={(e) => setAttr("Leader_At")(
+                            e.target.checked ? defaultLeader(box) : null)} />
+                        Leader line
+                      </label>
+                      <p className="hint">
+                        {Array.isArray(f.Attributes.Leader_At)
+                          ? "Drag the round handle on the drawing to point it"
+                          : "An arrow from the note to whatever it is about"}
+                      </p>
+                    </div>
+                  </>
+                );
+              })()}
+
+              {!isMsdb && !isNote && (
                 <div className="fld">
                   <label htmlFor="fe-label">Label</label>
                   <input id="fe-label" value={f.Label}
@@ -2838,7 +3009,18 @@ export default function FeatureEditor({
               {/* A board has its own Layer field at the top of its
                   panel, beside its name, for the same reason its Label
                   is there: one value, one box. */}
-              {feature.Feature_Role !== "spannode" && !isMsdb && (
+              {/* ── And not on a note either ──
+
+                  A note lives on the annotation layer because 0215 put
+                  annotation there: the layer is one of the keys the
+                  drawing hides by, and a note moved onto electric
+                  disappears the moment somebody hides electric — or
+                  prints to scale, which hides the trench deliberately.
+
+                  That is the exact fault 0215 was written to fix for
+                  the section marks. Offering the dropdown is offering
+                  to re-make it. */}
+              {feature.Feature_Role !== "spannode" && !isMsdb && !isNote && (
                 <div className="fld">
                   <label htmlFor="fe-layer">Layer</label>
                   <select id="fe-layer" value={f.Layer_Key}

@@ -38,7 +38,8 @@ const BLANK = {
 const LAYERS = ["", "water", "gas", "electric", "trench", "lighting", "annotation"];
 const ROLES = ["", "plot", "meter", "poc", "substation", "joint", "servicevalve",
   "washout", "sectionmark", "hvtt", "reducer", "linkbox", "msdb", "hdcutout",
-  "governor", "nrs", "feederpoint", "spannode", "primary", "ringsub", "openpoint"];
+  "governor", "nrs", "feederpoint", "spannode", "primary", "ringsub", "openpoint",
+  "textnote"];
 const STATUSES = ["", "planned", "live", "existing", "abandoned"];
 
 export default function DxfLayersAdmin() {
@@ -202,7 +203,8 @@ export default function DxfLayersAdmin() {
       ["poc", "Point of connection"]],
     trench: [["sectionmark", "Cross-section mark"]],
     lighting: [["column", "Lighting column"]],
-    annotation: [["sectionmark", "Cross-section mark"]],
+    annotation: [["sectionmark", "Cross-section mark"],
+      ["textnote", "Text note"]],
   };
 
   const objects = useMemo(() => {

@@ -59,6 +59,7 @@
 import { resolveStyle, appearance, subjectOf } from "../../lib/gisStyle.js";
 import { layerFor as mappedLayerFor } from "./dxfLayerMap.js";
 import { lineLabelText } from "./lineLabel.js";
+import { NOTE_ROLE, noteBox, lineBaseline, leaderFrom } from "./textNotes.js";
 
 /* AutoCAD Color Index. The classic first seven plus a couple of greys:
    a DXF layer carries a colour NUMBER, not a hex string, so every
@@ -265,6 +266,63 @@ export function buildDxf(features = [], opts = {}) {
           + pair(30, "0.000") + pair(70, 0);
       }
       ents += pair(0, "SEQEND") + pair(8, lay);
+    } else if (f.Feature_Role === NOTE_ROLE) {
+      /* ── A note goes over as text, and as nothing else ──
+
+         No POINT. A note has no position in the ground to mark: its
+         geometry is the corner its words start at, and a dot exported
+         there is a node a CAD user has to find and delete before they
+         can snap to anything.
+
+         Written at the note's OWN height rather than the half metre
+         every other label uses, because the size is the point of it —
+         somebody set that text to read at the scale this drawing is
+         plotted at, and a note that arrives at a different size is a
+         drawing they have to re-annotate.
+
+         One TEXT per wrapped line, wrapped through textNotes.js: DXF
+         TEXT holds one line, and a note re-wrapped by the reader would
+         come out a different shape from the sheet it was checked on.
+         Downward from the corner, which is the way the note reads, so
+         `-y` decreases line by line.
+
+         The text layer, not the role layer. A note IS annotation, and
+         freezing the text layer to trace over the geometry is the
+         first thing anybody does with a drawing we send them — a note
+         left on a geometry layer is the one piece of writing that
+         stays when they do. */
+      const box = noteBox(f);
+      const nl = mapped?.textLayer ?? layerName([lay, "TEXT"]);
+      noteLayer(nl, mapped?.aci != null ? mapped.aci
+        : (f.Attributes?.Note_Colour ?? ap.labelColour ?? ap.colour ?? "#ffffff"),
+      mapped?.linetype);
+
+      box.lines.forEach((row, i) => {
+        if (!row) return;
+        ents += pair(0, "TEXT") + pair(8, nl) + byLayer
+          + pair(10, num(box.x + box.padM + ox))
+          + pair(20, num(-lineBaseline(box, i) + oy))
+          + pair(30, "0.000")
+          + pair(40, num(box.sizeM))
+          + pair(1, row);
+      });
+
+      /* The leader as a plain 2D polyline, on the same layer. Three
+         points — the edge of the note, the target, and back along the
+         arrowhead — would be a drawing of a drawing; the line is what
+         carries the meaning and a CAD user's own arrow style is theirs
+         to set. */
+      if (box.leaderAt) {
+        const a = leaderFrom(box, box.leaderAt);
+        ents += pair(0, "POLYLINE") + pair(8, nl) + byLayer + pair(66, 1)
+          + pair(10, "0.0") + pair(20, "0.0") + pair(30, "0.0") + pair(70, 0);
+        for (const q of [a, box.leaderAt]) {
+          ents += pair(0, "VERTEX") + pair(8, nl)
+            + pair(10, num(q[0] + ox)) + pair(20, num(-q[1] + oy))
+            + pair(30, "0.000") + pair(70, 0);
+        }
+        ents += pair(0, "SEQEND") + pair(8, nl);
+      }
     } else {
       ents += pair(0, "POINT") + pair(8, lay) + byLayer
         + pair(10, num(g[0][0] + ox)) + pair(20, num(-g[0][1] + oy))
@@ -286,9 +344,15 @@ export function buildDxf(features = [], opts = {}) {
 
        Composed rather than re-derived, for the reason every parity fix
        this session had: one account of what a run is called. */
-    const text = f.Feature_Type === "line"
-      ? lineLabelText(f, { lineTypes })
-      : (f.Label ? String(f.Label) : "");
+    /* A note has written itself above, at its own size and wrapped —
+       so it takes no part in this pass. Left in, its Label would go
+       over a second time as one unwrapped line of half-metre text on
+       top of the real one. The canvas and the sheet both skip it here
+       for the same reason. */
+    const text = f.Feature_Role === NOTE_ROLE ? ""
+      : f.Feature_Type === "line"
+        ? lineLabelText(f, { lineTypes })
+        : (f.Label ? String(f.Label) : "");
 
     if (labels && text) {
       const tl = mapped?.textLayer ?? layerName([lay, "TEXT"]);

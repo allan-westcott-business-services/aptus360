@@ -1,12 +1,31 @@
 # Aptus360 — handover notes
 
-The migrations folder now runs to **0211**. Three numbers are absent
+**This session added text notes to the GIS canvas (0228), and found
+that the bill of materials had been counting annotation (0229).** Both
+are written up as faults 152 and 153. Two migrations to run, in order,
+and 0229 changes the bill on any project where somebody has placed a
+cross-section mark — it says so at its own head, with the query for
+finding which. The new module is `textNotes.js` and the new check is
+`checktextnote.mjs`.
+
+The paragraph below was written at 0211 and the folder now runs to
+**0229**. Everything from 0212 on — the HDCO name on the bill, the
+washout and section-mark roles, the annotation layer, the DXF layer
+catalogue, the developer portal, the enquiry sheets, and this
+session's two — is in `supabase/migrations/` and is not described in
+the body of this file. Read the folder before trusting anything here
+about the schema.
+
+The migrations folder ran to **0211** when this was written. Three numbers are absent
 and READ or REQUIRED by something: **0198** (`checkdevelopers` reads it
 and throws), and **0208 / 0210** — both written and described in this
 file, both "not yet run" at the time, and neither committed. 0209 was
 found sitting in `supabase/` rather than `supabase/migrations/` and
 moved in (which is what was crashing `checkhdcutout`); `checkmigrations`
-now names all three absences. Recover them from the live project rather
+now names all three absences. **It names five now:** `0221` and `0222`
+are absent too, and `checkdxflayers` reads 0222 and THROWS on it — the
+same shape as `checkdevelopers` against 0198, and wanting the same
+`try`/`fail`/skip treatment once the file itself has been recovered. Recover them from the live project rather
 than rewriting them — 0208 is the whole existing-plant bill rule and
 0210 carries it verbatim plus the HDCO naming. Whether anything from
 0196 onwards has been pasted into Supabase is not something this file
@@ -195,6 +214,7 @@ caught a fault that had already shipped at least once.
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checktextnote.mjs` | A note wraps one way on screen, on paper and in CAD; stays on the annotation layer; resizes, re-wraps and points |
 | `node checkboardcircuit.mjs` | A circuit born on a spare way, membered by a board |
 | `node checkhdcoterminal.mjs` | The build runs out to a cut-out at the end of the dig |
 | `node checkservicemoved.mjs` | Auto Service re-lays the plots whose ground moved, and only those |
@@ -6418,6 +6438,88 @@ characters is a hundred lines of prose and no rules at all.
     tolerance (a round trip through the database is not a redraw), and
     the new length becomes the baseline whether or not anybody answers,
     so a line is asked about once per redraw.
+
+152. **Text notes on the drawing (0228).** Free text somebody writes on
+     the plan, moved, resized, coloured and given a leader that points
+     at what it is about. A point feature, role `textnote`, on the
+     `annotation` layer — which is what 0215 made that layer for, in
+     as many words.
+
+     **The words are the `Label`.** Not a column and not an attribute
+     of their own: the DXF export writes a point's Label, the search
+     box reads it and a schedule lists it, so text held anywhere else
+     would have been invisible to all three and would have had to be
+     added to each. The cost of that decision is that every pass which
+     ALSO writes a point's Label has to skip a note — the canvas, the
+     sheet's label pass and the DXF label pass all do, each saying why.
+     Miss one and the note is drawn twice: properly, and again as a
+     single unwrapped line of label-sized text over the top.
+
+     **One wrap, in `textNotes.js`.** The canvas measures glyphs with
+     `ctx.measureText`, the sheet with pdf-lib's metrics and CAD with
+     whatever the reader is set to. Three measurers wrapping one note
+     three ways is a note somebody sized against the wrong one, so the
+     wrap is a deterministic per-character table here and all three
+     read it. Being a few per cent out everywhere in the same way is
+     worth more than being exact in one place and different in the
+     others; the padding absorbs it.
+
+     **Everything is in metres of ground** — text height, wrap width,
+     leader — like the section mark's two-metre bar and for the same
+     reason: the drawing is printed to scale, and a note sized in
+     pixels or points is a different size on every sheet. The editor
+     quotes the height in millimetres at 1:500 beside the box, because
+     "1.2" is not a size anybody can picture.
+
+     **Two handles, because they are two intentions.** The right edge
+     re-wraps at the size the letters already are; the bottom-right
+     corner scales the note and its wrap together, so a note made
+     bigger is the same note bigger rather than the same note
+     re-flowed. Not one handle with a modifier key: a modifier that
+     changes what a handle does is a thing nobody discovers.
+
+     **The leader is not snapped**, alone among things placed by hand.
+     A note points at a gap, a corner, or ground with nothing drawn on
+     it yet, and a point that jumped to the nearest cable would be the
+     drawing deciding what the note meant. The note itself is placed
+     without a snap too, for the matching reason: every other hand
+     placement belongs ON something and refuses a click in open
+     ground, and a note belongs in the space BESIDE the work, which is
+     where there is room to read it.
+
+     It is drawn in a pass of its own after everything, like the span
+     nodes, and picked up anywhere on its plate — its geometry is the
+     top-left corner, which is the one part of a note nobody aims at.
+     No Layer dropdown in the editor: moving one onto a utility layer
+     re-makes the fault 0215 fixed, since Print to Scale hides the
+     trench deliberately.
+
+     On its own **Annotation** menu rather than a utility's, which is
+     also where 0215's other three — north points, revision clouds,
+     detail bubbles — would go.
+
+153. **The bill was counting the writing on the drawing (0229).** Found
+     while adding notes, and older than them. `gis_bom` counts every
+     point whose role is not on an exclusion list, and that list had
+     never been told about annotation — so a drawing with three notes
+     and two section marks on it billed "Textnote 3 no." and
+     "Sectionmark 2 no." beside the ducting.
+
+     The section mark half has been wrong since 0214 shipped, on every
+     project where somebody placed one. **Running 0229 changes those
+     bills**: the rows go and the totals beneath them drop. That is the
+     bill becoming right rather than changing its mind, but it is a
+     visible change to a document people have already read, so the
+     migration says so at the top and gives the query for finding which
+     projects are affected before it is run.
+
+     The shape of the fault is worth more than the fault: a rule that
+     works by an exclusion list is a rule that is silently wrong about
+     everything added after it was written. Nothing failed, nothing
+     threw, and the only way it would have been found is somebody
+     reading a bill and wondering. `checkbomroles` now holds both roles
+     off the bill, so the next rewrite of `gis_bom` cannot quietly
+     re-admit them.
  The
 attribute was maintained by `gis_length_trg` AND written by hand from
 the Feature Editor. Closed — see recurring fault 44, which splits it
@@ -7406,8 +7508,9 @@ Plus the **GIS Canvas**: basemap import and calibration, drawing with
 snapping, vertex editing, plot seeds with per-plot meters, joints,
 network tracing, undo/redo, trenching and routing, auto-service, feeder
 cables, gas and water networks, span nodes, volt drop, BOM, circuit
-report, bulk edit and delete, and the HV ring (primary, chain
-substations, normally open point, existing HV cable).
+report, bulk edit and delete, the HV ring (primary, chain substations,
+normally open point, existing HV cable), and annotation — cross-section
+marks, and text notes with leaders.
 
 **Operations** — Call-offs (phases, team assignment, work days,
 energisation per utility), Planning (timeline, dependencies, lag,
@@ -7523,7 +7626,8 @@ plus generic table editors.
     one-line edit. `checkrolefilter.mjs` covers the admin screen and the
     view; it does not cover this lookup.
 
-11. **`checkbuttons.py`: 30 house-style deviations.** `.row-edit` and
+11. **`checkbuttons.py`: 36 house-style deviations.** It said 30 and was
+    counted again this session; nothing in between added to it. `.row-edit` and
     `.row-del` where the house set wants `btn edit sm` / `btn delete sm`,
     bare `×` buttons that remove things, and a duplicate `.row-del`
     rule in `OrganisationsAdmin.jsx` that the shared stylesheet already

@@ -41,6 +41,9 @@ import { VALVE_WIDTH_M } from "./serviceValves.js";
 import { lineLabelText } from "./lineLabel.js";
 import { labelShown, DEFAULT_LABEL_KINDS } from "./labelKinds.js";
 import { mmPerMetre } from "./printSheet.js";
+import {
+  NOTE_ROLE, NOTE_DEFAULTS, noteBox, lineBaseline, leaderFrom, leaderHead,
+} from "./textNotes.js";
 
 /* Line widths on paper. A cable drawn 4 px wide on screen is not 4 mm
    on paper; screen pixels are a viewing convenience and paper is a
@@ -271,6 +274,90 @@ export function pageDrawList(features = [], tile, {
        a valve's Label is not otherwise shown at that zoom; on the sheet
        the label pass writes "SV 10" already, and drawing both gives
        "SV SV 10". */
+    /* ── A note ──
+
+       Plate, leader and words, from the same textNotes.js the canvas
+       draws from — so a note that fits its gap on screen fits it on
+       the sheet, and the leader leaves the box at the same corner.
+       Wrapping in particular has to be shared: a note that reads as
+       four lines on screen and five on paper is a note somebody sized
+       against the wrong one.
+
+       It is the whole reason this feature exists. A drawing is
+       annotated in order to be ISSUED, so a note the sheet dropped
+       would be the one place it mattered.
+
+       No symbol and no label pass — this writes both, and the label
+       pass is told to leave notes alone below. */
+    if (role === NOTE_ROLE) {
+      const box = noteBox(f);
+      const ink = f.Attributes?.Note_Colour
+        ?? ap.labelColour ?? ap.colour ?? NOTE_DEFAULTS.colour;
+      const mm = (m) => toPage(m);
+
+      if (box.leaderAt) {
+        const a = leaderFrom(box, box.leaderAt);
+        out.push({
+          kind: "paths",
+          subs: [{ pts: [mm(a), mm(box.leaderAt)], closed: false }],
+          colour: ink,
+          fill: false,
+          widthMm: Math.max(0.2, box.sizeM * k * 0.07),
+          id: f.Feature_ID,
+        });
+        const head = leaderHead(a, box.leaderAt, box.sizeM);
+        if (head) {
+          out.push({
+            kind: "paths",
+            subs: [{ pts: head.map(mm), closed: true }],
+            colour: ink,
+            fill: true,
+            widthMm: 0.2,
+            id: f.Feature_ID,
+          });
+        }
+      }
+
+      /* The plate, where there is one. Drawn before the words for the
+         obvious reason, and skipped entirely where the fill is off —
+         a border round transparent text is a box on the sheet nobody
+         asked for. */
+      if (box.fill) {
+        out.push({
+          kind: "paths",
+          subs: [{
+            pts: [
+              mm([box.x, box.y]), mm([box.x + box.w, box.y]),
+              mm([box.x + box.w, box.y + box.h]), mm([box.x, box.y + box.h]),
+            ],
+            closed: true,
+          }],
+          colour: box.fill,
+          fill: true,
+          widthMm: 0.15,
+          id: f.Feature_ID,
+        });
+      }
+
+      box.lines.forEach((row, i) => {
+        if (!row) return;
+        out.push({
+          kind: "text",
+          at: mm([box.x + box.padM, lineBaseline(box, i)]),
+          text: row,
+          /* Metres to millimetres to points, in that order. `k` is
+             millimetres per metre at this sheet's scale, which is what
+             makes a note set at 1.2 m come out at 2.4 mm on an A3
+             sheet at 1:500 — the figure the editor quotes. */
+          sizePt: Math.max(1.2, box.sizeM * k * 2.83465),
+          colour: ink,
+          align: "left",
+          id: f.Feature_ID,
+        });
+      });
+      continue;
+    }
+
     if (role === "servicevalve") {
       const deg = Number(f.Attributes?.Angle_Deg);
       const rad = Number.isFinite(deg) ? (deg * Math.PI) / 180 : 0;
@@ -411,6 +498,15 @@ export function pageDrawList(features = [], tile, {
       if (role === "meter" || role === "spannode" || role === "feederpoint") {
         continue;
       }
+
+      /* ── And a note, which has already written itself ──
+
+         A note's Label IS the note, and the pass above has already set
+         it as wrapped lines at its own size. Left in this pass it
+         would be written a second time — one unwrapped line at label
+         size, over the top of the real one. The canvas skips it for
+         the same reason and in the same words. */
+      if (role === NOTE_ROLE) continue;
       /* And a wash out, which writes WO inside its own symbol: the
          screen stopped putting the number beside it for want of room on
          a dense plan, and a sheet that kept doing so would be labelling

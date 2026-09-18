@@ -10,8 +10,17 @@
        origin, a junction, a leaf end, the place a cable count changes.
        Made and deleted by Build LV Network on every run (0204).
 
-   All three say WHERE something is measured rather than WHAT is to be
-   bought. Everything physical stays: a link box is a chamber with fuses
+   And two more that are not measurements but WRITING — annotation, on
+   the annotation layer 0215 made for it:
+
+     - a **cross-section mark** says where a section is taken (0214);
+     - a **text note** is words somebody put on the plan (0228).
+
+   Both were counted until 0229. A bill that reads "Sectionmark 2 no."
+   beside the ducting is a bill somebody has to know to ignore.
+
+   All of them say WHERE something is measured, or SAY something about
+   the job, rather than naming WHAT is to be bought. Everything physical stays: a link box is a chamber with fuses
    in it and is counted, even when it stands exactly where a feeder end
    point would be, because it is a `linkbox` and not a `feederpoint`.
 
@@ -53,7 +62,10 @@ else {
        connection somebody asked for, and it read "Nrs" on the sheet —
        initcap on an acronym, naming a line item nobody would
        recognise. */
-    for (const role of ["plot", "spannode", "feederpoint", "nrs"]) {
+    /* `sectionmark` and `textnote` joined them at 0229: both are
+       annotation, and neither is a thing that arrives on a lorry. */
+    for (const role of ["plot", "spannode", "feederpoint", "nrs",
+      "sectionmark", "textnote"]) {
       if (!roles.includes(role)) {
         fail(`${newest} counts ${role}s on the bill \u2014 nobody orders one`);
       }

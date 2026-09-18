@@ -1165,7 +1165,16 @@ const served = (b) => servedFlats(b, flats);
   /* And one box for one value: the shared field is hidden for a board,
      because two boxes writing one thing is two places to wonder which
      won. */
-  if (!/\{!isMsdb && \(/.test(editor)) {
+  /* The guard, not the exact line it was written on.
+
+     This read `{!isMsdb && (` and nothing else, so the day a note was
+     given the same treatment — its words go in a textarea, so the
+     shared one-line box is hidden for it too — the condition became
+     `{!isMsdb && !isNote && (` and this reported a board with two
+     Label fields. It had one. What this case is about is that
+     `!isMsdb` is in the condition; what else is beside it is somebody
+     else's rule. */
+  if (!/\{!isMsdb &&[^\n]*\(/.test(editor)) {
     fail("a board shows two Label fields writing the same value");
   }
   /* The same Label the rest of the editor writes, not a second name. */
@@ -1614,7 +1623,10 @@ const served = (b) => servedFlats(b, flats);
   /* One box per value: the shared Layer, Fed from and circuit strip
      are all suppressed for a board, which places its own. */
   for (const [re, what] of [
-    [/\{feature\.Feature_Role !== "spannode" && !isMsdb && \(/, "the layer"],
+    /* Same reason as the Label field above: the guard, not the line it
+       happens to be written on. A note is kept on the annotation layer
+       by a third term beside these two. */
+    [/\{feature\.Feature_Role !== "spannode" && !isMsdb[^\n]*\(/, "the layer"],
     [/\{!isMsdb && feature\.Layer_Key === "electric"\s*\n\s*&& feature\.Attributes\?\.Circuit_ID != null\s*\n\s*&& onSetCircuitOrigin/, "fed from"],
     [/\{!isMsdb && feature\.Layer_Key === "electric"\s*\n\s*&& feature\.Attributes\?\.Circuit_ID != null && \(/, "the circuit strip"],
   ]) {

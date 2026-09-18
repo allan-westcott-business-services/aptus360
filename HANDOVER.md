@@ -6278,6 +6278,26 @@ characters is a hundred lines of prose and no rules at all.
      fact about the interface, and reading it out of the data made
      every keystroke a decision.
 
+     Dates in the portal read **dd-mmm-yy** (18-Sep-26): unambiguous on
+     a page read in several countries, short enough for a line of text,
+     day padded so a column lines up. Months come from a fixed list
+     because `en-GB` renders September as "Sept" — four letters where
+     every other month has three. A date ANSWER is stored in that form
+     too, because it is read beside its question by whoever picks the
+     enquiry up, and an ISO date in a sentence reads as a reference
+     number.
+
+     The radio and checkbox rows use the portal's own `pt-check`. They
+     had `fe-check`, which is defined inside the FEATURE EDITOR's
+     injected CSS — fourth instance of that pattern today — so in the
+     portal it was a label with no gap and the words sat against the
+     button.
+
+     ⚠ And a booby trap worth knowing: a backtick inside a comment in
+     one of these CSS template literals ENDS THE STYLESHEET mid-rule.
+     Writing `fe-check` in prose broke the build with "Expected ; but
+     found fe", which points nowhere near the cause.
+
      **Attachments are NOT built.** A `file` question renders a plain
      line saying we will ask for the document, rather than a control
      that looks ready and does nothing. `Storage_Path` on the answer is

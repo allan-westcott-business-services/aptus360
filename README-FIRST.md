@@ -1,28 +1,31 @@
-# One file: the form waits for you to finish typing
+# One file: dates and radio spacing
 
     src/features/portal/DeveloperPortal.jsx
 
-No migration. The other two files from the last zip are unchanged.
+No migration. Includes the Next/Back change from the last zip.
 
-## What was wrong
+## Dates
 
-The form worked out which question to show from which questions had
-answers — so the first letter typed counted as an answer and it jumped
-to the next question mid-word.
+Everything in the portal now reads **18-Sep-26**: the enquiry answers,
+the milestone dates, all of it.
 
-That reading is right for "where does this answer LEAD" and wrong for
-"has this person finished answering". The second is a fact about the
-screen, not about the data.
+Two details worth knowing. The day is padded to two digits so a column
+of dates lines up. And the month comes from a fixed list rather than
+the locale, because en-GB renders September as "Sept" — four letters
+where every other month has three.
 
-## Now
+A date ANSWER is stored in that form as well, not as 2026-09-18,
+because it is read beside its question by whoever picks the enquiry up,
+and an ISO date in a sentence reads as a reference number.
 
-The question in front of you is held explicitly. **Next question**
-moves on, following the jumps exactly as before. **Back** returns to
-the last one and keeps what you put.
+## Radio buttons and checkboxes
 
-A required question cannot be passed with Next. **Send enquiry**
-appears only at the end, rather than sitting greyed out beside a
-question you are still answering.
+Ten pixels between the control and its words, and the control no longer
+shrinks when the text wraps.
+
+They were using a class defined inside the feature editor's own
+stylesheet, which does not exist in the portal — so there was no gap at
+all. Fourth time that pattern has caught us today.
 
 ## Suite state
 

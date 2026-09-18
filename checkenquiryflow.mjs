@@ -242,6 +242,42 @@ const asked = (sheet, answers) =>
   }
 }
 
+// 10. Dates read dd-mmm-yy, and a choice has room between the button
+//     and its words.
+{
+  const ui = readFileSync("./src/features/portal/DeveloperPortal.jsx", "utf8");
+
+  /* From a fixed list, not the locale: en-GB's "short" month gives
+     "Sept" for September \u2014 four letters where every other month has
+     three, which breaks the alignment the format exists for. */
+  if (!/const MONTHS = \["Jan", "Feb", "Mar"/.test(ui)) {
+    fail("months come from the locale, and en-GB renders September as "
+      + "\"Sept\" \u2014 four letters where the rest have three");
+  }
+  if (!/String\(t\.getDate\(\)\)\.padStart\(2, "0"\)/.test(ui)) {
+    fail("the day is not padded, so a column of dates does not line up");
+  }
+  if (!/String\(t\.getFullYear\(\)\)\.slice\(-2\)/.test(ui)) {
+    fail("the year is not two digits");
+  }
+  /* A date ANSWER is stored as it reads, because it is read beside its
+     question by whoever picks the enquiry up. */
+  if (!/q\.Kind === "date" \? dateText\(a\)/.test(ui)) {
+    fail("a date answer is stored in a form nobody reads in a sentence");
+  }
+
+  /* The portal's own check class. `fe-check` is defined inside the
+     feature editor's injected CSS, so here it was a label with no gap
+     and the words sat against the button. */
+  if (/className="fe-check"/.test(ui)) {
+    fail("the portal borrows the feature editor's check class, which does "
+      + "not exist unless that component is on screen");
+  }
+  if (!/\.pt-check \{[^}]*gap: 10px/.test(ui)) {
+    fail("there is no space between a radio button and its words");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The sheet walks its answers: jumps, ends, and nothing asked twice.");
 process.exit(bad ? 1 : 0);

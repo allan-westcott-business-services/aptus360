@@ -24,10 +24,30 @@ import { sheetOf, nextFrom, pathOf, missingAnswers } from "./enquiryFlow.js";
    error body into a message. */
 import { http } from "../../api/client.js";
 
-const dateText = (d) => (d
-  ? new Date(d).toLocaleDateString("en-GB",
-    { day: "numeric", month: "short", year: "numeric" })
-  : null);
+/* Dates read dd-mmm-yy: 18-Sep-26.
+
+   Unambiguous on a page read by people in several countries, which
+   "18/09/26" is not, and short enough to sit in a line of text or a
+   table cell. Two digits for the day so a column of them lines up.
+
+   One function, used everywhere a date is shown in the portal \u2014 a
+   second format somewhere would be read as a different KIND of date by
+   anybody scanning the page. */
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+const dateText = (d) => {
+  if (!d) return null;
+  const t = new Date(d);
+  if (Number.isNaN(t.getTime())) return String(d);
+  const day = String(t.getDate()).padStart(2, "0");
+  /* From a list, not from the locale: en-GB's "short" month gives
+     "Sept" for September \u2014 four letters where every other month has
+     three, which breaks the alignment the format exists for. */
+  const month = MONTHS[t.getMonth()];
+  const year = String(t.getFullYear()).slice(-2);
+  return `${day}-${month}-${year}`;
+};
 
 /* One line of the progress tree, and its children under it.
 
@@ -112,7 +132,7 @@ function renderAnswer(q, answers, setAnswers) {
     return (
       <div className="pt-choices">
         {q.options.map((o) => (
-          <label key={o.Enquiry_Option_ID} className="fe-check">
+          <label key={o.Enquiry_Option_ID} className="pt-check">
             <input type="radio" name={`q${q.Enquiry_Question_ID}`}
               checked={String(value) === String(o.Enquiry_Option_ID)}
               onChange={() => set(o.Enquiry_Option_ID)} />
@@ -127,7 +147,7 @@ function renderAnswer(q, answers, setAnswers) {
     return (
       <div className="pt-choices">
         {q.options.map((o) => (
-          <label key={o.Enquiry_Option_ID} className="fe-check">
+          <label key={o.Enquiry_Option_ID} className="pt-check">
             <input type="checkbox"
               checked={chosen.includes(String(o.Enquiry_Option_ID))}
               onChange={(e) => set(e.target.checked
@@ -271,7 +291,13 @@ export default function DeveloperPortal({ onSignOut, who }) {
                to read years from now beside the question it answered \u2014
                an option id would need the option to still exist and
                still be worded the same. */
-            answer: q.options?.length ? labels(a) : a,
+            /* A date is stored as it reads \u2014 18-Sep-26 \u2014 because an
+               answer is read beside its question by whoever picks the
+               enquiry up, and 2026-09-18 in a sentence reads as a
+               reference number. Unambiguous either way, which
+               dd/mm/yy would not be. */
+            answer: q.options?.length ? labels(a)
+              : q.Kind === "date" ? dateText(a) : a,
           };
         });
       const r = await http.post("/portal/enquiry",
@@ -515,7 +541,9 @@ export default function DeveloperPortal({ onSignOut, who }) {
                           ? q.options.filter((o) => [].concat(answers[q.Enquiry_Question_ID])
                             .map(String).includes(String(o.Enquiry_Option_ID)))
                             .map((o) => o.Label).join(", ")
-                          : String(answers[q.Enquiry_Question_ID] ?? "")}
+                          : q.Kind === "date"
+                            ? dateText(answers[q.Enquiry_Question_ID])
+                            : String(answers[q.Enquiry_Question_ID] ?? "")}
                       </span>
                     </div>
                   ))}
@@ -770,7 +798,17 @@ const CSS = `
 .pt-asking { display: grid; gap: 8px; }
 .pt-q { font-size: 15px; font-weight: 700; }
 .pt-req { color: #dc2626; }
-.pt-choices { display: grid; gap: 8px; }
+.pt-choices { display: grid; gap: 10px; }
+/* The portal's own, rather than the feature editor's check class: that
+   CSS is injected by THAT component, so here it was a label with no
+   gap at all and the words sat against the button.
+
+   No backticks in this comment — it lives inside a template literal,
+   and a backtick here ends the stylesheet mid-rule. */
+.pt-check { display: flex; align-items: center; gap: 10px; font-size: 14px;
+  cursor: pointer; }
+.pt-check input { width: 16px; height: 16px; margin: 0; flex: none;
+  accent-color: var(--accent); }
 .pt-sheet input[type="text"], .pt-sheet input:not([type]), .pt-sheet textarea,
 .pt-sheet input[type="number"], .pt-sheet input[type="date"] { width: 100%; }
 .pt-branch { margin: 22px 0 8px; font-size: 14px; font-weight: 700;

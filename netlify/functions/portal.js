@@ -118,6 +118,15 @@ const AUDIENCE_BY_ROLE = {
   idno: "idno", igt: "idno", iwu: "idno",
 };
 
+/* The organisation's name, for showing rather than deciding: nothing
+   is granted on the strength of it. */
+async function orgNameFor(db, organisationId) {
+  if (organisationId == null) return null;
+  const { data } = await db.from("Organisation")
+    .select("Name").eq("Organisation_ID", organisationId).limit(1);
+  return data?.[0]?.Name ?? null;
+}
+
 async function contactAccessFor(db, user) {
   const email = String(user?.email || "").trim().toLowerCase();
   if (!email) return null;
@@ -387,6 +396,12 @@ export default withAuth(async function handler(req, context, user) {
         email: user?.email ?? null,
         audience: access?.Audience ?? null,
         name: access?.Full_Name ?? null,
+        /* The developer's own name, so the portal can say whose sites
+           these are. Somebody at a group with several offices needs the
+           page to name the company, not only the branch — and a portal
+           that says nothing about whose data it is showing is a portal
+           somebody takes a screenshot of and cannot later identify. */
+        organisationName: await orgNameFor(db, access?.Organisation_ID),
         customerId: access?.Customer_ID ?? null,
         organisationId: access?.Organisation_ID ?? null,
         branchId: access?.Branch_ID ?? null,

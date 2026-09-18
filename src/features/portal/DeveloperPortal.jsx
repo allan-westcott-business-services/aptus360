@@ -215,7 +215,40 @@ export default function DeveloperPortal({ onSignOut, who }) {
 
       {open == null ? (
         <>
+          {/* ── Whose sites these are ──
+
+              The developer's own name, above everything. A contact at a
+              group with several offices needs the page to say the
+              company and not only the branch; and a screenshot of a
+              portal that names nobody is a screenshot nobody can
+              identify afterwards.
+
+              From `/portal/me`, which the app already has when it
+              routes here, rather than from a second request. */}
+          {who?.organisationName && (
+            <p className="pt-who">{who.organisationName}</p>
+          )}
           <h1>Your sites</h1>
+
+          {/* ── The numbers, before the list ──
+
+              One card for now. The row is a grid so a second and a
+              third land beside it without this being touched, which is
+              the point of building it as a row rather than a sentence.
+
+              Counted from what was returned, not asked for separately:
+              the answer is already here, and a second request could
+              disagree with the list underneath it. */}
+          {sites?.length > 0 && (
+            <div className="pt-metrics">
+              <div className="pt-metric">
+                <span className="pt-metric-n">{sites.length}</span>
+                <span className="pt-metric-l">
+                  {sites.length === 1 ? "Project" : "Projects"}
+                </span>
+              </div>
+            </div>
+          )}
           {sites == null && <p className="pt-quiet">Loading&hellip;</p>}
           {sites?.length === 0 && (
             <p className="pt-quiet">
@@ -363,6 +396,19 @@ const CSS = `
 .pt h2 { font-size: 15px; margin: 26px 0 8px; }
 .pt-quiet { color: var(--muted); font-size: 13px; margin: 2px 0; }
 .pt-note { margin-top: 24px; }
+.pt-who { margin: 0 0 2px; font-size: 13px; font-weight: 700;
+  color: var(--muted); letter-spacing: .01em; }
+
+/* A grid rather than a flex row: the cards are the same width whatever
+   is in them, so a 3 and a 147 do not make two different shapes. */
+.pt-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px; margin: 14px 0 4px; max-width: 640px; }
+.pt-metric { background: var(--white); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 16px; display: flex;
+  flex-direction: column; gap: 2px; }
+.pt-metric-n { font-size: 26px; font-weight: 700; line-height: 1.1; }
+.pt-metric-l { font-size: 12px; color: var(--muted); }
+
 .pt-branch { margin: 22px 0 8px; font-size: 14px; font-weight: 700;
   color: var(--muted); letter-spacing: .01em; }
 .pt-sites { display: grid; gap: 12px; margin-top: 14px;

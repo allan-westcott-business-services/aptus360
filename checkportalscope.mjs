@@ -362,6 +362,34 @@ const mine = (() => {
    the portal. Case 8 above asserts the staff test stays absent, so
    that is a decision on the record rather than a gap. */
 
+// 10. The portal says whose sites these are, and counts them.
+{
+  const ui = readFileSync("./src/features/portal/DeveloperPortal.jsx", "utf8");
+  const portalFn = readFileSync("./netlify/functions/portal.js", "utf8");
+
+  if (!/organisationName/.test(portalFn)) {
+    fail("the portal is never told which developer it is showing");
+  }
+  if (!/who\?\.organisationName/.test(ui)) {
+    fail("the page does not name the developer, so a screenshot of it "
+      + "cannot be identified afterwards");
+  }
+  /* Above the sites, not below them. */
+  const who = ui.indexOf("who?.organisationName");
+  const h1 = ui.indexOf("<h1>Your sites</h1>");
+  if (who > h1) fail("the developer's name is drawn below the heading");
+
+  /* Counted from what was returned, not asked for separately: a second
+     request could disagree with the list underneath it. */
+  if (!/\{sites\.length\}/.test(ui)) {
+    fail("the project count is not taken from the sites already loaded");
+  }
+  if (/portal\/count|\/metrics/.test(ui)) {
+    fail("the count is fetched separately, so it can disagree with the "
+      + "list it sits above");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Portal scopes: organisation, branch, one site \u2014 narrowest wins.");
 process.exit(bad ? 1 : 0);

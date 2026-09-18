@@ -239,7 +239,24 @@ export default function DeveloperPortal({ onSignOut, who }) {
               the heading, and "Your sites" is the label on the list. It
               was the other way round, which made every developer's
               portal look the same at a glance. */}
-          <h2 className="pt-sites-h">Your sites</h2>
+          {/* ── Starting an enquiry ──
+
+              At the top, beside the list, because it is the one thing
+              somebody comes here to DO rather than to read. The sheet
+              itself is built from questions kept in admin, so this
+              button is the only part of it that lives in the portal.
+
+              Disabled with a reason until that sheet exists, rather
+              than hidden: a developer told "not yet" asks us when; a
+              developer shown nothing assumes there is no way to
+              enquire and telephones instead. */}
+          <div className="pt-head-row">
+            <h2 className="pt-sites-h">Your sites</h2>
+            <button className="btn accent" disabled
+              title="The enquiry sheet is being set up">
+              New enquiry
+            </button>
+          </div>
 
           {/* ── The numbers, before the list ──
 
@@ -425,6 +442,8 @@ const CSS = `
 
 /* A grid rather than a flex row: the cards are the same width whatever
    is in them, so a 3 and a 147 do not make two different shapes. */
+.pt-head-row { display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; }
 .pt-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px; margin: 14px 0 4px; max-width: 640px; }
 .pt-metric { background: var(--white); border: 1px solid var(--border);

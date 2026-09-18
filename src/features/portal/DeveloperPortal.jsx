@@ -243,10 +243,9 @@ export default function DeveloperPortal({ onSignOut, who }) {
               </div>
             </div>
           )) : (
-          <div className="pt-sites">
-            {(sites || []).map((s) => siteCard(s))}
-            ))}
-          </div>
+            <div className="pt-sites">
+              {(sites || []).map((s) => siteCard(s))}
+            </div>
           )}
         </>
       ) : (

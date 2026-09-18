@@ -1,32 +1,51 @@
-# One file: dates and radio spacing
+# The enquiry queue — where submitted enquiries appear
 
-    src/features/portal/DeveloperPortal.jsx
+    supabase/migrations/0227_enquiry_decision.sql   ← RUN THIS
+    netlify/functions/enquiries.js       new endpoint
+    src/features/admin/EnquiriesAdmin.jsx  new screen
+    src/features/admin/AdminPage.jsx  src/lib/adminTables.js
+    checkenquiryqueue.mjs
+    HANDOVER.md
 
-No migration. Includes the Next/Back change from the last zip.
+## Admin › Enquiries
 
-## Dates
+The list on the left, the enquiry beside it. Each answer shows the
+question AS IT WAS WORDED when it was asked, so an enquiry from months
+ago reads in its own terms however the sheet has changed.
 
-Everything in the portal now reads **18-Sep-26**: the enquiry answers,
-the milestone dates, all of it.
+Accept or Decline, with a note. Waiting enquiries sort first; decided
+ones stay, because "what did we say to them in April" gets asked as
+often as "what is new".
 
-Two details worth knowing. The day is padded to two digits so a column
-of dates lines up. And the month comes from a fixed list rather than
-the locale, because en-GB renders September as "Sept" — four letters
-where every other month has three.
+## 0227
 
-A date ANSWER is stored in that form as well, not as 2026-09-18,
-because it is read beside its question by whoever picks the enquiry up,
-and an ISO date in a sentence reads as a reference number.
+Adds Decided_At, Decided_By and Decision_Note. The table recorded WHAT
+was decided but not who, when or why — the three things somebody asks
+about a decline four months later, usually because the developer has
+come back.
 
-## Radio buttons and checkboxes
+Decided_By is an email rather than a person id: a decision outlives an
+employment, and a name that stops resolving is worse than an address
+that still reads.
 
-Ten pixels between the control and its words, and the control no longer
-shrinks when the text wraps.
+## Accepting links a project; it does not create one
 
-They were using a class defined inside the feature editor's own
-stylesheet, which does not exist in the portal — so there was no gap at
-all. Fourth time that pattern has caught us today.
+Creating one needs a reference, a customer and a branch decided by
+rules this endpoint does not know, and a wrong project is worse than a
+missing link. So Accept optionally takes a project number you have
+already made, and can be left blank and joined up later.
+
+If you would rather it created the project, tell me the rules for the
+reference and the customer and I will build it.
+
+## Two guards worth knowing
+
+**Staff only.** A portal account reaching this endpoint would see every
+developer's enquiries.
+
+**Decided once.** A second decision is refused rather than overwriting
+a colleague's answer and the date they gave it.
 
 ## Suite state
 
-156 of 174 pass, the same 18 pre-existing failures. Build clean.
+157 of 175 pass, the same 18 pre-existing failures. Build clean.

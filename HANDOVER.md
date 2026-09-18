@@ -6303,10 +6303,40 @@ characters is a hundred lines of prose and no rules at all.
      that looks ready and does nothing. `Storage_Path` on the answer is
      where it will go.
 
-     **Also not built:** the accept/decline queue on our side. The
-     submission lands with Status 'submitted' and waits. Confirm the
-     Status check constraint before relying on that spelling — the same
-     guess cost a round on `Kind`.
+     **The queue is built** (Admin › Enquiries, `enquiries.js`, 0227).
+     List on the left, the enquiry beside it, Accept or Decline.
+
+     0227 adds `Decided_At`, `Decided_By` and `Decision_Note` — the
+     table held what was decided but not who, when or why, which are
+     the three things asked about a decline months later when the
+     developer comes back. `Decided_By` is an EMAIL rather than a
+     Person_ID: a decision outlives an employment, and a name that
+     stops resolving is worse than a plain address that still reads.
+
+     Decisions in it:
+       - **Staff only**, behind `withAuth`. A portal account reaching
+         it would see the whole business's pipeline. Note `withAuth`
+         passes the user as the THIRD ARGUMENT, not on the context —
+         taken from the context it is undefined and every decision
+         records nobody.
+       - **Decided once.** A second decision is refused with a 409
+         rather than overwriting a colleague's answer and the date they
+         gave it.
+       - **Answers are read with `Question_Text`**, never joined back to
+         the live questions: that would show today's wording against
+         last spring's answers.
+       - **Accepting LINKS a project, it does not make one.** A project
+         needs a reference, a customer and a branch decided by rules
+         this endpoint does not know, and a wrong project is worse than
+         a missing link. The field is optional, so an enquiry can be
+         accepted now and joined up after.
+       - Waiting work sorts first; decided enquiries stay, because
+         "what did we say in April" is asked as often as "what is new".
+
+     **Still not built: attachments.** A `file` question says plainly
+     that we will ask for the document. `Enquiry_Answer.Storage_Path`
+     is where it goes, and the portal's existing document upload is the
+     pattern to copy.
 
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the

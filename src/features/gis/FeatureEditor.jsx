@@ -5138,11 +5138,22 @@ export default function FeatureEditor({
             </div>
           )}
 
-          <div className="fld">
-            <label htmlFor="fe-notes">Notes</label>
-            <textarea id="fe-notes" rows={2} value={f.Attributes.Notes ?? ""}
-              onChange={(e) => setAttr("Notes")(e.target.value)} />
-          </div>
+          {/* ── Not on a note ──
+
+              The shared Notes box is somewhere to record something
+              about a feature that the fields do not cover. On a note
+              the words ARE the feature, so this is a second place to
+              write on a thing whose whole purpose is being written on
+              — and the one that never appears on the drawing. Anything
+              typed in it would be invisible everywhere a note is read:
+              the canvas, the sheet and the DXF all draw the Label. */}
+          {!isNote && (
+            <div className="fld">
+              <label htmlFor="fe-notes">Notes</label>
+              <textarea id="fe-notes" rows={2} value={f.Attributes.Notes ?? ""}
+                onChange={(e) => setAttr("Notes")(e.target.value)} />
+            </div>
+          )}
 
         </div>
 

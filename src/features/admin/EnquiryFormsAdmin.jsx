@@ -50,6 +50,48 @@ const AUDIENCES = ["", "developer", "dno", "idno"];
 
 const HAS_OPTIONS = (t) => t === "choice" || t === "multi";
 
+
+/* ── This screen's own layout ──
+
+   `gs-grid` was borrowed from the GIS Styles admin, and that CSS is
+   injected by THAT component when it renders: with it unmounted the
+   rules do not exist, so every control here stacked with no grid and
+   no spacing. The same trap as the section dialogue earlier \u2014 a class
+   defined inside another component's stylesheet is not a shared class.
+
+   Room between things, deliberately. A sheet is edited by reading down
+   it, and rows of controls with no air between them read as one
+   run-on: which help text belongs to which question stops being
+   obvious, which is the only thing this screen has to get right. */
+const CSS = `
+.ef-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px 16px; align-items: end; }
+.ef-grid .fld { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.ef-grid .fld > label { font: 700 10.5px inherit; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em; }
+.ef-grid input, .ef-grid select { width: 100%; }
+
+/* A section: a card with room inside it, and clear space to the next. */
+.ef-section { border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 18px 18px; margin-bottom: 22px; background: var(--white); }
+.ef-section-head { margin-bottom: 14px; }
+
+/* A question inside a section. The rule above it is what separates one
+   question from the next; the padding is what stops the rule reading as
+   part of the question below it. */
+.ef-question { border-top: 1px solid var(--border); padding-top: 16px;
+  margin-top: 16px; }
+.ef-question .fe-check { margin-top: 12px; }
+
+/* The answers of a choice question, indented so they read as belonging
+   to it rather than as more questions. */
+.ef-options { margin: 12px 0 0 14px; padding-left: 14px;
+  border-left: 2px solid var(--border); display: grid; gap: 12px; }
+
+.ef-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.ef-toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0 22px; }
+`;
+
 export default function EnquiryFormsAdmin() {
   const [forms, setForms] = useState([]);
   const [formId, setFormId] = useState("");
@@ -247,6 +289,7 @@ export default function EnquiryFormsAdmin() {
 
   return (
     <div className="admin-pane">
+      <style>{CSS}</style>
       <h2>Enquiry Sheets</h2>
       <p className="hint">
         What a developer is asked when they start an enquiry. One sheet per
@@ -257,7 +300,7 @@ export default function EnquiryFormsAdmin() {
 
       {error && <div className="banner error">{error}</div>}
 
-      <div className="gs-grid">
+      <div className="ef-grid">
         <div className="fld">
           <label htmlFor="ef-form">Sheet</label>
           <select id="ef-form" value={formId} onChange={(e) => setFormId(e.target.value)}>
@@ -292,7 +335,7 @@ export default function EnquiryFormsAdmin() {
         )}
       </div>
 
-      <div style={{ display: "flex", gap: 8, margin: "10px 0 16px", flexWrap: "wrap" }}>
+      <div className="ef-toolbar">
         <button className="btn ghost" disabled={busy} onClick={addForm}>New sheet</button>
         {form && !form.Is_Live && (
           <button className="btn accent" disabled={busy} onClick={publish}>
@@ -311,10 +354,8 @@ export default function EnquiryFormsAdmin() {
       ) : (
         <>
           {sheet.map((g) => (
-            <div key={g.title}
-              style={{ border: "1px solid #e2e8f0", borderRadius: 10,
-                padding: "12px 14px", marginBottom: 14 }}>
-              <div className="gs-grid">
+            <div key={g.title} className="ef-section">
+              <div className="ef-grid">
                 <div className="fld">
                   <label htmlFor={`sec-${g.title}`}>Section</label>
                   <input id={`sec-${g.title}`} defaultValue={g.title}
@@ -324,9 +365,8 @@ export default function EnquiryFormsAdmin() {
               </div>
 
               {g.questions.map((q) => (
-                <div key={q.Enquiry_Question_ID}
-                  style={{ borderTop: "1px solid #f1f5f9", paddingTop: 10, marginTop: 10 }}>
-                  <div className="gs-grid">
+                <div key={q.Enquiry_Question_ID} className="ef-question">
+                  <div className="ef-grid">
                     <div className="fld" style={{ gridColumn: "span 2" }}>
                       <label htmlFor={`q-${q.Enquiry_Question_ID}`}>Question</label>
                       <input id={`q-${q.Enquiry_Question_ID}`} defaultValue={q.Question || ""}
@@ -376,9 +416,9 @@ export default function EnquiryFormsAdmin() {
                   </label>
 
                   {HAS_OPTIONS(q.Kind) && (
-                    <div style={{ marginTop: 8 }}>
+                    <div className="ef-options">
                       {q.options.map((o) => (
-                        <div key={o.Enquiry_Option_ID} className="gs-grid">
+                        <div key={o.Enquiry_Option_ID} className="ef-grid">
                           <div className="fld">
                             <label htmlFor={`o-${o.Enquiry_Option_ID}`}>Answer</label>
                             <input id={`o-${o.Enquiry_Option_ID}`} defaultValue={o.Label || ""}
@@ -428,7 +468,7 @@ export default function EnquiryFormsAdmin() {
                 </div>
               ))}
 
-              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <div className="ef-actions">
                 <button className="btn ghost" disabled={busy}
                   onClick={() => addQuestion(g)}>Add a question</button>
               </div>

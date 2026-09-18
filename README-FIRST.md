@@ -1,33 +1,28 @@
-# Two files. Copy both over. Nothing else needed.
+# One file: the Enquiry Sheets screen, with spacing
 
-    netlify/functions/admin.js
     src/features/admin/EnquiryFormsAdmin.jsx
 
-## Why
+## Why it was squashed
 
-The deployed versions of these two still refer to `Enquiry_Section` — a
-table I created in error and then dropped. The screen asks for it, and
-PostgREST answers "could not find the table in the schema cache".
+The screen used layout classes from the GIS Styles admin — and that CSS
+is injected by THAT component when it renders. With it unmounted the
+rules simply do not exist, so every control stacked with no grid and no
+spacing at all.
 
-Neither file in here mentions it. That is the whole fix.
+Third time this pattern has caught us today. A class defined inside
+another component's stylesheet is not a shared class; only
+src/styles.css is shared.
 
-## How to know it worked
+## Now
 
-Open each file after copying and search for `Enquiry_Section`:
+The screen carries its own stylesheet: a grid with real gaps, sections
+as cards with room inside them and space between them, a rule above
+each question, and the answers of a choice question indented under it
+so they read as belonging to that question rather than as more
+questions.
 
-  netlify/functions/admin.js   — should list only Enquiry_Form,
-                                 Enquiry_Question, Enquiry_Option
-  EnquiryFormsAdmin.jsx        — should not contain the word at all
+## Note
 
-Then deploy and hard-refresh the browser, because the old screen may
-still be cached as a chunk.
-
-## My fault, twice over
-
-I sent two different deltas under the same file name,
-aptus360-enquiry-editor.zip — the first with the mistaken schema, the
-second with the rewrite. If both were in your downloads, the older one
-would win.
-
-This zip has a name that cannot collide. I will date-stamp them from
-now on.
+This is the same file as in yesterday's enquiry-section fix, with the
+styling added. If you have not applied that one yet, this supersedes
+it — but you still need the admin.js from it.

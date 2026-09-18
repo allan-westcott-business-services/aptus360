@@ -6097,7 +6097,75 @@ characters is a hundred lines of prose and no rules at all.
      the developer-facing form and the New enquiry button are still to
      build, deliberately held until the schema is confirmed.
 
-150. **Enquiry sheets (feature, part one).** A developer starts an
+150. **Enquiry sheets — and a schema I duplicated because I did not
+     look.** ⚠ Read this before adding any table.
+
+     `Enquiry_Form`, `Enquiry_Question`, `Enquiry_Option`,
+     `Enquiry_Answer` and `Enquiry_Submission` ALREADY EXISTED in the
+     live database, built outside the migrations folder — so nothing in
+     the repository showed them, and I grepped the repository. I wrote
+     a second design for the same thing.
+
+     `CREATE TABLE IF NOT EXISTS` then did the worst available thing:
+     silently skipped every table that existed, created the two that
+     did not, and left the schema half one design and half another. It
+     surfaced as "column Enquiry_ID does not exist" from an index,
+     which says nothing about the actual problem.
+
+     **The lesson: this database is ahead of its migrations folder.**
+     Several migrations are missing from the repo (0052, 0163, 0198,
+     0208, 0210 among them), so the folder is evidence of what we
+     wrote, NOT of what exists. Before creating a table, ask the
+     database:
+
+         SELECT table_name FROM information_schema.tables
+          WHERE table_name LIKE 'Thing%';
+
+     And prefer `CREATE TABLE` over `CREATE TABLE IF NOT EXISTS` when
+     the table is supposed to be new: failing loudly on a name clash is
+     the behaviour wanted, and IF NOT EXISTS turned a clash into a
+     corrupt half-migration.
+
+     The existing design is kept and is better in one respect worth
+     noting: `Enquiry_Answer` snapshots `Question_Text` onto the
+     answer, so an old enquiry reads in its own words without keeping
+     every version of the form. It also holds the section as TEXT on
+     the question rather than as a table, uses `Kind` for the answer
+     type, `Is_Live` for the form in use, `Ends_Form` on an option, and
+     `Is_Active` to retire rather than delete.
+
+     0225 is now a guarded CLEANUP: it drops the section table I
+     created, and drops `Enquiry` / `Enquiry_Attachment` only if they
+     are EMPTY — a table with rows in it is somebody's data until
+     proven otherwise.
+
+     **And it had no layout at all.** The screen used `gs-grid` and the
+     `.fld` rules from the GIS Styles admin — and that CSS is INJECTED
+     BY THAT COMPONENT. With it unmounted the rules do not exist, so
+     every control stacked with no grid and no spacing. Third time this
+     has bitten (the section dialogue's `.sch` was the second): **a
+     class defined inside another component's stylesheet is not a
+     shared class.** Only `src/styles.css` is shared.
+
+     The screen now carries its own CSS, with room deliberately between
+     things: a sheet is edited by reading down it, and rows with no air
+     between them read as one run-on, so which help text belongs to
+     which question stops being obvious — the one thing this screen has
+     to get right.
+
+     A quick survey for other borrowings found none that matter:
+     PortalLogin and AudienceLanding each define their own copies of
+     the names they share with LoginPage and HomePage. Worth repeating
+     the survey if a screen ever looks unstyled: the question is
+     whether the file that USES a class also defines it, or whether it
+     is relying on some other component being on screen.
+
+     `EnquiryFormsAdmin` is written to the real columns.
+     `checkenquiryform.mjs` asserts the wrong names never come back:
+     a screen written against `Answer_Type` when the column is `Kind`
+     saves nothing and says nothing.
+
+151. **Enquiry sheets (feature, part one).** A developer starts an
      enquiry by filling in a sheet whose questions WE set, without a
      deploy: they differ by utility, they change when a NAV changes
      what it wants, and the person who knows what to ask is not the

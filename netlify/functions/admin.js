@@ -29,7 +29,6 @@ const TABLES = {
   /* The enquiry sheet (0225): what a developer is asked, edited by
      whoever knows what to ask rather than by a deploy. */
   Enquiry_Form:     { pk: "Enquiry_Form_ID",     order: "Form_Name" },
-  Enquiry_Section:  { pk: "Enquiry_Section_ID",  order: "Sort_Order" },
   Enquiry_Question: { pk: "Enquiry_Question_ID", order: "Sort_Order" },
   Enquiry_Option:   { pk: "Enquiry_Option_ID",   order: "Sort_Order" },
 

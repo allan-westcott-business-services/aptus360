@@ -6061,6 +6061,42 @@ characters is a hundred lines of prose and no rules at all.
      and that its value falls back to "" rather than null (a date input
      given null warns and then refuses to be typed into).
 
+150. **Portal header: the developer, its branch, and a metric card.**
+     The page now names the company and office it is showing —
+     "Barratt Homes (Yorkshire East)" — above a quieter "Your sites",
+     with a card counting the projects. The name is the heading; the
+     list's label is the label. It was the other way round, which made
+     every developer's portal look identical at a glance. An
+     organisation-level contact sees the company alone, rather than an
+     office they are not at.
+
+     The count is taken from the sites already returned, not asked for
+     separately: a second request can disagree with the list it sits
+     above.
+
+     ⚠ **Two faults in one small change, both mine, both silent:**
+       - I reused `.pt-who`, which this file already uses for the
+         signed-in person's name in the top bar. The later rule wins,
+         so a 24px bold heading landed on that too. A class name is a
+         name: two things called the same thing ARE the same thing to a
+         stylesheet. Renamed `.pt-org`, and a quick scan says no other
+         duplicate class rules exist in that file.
+       - I wrote backticks inside the CSS TEMPLATE LITERAL while
+         explaining the rename. A backtick ends the template; the build
+         still passed, and `checkscope` was what caught it. Never quote
+         code with backticks inside a template string.
+
+151. **Enquiry sheet: schema only (0225).** Form, question, option,
+     submission, answer. Branching lives on the OPTION — "if Yes, jump
+     to 5" is a fact about the answer — so a question with four choices
+     sends four ways with no rules engine. Forms are versioned and
+     answers keep the question text as asked, because an enquiry
+     answered last month was answered against the questions as they
+     were then. Deliberately no compound conditions: that is a rules
+     engine and they all end up needing a debugger. The admin designer,
+     the developer-facing form and the New enquiry button are still to
+     build, deliberately held until the schema is confirmed.
+
 44. **Length_m had two writers and one meaning too few — CLOSED.**
     `gis_length_trg` maintains it from the geometry on every change; the
     Feature Editor offered the same attribute as a "Measured length"

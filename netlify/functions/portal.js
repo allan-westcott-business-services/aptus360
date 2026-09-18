@@ -127,6 +127,18 @@ async function orgNameFor(db, organisationId) {
   return data?.[0]?.Name ?? null;
 }
 
+/* The branch's name, for showing. `Branch_Dropdown` where there is one
+   — it is the spelling this business uses when naming a branch to
+   somebody outside it — and the plain name otherwise. */
+async function branchNameFor(db, branchId) {
+  if (branchId == null) return null;
+  const { data } = await db.from("Organisation_Branch")
+    .select("Branch_Name,Branch_Dropdown")
+    .eq("Organisation_Branch_ID", branchId).limit(1);
+  const b = data?.[0];
+  return b ? (b.Branch_Dropdown || b.Branch_Name || null) : null;
+}
+
 async function contactAccessFor(db, user) {
   const email = String(user?.email || "").trim().toLowerCase();
   if (!email) return null;
@@ -402,6 +414,11 @@ export default withAuth(async function handler(req, context, user) {
            that says nothing about whose data it is showing is a portal
            somebody takes a screenshot of and cannot later identify. */
         organisationName: await orgNameFor(db, access?.Organisation_ID),
+        /* And the branch, where the account is scoped to one. An
+           organisation-level contact is at no single office, so this
+           is null for them and the portal names the company alone
+           rather than inventing an office they are not at. */
+        branchName: await branchNameFor(db, access?.Branch_ID),
         customerId: access?.Customer_ID ?? null,
         organisationId: access?.Organisation_ID ?? null,
         branchId: access?.Branch_ID ?? null,

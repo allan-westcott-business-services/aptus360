@@ -226,9 +226,20 @@ export default function DeveloperPortal({ onSignOut, who }) {
               From `/portal/me`, which the app already has when it
               routes here, rather than from a second request. */}
           {who?.organisationName && (
-            <p className="pt-who">{who.organisationName}</p>
+            <p className="pt-org">
+              {who.organisationName}
+              {/* The office, in brackets after the company, where the
+                  account belongs to one. An organisation-level contact
+                  is at no single branch, so they see the company alone
+                  rather than an office they are not at. */}
+              {who.branchName ? ` (${who.branchName})` : ""}
+            </p>
           )}
-          <h1>Your sites</h1>
+          {/* Smaller than the name above it: whose sites these are is
+              the heading, and "Your sites" is the label on the list. It
+              was the other way round, which made every developer's
+              portal look the same at a glance. */}
+          <h2 className="pt-sites-h">Your sites</h2>
 
           {/* ── The numbers, before the list ──
 
@@ -396,7 +407,20 @@ const CSS = `
 .pt h2 { font-size: 15px; margin: 26px 0 8px; }
 .pt-quiet { color: var(--muted); font-size: 13px; margin: 2px 0; }
 .pt-note { margin-top: 24px; }
-.pt-who { margin: 0 0 2px; font-size: 13px; font-weight: 700;
+/* The company and its office: the heading of the page. Bigger than
+   the list's label below it, because it is the thing that identifies
+   what somebody is looking at.
+
+   Named .pt-org and NOT .pt-who, which already exists in this file for
+   the signed-in person's name in the top bar. Reusing it put a 24px bold
+   rule on that too, silently, because the later rule wins. A class
+   name is a name: two things called the same thing are one thing as
+   far as the stylesheet is concerned. */
+.pt-org { margin: 0 0 2px; font-size: 24px; font-weight: 700;
+  line-height: 1.2; letter-spacing: -0.015em; color: var(--text); }
+
+/* And the list's own label, deliberately quieter. */
+.pt-sites-h { margin: 6px 0 0; font-size: 14px; font-weight: 700;
   color: var(--muted); letter-spacing: .01em; }
 
 /* A grid rather than a flex row: the cards are the same width whatever

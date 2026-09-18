@@ -374,10 +374,38 @@ const mine = (() => {
     fail("the page does not name the developer, so a screenshot of it "
       + "cannot be identified afterwards");
   }
+  /* The branch too, in brackets after the company: "Barratt Homes
+     (Yorkshire East)". An organisation-level contact is at no single
+     office and sees the company alone. */
+  if (!/branchName/.test(portalFn)) {
+    fail("the portal is never told which branch the account is at");
+  }
+  if (!/who\.branchName \? ` \(\$\{who\.branchName\}\)`/.test(ui)) {
+    fail("the branch is not shown beside the organisation");
+  }
+
   /* Above the sites, not below them. */
   const who = ui.indexOf("who?.organisationName");
-  const h1 = ui.indexOf("<h1>Your sites</h1>");
+  const h1 = ui.indexOf("Your sites");
   if (who > h1) fail("the developer's name is drawn below the heading");
+
+  /* And BIGGER than the list's label. Whose sites these are is the
+     heading; "Your sites" is the label on the list. The other way
+     round made every developer's portal look the same at a glance. */
+  const sizeOf = (sel) => {
+    const at = ui.indexOf(`${sel} {`);
+    const m = at >= 0 ? /font-size: ([0-9.]+)px/.exec(ui.slice(at, at + 260)) : null;
+    return m ? Number(m[1]) : null;
+  };
+  const nameSize = sizeOf(".pt-org");
+  const listSize = sizeOf(".pt-sites-h");
+  if (!nameSize || !listSize) {
+    fail("the header styles cannot be read — this check needs "
+      + "re-anchoring, not deleting");
+  } else if (nameSize <= listSize) {
+    fail(`the organisation is set at ${nameSize}px against "Your sites" at `
+      + `${listSize}px, so the label shouts louder than the name`);
+  }
 
   /* Counted from what was returned, not asked for separately: a second
      request could disagree with the list underneath it. */

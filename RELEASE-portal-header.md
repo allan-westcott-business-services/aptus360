@@ -1,62 +1,39 @@
-# Delta — developer name, metric cards, and the enquiry schema
+# Delta — Organisation (Branch) as the heading, and the metric card
 
-    src/features/portal/DeveloperPortal.jsx   name + cards
-    netlify/functions/portal.js               returns the developer name
-    supabase/migrations/0225_enquiry_form.sql  the enquiry sheet's schema
+    src/features/portal/DeveloperPortal.jsx
+    netlify/functions/portal.js
+    supabase/migrations/0225_enquiry_form.sql   (schema only, nothing reads it yet)
     checkportalscope.mjs
+    HANDOVER.md
 
-0225 creates tables only — nothing reads them yet. Safe to run now or
-to hold until the rest is built.
+## The header
 
-## Developer name
+    Barratt Homes (Yorkshire East)     24px, bold — the heading
+    Your sites                         14px, muted — the list's label
 
-Above "Your sites", from the record the portal already loaded — no
-second request. A contact at a group with several offices needs the
-page to name the company, not only the branch.
+The branch appears in brackets where the account belongs to one. An
+organisation-level contact sees the company alone, rather than an
+office they are not at.
 
-## Metric cards
+## The card
 
-One card: Number of projects. The row is a grid, so the next two land
-beside it without this being touched.
+Number of projects, counted from the sites already loaded.
 
-Counted from the sites already returned rather than asked for
-separately — a second request could disagree with the list underneath
-it.
+## Two things I got wrong on the way
 
-## Enquiry sheet — schema now, screens next
+I reused the class `.pt-who`, which this file already uses for the
+signed-in person's name in the top bar — so my 24px bold rule landed on
+that too. Renamed `.pt-org`. Worth knowing if you saw the top bar look
+odd on the last build.
 
-This is a form engine, and the schema is the part that has to be right
-first, so it is here on its own for you to read.
+And I wrote backticks inside the CSS template literal while explaining
+that rename, which ends the string. The build still passed; checkscope
+caught it.
 
-    Enquiry_Form       a VERSION of the sheet
-    Enquiry_Question   one question, in a section, with a kind
-    Enquiry_Option     the choices — and where each answer jumps to
-    Enquiry_Submission + Enquiry_Answer   what comes back
+## Enquiry sheet
 
-Kinds: text, long text, date, number, file, one-choice, many-choice.
-
-**Branching lives on the option, not the question.** "If Yes, skip 4
-and go to 5" is a fact about the answer Yes. Put it there and a
-question with four choices sends four different ways with no rules
-engine, and the admin screen shows the branch beside the answer that
-causes it. A question also has a default next, for kinds with no
-options. Null means "the next one in order".
-
-**Versions, not one living form.** An enquiry answered last month was
-answered against the questions as they were then. Answers also store
-the question text as asked, so editing a question later cannot change
-what somebody appears to have been asked.
-
-**Deliberately not built:** conditions like "show if Q2 = Yes AND
-Q7 > 3". That is a rules engine and every one of them ends up needing
-a debugger.
-
-## What is still to come
-
-The admin question designer, the developer-facing form with the jump
-logic, and the "New enquiry" button. Tell me if the schema above is
-right and I will build them on it; it is much cheaper to change now
-than after three screens read it.
+Schema unchanged from the last delta and still awaiting your read
+before I build the admin designer and the form on top of it.
 
 ## Suite state
 

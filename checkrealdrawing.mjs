@@ -73,17 +73,34 @@ const nameOf = (id) => SIZE[id] ?? String(id);
     /* Today's answers. The trunk one is the fault that prompted this
        check: it read 185, an output's cable, because the leg took its
        size from a copy mirrored onto the link box node where four runs
-       meet. */
+       meet.
+
+       ── Three of these moved, on purpose ──
+
+       A leg used to be measured along the TRENCH the cable is routed
+       in. It charges the cable's own run now, which is a different
+       polyline over the same route and is longer: on project 16 the
+       nine cables total 580.6 m against 565.4 m of trench, the
+       difference being the tails past the last plot — cable that
+       carries load and drops volts and was never counted.
+
+       So way 2 A1->A2 went 61.3 to 62.1, way 2 A2->A6 46 to 46.6, and
+       way 3 A3->A4 58.1 to 59.1. Every volt drop on every scheme
+       moves up by its tails; the change was asked for and taken with
+       that understood.
+
+       The other seven did not move, which is itself worth having: on
+       those legs the two drawings agree. */
     const expected = [
       "trunk|A0->A1|639.2|300",
       "way 1|A1->A7|69.9|95",
       "way 1|A7->A9|74.8|95",
       "way 1|A7->A8|20.9|95",
-      "way 2|A1->A2|61.3|95",
-      "way 2|A2->A6|46|95",
+      "way 2|A1->A2|62.1|95",
+      "way 2|A2->A6|46.6|95",
       "way 3|A1->A2|61.3|185",
       "way 3|A2->A3|28.7|185",
-      "way 3|A3->A4|58.1|95",
+      "way 3|A3->A4|59.1|95",
       "way 3|A3->A5|73.9|95",
     ];
     for (const e of expected) {

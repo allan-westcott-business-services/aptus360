@@ -6731,6 +6731,70 @@ characters is a hundred lines of prose and no rules at all.
      of each pair to keep is a decision — the feeder one carries
      Circuit_ID and Ways_In, the Auto Lay one does not.
 
+157. **A cable's length is not its trench's.** Asked from use, and the
+     right question: "when we are dealing with cable lengths in
+     calculations, why are we considering anything to do with the
+     trench?"
+
+     Because the feeder model is built on the dig — a cable has to be
+     routed along one — and the volt drop borrowed the dig's
+     distances because they were there. On project 16 the nine cables
+     total **580.6 m** against **565.4 m** of trench. The difference
+     is the tails: the stretch past the last plot out to the feeder
+     point at the end of each spur, on every spur. That cable exists,
+     carries load and drops volts, and no volt drop this app ever
+     produced counted it.
+
+     A leg now charges the run of the cable covering it — the
+     measured figure where somebody entered one, the cable's own drawn
+     length otherwise — and `spanTrace` hands that length to the
+     stops so `cumulativeToNode` settles on it instead of
+     re-measuring the graph. `trenchMetres` rides along on each leg,
+     because the two disagreeing is a thing worth being able to see.
+
+     **Every volt drop on every scheme moves up by its tails.** Taken
+     deliberately; `checkrealdrawing` recorded three legs moving by
+     0.6 to 1.0 m and those figures were updated with the reason.
+
+     **One cable can cover more than one leg.** A run through a
+     junction is two legs of one cable, and charging each the whole
+     run reported 108.7 m twice where the two legs are 61.3 and 46.
+     The run is split in proportion to the dig each leg uses; a cable
+     covering one leg gets it whole, tail included.
+
+     **The Aptus Calc Sheet needed no change and was checked rather
+     than assumed.** It reads `runLength` off each leg's cable, which
+     is the rule the levels check now follows, and the two agree leg
+     for leg — 569.2 m each on project 16. Pinned in
+     `checkmeasuredlength`, because the way they could drift is
+     silent: two readers, one fact, and a submission disagreeing with
+     the check behind it is the worst of the three possible faults.
+
+     Still on the trench, and left there: `distancesFrom`, which the
+     circuit report uses for how far a meter is from the origin. It
+     honours a trench's measured length already. Whether "how far
+     along the network" should mean cable or dig is a separate
+     question from what a volt drop is computed on, and it has not
+     been asked.
+
+     ── Two failed attempts, both worth remembering ──
+
+     Before the question was asked, a cable's measured length was
+     pushed into the trench graph so that everything reading the model
+     would get it. Neither way of doing that worked. Matching cable
+     segments to trench edges covered only the segments that happened
+     to be exactly one edge, so part of each leg scaled and the rest
+     rode along at its drawn length — 45 m entered came back as 54.0,
+     longer than both the measurement and the drawing, which is the
+     tell. Matching by geometry instead swept up the service stubs and
+     the tail, and 45 came back as 41.8.
+
+     The lesson is not about either bug. Two polylines over one route
+     are not the same length, and no amount of fitting makes them one;
+     the second drawing was the wrong place to express the first
+     drawing's fact. Both attempts shipped, and both were reported
+     back within the hour by somebody reading the table.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

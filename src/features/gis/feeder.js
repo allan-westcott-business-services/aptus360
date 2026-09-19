@@ -30,6 +30,7 @@
 /* Two vertices this close are the same point. The original's value, in
    the same units — drawing coordinates, so metres here. */
 import { carries } from "./trenchCarries.js";
+import { runLength, drawnLength } from "./lengths.js";
 import { hdCutoutsOn, hdcoAt, hdcoKva } from "./hdCutout.js";
 
 export const CONNECT_EPS = 0.5;
@@ -466,57 +467,21 @@ export function buildFeederModel(features = [], opts = {}) {
     }
     return -1;
   };
-  for (const f of features) {
-    if (f.Feature_Type !== "line" || f.Layer_Key !== "electric") continue;
-    if (!String(f.Attributes?.Line_Type ?? "").includes("main")) continue;
-    const stated = Number(f.Attributes?.Measured_Length_m ?? 0) || 0;
-    if (!(stated > 0)) continue;
-    const g = f.Geometry || [];
+  /* ── A cable's length is not the trench's ──
 
-    /* ── Collected first, scaled second ──
+     A measured length entered on a CABLE used to be pushed into the
+     edges of the dig here, so that everything reading the model got
+     it. It is not done any more, and the attempts are worth recording
+     because each failed in its own way: matching cable segments to
+     trench edges covered only the segments that happened to be one
+     edge; matching by geometry swept up the service stubs and the
+     tail past the last plot. Two polylines over one route are not the
+     same length, and no amount of fitting makes them one.
 
-       The edges this cable covers, and what the DIG measures across
-       them. The scale is then `stated ÷ that`, so the covered edges
-       add up to exactly the length somebody typed.
-
-       It was `stated ÷ the cable's own drawn length`, applied edge by
-       edge, and that is only right when the cable and the path
-       beneath it are drawn to the same length. They are not: A3 is
-       drawn 107.27 m over a trench path measuring 103.6, so 94.2 m
-       entered came out as 91.0 — every leg short, by its own ratio,
-       which looks like a rounding fault and is a different length.
-
-       Two drawings of one route disagreeing by a few per cent is
-       ordinary: the cable is drawn with its own vertices and the dig
-       with the dig's. The measurement is a statement about the RUN,
-       so the run is what it has to total. */
-    const covered = [];
-    let coveredDrawn = 0;
-    for (let i = 0; i + 1 < g.length; i++) {
-      const a = nodeAt(g[i]);
-      const b = nodeAt(g[i + 1]);
-      if (a < 0 || b < 0 || a === b) continue;
-      /* Only where the trench already joins the two: a cable segment
-         that cuts a corner the dig does not is not an edge. */
-      if (!(adj.get(a) || []).some((e) => e.to === b)) continue;
-      const k = edgeKey(a, b);
-      if (covered.some((c) => c.k === k)) continue;
-      const drawn = edgeM.get(k) ?? dist(nodes[a], nodes[b]);
-      covered.push({ k, drawn });
-      coveredDrawn += drawn;
-    }
-    if (!covered.length || !(coveredDrawn > 0)) continue;
-
-    const scale = stated / coveredDrawn;
-    for (const c of covered) {
-      /* The cable's figure wins over the trench's. They are two
-         statements about one run and the cable's is about the thing
-         the electricity travels through; taking the smaller, as the
-         trench rule does between two trenches, would silently prefer
-         whichever happened to be lower. */
-      edgeM.set(c.k, c.drawn * scale);
-    }
-  }
+     The trench keeps its own measured length, which is about the dig
+     and is read here. A cable's length belongs to the cable, and
+     `spanTrace` charges each leg its own run \u2014 see the leg push,
+     where `runLength` is read off the cable covering the leg. */
 
   if (!nodes.length) return { error: "No trenches to route cables along." };
 
@@ -3042,20 +3007,41 @@ export function spanTrace(features = [], nodeId, opts = {}) {
     const trail = [...path, cur];
 
     if (stops.has(cur)) {
-      /* The cable covering this leg, found once: its size names the
-         leg, and its measured length is already in `len` by way of
-         the model. */
+      /* ── The cable's own run ──
+
+         The leg is a length of cable, and a length of cable is what
+         the volt drop is computed on. The dig underneath is a
+         different polyline over the same route: on project 16 the
+         nine cables total 580.6 m where their trenches total 565.4,
+         the difference being the tails — the stretch past the last
+         plot out to the feeder point at the end of each spur. That
+         cable exists, carries load and drops volts, and the levels
+         check never counted it.
+
+         So the run is read off the cable covering this leg:
+         `runLength` is the figure somebody measured where there is
+         one and the cable's own drawn length otherwise. The trench
+         path is kept as the fallback for a leg no cable covers, and
+         as `trenchMetres` beside it, because the two disagreeing is
+         a thing worth being able to see. */
       const run = legRunOf(trail);
       legs.push({
         from: fromLabel,
         to: labelOf(cur),
         stopId: stops.get(cur).Feature_ID,
+        /* Filled in below, once it is known how many legs this cable
+           covers. Left as the dig for now so a leg is never blank. */
+        runId: run ? Number(run.Feature_ID) : null,
         metres: Math.round(len * 10) / 10,
-        /* What was drawn, beside what is charged, so a row that does
-           not scale off the drawing explains itself rather than
-           looking like an error. */
-        drawnMetres: Math.round(drawn * 10) / 10,
-        measured: Math.abs(len - drawn) > 0.05,
+        /* What the cable is drawn at, beside what is charged, so a
+           row running on a measurement says so rather than looking
+           like an error. */
+        drawnMetres: Math.round((run ? drawnLength(run) : drawn) * 10) / 10,
+        measured: run
+          ? Math.abs(runLength(run) - drawnLength(run)) > 0.05
+          : Math.abs(len - drawn) > 0.05,
+        /* The dig under it, for anyone asking why the two differ. */
+        trenchMetres: Math.round(drawn * 10) / 10,
         /* The graph node this leg ends at, so volt drop can be totalled
            to exactly this point. */
         endIdx: cur,
@@ -3107,9 +3093,13 @@ export function spanTrace(features = [], nodeId, opts = {}) {
           ? here.map((m) => m.Label || `Meter ${m.Feature_ID}`).join(", ")
           : null,
         stopId: null,
+        /* A dead end with no stop on it: the walk ran out of cable
+           before a measuring point, so there is no leg-cable to read
+           and the dig is the best account there is. */
         metres: Math.round(len * 10) / 10,
         drawnMetres: Math.round(drawn * 10) / 10,
         measured: Math.abs(len - drawn) > 0.05,
+        trenchMetres: Math.round(drawn * 10) / 10,
         endIdx: cur,
         fromIdx: trail[0],
         distribution: along.length,
@@ -3122,6 +3112,39 @@ export function spanTrace(features = [], nodeId, opts = {}) {
     for (const k of next) walk(cur, k, len, [...along, ...here], trail, fromLabel, drawn);
   };
 
+  /* ── Sharing a cable between the legs it covers ──
+
+     A leg charges its cable's run rather than the dig under it. One
+     cable can cover more than one leg, though: a run passing through
+     a junction is two legs of one cable, and giving each the whole
+     run charged 108.7 m twice on a link-box drawing where the two
+     legs are 61.3 and 46.
+
+     So the run is split in proportion to the dig each leg uses. A
+     cable covering one leg gets it whole, which is the ordinary case
+     and includes the tail past the last plot — the stretch the dig
+     does not reach and the volt drop never counted.
+
+     Done after the walk because that is when it is known how many
+     legs a cable turned out to cover. */
+  const shareCable = () => {
+    const digByRun = new Map();
+    for (const l of legs) {
+      if (l.runId == null) continue;
+      digByRun.set(l.runId, (digByRun.get(l.runId) || 0) + (l.trenchMetres || 0));
+    }
+    for (const l of legs) {
+      if (l.runId == null) continue;
+      const run = legRuns.find((r) => Number(r.Feature_ID) === l.runId);
+      if (!run) continue;
+      const total = digByRun.get(l.runId) || 0;
+      const cableM = runLength(run);
+      if (!(cableM > 0) || !(total > 0)) continue;
+      const share = (l.trenchMetres || 0) / total;
+      l.metres = Math.round(cableM * share * 10) / 10;
+    }
+  };
+
   const branches = kids.get(startIdx) || [];
   if (!branches.length) {
     return {
@@ -3131,6 +3154,7 @@ export function spanTrace(features = [], nodeId, opts = {}) {
   }
   const startLabel = node.Attributes?.Span_Label ?? node.Label ?? `#${nodeId}`;
   for (const b of branches) walk(startIdx, b, 0, [], [startIdx], startLabel, 0);
+  shareCable();
 
   /* The run back down to ground of the board a stop stands on, if any.
      By `At_Joint_ID`, which is what the build stamps on a point it
@@ -3158,8 +3182,13 @@ export function spanTrace(features = [], nodeId, opts = {}) {
      legs the walk just gathered so the two cannot give different
      answers about the same stretch of ground. */
   const legCableAt = new Map();
+  /* And the length of that leg, for the same reason: the volt drop is
+     settled at these stops, and it has to charge the cable's run
+     rather than re-measuring the dig underneath it. */
+  const legMetresAt = new Map();
   for (const l of legs) {
     if (l.endIdx != null && l.cableSizeId != null) legCableAt.set(l.endIdx, l.cableSizeId);
+    if (l.endIdx != null && l.metres > 0) legMetresAt.set(l.endIdx, l.metres);
   }
 
   return {
@@ -3234,6 +3263,15 @@ export function spanTrace(features = [], nodeId, opts = {}) {
            at it, and its size was worked out from the run. The point's
            own copy remains the fallback, for a stop no leg reached. */
         cableSizeId: legCableAt.get(index) ?? cableIdOf(f),
+        /* ── And how long that stretch is ──
+
+           The cable's run, not the dig under it. Without this the
+           volt drop re-measured the trench between the same two
+           points and came out short by the tail on every spur \u2014 the
+           table said one length and the percentage beside it was
+           worked out on another. Absent for a stop no leg reached,
+           and the walk falls back to the model as before. */
+        metres: legMetresAt.get(index) ?? null,
         /* ── The board this stop stands on, and its run back down ──
 
            A stop AT a board is a feeder point, not the board: the two

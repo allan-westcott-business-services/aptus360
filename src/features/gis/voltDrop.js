@@ -410,6 +410,19 @@ export function cumulativeToNode({
 
     const sn = spanAt.get(cur);
     if (sn) {
+      /* ── The cable's run, where the stop knows it ──
+
+         `legLenM` above is the distance through the MODEL, which is
+         the trench graph: the dig the cable is routed along. A cable
+         and its trench are two polylines over one route and are not
+         the same length — on project 16 the nine cables total
+         580.6 m against 565.4 m of trench, the difference being the
+         tails past the last plot, which carry load and drop volts.
+
+         So a stop that knows its leg's run says so, and that is what
+         is charged. The model's figure stays the fallback for a stop
+         no leg reached, and for a model built by hand in a check. */
+      if (Number(sn.metres) > 0) legLenM = Number(sn.metres);
       /* Plot connections AT this node: its own meters and the spurs
          leaving it. Their load is beyond the node and counts as
          terminal through `cumKva`; their joints are on the leg

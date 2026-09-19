@@ -493,12 +493,22 @@ export default function AptusCalcSheet({
   );
 }
 
+/* ── The tokens this app actually defines ──
+
+   `--white`, `--border`, `--muted`, `--text`. Not `--card` and
+   `--line`, which this panel was first written against and which
+   exist nowhere in styles.css: an undefined custom property falls
+   back to nothing, so the background never painted and the sheet
+   rendered as text floating over the drawing, every border with it.
+
+   It looks like a z-index or a backdrop fault and is neither. The
+   tell is that the text is all present and correctly laid out. */
 const CSS = `
-.acs { background: var(--card); border-radius: 12px; width: min(1180px, 96vw);
+.acs { background: var(--white); border-radius: 12px; width: min(1180px, 96vw);
   max-height: 90vh; display: flex; flex-direction: column;
   box-shadow: 0 18px 48px rgba(15,23,42,.28); }
 .acs-head { display: flex; align-items: flex-start; gap: 12px; padding: 16px 18px 12px;
-  border-bottom: 1px solid var(--line); cursor: move; }
+  border-bottom: 1px solid var(--border); cursor: move; }
 .acs-head h3 { margin: 0; font-size: 1.05rem; }
 .acs-sub { margin: 3px 0 0; font-size: .82rem; color: var(--muted); }
 .acs-body { padding: 14px 18px; overflow: auto; }
@@ -515,7 +525,7 @@ const CSS = `
 .acs-route label > span { color: var(--muted); }
 .acs-route-n { margin: 0; font-size: .74rem; color: var(--muted); }
 .acs-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
-.acs-table th, .acs-table td { padding: 5px 7px; border-bottom: 1px solid var(--line);
+.acs-table th, .acs-table td { padding: 5px 7px; border-bottom: 1px solid var(--border);
   text-align: right; white-space: nowrap; }
 .acs-table th { font-weight: 600; font-size: .74rem; color: var(--muted);
   vertical-align: bottom; }
@@ -525,7 +535,7 @@ const CSS = `
 .acs-sect label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
 .acs-out td { color: var(--muted); }
 .acs-in input { width: 68px; text-align: right; padding: 2px 5px; font-size: .8rem; }
-.acs-total td { font-weight: 600; border-top: 2px solid var(--line); }
+.acs-total td { font-weight: 600; border-top: 2px solid var(--border); }
 .acs-foot { margin: 16px 0 0; display: grid; gap: 6px; }
 .acs-foot > div { display: flex; justify-content: space-between; gap: 18px;
   max-width: 520px; font-size: .84rem; }
@@ -533,6 +543,6 @@ const CSS = `
 .acs-foot dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
 .acs-note { margin: 14px 0 0; font-size: .76rem; color: var(--muted); max-width: 640px; }
 .acs-actions { display: flex; align-items: center; gap: 8px; padding: 12px 18px;
-  border-top: 1px solid var(--line); }
+  border-top: 1px solid var(--border); }
 .acs-spacer { flex: 1; }
 `;

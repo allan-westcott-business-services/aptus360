@@ -245,6 +245,35 @@ const bySection = new Map(walked.rows.map((r) => [r.section, r]));
   }
 }
 
+// 7. The panel is styled against tokens that exist.
+{
+  /* An undefined custom property falls back to nothing rather than
+     to a default, so `background: var(--card)` paints NO background
+     and `border: 1px solid var(--line)` draws no border. The panel
+     shipped that way and rendered as text floating over the drawing —
+     which reads as a z-index or backdrop fault and is neither.
+
+     Read out of styles.css rather than listed here, so a token
+     renamed there is caught rather than this case going stale. */
+  const sheet = readFileSync("./src/features/gis/AptusCalcSheet.jsx", "utf8");
+  const tokens = readFileSync("./src/styles.css", "utf8");
+  const defined = new Set(
+    [...tokens.matchAll(/^\s*(--[a-z0-9-]+)\s*:/gmi)].map((m) => m[1]));
+  const used = new Set(
+    [...sheet.matchAll(/var\((--[a-z0-9-]+)\)/g)].map((m) => m[1]));
+  for (const t of used) {
+    if (!defined.has(t)) {
+      fail(`the panel is styled with ${t}, which styles.css does not define `
+        + "\u2014 it falls back to nothing, so that colour or border simply "
+        + "does not paint");
+    }
+  }
+  if (!used.size) {
+    fail("the panel names no design tokens at all, so it cannot follow the "
+      + "app's colours");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The sheet reads the drawing: right legs, right nodes, one route.");
 process.exit(bad ? 1 : 0);

@@ -288,11 +288,12 @@ left out has to say why.
 difference matters: a check reporting "3 problem(s)" looked at
 something, and one that throws never got to look.
 
-### The twenty that still fail
+### The nineteen that still fail
 
 The count moved from nine and the heading has been re-counted rather
-than carried forward: 156 of 176 pass as of this session, and none of
-the twenty is new here. Two of them used to be CRASHes and are named
+than carried forward: 159 of 178 pass as of this session, and none of
+the nineteen is new here. `checkmeasuredlength` left the list when its
+stale argument was fixed (fault 155). Two of them used to be CRASHes and are named
 failures now — see below.
 
 Five are **migrations that were pasted into Supabase by hand and never
@@ -6612,6 +6613,47 @@ characters is a hundred lines of prose and no rules at all.
      while the same field holds the LINE voltage elsewhere in this app
      and defaults to 400. The two are 3.9% apart on every current.
      Stated on the panel rather than reconciled.
+
+155. **A measured length was honoured on the trench and ignored on the
+     cable — and the check that should have said so was stale.**
+     Reported from use: a run measured at 100 m, typed against a cable
+     drawn at 11.15, and Run Levels Check went on reporting 11.15.
+
+     The editor offers the measured-length box on EVERY line and its
+     note promises that "the levels, distances and tails use that
+     figure instead". `buildFeederModel` scaled only trenches, because
+     the model is built on the dig. So the promise held for a trench
+     and was silently false for a cable.
+
+     Fixed in the MODEL, not in the table. The measurement scales the
+     edges the cable lies along, so the volt drop, the loop impedance,
+     the trace's legs and the circuit-report distances all move
+     together — a length printed in a table that its own calculation
+     does not use is worse than a wrong length, because it is two
+     answers with nothing to say which is which. Scaled rather than
+     substituted, as the trench rule scales, so a cable covering two
+     legs gives each its share instead of both the whole figure. Node
+     indices are looked up and never created: a cable drawn off its
+     trench must not add a junction the router could route through.
+
+     The table now shows the drawn figure beneath the charged one
+     wherever they differ, so a row that will not scale off the
+     drawing explains itself.
+
+     **`checkmeasuredlength` had been failing for a stale argument.**
+     It called `cumulativeToNode` with `spanNodes:` after the
+     parameter was renamed `stops`, so it passed no stops, got a zero
+     drop and reported "the calculation ignores measured lengths" —
+     about a calculation that had honoured them all along. One of the
+     suite's twenty standing failures was a check accusing working
+     code, which is worse than no check: it spends attention every run
+     and trains people to ignore the list.
+
+     And the Aptus Calc Sheet read `Length_m`, the trigger's mirror of
+     the geometry, so a submission and the levels check behind it
+     reported different lengths for one leg. It reads `runLength` now,
+     and `checkmeasuredlength`'s list of files that must not touch
+     `Length_m` has `calcSheetRows.js` on it.
 
 ## Decisions worth knowing
 

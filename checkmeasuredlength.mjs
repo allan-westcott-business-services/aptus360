@@ -106,7 +106,20 @@ else {
   const cable = { Cable_Size_ID: 1, Loop_Impedance_Ohm: 0.6, Volt_Drop_Base: 191 };
   const vd = cumulativeToNode({
     model, targetIdx: n100, cableById: () => cable, voltageV: 400,
-    spanNodes: [{ index: n100, cableSizeId: 1 }],
+    /* `stops`, not `spanNodes`.
+
+       cumulativeToNode's parameter was renamed when feeder points
+       took over from span nodes — "a span node belongs to the trench,
+       a feeder point to the cable", as voltDrop.js puts it. This case
+       kept the old name, so it passed NO stops, no cable was applied,
+       and the drop came back 0.000000% against a wanted 0.083085.
+
+       It has been one of the suite's standing failures ever since,
+       reported as "the calculation ignores measured lengths" when the
+       calculation had honoured them all along. A stale check is worse
+       than no check: it spends somebody's attention every run and
+       accuses working code. */
+    stops: [{ index: n100, cableSizeId: 1 }],
     settings: { distributedLoadFactor: 1, jointEquivM: 0 },
   });
   const want = 2.9 * 1 * (191e-6) * 150;
@@ -119,7 +132,88 @@ else {
   }
 }
 
-/* The trace's legs say 150 m too. */
+/* ── A length measured on the CABLE, not on the trench ──
+
+   The editor offers the measured-length box on every line and its
+   note promises that "the levels, distances and tails use that
+   figure instead". The model is built on the dig, so only trenches
+   were read: a designer who measured a cable run, typed 100 against
+   a cable drawn at 11.15 and watched Run Levels Check go on
+   reporting 11.15 was reading a promise the code did not keep.
+
+   The measurement goes into the MODEL rather than into the table, so
+   the volt drop, the loop impedance and the printed length are one
+   figure. A length shown in a table that its own calculation does
+   not use is worse than a wrong length — it is two answers with
+   nothing to say which is which. */
+{
+  const cp = plot(202, [50, 10]);
+  const cableDrawing = [
+    sub,
+    trench([[0, 0], [50, 0], [100, 0]], "trench"),
+    trench([[50, 0], [50, 10]], "service_trench"),
+    cp,
+    meter(cp, [50, 10]),
+    { Feature_ID: id++, Feature_Type: "line", Layer_Key: "electric",
+      Label: "A1", Feature_Role: "shape",
+      Geometry: [[0, 0], [50, 0], [100, 0]],
+      Attributes: { Line_Type: "elec_main", Circuit_ID: 1,
+        Measured_Length_m: 150 } },
+    { Feature_ID: id++, Feature_Role: "spannode", Feature_Type: "point",
+      Layer_Key: "trench", Geometry: [[100, 0]],
+      Attributes: { Span_Label: "A1", Span_Seq: 1, Circuit_ID: 1,
+        Span_Anchor: [100, 0] } },
+  ];
+  const m3 = buildFeederModel(cableDrawing, { lineTypes, plotById: () => ({ kva_load: 2.9 }) });
+  if (m3.error) fail(`the model refused a measured cable: ${m3.error}`);
+  else {
+    const at = (p) => {
+      let best = -1; let d = Infinity;
+      m3.nodes.forEach((n, i) => {
+        const dd = Math.hypot(n[0] - p[0], n[1] - p[1]);
+        if (dd < d) { d = dd; best = i; }
+      });
+      return best;
+    };
+    /* Edge by edge, because `mBetween` answers about adjacent nodes;
+       the tee at the middle splits the run into two. Scaled, not
+       substituted, so the tee half way along the drawing is half way
+       along the measurement — the same rule the trench follows. */
+    const first = m3.mBetween(at([0, 0]), at([50, 0]));
+    const second = m3.mBetween(at([50, 0]), at([100, 0]));
+    if (Math.abs(first - 75) > 0.01 || Math.abs(second - 75) > 0.01) {
+      fail(`a length measured on the cable reads ${first} + ${second} m in `
+        + "the model, wanted 75 + 75 \u2014 the box is offered on every line and "
+        + "its note says the levels use it");
+    }
+    /* And the node did not move: a measured length changes how far
+       the electricity travels, not where the cable is drawn. */
+    if (Math.abs(m3.nodes[at([100, 0])][0] - 100) > 0.01) {
+      fail("a cable measurement moved the drawing");
+    }
+  }
+
+  /* A cable drawn off its trench must not add a node. Interning its
+     vertices here would put a junction in the routing graph that no
+     trench dug, and the router could route through it. */
+  const op = plot(203, [50, 10]);
+  const offDig = [
+    sub,
+    trench([[0, 0], [50, 0], [100, 0]], "trench"),
+    trench([[50, 0], [50, 10]], "service_trench"),
+    op,
+    meter(op, [50, 10]),
+    { Feature_ID: id++, Feature_Type: "line", Layer_Key: "electric",
+      Feature_Role: "shape", Geometry: [[0, 40], [100, 40]],
+      Attributes: { Line_Type: "elec_main", Measured_Length_m: 150 } },
+  ];
+  const m4 = buildFeederModel(offDig, { lineTypes, plotById: () => ({ kva_load: 2.9 }) });
+  if (!m4.error && m4.nodes.some((n) => Math.abs(n[1] - 40) < 0.01)) {
+    fail("a cable drawn off its trench added nodes to the routing graph");
+  }
+}
+
+/* The trace's legs say 150 m too, and say which figure they are. */
 {
   const origin = { Feature_ID: id++, Feature_Role: "spannode", Feature_Type: "point",
     Layer_Key: "trench", Geometry: [[0, 0]],
@@ -133,6 +227,17 @@ else {
     if (!leg) fail("no leg to A1");
     else if (Math.abs(leg.metres - 150) > 0.1) {
       fail(`the leg to A1 reads ${leg.metres} m, wanted the measured 150`);
+    } else {
+      /* The drawn figure carried beside it, and flagged, so the table
+         can say a row does not scale off the drawing rather than
+         leaving somebody to wonder. */
+      if (Math.abs(leg.drawnMetres - 100) > 0.1) {
+        fail(`the leg reports ${leg.drawnMetres} m drawn, wanted 100`);
+      }
+      if (!leg.measured) {
+        fail("the leg does not say it is running on a measurement, so the "
+          + "table cannot tell one row from another");
+      }
     }
   }
 }
@@ -180,6 +285,19 @@ else {
   }
 }
 
+/* The levels table shows the figure the calculation ran on, and says
+   when it is not the drawn one. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/l\.measured &&/.test(canvas)) {
+    fail("the levels table does not say which rows run on a measurement, so "
+      + "a length that will not scale off the drawing looks like an error");
+  }
+  if (!/drawn \{l\.drawnMetres/.test(canvas)) {
+    fail("the drawn figure is not shown beside the measured one");
+  }
+}
+
 /* And nothing in the GIS client reads Length_m any more. Leaving one
    reader behind would put a line's calculations back on a figure the
    database rewrites underneath them. */
@@ -187,6 +305,9 @@ else {
   const files = [
     "GISCanvasPage.jsx", "FeatureEditor.jsx", "electric.js", "feeder.js",
     "routing.js", "gasNetwork.js", "waterNetwork.js",
+    /* The Aptus Calc Sheet read it too, so a submission and the
+       levels check behind it reported different lengths for one leg. */
+    "calcSheetRows.js",
   ];
   for (const f of files) {
     const src = readFileSync(`./src/features/gis/${f}`, "utf8");

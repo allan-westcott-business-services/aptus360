@@ -429,6 +429,66 @@ export function buildFeederModel(features = [], opts = {}) {
         scale === 1 ? null : dist(pts[i], pts[i + 1]) * scale);
     }
   }
+  /* ── A length measured on the CABLE, not on the trench ──
+
+     The loop above honours `Measured_Length_m` on a trench, because
+     the model is built on the dig. The editor offers the same box on
+     every line and its note promises that "the levels, distances and
+     tails use that figure instead" — and for a cable nothing read it.
+     A designer who measured a run, typed 100 against a cable drawn at
+     11.15 and watched Run Levels Check go on reporting 11.15 was
+     reading a promise the code did not keep.
+
+     Applied to the edges the cable lies along, so it reaches
+     everything that asks the model how far the electricity travels —
+     the volt drop, the loop impedance, the trace's legs and the
+     circuit-report distances — rather than only the number printed in
+     one table. A length shown in a table that its own calculation
+     does not use is worse than a wrong length: it is two answers with
+     nothing to say which is which.
+
+     Scaled rather than substituted, as the trench rule scales: one
+     cable can cover several edges, and substituting would give each
+     of them the whole measurement.
+
+     ── Only onto edges that already exist ──
+
+     The node index is looked up, never created. A cable vertex that
+     does not sit on a trench vertex is a cable drawn off its dig, and
+     interning it here would add a node to the routing graph that no
+     trench put there — a phantom junction the router could route
+     through. Where the vertices do not line up the measurement is
+     quietly not applied, which is the safe way round: the figure
+     stays the drawn one rather than the graph changing shape. */
+  const nodeAt = (p) => {
+    for (let i = 0; i < nodes.length; i++) {
+      if (dist(nodes[i], p) <= 0.01) return i;
+    }
+    return -1;
+  };
+  for (const f of features) {
+    if (f.Feature_Type !== "line" || f.Layer_Key !== "electric") continue;
+    if (!String(f.Attributes?.Line_Type ?? "").includes("main")) continue;
+    const scale = measuredScale(f);
+    if (scale === 1) continue;
+    const g = f.Geometry || [];
+    for (let i = 0; i + 1 < g.length; i++) {
+      const a = nodeAt(g[i]);
+      const b = nodeAt(g[i + 1]);
+      if (a < 0 || b < 0 || a === b) continue;
+      const k = edgeKey(a, b);
+      /* Only where the trench already joins the two: a cable segment
+         that cuts a corner the dig does not is not an edge. */
+      if (!(adj.get(a) || []).some((e) => e.to === b)) continue;
+      /* The cable's figure wins over the trench's. They are two
+         statements about one run and the cable's is about the thing
+         the electricity travels through; taking the smaller, as the
+         trench rule does between two trenches, would silently prefer
+         whichever happened to be lower. */
+      edgeM.set(k, dist(g[i], g[i + 1]) * scale);
+    }
+  }
+
   if (!nodes.length) return { error: "No trenches to route cables along." };
 
   const origins = lvOrigins(features);
@@ -2873,7 +2933,7 @@ export function spanTrace(features = [], nodeId, opts = {}) {
   /* Sampled along the middle of the leg. Both ends of a leg sit on a
      junction where several runs meet, so an end tells you nothing about
      which of them this leg is; the middle belongs to one run. */
-  const legCableId = (trail) => {
+  const legRunOf = (trail) => {
     if (!Array.isArray(trail) || trail.length < 2 || !legRuns.length) return null;
     const pts = [];
     for (let i = 1; i < trail.length; i++) {
@@ -2908,21 +2968,65 @@ export function spanTrace(features = [], nodeId, opts = {}) {
         best = { worst, r };
       }
     }
-    return best ? cableIdOf(best.r) : null;
+    /* The RUN, not the {worst, r} the search carries it in. Returning
+       the wrapper left `run.Attributes` undefined, so every leg
+       scaled by 1 and the measurement was silently ignored — which
+       looks exactly like the fault this was written to fix. */
+    return best ? best.r : null;
   };
 
-  const walk = (prev, cur, metres, along, path, fromLabel) => {
+  /* ── A length measured on the CABLE ──
+
+     `measuredScale` above honours `Measured_Length_m` on a TRENCH,
+     because the model is built on the dig. The editor offers the same
+     box on every line, cables included, and its note promises that
+     "the levels, distances and tails use that figure instead" — and
+     for a cable nothing read it. A designer who measured a run,
+     typed 100 against a cable drawn at 11.15, and watched the levels
+     check go on reporting 11.15 was reading a promise the code did
+     not keep.
+
+     Scaled, not substituted, and for the same reason the trench rule
+     scales: one cable can cover more than one leg. Substituting would
+     give each of them the whole measurement, so a cable measured at
+     100 m spanning two legs would report 200. The ratio gives each
+     leg its share, and a cable covering exactly one leg — which is
+     the ordinary case — gets the measurement exactly.
+
+     The cable wins over the trench beneath it where both are set.
+     They are two statements about the same run and the cable's is the
+     one about the thing the electricity travels through; multiplying
+     the two would charge the same slack twice. */
+
+  /* Two running totals, not one.
+
+     `len` is what the calculation runs on — the model's own figure,
+     which already carries any measured length entered on the trench
+     or on the cable. `drawn` is the plan distance, kept beside it so
+     a row can say the two differ rather than a designer wondering why
+     a leg does not scale off the drawing. */
+  const walk = (prev, cur, metres, along, path, fromLabel, drawnSoFar = 0) => {
     const len = metres + (M.mBetween
       ? M.mBetween(prev, cur) : dist(nodes[prev], nodes[cur]));
+    const drawn = drawnSoFar + dist(nodes[prev], nodes[cur]);
     const here = metersAt.get(cur) || [];
     const trail = [...path, cur];
 
     if (stops.has(cur)) {
+      /* The cable covering this leg, found once: its size names the
+         leg, and its measured length is already in `len` by way of
+         the model. */
+      const run = legRunOf(trail);
       legs.push({
         from: fromLabel,
         to: labelOf(cur),
         stopId: stops.get(cur).Feature_ID,
         metres: Math.round(len * 10) / 10,
+        /* What was drawn, beside what is charged, so a row that does
+           not scale off the drawing explains itself rather than
+           looking like an error. */
+        drawnMetres: Math.round(drawn * 10) / 10,
+        measured: Math.abs(len - drawn) > 0.05,
         /* The graph node this leg ends at, so volt drop can be totalled
            to exactly this point. */
         endIdx: cur,
@@ -2948,7 +3052,7 @@ export function spanTrace(features = [], nodeId, opts = {}) {
            fault 13 waiting to be read. Taken from the middle of the
            leg, not its ends, because every run at a junction touches
            the ends and only the right one covers the middle. */
-        cableSizeId: legCableId(trail) ?? cableIdOf(stops.get(cur)),
+        cableSizeId: cableIdOf(run || {}) ?? cableIdOf(stops.get(cur)),
         /* Meters picked up along the way — the load this length of cable
            carries directly. */
         distribution: along.length,
@@ -2961,7 +3065,7 @@ export function spanTrace(features = [], nodeId, opts = {}) {
       /* Carry on from here, as a new leg: the length and the meters
          picked up start again from this node. */
       for (const k of kids.get(cur) || []) {
-        walk(cur, k, 0, [], [cur], labelOf(cur));
+        walk(cur, k, 0, [], [cur], labelOf(cur), 0);
       }
       return;
     }
@@ -2975,6 +3079,8 @@ export function spanTrace(features = [], nodeId, opts = {}) {
           : null,
         stopId: null,
         metres: Math.round(len * 10) / 10,
+        drawnMetres: Math.round(drawn * 10) / 10,
+        measured: Math.abs(len - drawn) > 0.05,
         endIdx: cur,
         fromIdx: trail[0],
         distribution: along.length,
@@ -2984,7 +3090,7 @@ export function spanTrace(features = [], nodeId, opts = {}) {
       });
       return;
     }
-    for (const k of next) walk(cur, k, len, [...along, ...here], trail, fromLabel);
+    for (const k of next) walk(cur, k, len, [...along, ...here], trail, fromLabel, drawn);
   };
 
   const branches = kids.get(startIdx) || [];
@@ -2995,7 +3101,7 @@ export function spanTrace(features = [], nodeId, opts = {}) {
     };
   }
   const startLabel = node.Attributes?.Span_Label ?? node.Label ?? `#${nodeId}`;
-  for (const b of branches) walk(startIdx, b, 0, [], [startIdx], startLabel);
+  for (const b of branches) walk(startIdx, b, 0, [], [startIdx], startLabel, 0);
 
   /* The run back down to ground of the board a stop stands on, if any.
      By `At_Joint_ID`, which is what the build stamps on a point it

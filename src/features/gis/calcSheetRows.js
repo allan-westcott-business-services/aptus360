@@ -52,6 +52,8 @@
    brackets, because that is the thing a designer can point at on the
    canvas. */
 
+import { runLength, drawnLength } from "./lengths.js";
+
 const KEY_DP = 3;
 
 const keyOf = (pt) => `${round(pt?.[0])},${round(pt?.[1])}`;
@@ -246,7 +248,18 @@ export function calcSheetRows({
          own name after it, because that is the thing that can be found
          on the canvas. */
       section: `${l.from} - ${l.to}${l.leg.Label ? ` (${l.leg.Label})` : ""}`,
-      lengthM: Number(a.Length_m) || 0,
+      /* ── The run, not the drawing ──
+
+         `runLength` is the measured figure where somebody has entered
+         one and the geometry otherwise. `Length_m` is the trigger's
+         mirror of the drawing, rewritten on every drag, and reading
+         it here put the sheet on a different length from the levels
+         check looking at the same leg. A submission and the check
+         behind it disagreeing about how long a cable is is the worst
+         of the three possible faults. */
+      lengthM: Math.round(runLength(l.leg) * 100) / 100,
+      drawnM: Math.round(drawnLength(l.leg) * 100) / 100,
+      measured: Math.abs(runLength(l.leg) - drawnLength(l.leg)) > 0.05,
       cableType: cable?.Cable_Type ?? "",
       csa: cable?.Size_Label ?? "",
       cable,

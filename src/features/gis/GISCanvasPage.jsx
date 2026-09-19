@@ -29708,7 +29708,26 @@ export default function GISCanvasPage() {
                         <td className="gt-cable">
                           {l.cable ?? <em className="gt-dead">not set</em>}
                         </td>
-                        <td className="num">{l.metres.toFixed(1)} m</td>
+                        {/* ── The length the calculation ran on ──
+
+                            Which is the measured one wherever somebody
+                            has entered it, on the trench or on the
+                            cable. The drawn figure is shown beneath it
+                            where the two differ, so a row that does not
+                            scale off the drawing explains itself
+                            instead of looking like an error — and so
+                            nobody has to open the line to find out
+                            whether a measurement is in force. */}
+                        <td className="num">
+                          {l.metres.toFixed(1)} m
+                          {l.measured && (
+                            <span className="gt-drawn"
+                              title={`Measured. The drawing scales to `
+                                + `${l.drawnMetres.toFixed(1)} m.`}>
+                              drawn {l.drawnMetres.toFixed(1)}
+                            </span>
+                          )}
+                        </td>
                         <td className="num">{l.distribution}</td>
                         <td className="num strong">{l.terminal}</td>
                         {trace.hasVd && (l.vd?.missing ? (
@@ -30276,6 +30295,10 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gt-stranded { color: #b45309; font-weight: 700; cursor: help;
   text-decoration: underline dotted; }
 .gt-dead { color: var(--muted); font-style: italic; font-size: 11.5px; }
+/* The drawn figure under a measured one. Its own line and quieter, so
+   the number the calculation used stays the one the eye lands on. */
+.gt-drawn { display: block; color: var(--muted); font-size: 10.5px;
+  font-weight: 400; white-space: nowrap; }
 .gt-hi { background: none; border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
   font: 600 10.5px inherit; padding: 2px 7px; color: var(--muted); }
 .gt-hi:hover { border-color: var(--accent); color: var(--accent); }

@@ -163,13 +163,24 @@ const bySection = new Map(walked.rows.map((r) => [r.section, r]));
   if (worst.r.to !== "A8") {
     fail(`the worst route ends at ${worst.r.to}; on this drawing it is A8`);
   }
-  if (!near(worst.s.voltDrop, 2.9366022049, 1e-4)) {
+  /* The fixture's A9 carries a measured length of 100 m against 11.15
+     drawn, which is what made the fault visible: the sheet read the
+     drawing and the levels check read the measurement. Both run on
+     the measurement now, and these figures are with it in. */
+  if (!near(worst.s.voltDrop, 4.6294936095, 1e-4)) {
     fail(`the worst route totals ${worst.s.voltDrop}% where the drawing gives `
-      + "2.9366%");
+      + "4.6295%");
   }
-  if (!near(worst.s.loopImpedance, 0.126269, 1e-5)) {
+  if (!near(worst.s.loopImpedance, 0.15212444, 1e-5)) {
     fail(`the worst route's loop impedance is ${worst.s.loopImpedance} where `
-      + "the drawing gives 0.126269");
+      + "the drawing gives 0.1521244");
+  }
+
+  /* And the measurement is in force rather than merely stored. */
+  const a9 = walked.rows.find((r) => r.legLabel === "A9");
+  if (!a9 || a9.lengthM !== 100 || !a9.measured) {
+    fail(`A9 runs on ${a9 && a9.lengthM} m \u2014 it is measured at 100 against `
+      + "11.15 drawn, and the sheet must charge the run rather than the plan");
   }
   if (all.voltDrop <= worst.s.voltDrop) {
     fail("totalling every leg no longer reads higher than the worst route, so "

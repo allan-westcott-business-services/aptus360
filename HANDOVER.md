@@ -6711,6 +6711,21 @@ characters is a hundred lines of prose and no rules at all.
      bounded by the statement that ends the block now. The same fault
      shape as checktextnote's placement slice, one session earlier.
 
+     **And the fix had a hole, found the same day.** The
+     unclaimed-fitting rule says "holds no other service", and a
+     BREECH joint holds no service at all — three mains and nothing
+     else. So a service teeing within a metre of one read as already
+     jointed and got nothing: 56159 at breech 56014, 0.839 m away.
+     Only a service joint can be a service's joint; where a fitting is
+     genuinely both, joints.js has already split it in two.
+
+     The shape of that mistake is worth more than the mistake: the
+     rule was widened from 0.25 m to 1 m at the same time as its test
+     was changed from "any joint" to "any unclaimed joint", and the
+     second change was not as tight as the first was wide. A
+     shortlist that grows needs its filter tightened in the same
+     breath.
+
      **Not repaired: the twelve pairs already on project 16.** This
      stops new ones. The existing duplicates want deleting, and which
      of each pair to keep is a decision — the feeder one carries

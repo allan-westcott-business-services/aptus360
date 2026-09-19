@@ -36,10 +36,11 @@ const SERVICE = 56088;
 const OTHER_SERVICE = 56101;
 const serviceIds = new Set([SERVICE, OTHER_SERVICE, 56083, 56090]);
 
-const jointAt = (at, cables) => ({
+const jointAt = (at, cables, kind = "service") => ({
   Feature_ID: 900 + cables.length, Feature_Role: "joint",
   Layer_Key: "electric", Geometry: [at],
-  Attributes: { Joint_Type: "service", Joint_Cables: cables },
+  Attributes: { Joint_Type: kind, Joint_Reasons: [kind],
+    Joint_Cables: cables },
 });
 
 /* The real tee, and the real quarter metre between the two answers. */
@@ -91,7 +92,45 @@ const FEEDER_JOINT = [47.89539562723424, 72.10918850891125];
   }
 }
 
-// 4. Distance still bounds it.
+// 4. A breech joint is not a service joint.
+{
+  /* The unclaimed-fitting rule in case 2 says "holds no other
+     service", and a breech joint holds no service at all: three mains
+     and nothing else. So the first cut of this fix read a service
+     teeing within a metre of one as already jointed and placed
+     nothing \u2014 56159 at breech 56014 on project 16, 0.839 m away,
+     reported from use the day the fix shipped.
+
+     A breech, a straight or a bottle end is a different fitting doing
+     a different job. Where a joint is genuinely both, joints.js has
+     already split it in two, so requiring the kind costs nothing. */
+  const breech = {
+    Feature_ID: 56014, Feature_Role: "joint", Layer_Key: "electric",
+    Geometry: [[154.03696830231604, 156.78585163788972]],
+    Attributes: { Joint_Type: "breech", Joint_Reasons: ["breech"],
+      Joint_Cables: [55979, 55981, 55982] },
+  };
+  const found = serviceJointHere({
+    start: [154.229, 157.603], serviceId: 56159,
+    serviceIds: new Set([56159]), joints: [breech],
+  });
+  if (found) {
+    fail("a breech joint is taken as this service's fitting, so a service "
+      + "teeing beside one gets no joint at all \u2014 which is the fault the "
+      + "duplicate fix caused on the day it shipped");
+  }
+
+  for (const kind of ["straight", "bottleend"]) {
+    if (serviceJointHere({
+      start: [0, 0], serviceId: 1, serviceIds: new Set([1]),
+      joints: [jointAt([0.1, 0], [55975], kind)],
+    })) {
+      fail(`a ${kind} joint is taken as a service's fitting`);
+    }
+  }
+}
+
+// 5. Distance still bounds it.
 {
   const far = serviceJointHere({
     start: START, serviceId: SERVICE, serviceIds,
@@ -107,7 +146,7 @@ const FEEDER_JOINT = [47.89539562723424, 72.10918850891125];
   }
 }
 
-// 5. Nothing there: the service needs its own.
+// 6. Nothing there: the service needs its own.
 {
   if (serviceJointHere({ start: START, serviceId: SERVICE, serviceIds, joints: [] })) {
     fail("a joint is found where there are none");
@@ -118,7 +157,7 @@ const FEEDER_JOINT = [47.89539562723424, 72.10918850891125];
   }
 }
 
-// 6. The routine asks this question rather than measuring for itself.
+// 7. The routine asks this question rather than measuring for itself.
 {
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   const at = canvas.indexOf("Joint_Reasons: [\"service\"],");

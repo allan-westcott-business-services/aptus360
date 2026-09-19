@@ -159,7 +159,21 @@ export const JOINT_SEARCH_M = 1;
        one here before the cable had an id.
 
    A joint that already holds a DIFFERENT service belongs to that
-   plot, however close it is, and this service still needs its own. */
+   plot, however close it is, and this service still needs its own.
+
+   ── And only a SERVICE joint can be one ──
+
+   The unclaimed-fitting rule above says "holds no other service", and
+   a breech joint holds no service at all: three mains and nothing
+   else. So a service teeing within a metre of one was read as already
+   jointed and got no fitting — 56159 at breech 56014 on project 16,
+   0.839 m away, reported from use.
+
+   A breech, a straight or a bottle end is a different fitting doing a
+   different job, and a service tapped beside one still needs its own.
+   Where a joint is genuinely both, joints.js has already split it into
+   two — see the `bottleend` and `service` pair it emits — so requiring
+   the kind here costs nothing and closes the hole. */
 export function serviceJointHere({
   start, serviceId, joints = [], serviceIds = new Set(),
   withinM = JOINT_SEARCH_M,
@@ -169,6 +183,12 @@ export function serviceJointHere({
   for (const j of joints) {
     const at = (j.Geometry || [])[0];
     if (!at) continue;
+    /* The kind, read from either place it is written: `Joint_Type` is
+       what the fitting says it is, `Joint_Reasons` what put it there,
+       and a joint made by hand carries one without the other. */
+    const kind = String(j.Attributes?.Joint_Type || "");
+    const reasons = j.Attributes?.Joint_Reasons || [];
+    if (kind !== "service" && !reasons.includes("service")) continue;
     if (Math.hypot(at[0] - start[0], at[1] - start[1]) > withinM) continue;
     const held = (j.Attributes?.Joint_Cables || []).map(Number);
     if (held.includes(mine)) return j;

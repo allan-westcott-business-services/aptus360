@@ -469,23 +469,52 @@ export function buildFeederModel(features = [], opts = {}) {
   for (const f of features) {
     if (f.Feature_Type !== "line" || f.Layer_Key !== "electric") continue;
     if (!String(f.Attributes?.Line_Type ?? "").includes("main")) continue;
-    const scale = measuredScale(f);
-    if (scale === 1) continue;
+    const stated = Number(f.Attributes?.Measured_Length_m ?? 0) || 0;
+    if (!(stated > 0)) continue;
     const g = f.Geometry || [];
+
+    /* ── Collected first, scaled second ──
+
+       The edges this cable covers, and what the DIG measures across
+       them. The scale is then `stated ÷ that`, so the covered edges
+       add up to exactly the length somebody typed.
+
+       It was `stated ÷ the cable's own drawn length`, applied edge by
+       edge, and that is only right when the cable and the path
+       beneath it are drawn to the same length. They are not: A3 is
+       drawn 107.27 m over a trench path measuring 103.6, so 94.2 m
+       entered came out as 91.0 — every leg short, by its own ratio,
+       which looks like a rounding fault and is a different length.
+
+       Two drawings of one route disagreeing by a few per cent is
+       ordinary: the cable is drawn with its own vertices and the dig
+       with the dig's. The measurement is a statement about the RUN,
+       so the run is what it has to total. */
+    const covered = [];
+    let coveredDrawn = 0;
     for (let i = 0; i + 1 < g.length; i++) {
       const a = nodeAt(g[i]);
       const b = nodeAt(g[i + 1]);
       if (a < 0 || b < 0 || a === b) continue;
-      const k = edgeKey(a, b);
       /* Only where the trench already joins the two: a cable segment
          that cuts a corner the dig does not is not an edge. */
       if (!(adj.get(a) || []).some((e) => e.to === b)) continue;
+      const k = edgeKey(a, b);
+      if (covered.some((c) => c.k === k)) continue;
+      const drawn = edgeM.get(k) ?? dist(nodes[a], nodes[b]);
+      covered.push({ k, drawn });
+      coveredDrawn += drawn;
+    }
+    if (!covered.length || !(coveredDrawn > 0)) continue;
+
+    const scale = stated / coveredDrawn;
+    for (const c of covered) {
       /* The cable's figure wins over the trench's. They are two
          statements about one run and the cable's is about the thing
          the electricity travels through; taking the smaller, as the
          trench rule does between two trenches, would silently prefer
          whichever happened to be lower. */
-      edgeM.set(k, dist(g[i], g[i + 1]) * scale);
+      edgeM.set(c.k, c.drawn * scale);
     }
   }
 

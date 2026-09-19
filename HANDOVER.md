@@ -218,6 +218,7 @@ caught a fault that had already shipped at least once.
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checkenquiryfile.mjs` | An enquiry takes a document: straight to storage, and only its own |
 | `node checktrunkload.mjs` | A link box's input carries what it serves, each customer once |
 | `node checkservicejoint.mjs` | One service, one joint: the cables decide, the distance shortlists |
 | `node checkvdsubmit.mjs` | The Submit sheet against the submission workbook, to six decimal places |
@@ -6871,6 +6872,54 @@ characters is a hundred lines of prose and no rules at all.
      next statement, the next function. **A window in a source check
      should be bounded by syntax, never by a character count.** If
      this pattern appears again, it is the same fault.
+
+161. **An enquiry takes a document (0230).** A `file` question used
+     to say "Documents cannot be attached here yet. Send this enquiry
+     and we will ask you for it" — honest while there was nowhere to
+     put one, and a round trip on every enquiry that needed a drawing.
+
+     **The file does not travel in the enquiry.** It goes straight to
+     storage the moment it is chosen, on a signed slot from
+     `/portal/enquiry-upload`, and the answer keeps the path. A
+     browser cannot hold a file across a reload, and a sheet with
+     five drawings in its body would not arrive.
+
+     **The upload happens before the submission exists**, so there is
+     no submission id to key the path on. It is keyed on the BRANCH,
+     taken from the signed-in account, with a random segment per
+     file. The client hands the path back at submit time, and the
+     server accepts it only if it begins with that account's own
+     branch folder — `mineOrNull` in portal.js. Without that test an
+     enquiry could claim another company's document by naming its
+     path. A path that fails is DROPPED rather than refused: losing a
+     sheet somebody has just spent ten minutes on is worse than an
+     answer that arrives without its document.
+
+     **Answered means landed.** The answer is `{ fileName, path }`
+     and the path arrives when the upload finishes, so a file chosen
+     but still going up does not satisfy a required question — both
+     `missingAnswers` and the Next button test the path, not the
+     name. A failed upload clears the answer outright, because one
+     holding a name and no path reads as attached and arrives empty.
+
+     The answer is stored as the FILE NAME, so an enquiry reads
+     without opening anything. Staff open it from the enquiry panel
+     through a signed link minted per click from the answer row —
+     never from a path in the query, which would let any signed-in
+     member of staff mint a link to anything in the bucket.
+
+     One file per question, deliberately. A `file` question asks for a
+     document, singular, and choosing again replaces it, the way the
+     portal's own document requests work. A set of files is a
+     different question type and can have its own table then.
+
+     Note on 0230: `Enquiry_Answer` was built in the SQL editor and
+     the only migration naming it is 0226, which describes the
+     DUPLICATE design written by mistake (fault 150). 0230 is
+     therefore additive and guarded and asserts nothing about the
+     rest of the table. `enquiries.js` already selected `Storage_Path`
+     before this, so the column may already exist — the guard covers
+     both cases.
 
 ## Decisions worth knowing
 

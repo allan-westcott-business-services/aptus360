@@ -21,6 +21,25 @@
 
 import { supabase, json, fail, withAuth } from "./_supabase.js";
 
+/* ── A path this account could have been given ──
+
+   An enquiry attachment is uploaded before the enquiry exists, so
+   the client hands its path back at submission time. That path is
+   accepted only when it begins with the folder this endpoint would
+   have composed for THIS account's branch — otherwise an enquiry
+   could claim a document belonging to another company by naming it.
+
+   Returns the path when it is theirs and null when it is not, so the
+   caller can drop a bad attachment rather than refuse the whole
+   enquiry: losing a sheet somebody has just filled in is a worse
+   outcome than an answer that arrives without its document. */
+function mineOrNull(path, access) {
+  const p = String(path ?? "");
+  if (!p) return null;
+  const branch = Number(access?.Branch_ID) || 0;
+  return p.startsWith(`enquiry/branch-${branch}/`) ? p.slice(0, 400) : null;
+}
+
 /* The columns a project actually has. `Project_Name` and
    `Project_Number` were guesses and neither exists: a project is known
    by its SITE NAME and by Display_Ref, which is the reference printed
@@ -493,6 +512,46 @@ export default withAuth(async function handler(req, context, user) {
       return json({ form: mine, questions: questions || [], options });
     }
 
+    /* ── A document for a file question ──
+
+       An enquiry's attachment goes up BEFORE the enquiry exists: a
+       developer part way through a sheet picks a drawing, and the
+       submission is not made until they reach the end and send it.
+       So there is no submission id to hang the file on, and the path
+       cannot be keyed on one.
+
+       It is keyed on the BRANCH instead, taken from the signed-in
+       account and never from the body — the same rule the project
+       upload follows, and for the same reason: a path from a caller
+       is a path somebody can point at another company's folder.
+
+       A random segment per file, so two uploads of `plan.pdf` from
+       one branch do not overwrite each other, and so a path cannot be
+       guessed by anybody who knows the branch.
+
+       Nothing is written to the database here. The file sits in the
+       bucket unreferenced until the enquiry is sent; an abandoned
+       sheet leaves an orphan, which is a tidy-up job and not a
+       correctness one. */
+    if (what === "enquiry-upload" && req.method === "POST") {
+      if (!access) return json({ error: "No portal account." }, 403);
+
+      const body = await req.json().catch(() => ({}));
+      const fileName = String(body?.fileName || "").slice(0, 200);
+      if (!fileName) return json({ error: "A file is needed." }, 400);
+
+      const branch = Number(access.Branch_ID) || 0;
+      const safe = fileName.replace(/[^A-Za-z0-9._-]+/g, "-");
+      const token = Math.random().toString(36).slice(2, 12);
+      const path = `enquiry/branch-${branch}/${Date.now()}-${token}/${safe}`;
+
+      const { data: link, error: sErr } = await db.storage
+        .from("portal").createSignedUploadUrl(path);
+      if (sErr) throw sErr;
+
+      return json({ url: link?.signedUrl ?? null, path });
+    }
+
     /* ── Sending one in ──
 
        The submission belongs to the BRANCH, and the branch is taken
@@ -535,6 +594,23 @@ export default withAuth(async function handler(req, context, user) {
                served \u2014 not from the body, which a caller writes. */
             Question_Text: String(a.questionText ?? "").slice(0, 2000),
             Answer_Text: a.answer == null ? null : String(a.answer).slice(0, 4000),
+            /* ── The file, if the answer is one ──
+
+               The path is accepted back only if it begins with THIS
+               account's branch folder, which is the same test the
+               project upload makes: the caller may hand back a path
+               this endpoint would have composed for them, and no
+               other. Without it an enquiry could claim a document
+               belonging to another company by naming its path.
+
+               A path that fails the test is dropped rather than
+               refused, so one bad attachment cannot lose an enquiry
+               somebody has just spent ten minutes filling in. It
+               shows as an answer with no document, which is visible,
+               where a 400 would be a sheet that vanished. */
+            Storage_Path: mineOrNull(a.filePath, access),
+            File_Name: mineOrNull(a.filePath, access)
+              ? String(a.fileName ?? "").slice(0, 200) || null : null,
             Answered_At: new Date().toISOString(),
           })),
         );

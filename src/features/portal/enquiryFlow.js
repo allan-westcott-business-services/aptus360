@@ -164,6 +164,12 @@ export function missingAnswers(sheet = [], answers = {}) {
       const a = answerFor(answers, q);
       if (a == null || a === "") return true;
       if (Array.isArray(a) && !a.length) return true;
+      /* A document is answered once it has LANDED. Its answer is
+         `{ fileName, path }` and the path arrives when the upload
+         finishes, so a file chosen but still going up is not yet an
+         answer — sending then would file an enquiry pointing at a
+         document that is not there. */
+      if (q.Kind === "file") return !a.path;
       return false;
     });
 }

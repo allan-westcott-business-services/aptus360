@@ -93,7 +93,7 @@ export default withAuth(async function handler(req, context, user) {
 
       const { data: answers, error: aErr } = await db.from("Enquiry_Answer")
         .select("Enquiry_Answer_ID,Enquiry_Question_ID,Question_Text,"
-          + "Answer_Text,Storage_Path,Answered_At")
+          + "Answer_Text,Storage_Path,File_Name,Answered_At")
         .eq("Enquiry_Submission_ID", id)
         .order("Enquiry_Answer_ID", { ascending: true });
       if (aErr) throw aErr;
@@ -112,6 +112,37 @@ export default withAuth(async function handler(req, context, user) {
        An enquiry can be decided once. Deciding an already-decided one
        is refused rather than silently overwriting a colleague's answer
        and the date they gave it. */
+    /* ── Opening a document somebody attached ──
+
+       A signed link, minted here and good for a few minutes, rather
+       than a public URL: the bucket holds one company's drawings
+       beside another's, and a link that never expires is a link that
+       gets forwarded.
+
+       The path is read from the ANSWER ROW, never from the query.
+       Taking it from the caller would let any signed-in member of
+       staff mint a link to anything in the bucket by typing a path. */
+    if (what === "file") {
+      const id = Number(url.searchParams.get("answer"));
+      if (!Number.isFinite(id)) return json({ error: "Which answer?" }, 400);
+
+      const { data: row, error } = await db.from("Enquiry_Answer")
+        .select("Storage_Path,File_Name")
+        .eq("Enquiry_Answer_ID", id).single();
+      if (error) throw error;
+      if (!row?.Storage_Path) {
+        return json({ error: "No document was attached to that answer." }, 404);
+      }
+
+      const { data: link, error: sErr } = await db.storage
+        .from("portal")
+        .createSignedUrl(row.Storage_Path, 300, {
+          download: row.File_Name || true,
+        });
+      if (sErr) throw sErr;
+      return json({ url: link?.signedUrl ?? null, fileName: row.File_Name });
+    }
+
     if (what === "decide" && req.method === "POST") {
       const body = await req.json().catch(() => ({}));
       const id = Number(body?.id);

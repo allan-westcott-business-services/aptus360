@@ -236,9 +236,33 @@ const asked = (sheet, answers) =>
   if (!/disabled=\{current\.Is_Required && !answeredHere\}/.test(ui)) {
     fail("a required question can be passed over with Next");
   }
-  /* A file question says plainly that it cannot take one yet. */
-  if (!/Documents cannot be attached here yet/.test(ui)) {
-    fail("a document question shows a control that does nothing");
+  /* ── A file question takes a file ──
+
+     It used to say it could not, and that was the honest thing while
+     there was nowhere to put one. There is now, so the case is
+     turned around: what would be wrong today is a question that
+     still refuses, or one that offers a control and loses the file.
+
+     The upload goes straight to storage on a signed slot, because a
+     browser cannot hold a file across a reload and an enquiry with
+     five drawings on it would not fit in one request. */
+  if (/Documents cannot be attached here yet/.test(ui)) {
+    fail("a document question still refuses attachments, which it no longer "
+      + "has to \u2014 storage takes them now");
+  }
+  if (!/onFile\(q, e\.target\.files\?\.\[0\]\)/.test(ui)) {
+    fail("a document question has no file control");
+  }
+  if (!/enquiry-upload/.test(ui)) {
+    fail("the file is not sent to storage, so it would have to travel in the "
+      + "enquiry itself");
+  }
+  /* And a document counts as answered only once it has LANDED.
+     Moving on while the upload is in flight files an enquiry whose
+     answer points at nothing. */
+  if (!/if \(current\.Kind === "file"\) return !!a\.path;/.test(ui)) {
+    fail("a required document question can be passed over while its upload "
+      + "is still going up");
   }
 }
 

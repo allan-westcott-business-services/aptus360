@@ -100,11 +100,8 @@ function Node({ n, depth = 0, onUpload, onDownload, busy }) {
 
 /* The control a question is answered with.
 
-   One place, keyed on the Kind the database stores. A `file` question
-   is shown but not yet accepted: attachments need storage plumbing
-   that is not built, and a control that looks ready and does nothing
-   is worse than one that says so. */
-function renderAnswer(q, answers, setAnswers) {
+   One place, keyed on the Kind the database stores. */
+function renderAnswer(q, answers, setAnswers, onFile, busy) {
   const set = (v) => setAnswers((a) => ({ ...a, [q.Enquiry_Question_ID]: v }));
   const value = answers[q.Enquiry_Question_ID] ?? "";
 
@@ -121,11 +118,38 @@ function renderAnswer(q, answers, setAnswers) {
       onChange={(e) => set(e.target.value)} />;
   }
   if (q.Kind === "file") {
+    /* ── A document ──
+
+       Sent as soon as it is chosen, rather than held until the sheet
+       is: a browser cannot keep a file across a page that reloads,
+       and an enquiry with five drawings on it would arrive as one
+       request big enough to time out.
+
+       So the file goes to storage now and the answer holds where it
+       went. Until it lands there is nothing to show but its name,
+       which is why the state carries both.
+
+       Choosing again replaces it. A file question asks for a
+       document, singular, the same way the portal's own document
+       requests do. */
     return (
-      <p className="pt-quiet">
-        Documents cannot be attached here yet. Send this enquiry and we will
-        ask you for it.
-      </p>
+      <div className="pt-file">
+        <label className="btn">
+          {value?.fileName ? "Choose a different file" : "Choose a file"}
+          <input type="file" hidden disabled={busy}
+            onChange={(e) => onFile(q, e.target.files?.[0])} />
+        </label>
+        {value?.fileName && (
+          <span className="pt-file-name">
+            {value.path
+              ? value.fileName
+              : `${value.fileName} \u2014 sending\u2026`}
+          </span>
+        )}
+        {!value?.fileName && (
+          <span className="pt-quiet">No document chosen yet.</span>
+        )}
+      </div>
     );
   }
   if (q.Kind === "choice_one") {
@@ -266,9 +290,50 @@ export default function DeveloperPortal({ onSignOut, who }) {
       const a = answers[current.Enquiry_Question_ID];
       if (a == null || a === "") return false;
       if (Array.isArray(a) && !a.length) return false;
+      /* A document counts once it has LANDED, not once it has been
+         chosen. Moving on from a required question while the upload
+         is still in flight would send an enquiry whose answer points
+         at nothing. */
+      if (current.Kind === "file") return !!a.path;
       return true;
     })()
     : true;
+
+  /* ── Sending a document up ──
+
+     The same two-step the portal's own document requests use: ask the
+     server for a signed slot, PUT the file straight into storage, and
+     keep the path it came back with. The file never passes through
+     the function, which is what keeps a twenty-megabyte drawing from
+     having to fit in a request body.
+
+     The name is recorded before the upload starts so the question can
+     say what is going up while it goes; the path arrives after, and
+     is what makes the answer count as answered. */
+  async function attachToAnswer(q, file) {
+    if (!file) return;
+    setBusy(true); setError("");
+    setAnswers((a) => ({
+      ...a, [q.Enquiry_Question_ID]: { fileName: file.name, path: null },
+    }));
+    try {
+      const ask = await http.post("/portal/enquiry-upload",
+        { fileName: file.name });
+      if (!ask?.url) throw new Error("Could not start the upload.");
+
+      const put = await fetch(ask.url, { method: "PUT", body: file });
+      if (!put.ok) throw new Error(`The upload failed (${put.status}).`);
+
+      setAnswers((a) => ({
+        ...a, [q.Enquiry_Question_ID]: { fileName: file.name, path: ask.path },
+      }));
+    } catch (e) {
+      /* Cleared, not left half done. An answer holding a name and no
+         path would look attached and arrive empty. */
+      setAnswers((a) => ({ ...a, [q.Enquiry_Question_ID]: null }));
+      setError(e.message);
+    } finally { setBusy(false); }
+  }
 
   async function submitEnquiry() {
     setSending(true);
@@ -297,7 +362,15 @@ export default function DeveloperPortal({ onSignOut, who }) {
                reference number. Unambiguous either way, which
                dd/mm/yy would not be. */
             answer: q.options?.length ? labels(a)
-              : q.Kind === "date" ? dateText(a) : a,
+              : q.Kind === "date" ? dateText(a)
+                /* A document's answer READS as its file name, so an
+                   enquiry makes sense to whoever picks it up without
+                   opening anything. Where the file actually is goes
+                   beside it, and the server only keeps a path it
+                   would have issued to this account. */
+                : q.Kind === "file" ? (a?.fileName ?? null) : a,
+            ...(q.Kind === "file" && a?.path
+              ? { filePath: a.path, fileName: a.fileName } : {}),
           };
         });
       const r = await http.post("/portal/enquiry",
@@ -543,7 +616,12 @@ export default function DeveloperPortal({ onSignOut, who }) {
                             .map((o) => o.Label).join(", ")
                           : q.Kind === "date"
                             ? dateText(answers[q.Enquiry_Question_ID])
-                            : String(answers[q.Enquiry_Question_ID] ?? "")}
+                            /* A file answer is an object, and String()
+                               on one reads "[object Object]" in the
+                               list of what has been answered. */
+                            : q.Kind === "file"
+                              ? (answers[q.Enquiry_Question_ID]?.fileName ?? "")
+                              : String(answers[q.Enquiry_Question_ID] ?? "")}
                       </span>
                     </div>
                   ))}
@@ -557,7 +635,8 @@ export default function DeveloperPortal({ onSignOut, who }) {
                       {current.Help_Text && (
                         <p className="pt-quiet">{current.Help_Text}</p>
                       )}
-                      {renderAnswer(current, answers, setAnswers)}
+                      {renderAnswer(current, answers, setAnswers,
+                        attachToAnswer, busy)}
                     </div>
                   ) : (
                     <p className="pt-quiet">
@@ -753,6 +832,10 @@ const CSS = `
 .pt h1 { font-size: 22px; margin: 10px 0 4px; }
 .pt h2 { font-size: 15px; margin: 26px 0 8px; }
 .pt-quiet { color: var(--muted); font-size: 13px; margin: 2px 0; }
+/* A file question: the button and what has been chosen, on one line,
+   so the name sits beside the control that set it. */
+.pt-file { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pt-file-name { font-size: 13px; word-break: break-all; }
 .pt-note { margin-top: 24px; }
 /* The company and its office: the heading of the page. Bigger than
    the list's label below it, because it is the thing that identifies

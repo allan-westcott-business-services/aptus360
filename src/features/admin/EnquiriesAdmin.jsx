@@ -82,6 +82,19 @@ export default function EnquiriesAdmin() {
     [rows],
   );
 
+  /* A signed link, minted when it is asked for and opened straight
+     away. Not held in the row: a link that sat in the page would go
+     stale while somebody read the enquiry, and the failure would be
+     a dead button rather than a slow one. */
+  async function openFile(a) {
+    setError("");
+    try {
+      const r = await http.get(`/enquiries/file?answer=${a.Enquiry_Answer_ID}`);
+      if (!r?.url) throw new Error("That document is not available.");
+      window.open(r.url, "_blank", "noopener");
+    } catch (e) { setError(e.message); }
+  }
+
   async function decide(decision) {
     setBusy(true);
     try {
@@ -177,6 +190,20 @@ export default function EnquiriesAdmin() {
                     <span className="eq-q">{a.Question_Text}</span>
                     <span className="eq-a">
                       {a.Answer_Text || <em className="hint">Not answered</em>}
+                      {/* ── The document, where one came with it ──
+
+                          Beside the answer rather than in a list of
+                          its own: the answer reads as the file's
+                          name, and the thing somebody wants next is
+                          to open it. A separate attachments panel
+                          would put the file a scroll away from the
+                          question it answers. */}
+                      {a.Storage_Path && (
+                        <button type="button" className="btn sm eq-file"
+                          onClick={() => openFile(a)}>
+                          Open {a.File_Name || "document"}
+                        </button>
+                      )}
                     </span>
                   </div>
                 ))}
@@ -254,6 +281,7 @@ const CSS = `
 .eq-head h3 { margin: 0; font-size: 16px; }
 
 .eq-answers { display: grid; gap: 14px; margin-bottom: 18px; }
+.eq-file { margin-left: 8px; vertical-align: baseline; }
 .eq-answer { display: grid; gap: 3px; padding-bottom: 12px;
   border-bottom: 1px dashed var(--border); }
 .eq-q { font-size: 12px; color: var(--muted); }

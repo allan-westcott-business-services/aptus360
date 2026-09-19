@@ -1,0 +1,65 @@
+-- ── A document attached to an enquiry answer ──
+--
+-- A `file` question on an enquiry sheet asked for a document and the
+-- portal had nowhere to put one, so it said so: "Documents cannot be
+-- attached here yet. Send this enquiry and we will ask you for it."
+-- That was honest and it cost a round trip on every enquiry that
+-- needed a drawing, a site plan or a load schedule.
+--
+-- One file per answer, held as two columns on the answer itself
+-- rather than as a table of its own:
+--
+--   Storage_Path   where it sits in the `portal` bucket. Composed by
+--                  the server, never taken from the caller.
+--   File_Name      what the developer called it, for showing and for
+--                  the download's filename.
+--
+-- A table would be the right shape for MANY files against one answer,
+-- and this is deliberately not that. A `file` question asks for a
+-- document — singular — and choosing another replaces the first, the
+-- same way the portal's own document requests work. If a question
+-- ever needs to collect a set, that is a different question type and
+-- it can have its own table then.
+--
+-- ── The folder is not the record for this table ──
+--
+-- `Enquiry_Answer` was built in the Supabase SQL editor and the only
+-- migration naming it is 0226, which describes the DUPLICATE design
+-- that was written by mistake (see HANDOVER 150). Do not read 0226 as
+-- the shape of this table.
+--
+-- So this migration is additive and guarded, and asserts nothing
+-- about what else is there. Run the first check below before it if
+-- you want to see what you have.
+ALTER TABLE "Enquiry_Answer"
+  ADD COLUMN IF NOT EXISTS "Storage_Path" text,
+  ADD COLUMN IF NOT EXISTS "File_Name" text;
+
+-- Attachments live beside the portal's other documents, in the
+-- `portal` bucket, under an `enquiry/` prefix. Nothing is created
+-- here: the bucket already exists and the paths are composed by the
+-- portal function.
+--
+--   enquiry/branch-<branch id>/<random>/<file name>
+--
+-- Keyed on the BRANCH rather than on the submission, because the file
+-- is uploaded before the submission exists — a developer attaches a
+-- document part way through a sheet they have not sent yet. The
+-- branch comes from the signed-in account, so the prefix is the thing
+-- that makes a path claimable: an account may only hand back a path
+-- beginning with its own branch's folder.
+
+-- Checks worth running:
+--
+--   SELECT column_name, data_type FROM information_schema.columns
+--    WHERE table_name = 'Enquiry_Answer' ORDER BY ordinal_position;
+--   -- expect Storage_Path and File_Name at the end, both text, both null
+--
+--   SELECT "Enquiry_Submission_ID", "Question_Text", "File_Name"
+--     FROM "Enquiry_Answer" WHERE "Storage_Path" IS NOT NULL
+--    ORDER BY "Answered_At" DESC LIMIT 20;
+--   -- after the first enquiry with a document on it
+--
+--   SELECT COUNT(*) FROM "Enquiry_Answer"
+--    WHERE "Storage_Path" IS NOT NULL AND "File_Name" IS NULL;
+--   -- expect 0: a stored file always keeps the name it arrived with

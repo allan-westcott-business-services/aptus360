@@ -54,10 +54,46 @@
 
 import { runLength, drawnLength } from "./lengths.js";
 
-const KEY_DP = 3;
+/* ── How near two ends have to be to be one node ──
 
-const keyOf = (pt) => `${round(pt?.[0])},${round(pt?.[1])}`;
+   Half a metre. The walk used to join legs by an exact coordinate,
+   and on project 16 that worked because its mains share endpoints to
+   the last decimal place. Project 20 does not: consecutive legs stop
+   0.351 m short of each other and the first starts 0.351 m from the
+   origin, so nothing joined to anything, every one of its sixteen
+   mains came back unreached and the sheet was blank.
+
+   A drawing is not built to a coordinate. A cable ends where it was
+   drawn to end, a joint sits where somebody put it, and two legs
+   meeting at a junction are the same node whether or not their last
+   vertices agree. The nearest genuinely separate nodes on either
+   drawing are tens of metres apart, so half a metre separates the
+   cases with room to spare. */
+export const NODE_EPS_M = 0.5;
+
+const KEY_DP = 3;
 const round = (n) => Math.round((Number(n) || 0) * 10 ** KEY_DP) / 10 ** KEY_DP;
+
+/* Ends within `eps` of one another share a key.
+
+   First come, first named: each end is compared against the ones
+   already seen and takes that key if it is close enough, otherwise
+   starts its own. Deliberately not a grid — two ends either side of
+   a gridline are near each other and would land in different cells,
+   which is the fault this replaces wearing a different hat. */
+function clusterer(eps = NODE_EPS_M) {
+  const seen = [];
+  return (pt) => {
+    const x = Number(pt?.[0]) || 0;
+    const y = Number(pt?.[1]) || 0;
+    for (const c of seen) {
+      if (Math.hypot(c.x - x, c.y - y) <= eps) return c.key;
+    }
+    const key = `${round(x)},${round(y)}`;
+    seen.push({ x, y, key });
+    return key;
+  };
+}
 
 /* Where a circuit starts.
 
@@ -66,6 +102,24 @@ const round = (n) => Math.round((Number(n) || 0) * 10 ** KEY_DP) / 10 ** KEY_DP;
    no origin node — a drawing where the build has not been run yet
    still has a point of connection, and half a sheet is more use than
    none. */
+/* Every origin on the drawing, in the order the walk should use them.
+
+   A site fed from two points of connection has two, one per circuit,
+   and project 20 is exactly that: A0 and B0. Walking from the first
+   alone left circuit B's seven legs unreached and off the sheet —
+   half a scheme missing from its own submission, which is the fault
+   nobody sees. */
+export function originsOf(features = []) {
+  const feeders = features.filter((f) => f.Feature_Role === "feederpoint"
+    && f.Layer_Key === "electric" && f.Attributes?.Span_Kind === "origin");
+  if (feeders.length) return feeders;
+  const spans = features.filter((f) => f.Feature_Role === "spannode"
+    && f.Layer_Key === "electric" && f.Attributes?.Span_Kind === "origin");
+  if (spans.length) return spans;
+  const pocs = features.filter((f) => f.Feature_Role === "poc");
+  return pocs;
+}
+
 export function originOf(features = []) {
   const feeder = features.find((f) => f.Feature_Role === "feederpoint"
     && f.Layer_Key === "electric" && f.Attributes?.Span_Kind === "origin");
@@ -93,6 +147,9 @@ export function calcSheetRows({
   /* Every span node's label, by where it stands, so a node the
      designer has named keeps its name. */
   const labelAt = new Map();
+  /* Gathered now, keyed after the leg ends have defined the nodes. */
+  const labelSeen = [];
+  const keyOf = clusterer();
   for (const f of features) {
     /* ── Feeder points first, span nodes second ──
 
@@ -124,15 +181,17 @@ export function calcSheetRows({
     const lab = f.Attributes?.Span_Label;
     if (!lab) continue;
     const at = f.Attributes?.Span_Anchor || (f.Geometry || [])[0];
-    const k = keyOf(at);
-    /* A feeder point wins where both stand on one node: it is the
-       one the cable's levels are measured at. */
-    if (role === "feederpoint" || !labelAt.has(k)) labelAt.set(k, String(lab));
+    if (Array.isArray(at)) labelSeen.push([at, { role, label: String(lab) }]);
   }
 
   /* Legs by each of their two ends. A leg appears under both, and is
      spent the first time the walk uses it — which is what stops a ring
-     going round for ever. */
+     going round for ever.
+
+     The LEG ENDS are clustered first and the labelled points second,
+     so a node is defined by the cables meeting there and a feeder
+     point standing a third of a metre away joins it rather than
+     starting a node of its own with nothing attached to it. */
   const outOf = new Map();
   for (const f of mains) {
     const g = f.Geometry || [];
@@ -144,7 +203,21 @@ export function calcSheetRows({
     }
   }
 
-  const originKey = keyOf(origin.Attributes?.Span_Anchor || (origin.Geometry || [])[0]);
+  for (const [at, lab] of labelSeen) {
+    const k = keyOf(at);
+    if (labelAt.has(k) && !String(labelAt.get(k)).startsWith("\u0000")) {
+      /* A feeder point wins where both stand on one node: it is the
+         one the cable's levels are measured at. */
+      if (lab.role === "feederpoint") labelAt.set(k, lab.label);
+    } else {
+      labelAt.set(k, lab.label);
+    }
+  }
+
+  const origins = originsOf(features);
+  const originKeys = origins
+    .map((o) => keyOf(o.Attributes?.Span_Anchor || (o.Geometry || [])[0]));
+  const originKey = originKeys[0];
   const spent = new Set();
   const legs = [];
   let auto = 0;
@@ -155,14 +228,14 @@ export function calcSheetRows({
     labelAt.set(k, n);
     return n;
   };
-  nameFor(originKey);
+  for (const k of originKeys) nameFor(k);
 
   /* Breadth first, so the sheet reads outwards from the point of
      connection a ring at a time rather than diving down one branch to
      its end and coming back — which is the order somebody checking a
      design walks it in. */
-  const queue = [originKey];
-  const seen = new Set([originKey]);
+  const queue = [...originKeys];
+  const seen = new Set(originKeys);
   while (queue.length) {
     const here = queue.shift();
     for (const leg of outOf.get(here) || []) {
@@ -295,20 +368,21 @@ export function calcSheetRows({
     leaving.get(l.fromKey).push(l);
   }
   const routes = [];
-  (function walk(key, sofar) {
+  const walkRoutes = (key, sofar) => {
     const next = leaving.get(key) || [];
     if (!next.length) {
       if (sofar.length) {
         routes.push({
           to: labelAt.get(key) ?? "",
-          nodes: [labelAt.get(originKey) ?? "", ...sofar.map((l) => l.to)],
+          nodes: [labelAt.get(sofar[0].fromKey) ?? "", ...sofar.map((l) => l.to)],
           featureIds: sofar.map((l) => l.leg.Feature_ID),
         });
       }
       return;
     }
-    for (const l of next) walk(l.toKey, [...sofar, l]);
-  }(originKey, []));
+    for (const l of next) walkRoutes(l.toKey, [...sofar, l]);
+  };
+  for (const k of originKeys) walkRoutes(k, []);
 
   return {
     rows,

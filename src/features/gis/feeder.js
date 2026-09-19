@@ -2264,11 +2264,29 @@ export function circuitBuildParts(features = [], opts = {}) {
           via: `way ${w}` });
         continue;
       }
+      /* ── What this output actually serves ──
+
+         `totalMeters` is the count at the way's root: every customer
+         beyond it, counted once. NOT the sum of its sections'
+         counts — a section's figure is CUMULATIVE, so adding them up
+         counts each customer once for every section they sit behind.
+
+         On project 20 that made the trunk into Link Box 1 read 82
+         customers where circuit 1 has 41: 27 + 14 at the two way
+         roots is the answer, and 27 + 14 + 6 + 6 + 6 + 16 + 1 + 6 is
+         what was being added. The trunk is 327 m of 300 mm, so the
+         sheet charged 41 customers that do not exist, weighted at a
+         half, to the longest run in the scheme — 2.5 points of volt
+         drop out of 11.
+
+         It reads as plausible from every direction. The trunk is
+         genuinely the heaviest cable on the drawing and a big number
+         against it looks right; nothing fails; and the error is
+         invisible unless somebody adds the circuit's meters up by
+         hand. */
       const tally = servedBy.get(Number(box.Feature_ID));
-      for (const sec of r.sections) {
-        tally.meters += sec.meters || 0;
-        tally.kva += sec.kva || 0;
-      }
+      tally.meters += r.totalMeters || 0;
+      tally.kva += r.totalKva || 0;
       wayParts.push({ ...r, via: `way ${w}`, box, way: w });
     }
   }

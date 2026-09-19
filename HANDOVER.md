@@ -218,6 +218,7 @@ caught a fault that had already shipped at least once.
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checktrunkload.mjs` | A link box's input carries what it serves, each customer once |
 | `node checkservicejoint.mjs` | One service, one joint: the cables decide, the distance shortlists |
 | `node checkvdsubmit.mjs` | The Submit sheet against the submission workbook, to six decimal places |
 | `node checkcalcsheet.mjs` | The sheet reads the drawing: right legs, right nodes, one route |
@@ -6794,6 +6795,55 @@ characters is a hundred lines of prose and no rules at all.
      the second drawing was the wrong place to express the first
      drawing's fact. Both attempts shipped, and both were reported
      back within the hour by somebody reading the table.
+
+158. **A link box's input carried double its load.** Found by reading
+     project 20's Aptus Calc Sheet against the meters on the drawing.
+
+     The trunk's load was the sum of every SECTION's meter count
+     across all the box's outputs, and a section's count is
+     CUMULATIVE — so each customer was counted once for every section
+     they sit behind. Circuit 1 has 41 meters; its trunk read 82.
+     27 + 14 at the two way roots is the answer, and
+     27 + 14 + 6 + 6 + 6 + 16 + 1 + 6 is what was being added.
+     `feederSections` has returned `totalMeters` — the count at the
+     root, each customer once — all along.
+
+     It cost 2.5 points of volt drop out of 11 on that scheme: the
+     trunk is 327 m of 300 mm, and 41 customers that do not exist were
+     charged to it at half weight. It also sized the input against
+     double the load, which is the harmless direction and is probably
+     why nobody looked.
+
+     Worth naming the shape: the figure was plausible from every
+     direction. The trunk IS the heaviest cable on a drawing, so a big
+     number against it looks right; nothing failed; and the only way
+     to see it by eye is to add a circuit's meters up by hand.
+
+     `checktrunkload.mjs` holds both halves — a forked run where the
+     sections sum to 6 against a total of 3, and the call site reading
+     the total. The second is a source assertion, because reaching the
+     box path needs a drawing with ways assigned and seeds split
+     across them; a behavioural case over a real link box is still
+     wanted and is written down as such in the check.
+
+159. **The calc sheet could not read a second drawing at all.**
+     Project 20 came back blank, all sixteen mains unreached, and the
+     cause was two assumptions project 16 happened to satisfy.
+
+     **Legs were joined by an exact coordinate.** Project 20's mains
+     stop 0.351 m short of one another and of the origin. Ends within
+     half a metre are one node now — a drawing is not built to a
+     coordinate, and the nearest genuinely separate nodes on either
+     drawing are tens of metres apart.
+
+     **The walk started at one origin.** A site fed from two points of
+     connection has two, and circuit B's seven legs were simply off
+     the sheet: half a scheme missing from its own submission. It
+     walks from every origin.
+
+     Both are the same lesson as fault 154's node naming: a reader
+     written against one real drawing inherits that drawing's
+     accidents as rules. The second drawing is where they show.
 
 ## Decisions worth knowing
 

@@ -121,6 +121,62 @@ export function teeIntoMains(mainsGeometry, foot, tol) {
    Anchored at the end of the key rather than searched for anywhere in
    it, so a type someone later calls `existing_route` or
    `trench_pre_existing_survey` does not silently become one of these. */
+/* ── How near a fitting has to be to be the same fitting ──
+
+   A shortlist radius, not a decision. A metre is comfortably wider
+   than any disagreement between two computations of one tee and
+   comfortably narrower than the span of a site; what actually decides
+   is `serviceJointHere` below. */
+export const JOINT_SEARCH_M = 1;
+
+/* Is the tee at `start` already jointed, for the service `serviceId`?
+
+   Returns the existing joint, or null when this service needs one of
+   its own.
+
+   ── Why this is not a radius ──
+
+   It was: any electric joint within 0.25 m of a service's start meant
+   the tee was already jointed. The tee gets computed twice — Place
+   Feeder Joints puts the fitting on the feeder model's node, Auto Lay
+   Service Cable puts it where the cable was snapped to the main — and
+   the two answers differ by a quarter to half a metre. So the second
+   routine placed a second joint beside the first, on plot after plot.
+
+   Widening the radius cannot fix it. On the drawing that showed the
+   fault the duplicates ran to 0.467 m and the nearest GENUINE pair
+   was 0.605 m: two adjacent plots, each properly jointed to the same
+   main. A threshold that catches the first and spares the second is
+   fitted to one estate, and the next one with tighter frontages has
+   its joints silently merged — which is the worse fault of the two,
+   because a missing joint is a fitting nobody orders and nobody digs.
+
+   So the CABLES decide. A joint near the tee is this service's if:
+
+     - it already holds this service, whatever the distance says; or
+     - it holds no other service at all, which is an unclaimed fitting
+       at this tee — the ordinary case, where Place Feeder Joints put
+       one here before the cable had an id.
+
+   A joint that already holds a DIFFERENT service belongs to that
+   plot, however close it is, and this service still needs its own. */
+export function serviceJointHere({
+  start, serviceId, joints = [], serviceIds = new Set(),
+  withinM = JOINT_SEARCH_M,
+} = {}) {
+  if (!Array.isArray(start)) return null;
+  const mine = Number(serviceId);
+  for (const j of joints) {
+    const at = (j.Geometry || [])[0];
+    if (!at) continue;
+    if (Math.hypot(at[0] - start[0], at[1] - start[1]) > withinM) continue;
+    const held = (j.Attributes?.Joint_Cables || []).map(Number);
+    if (held.includes(mine)) return j;
+    if (!held.some((id) => id !== mine && serviceIds.has(Number(id)))) return j;
+  }
+  return null;
+}
+
 export const EXISTING_SUFFIX = "_existing";
 
 export const isExistingType = (key) =>

@@ -495,7 +495,20 @@ const utils = () => ["electric"];
 {
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   const at = canvas.indexOf("── And the joint that makes the connection ──");
-  const body = at < 0 ? "" : canvas.slice(at, at + 2600);
+  /* To the end of the block, not a fixed number of characters.
+
+     This took 2600 from the anchor. When the duplicate-joint fix was
+     written the reasoning above the code grew, the assertions below
+     fell outside the window, and three cases reported that Auto Lay
+     had stopped placing service joints — about code that was placing
+     them correctly for the first time.
+
+     A window measured in characters is a window that closes whenever
+     somebody explains themselves. Bounded by the statement that ends
+     the block instead. */
+  const ends = at < 0 ? -1 : canvas.indexOf("jointCount += 1;", at);
+  const body = at < 0 ? ""
+    : canvas.slice(at, ends > at ? ends + 200 : at + 2600);
 
   if (!body) fail("laying a service places no joint where it meets the main");
   else {

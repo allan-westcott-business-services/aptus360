@@ -43,6 +43,7 @@ import { splitByBoundary, boundaryPolygons, pointInAny, pointInPolygon, surfaceF
 import {
   planAutoService, mainsTrenches, serviceMoved, circuitAtTee, teeIntoMains, nearestOnPolyline,
   isServed, meterHasService, layServices, isExistingFeature, skipSummary,
+  serviceJointHere,
 } from "./autoService.js";
 import { originMissing,
   circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, metredSuppliesInside, circuitKva,
@@ -19370,11 +19371,53 @@ export default function GISCanvasPage() {
       if (utility === "electric") {
         const already = world.filter((f) => f.Feature_Role === "joint"
           && f.Layer_Key === "electric" && (f.Geometry || []).length);
+
+        /* ── Which ids are services ──
+
+           Needed to tell "this joint already belongs to another plot"
+           from "this joint is the one I am about to make". Both the
+           drawing's services and the ones just laid, because two of
+           these can tee into the same main a foot apart. */
+        const serviceIds = new Set([...world, ...made]
+          .filter((f) => f.Feature_Type === "line"
+            && String(f.Attributes?.Line_Type || "").includes("service"))
+          .map((f) => Number(f.Feature_ID)));
+
         for (const f of made) {
           const start = (f.Geometry || [])[0];
           if (!start) continue;
-          const near = already.some((j) => Math.hypot(
-            j.Geometry[0][0] - start[0], j.Geometry[0][1] - start[1]) <= 0.25);
+          const mine = Number(f.Feature_ID);
+
+          /* ── Is this tee already jointed? ──
+
+             It was a radius: any electric joint within 0.25 m of the
+             service's start meant "already done". Reported from use,
+             with three plots carrying two service joints each.
+
+             The tee gets computed twice and the two answers differ.
+             Place Feeder Joints puts the fitting on the feeder model's
+             node; this routine puts it where the cable was snapped to
+             the main. On the drawing that showed the fault those two
+             sat 0.25 to 0.47 m apart — just outside the radius, every
+             time, so the second joint was placed beside the first.
+
+             Widening the radius does not fix it. The nearest GENUINE
+             pair on that same drawing is 0.605 m: two adjacent plots,
+             each with its own joint on one main. Anything that catches
+             a 0.47 m duplicate and spares a 0.605 m neighbour is a
+             tolerance chosen to fit one drawing, and the next estate
+             with tighter plot frontages would have its joints merged.
+
+             So the CABLES decide and the distance only draws the
+             shortlist. A joint within a metre is this service's if it
+             already holds this service, or if it holds no other
+             service at all — an unclaimed fitting at this tee. One
+             that already holds a DIFFERENT service belongs to that
+             plot, however close it is, and this service still needs
+             its own. */
+          const near = serviceJointHere({
+            start, serviceId: mine, joints: already, serviceIds,
+          });
           if (near) continue;
           try {
             const j = await addFeature({

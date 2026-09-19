@@ -218,6 +218,7 @@ caught a fault that had already shipped at least once.
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checkservicejoint.mjs` | One service, one joint: the cables decide, the distance shortlists |
 | `node checkvdsubmit.mjs` | The Submit sheet against the submission workbook, to six decimal places |
 | `node checkcalcsheet.mjs` | The sheet reads the drawing: right legs, right nodes, one route |
 | `node checktextnote.mjs` | A note wraps one way on screen, on paper and in CAD; stays on the annotation layer; resizes, re-wraps and points |
@@ -6654,6 +6655,66 @@ characters is a hundred lines of prose and no rules at all.
      reported different lengths for one leg. It reads `runLength` now,
      and `checkmeasuredlength`'s list of files that must not touch
      `Length_m` has `calcSheetRows.js` on it.
+
+     **And the first fix of it was wrong in a way that read as
+     rounding.** Each edge was scaled by `stated ÷ the cable's own
+     drawn length`, which is right only when the cable and the dig
+     beneath it are drawn to the same length. They are not — two
+     drawings of one route, each with its own vertices, and A3 on
+     project 16 is drawn 107.27 m over a trench path measuring 103.6.
+     So 94.2 entered came out as 91.0, every leg short by its own
+     ratio, and the report looked plausible on every row.
+
+     The edges a cable covers are collected first and scaled by
+     `stated ÷ what the dig measures across them`, so they total
+     exactly the figure somebody typed. Reported from use, twice: the
+     first report was that the measurement was ignored, the second
+     that the numbers were close but not the ones entered. The second
+     is the harder fault, because nothing about it looks wrong.
+
+156. **Auto Lay Service Cable placed two service joints at one tee.**
+     Reported from use, with three plots named. Counted on the drawing:
+     twelve pairs, 0.251 to 0.467 m apart, each pair holding the same
+     main and the same service.
+
+     The tee is computed twice. Place Feeder Joints puts the fitting on
+     the feeder model's node; Auto Lay puts it where the cable was
+     snapped to the main. The two answers differ by a quarter to half a
+     metre, and the routine treated "already jointed" as any electric
+     joint within **0.25 m** — just inside the gap, every time.
+
+     **Widening the radius is the trap.** The nearest GENUINE pair on
+     that same drawing is 0.605 m: 56024 and 56025, two adjacent plots
+     each properly jointed to main 55981. Anything that catches a
+     0.467 m duplicate and spares a 0.605 m neighbour is a number
+     fitted to one estate, and the next one with tighter frontages
+     loses a joint — the worse fault, because a missing fitting is one
+     nobody orders and nobody digs.
+
+     So the CABLES decide and the distance only draws the shortlist
+     (`serviceJointHere` in autoService.js, a metre). A joint near the
+     tee is this service's if it already holds this service, or if it
+     holds no other service at all — an unclaimed fitting, which is
+     what Place Feeder Joints leaves when it marks a tee before the
+     cable has an id. One already holding a DIFFERENT service belongs
+     to that plot however close it is.
+
+     Two things worth carrying forward. The decision came OUT of
+     GISCanvasPage into a pure function, because a rule with three
+     cases and a counter-example cannot be tested inside a
+     thirty-thousand-line component. And `checkautoservice` sliced a
+     fixed 2600 characters from a comment anchor: the added reasoning
+     pushed its assertions outside the window and three cases reported
+     that Auto Lay had stopped placing joints, about code that was
+     placing them correctly for the first time. A window measured in
+     characters closes whenever somebody explains themselves — it is
+     bounded by the statement that ends the block now. The same fault
+     shape as checktextnote's placement slice, one session earlier.
+
+     **Not repaired: the twelve pairs already on project 16.** This
+     stops new ones. The existing duplicates want deleting, and which
+     of each pair to keep is a decision — the feeder one carries
+     Circuit_ID and Ways_In, the Auto Lay one does not.
 
 ## Decisions worth knowing
 

@@ -6845,6 +6845,33 @@ characters is a hundred lines of prose and no rules at all.
      written against one real drawing inherits that drawing's
      accidents as rules. The second drawing is where they show.
 
+160. **Three fixed-window slices went stale in one week.** Worth
+     recording as a pattern rather than three incidents.
+
+     A check that reads source often slices a window from an anchor —
+     `canvas.slice(at, at + 2600)` — and asserts against what is
+     inside it. Every such window closes the moment somebody writes a
+     comment above the code being watched, and the failure is the
+     worst kind: the check reports that working code is broken.
+
+     - `checktextnote`'s placement slice ran into the section mark's
+       branch and accused the note of snapping.
+     - `checkautoservice` took 2600 characters and its three cases
+       reported that Auto Lay had stopped placing service joints — on
+       the day the joint code was fixed.
+     - `checkoverridecarry` took 30000 from the start of
+       `buildLvNetwork`. The first call it looks for is at offset
+       **30064**. Sixty-four characters. Both its cases said a rebuild
+       loses hand-set cable sizes, and somebody asked whether theirs
+       would survive: the suite's answer was no, and the truth was
+       yes. It had been on the standing-failures list long enough to
+       be treated as furniture.
+
+     All three are bounded by the thing that ends the block now — the
+     next statement, the next function. **A window in a source check
+     should be bounded by syntax, never by a character count.** If
+     this pattern appears again, it is the same fault.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

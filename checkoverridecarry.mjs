@@ -141,7 +141,22 @@ if (typeof carriedOverrides !== "function" || typeof carriedOverrideFor !== "fun
   const at = canvas.indexOf("async function buildLvNetwork");
   if (at < 0) fail("buildLvNetwork has gone");
   else {
-    const body = canvas.slice(at, at + 30000);
+    /* To the end of the function, not a fixed number of characters.
+
+       This took 30000 from the start of `buildLvNetwork`. The first
+       call it looks for sits at offset 30064 — sixty-four characters
+       past the window — so both cases reported that a rebuild loses
+       hand-set cable sizes, about a build that carries them
+       correctly. Somebody asked whether their sizes would survive and
+       the suite said no, wrongly.
+
+       Bounded by the next top-level function instead. Third fixed
+       window to go stale in a week: checkautoservice's 2600 and
+       checktextnote's placement slice were the others, all three
+       closing the moment somebody explained themselves above the code
+       being watched. */
+    const nextFn = canvas.indexOf("\n  async function ", at + 10);
+    const body = canvas.slice(at, nextFn > at ? nextFn : canvas.length);
     if (!/carriedOverrides\(/.test(body)) {
       fail("Build LV Network does not build the carry from the runs it deletes");
     }

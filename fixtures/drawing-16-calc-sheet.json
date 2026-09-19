@@ -1,0 +1,591 @@
+[
+{
+"Feature_ID": 33040,
+"Label": "Electric POC",
+"Feature_Type": "point",
+"Feature_Role": "poc",
+"Layer_Key": "electric",
+"Geometry": [
+[
+157.70773568181994,
+214.76571571591555
+]
+],
+"Attributes": {
+"Output_V": 240,
+"Source_Volt_Drop_Pct": 0.79,
+"Source_Loop_Impedance_Ohm": 0.039
+}
+},
+{
+"Feature_ID": 55824,
+"Feature_Type": "point",
+"Feature_Role": "spannode",
+"Layer_Key": "trench",
+"Geometry": [
+[
+157.1169238748991,
+203.63241924077744
+]
+],
+"Attributes": {
+"Span_Label": "1"
+}
+},
+{
+"Feature_ID": 55825,
+"Feature_Type": "point",
+"Feature_Role": "spannode",
+"Layer_Key": "trench",
+"Geometry": [
+[
+154.03696830231604,
+156.78585163788972
+]
+],
+"Attributes": {
+"Span_Label": "3"
+}
+},
+{
+"Feature_ID": 55826,
+"Feature_Type": "point",
+"Feature_Role": "spannode",
+"Layer_Key": "trench",
+"Geometry": [
+[
+105.63698531955906,
+210.22979372480896
+]
+],
+"Attributes": {
+"Span_Label": "2"
+}
+},
+{
+"Feature_ID": 55827,
+"Feature_Type": "point",
+"Feature_Role": "spannode",
+"Layer_Key": "trench",
+"Geometry": [
+[
+149.25285385195286,
+76.02593354997794
+]
+],
+"Attributes": {
+"Span_Label": "7"
+}
+},
+{
+"Feature_ID": 55828,
+"Feature_Type": "point",
+"Feature_Role": "spannode",
+"Layer_Key": "trench",
+"Geometry": [
+[
+166.3916356495538,
+71.023686892296
+]
+],
+"Attributes": {
+"Span_Label": "8"
+}
+},
+{
+"Feature_ID": 55829,
+"Feature_Type": "point",
+"Feature_Role": "spannode",
+"Layer_Key": "trench",
+"Geometry": [
+[
+76.41707155684922,
+183.42608296530705
+]
+],
+"Attributes": {
+"Span_Label": "4"
+}
+},
+{
+"Feature_ID": 55830,
+"Feature_Type": "point",
+"Feature_Role": "spannode",
+"Layer_Key": "trench",
+"Geometry": [
+[
+92.90625396694482,
+212.79400927782348
+]
+],
+"Attributes": {
+"Span_Label": "5"
+}
+},
+{
+"Feature_ID": 55831,
+"Feature_Type": "point",
+"Feature_Role": "spannode",
+"Layer_Key": "trench",
+"Geometry": [
+[
+44.87064874766624,
+72.1419498426873
+]
+],
+"Attributes": {
+"Span_Label": "9"
+}
+},
+{
+"Feature_ID": 55832,
+"Feature_Type": "point",
+"Feature_Role": "spannode",
+"Layer_Key": "trench",
+"Geometry": [
+[
+111.52899417205184,
+124.52715709272906
+]
+],
+"Attributes": {
+"Span_Label": "6"
+}
+},
+{
+"Feature_ID": 55833,
+"Label": "A1",
+"Feature_Type": "line",
+"Feature_Role": "shape",
+"Layer_Key": "electric",
+"Geometry": [
+[
+149.25285385195286,
+76.02593354997794
+],
+[
+44.87064874766624,
+72.1419498426873
+]
+],
+"Attributes": {
+"Line_Type": "elec_main",
+"Length_m": 107.25,
+"Meters": 9,
+"Tail_M": 3,
+"VD_Cable_Size_ID": 1,
+"Manual_VD_Cable_Size_ID": 2,
+"Circuit_ID": 1
+}
+},
+{
+"Feature_ID": 55834,
+"Label": "A2",
+"Feature_Type": "line",
+"Feature_Role": "shape",
+"Layer_Key": "electric",
+"Geometry": [
+[
+149.25285385195286,
+76.02593354997794
+],
+[
+166.3916356495538,
+71.023686892296
+]
+],
+"Attributes": {
+"Line_Type": "elec_main",
+"Length_m": 20,
+"Meters": 1,
+"Tail_M": 2.3,
+"VD_Cable_Size_ID": 1,
+"Circuit_ID": 1
+}
+},
+{
+"Feature_ID": 55835,
+"Label": "A3",
+"Feature_Type": "line",
+"Feature_Role": "shape",
+"Layer_Key": "electric",
+"Geometry": [
+[
+76.41707155684922,
+183.42608296530705
+],
+[
+111.52899417205184,
+124.52715709272906
+]
+],
+"Attributes": {
+"Line_Type": "elec_main",
+"Length_m": 107.27,
+"Meters": 11,
+"Tail_M": 3.6,
+"VD_Cable_Size_ID": 1,
+"Circuit_ID": 1
+}
+},
+{
+"Feature_ID": 55836,
+"Label": "A4",
+"Feature_Type": "line",
+"Feature_Role": "shape",
+"Layer_Key": "electric",
+"Geometry": [
+[
+76.41707155684922,
+183.42608296530705
+],
+[
+92.90625396694482,
+212.79400927782348
+]
+],
+"Attributes": {
+"Line_Type": "elec_main",
+"Length_m": 44.42,
+"Meters": 4,
+"Tail_M": 2.4,
+"VD_Cable_Size_ID": 1,
+"Circuit_ID": 1
+}
+},
+{
+"Feature_ID": 55837,
+"Label": "A5",
+"Feature_Type": "line",
+"Feature_Role": "shape",
+"Layer_Key": "electric",
+"Geometry": [
+[
+157.1169238748991,
+203.63241924077744
+],
+[
+154.03696830231604,
+156.78585163788972
+]
+],
+"Attributes": {
+"Line_Type": "elec_main",
+"Length_m": 46.95,
+"Meters": 46,
+"VD_Cable_Size_ID": 1,
+"Manual_VD_Cable_Size_ID": 4,
+"Circuit_ID": 1
+}
+},
+{
+"Feature_ID": 55838,
+"Label": "A6",
+"Feature_Type": "line",
+"Feature_Role": "shape",
+"Layer_Key": "electric",
+"Geometry": [
+[
+157.1169238748991,
+203.63241924077744
+],
+[
+105.63698531955906,
+210.22979372480896
+]
+],
+"Attributes": {
+"Line_Type": "elec_main",
+"Length_m": 52.22,
+"Meters": 4,
+"Tail_M": 3.7,
+"VD_Cable_Size_ID": 1,
+"Circuit_ID": 1
+}
+},
+{
+"Feature_ID": 55839,
+"Label": "A7",
+"Feature_Type": "line",
+"Feature_Role": "shape",
+"Layer_Key": "electric",
+"Geometry": [
+[
+154.03696830231604,
+156.78585163788972
+],
+[
+149.25285385195286,
+76.02593354997794
+]
+],
+"Attributes": {
+"Line_Type": "elec_main",
+"Length_m": 82.58,
+"Meters": 21,
+"VD_Cable_Size_ID": 1,
+"Manual_VD_Cable_Size_ID": 2,
+"Circuit_ID": 1
+}
+},
+{
+"Feature_ID": 55840,
+"Label": "A8",
+"Feature_Type": "line",
+"Feature_Role": "shape",
+"Layer_Key": "electric",
+"Geometry": [
+[
+154.03696830231604,
+156.78585163788972
+],
+[
+76.41707155684922,
+183.42608296530705
+]
+],
+"Attributes": {
+"Line_Type": "elec_main",
+"Length_m": 108.72,
+"Meters": 20,
+"VD_Cable_Size_ID": 1,
+"Manual_VD_Cable_Size_ID": 2,
+"Circuit_ID": 1
+}
+},
+{
+"Feature_ID": 55841,
+"Label": "A9",
+"Feature_Type": "line",
+"Feature_Role": "shape",
+"Layer_Key": "electric",
+"Geometry": [
+[
+157.70773568181994,
+214.76571571591555
+],
+[
+157.1169238748991,
+203.63241924077744
+]
+],
+"Attributes": {
+"Line_Type": "elec_main",
+"Length_m": 11.15,
+"Meters": 51,
+"VD_Cable_Size_ID": 1,
+"Manual_VD_Cable_Size_ID": 4,
+"Circuit_ID": 1
+}
+},
+{
+"Feature_ID": 55842,
+"Label": "Point A0",
+"Feature_Type": "point",
+"Feature_Role": "feederpoint",
+"Layer_Key": "electric",
+"Geometry": [
+[
+157.70773568181994,
+214.76571571591555
+]
+],
+"Attributes": {
+"Span_Label": "A0",
+"Span_Kind": "origin",
+"Span_Anchor": [
+157.70773568181994,
+214.76571571591555
+]
+}
+},
+{
+"Feature_ID": 55843,
+"Label": "Point A1",
+"Feature_Type": "point",
+"Feature_Role": "feederpoint",
+"Layer_Key": "electric",
+"Geometry": [
+[
+157.1169238748991,
+203.63241924077744
+]
+],
+"Attributes": {
+"Span_Label": "A1",
+"Span_Kind": "junction",
+"Span_Anchor": [
+157.1169238748991,
+203.63241924077744
+]
+}
+},
+{
+"Feature_ID": 55844,
+"Label": "Point A2",
+"Feature_Type": "point",
+"Feature_Role": "feederpoint",
+"Layer_Key": "electric",
+"Geometry": [
+[
+155.09702689606604,
+155.95782429413973
+]
+],
+"Attributes": {
+"Span_Label": "A2",
+"Span_Kind": "junction",
+"Span_Anchor": [
+154.03696830231604,
+156.78585163788972
+]
+}
+},
+{
+"Feature_ID": 55845,
+"Label": "Point A3",
+"Feature_Type": "point",
+"Feature_Role": "feederpoint",
+"Layer_Key": "electric",
+"Geometry": [
+[
+149.25285385195286,
+76.02593354997794
+]
+],
+"Attributes": {
+"Span_Label": "A3",
+"Span_Kind": "junction",
+"Span_Anchor": [
+149.25285385195286,
+76.02593354997794
+]
+}
+},
+{
+"Feature_ID": 55846,
+"Label": "Point A4",
+"Feature_Type": "point",
+"Feature_Role": "feederpoint",
+"Layer_Key": "electric",
+"Geometry": [
+[
+164.0443957694031,
+71.02419868463022
+]
+],
+"Attributes": {
+"Span_Label": "A4",
+"Span_Kind": "end",
+"Span_Anchor": [
+164.0443957694031,
+71.02419868463022
+]
+}
+},
+{
+"Feature_ID": 55847,
+"Label": "Point A5",
+"Feature_Type": "point",
+"Feature_Role": "feederpoint",
+"Layer_Key": "electric",
+"Geometry": [
+[
+47.89539562723424,
+72.10918850891125
+]
+],
+"Attributes": {
+"Span_Label": "A5",
+"Span_Kind": "end",
+"Span_Anchor": [
+47.89539562723424,
+72.10918850891125
+]
+}
+},
+{
+"Feature_ID": 55848,
+"Label": "Point A6",
+"Feature_Type": "point",
+"Feature_Role": "feederpoint",
+"Layer_Key": "electric",
+"Geometry": [
+[
+76.41707155684922,
+183.42608296530705
+]
+],
+"Attributes": {
+"Span_Label": "A6",
+"Span_Kind": "junction",
+"Span_Anchor": [
+76.41707155684922,
+183.42608296530705
+]
+}
+},
+{
+"Feature_ID": 55849,
+"Label": "Point A7",
+"Feature_Type": "point",
+"Feature_Role": "feederpoint",
+"Layer_Key": "electric",
+"Geometry": [
+[
+90.51124034597902,
+212.95267641174775
+]
+],
+"Attributes": {
+"Span_Label": "A7",
+"Span_Kind": "end",
+"Span_Anchor": [
+90.51124034597902,
+212.95267641174775
+]
+}
+},
+{
+"Feature_ID": 55850,
+"Label": "Point A8",
+"Feature_Type": "point",
+"Feature_Role": "feederpoint",
+"Layer_Key": "electric",
+"Geometry": [
+[
+107.90045882616951,
+124.787673307273
+]
+],
+"Attributes": {
+"Span_Label": "A8",
+"Span_Kind": "end",
+"Span_Anchor": [
+107.90045882616951,
+124.787673307273
+]
+}
+},
+{
+"Feature_ID": 55851,
+"Label": "Point A9",
+"Feature_Type": "point",
+"Feature_Role": "feederpoint",
+"Layer_Key": "electric",
+"Geometry": [
+[
+109.28031448079437,
+209.62179219070651
+]
+],
+"Attributes": {
+"Span_Label": "A9",
+"Span_Kind": "end",
+"Span_Anchor": [
+109.28031448079437,
+209.62179219070651
+]
+}
+}
+]

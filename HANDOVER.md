@@ -1,11 +1,15 @@
 # Aptus360 — handover notes
 
-**This session added text notes to the GIS canvas (0228), and found
-that the bill of materials had been counting annotation (0229).** Both
-are written up as faults 152 and 153. Two migrations to run, in order,
-and 0229 changes the bill on any project where somebody has placed a
-cross-section mark — it says so at its own head, with the query for
-finding which. The new module is `textNotes.js` and the new check is
+**This session added text notes to the GIS canvas (0228), found that
+the bill of materials counts annotation (0229), and stopped the two
+checks that crashed from taking their own reports down with them, and
+built the Aptus Calc Sheet — which turned up a volt drop that had been
+reading 0.58 points light on every scheme (fault 154).** Both are written
+up as faults 152 and 153. Two migrations to run, in order; neither
+changes a figure on any bill that exists today. The half that WOULD —
+taking cross-section marks off the bill, which they have been on since
+0214 — is left undone on purpose and is now item 11 of the open work.
+The new module is `textNotes.js` and the new check is
 `checktextnote.mjs`.
 
 The paragraph below was written at 0211 and the folder now runs to
@@ -23,9 +27,9 @@ file, both "not yet run" at the time, and neither committed. 0209 was
 found sitting in `supabase/` rather than `supabase/migrations/` and
 moved in (which is what was crashing `checkhdcutout`); `checkmigrations`
 now names all three absences. **It names five now:** `0221` and `0222`
-are absent too, and `checkdxflayers` reads 0222 and THROWS on it — the
-same shape as `checkdevelopers` against 0198, and wanting the same
-`try`/`fail`/skip treatment once the file itself has been recovered. Recover them from the live project rather
+are absent too, both read by `checkdxflayers`. All five want recovering
+from the live project; none of them should be written from what the
+checks assert. Recover them from the live project rather
 than rewriting them — 0208 is the whole existing-plant bill rule and
 0210 carries it verbatim plus the HDCO naming. Whether anything from
 0196 onwards has been pasted into Supabase is not something this file
@@ -214,6 +218,8 @@ caught a fault that had already shipped at least once.
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checkvdsubmit.mjs` | The Submit sheet against the submission workbook, to six decimal places |
+| `node checkcalcsheet.mjs` | The sheet reads the drawing: right legs, right nodes, one route |
 | `node checktextnote.mjs` | A note wraps one way on screen, on paper and in CAD; stays on the annotation layer; resizes, re-wraps and points |
 | `node checkboardcircuit.mjs` | A circuit born on a spare way, membered by a board |
 | `node checkhdcoterminal.mjs` | The build runs out to a cut-out at the end of the dig |
@@ -282,18 +288,25 @@ left out has to say why.
 difference matters: a check reporting "3 problem(s)" looked at
 something, and one that throws never got to look.
 
-### The nine that still fail
+### The twenty that still fail
 
-Two are **migrations that were pasted into Supabase by hand and never
-committed.** The folder has 110 files across 0001–0195 and eighty-five
-numbers are absent — see `checkmigrations.mjs`, which holds that set as
-a baseline. Since there is no migration runner, that folder is the only
-record there is.
+The count moved from nine and the heading has been re-counted rather
+than carried forward: 156 of 176 pass as of this session, and none of
+the twenty is new here. Two of them used to be CRASHes and are named
+failures now — see below.
+
+Five are **migrations that were pasted into Supabase by hand and never
+committed**, read by four checks. The folder now runs to 0229 and
+`checkmigrations.mjs` holds the absences as a baseline. Since there is
+no migration runner, that folder is the only record there is.
 
 - `checkprojecttabs.mjs` — needs `0138_project_tabs.sql`, the seed
   saying which tabs each area hides.
 - `checkbottleends.mjs` — needs `0163_bom_bottle_end_name.sql`, the
   bill's joint-name `CASE`.
+- `checkdevelopers.mjs` — needs `0198_developer_organisation_branch.sql`.
+- `checkdxflayers.mjs` — needs `0221_cad_layer_trim.sql` and
+  `0222_cad_layer_status.sql`.
 
 `0182` is missing the same way and nothing reads it yet. **Do not
 reconstruct these from the checks.** 0138 encodes decisions about what
@@ -306,13 +319,28 @@ they no longer take the rest of the suite down with them. That pattern —
 `try` the read, `fail("... is missing")`, skip the section — is the one
 to copy for any check that reads a file it does not own.
 
-`checkdevelopers.mjs` fails the same way and was not recorded: it needs
-`0198_developer_organisation_branch.sql`, and it still THROWS rather
-than degrading to a named failure, so it takes its own report down. It
-wants the same `try`/`fail`/skip treatment as the two above — left
-alone this session because the fix is a check nobody has read against a
-migration nobody has recovered, and guessing at either is how the two
-above got their warning.
+`checkdevelopers.mjs` fails the same way: it needs
+`0198_developer_organisation_branch.sql`. `checkdxflayers.mjs` needs
+`0221_cad_layer_trim.sql` and `0222_cad_layer_status.sql`.
+
+**Both used to THROW and now fail by name.** Each read its migration
+with a bare `readFileSync`, so the check died on load and reported
+nothing at all — including every case that had nothing to do with the
+missing file. That is why the suite showed two CRASHes: not two broken
+scripts, but two scripts that never got to look. They now `try` the
+read, `fail` with the file named, and skip only the section that needs
+it.
+
+What that uncovered is worth recording: `checkdxflayers` carries about
+twenty other cases that had not run for as long as 0222 has been
+absent. They all pass. Nobody knew, because a crash says nothing about
+what it did not reach.
+
+**Do not write any of these three files from what the checks assert.**
+The assertions are what somebody wanted the migration to say, not what
+it says. Recovering them from the live project is the only way to get
+the truth back, and a plausible guess in that folder is worse than a
+gap, because a gap is visible.
 
 Six more, none of them about a missing file:
 
@@ -6498,43 +6526,92 @@ characters is a hundred lines of prose and no rules at all.
      also where 0215's other three — north points, revision clouds,
      detail bubbles — would go.
 
-153. **The bill was counting the writing on the drawing (0229).** Found
-     while adding notes, and older than them. `gis_bom` counts every
-     point whose role is not on an exclusion list, and that list had
-     never been told about annotation — so a drawing with three notes
-     and two section marks on it billed "Textnote 3 no." and
-     "Sectionmark 2 no." beside the ducting.
+153. **The bill counts the writing on the drawing.** Found while adding
+     notes, and older than them. `gis_bom` counts every point whose
+     role is not on an exclusion list, and that list had never been
+     told about annotation.
 
-     The section mark half has been wrong since 0214 shipped, on every
-     project where somebody placed one. **Running 0229 changes those
-     bills**: the rows go and the totals beneath them drop. That is the
-     bill becoming right rather than changing its mind, but it is a
-     visible change to a document people have already read, so the
-     migration says so at the top and gives the query for finding which
-     projects are affected before it is run.
+     **Text notes are off it (0229).** That migration changes no
+     existing figure: 0228 is what makes a note possible, so on the day
+     0229 runs there are none.
+
+     **Cross-section marks are still on it, and that is open work.**
+     A `sectionmark` bills as "Sectionmark 2 no." on every project where
+     somebody placed one, and has since 0214 shipped. Correcting it
+     removes rows from bills that have already been issued and drops
+     the totals beneath them — a visible change to a document people
+     have read, which is a commercial decision rather than a
+     developer's. It is one line when somebody makes it: add
+     `'sectionmark'` to the exclusion list in the `points` CTE, in a
+     migration of its own so it can be dated and pointed at. 0229's
+     head carries the change and the query for seeing which projects it
+     would affect.
+
+     `checkbomroles` records it rather than asserting it. A check that
+     fails until somebody does what it wants is a check that gets the
+     migration written to silence it, and this one wants a decision
+     instead.
 
      The shape of the fault is worth more than the fault: a rule that
-     works by an exclusion list is a rule that is silently wrong about
-     everything added after it was written. Nothing failed, nothing
-     threw, and the only way it would have been found is somebody
-     reading a bill and wondering. `checkbomroles` now holds both roles
-     off the bill, so the next rewrite of `gis_bom` cannot quietly
-     re-admit them.
- The
-attribute was maintained by `gis_length_trg` AND written by hand from
-the Feature Editor. Closed — see recurring fault 44, which splits it
-into two columns and takes the client off the trigger's one entirely.
+     works by an exclusion list is silently wrong about everything
+     added after it was written. Nothing failed, nothing threw, and the
+     only way it would have been found is somebody reading a bill and
+     wondering.
 
-**A seed is three points.** The symbol, the boundary position, then
-where the service trench ends — and only then its meters. The boundary
-and the end of the dig were one point until 26 Aug, which made every
-service stop at the property line when on the ground it crosses the line
-and runs on. The boundary is a vertex ALONG the route now, which is also
-what the on-site and off-site lengths are split at. The tee is still
-worked out from the boundary rather than from the end: it is where the
-service crosses the line, so it decides where the dig leaves the main.
-Seeds carrying only a boundary point still dig to it, and `planSeed`
-reports which shape each was on.
+154. **The Aptus Calc Sheet, and the two terms the volt drop was
+     missing.** Electric › Aptus Calc Sheet: the submission sheet laid
+     out to match the SUBMIT worksheet of the Aptus volt drop workbook,
+     one row per leg of main walked out from the point of connection.
+     `submitSheet.js` lays it out, `calcSheetRows.js` reads the
+     drawing, `AptusCalcSheet.jsx` is the panel, and the arithmetic
+     underneath is `legVoltDrop` — the same one the levels check uses,
+     because a page that worked its own volt drop out would be a second
+     answer to a question already answered.
+
+     **`blockKva` and `groupKva` were missing from `legVoltDrop`.** The
+     spreadsheet adds a per-section block load and a flat 8 kVA small
+     group allowance to every section carrying customers. On Fox Covert
+     Ln that made this app read 4.09% where the sheet reads 4.67% —
+     under by 0.58 points, ALWAYS in the direction that makes a design
+     look further from the limit than it is. Nothing failed and both
+     figures looked reasonable; it was found by running the app's own
+     function over the workbook's eight sections and watching the gap
+     decompose exactly into those two terms. Both default to zero, so
+     no existing scheme moved, and `checkvdsubmit` pins that.
+
+     **A volt drop is a figure TO somewhere.** The spreadsheet's tick
+     box says which: its ticked sections form one unbroken path from
+     the point of connection and the unticked ones are the other
+     branches. The first cut of this panel ticked every leg and
+     totalled all nine, printing 3.897% on project 16 against the worst
+     route's 2.937% — not a worse answer, an answer to no question,
+     adding legs that sit in parallel. The panel now picks a route,
+     defaults to the worst, and warns when what is ticked is not one
+     path.
+
+     Three things about reading a drawing that cost time, all worth
+     knowing before touching `calcSheetRows.js`:
+
+     - **`Meters` on a leg is CUMULATIVE.** Terminal is the sum of the
+       children's; distributed is the leg's own less that. Read the
+       other way round the sheet halves the wrong load and both numbers
+       stay plausible.
+     - **The trench has span nodes too**, labelled A1, A2, A3, standing
+       at the same corners as the cable's junctions. Without a layer
+       test the sheet named every electric node after the trench node
+       sharing its corner.
+     - **A dead end's feeder point is not on the cable.** The build
+       places it `Tail_M` beyond where the cable is drawn — 2 to 4 m —
+       so an exact coordinate match leaves every spur unnamed. Matched
+       through the leg's own tail, not a constant.
+
+     Still open: no service row (which real service stands for the
+     spreadsheet's notional one is a judgement), and the phase current
+     convention — the sheet divides by 3 × the POC's `Output_V`,
+     reading it as the PHASE voltage, which is what the workbook means,
+     while the same field holds the LINE voltage elsewhere in this app
+     and defaults to 400. The two are 3.9% apart on every current.
+     Stated on the panel rather than reconciled.
 
 ## Decisions worth knowing
 
@@ -7626,7 +7703,14 @@ plus generic table editors.
     one-line edit. `checkrolefilter.mjs` covers the admin screen and the
     view; it does not cover this lookup.
 
-11. **`checkbuttons.py`: 36 house-style deviations.** It said 30 and was
+11. **The bill counts cross-section marks.** "Sectionmark 2 no." on
+    every project where one was placed, since 0214. One line to fix and
+    not fixed, because it removes rows from bills that have been issued
+    — see fault 153, and the head of 0229 for the change and the query
+    for what it would affect. Needs an answer from whoever owns
+    commercial, not a developer.
+
+12. **`checkbuttons.py`: 36 house-style deviations.** It said 30 and was
     counted again this session; nothing in between added to it. `.row-edit` and
     `.row-del` where the house set wants `btn edit sm` / `btn delete sm`,
     bare `×` buttons that remove things, and a duplicate `.row-del`

@@ -98,6 +98,7 @@ import {
 } from "./reducers.js";
 import * as XLSX from "xlsx";
 import CircuitReport from "./CircuitReport.jsx";
+import AptusCalcSheet from "./AptusCalcSheet.jsx";
 import BulkDelete from "./BulkDelete.jsx";
 import { circuitBuildParts, circuitMembership, SPAN_REACH_M, SNAP_TOL,
   carriedOverrides, carriedOverrideFor } from "./feeder.js";
@@ -1315,6 +1316,7 @@ export default function GISCanvasPage() {
     electric: lookups?.cableSizes || [],
   }), [lookups]);
 
+  const [calcSheetOpen, setCalcSheetOpen] = useState(false);
   const [gasLevelsResult, setGasLevelsResult] = useState(null);
   /* Whether the table is showing. Kept apart from the result: the
      figures on the drawing outlive the panel, and closing one should
@@ -25232,6 +25234,29 @@ export default function GISCanvasPage() {
                             + "report measures every circuit from one"}
                         disabled={!lvOrigin(features)}
                         onClick={() => setReportOpen(true)} />
+                      {/* ── The submission sheet, on the drawing ──
+
+                          The same figures the levels check works out,
+                          in the shape a scheme is submitted in: one
+                          row per leg of main from the point of
+                          connection outwards, matching the SUBMIT
+                          worksheet of the Aptus volt drop workbook
+                          column for column.
+
+                          Beside the Circuit Report rather than under
+                          Tools, because it is about one utility's
+                          design and reads the electric network to
+                          build itself. Its guard is the same one:
+                          every row is measured from an origin, and
+                          without one there is nothing to measure
+                          from. */}
+                      <MenuItem label="Aptus Calc Sheet"
+                        hint={lvOrigin(features)
+                          ? "Volt drop and loop impedance, laid out for submission"
+                          : "Place a substation or an electric POC first \u2014 every "
+                            + "row is measured from one"}
+                        disabled={!lvOrigin(features)}
+                        onClick={() => setCalcSheetOpen(true)} />
                       {/* Every circuit, from its own origin node outward.
 
                           Nothing has to be selected: the question is
@@ -27048,6 +27073,35 @@ export default function GISCanvasPage() {
           busy={busy === "bulkdel"}
           onDelete={runBulkDelete}
           onClose={() => setBulkDelOpen(false)}
+        />
+      )}
+
+      {calcSheetOpen && projectId && (
+        <AptusCalcSheet
+          features={features}
+          cableById={(id) => (lookups?.cableSizes || [])
+            .find((c) => String(c.Cable_Size_ID) === String(id)) || null}
+          project={project}
+          busy={!!busy}
+          /* The block load and the tick box, written back to the leg
+             they belong to \u2014 two named attributes, not the whole
+             Attributes object, so a save cannot overwrite whatever the
+             build wrote while the sheet was open. */
+          onSave={async (changes) => {
+            for (const c of changes) {
+              const f = features.find((x) => x.Feature_ID === c.featureId);
+              if (!f) continue;
+              const next = { ...(f.Attributes || {}) };
+              if ("Block_kVA" in c) next.Block_kVA = c.Block_kVA;
+              if ("Calc_Exclude" in c) {
+                if (c.Calc_Exclude) next.Calc_Exclude = true;
+                else delete next.Calc_Exclude;
+              }
+              await updateFeature(projectId, c.featureId, { Attributes: next });
+            }
+            await load(projectId);
+          }}
+          onClose={() => setCalcSheetOpen(false)}
         />
       )}
 

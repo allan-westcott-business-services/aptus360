@@ -131,6 +131,32 @@ export function serviceVoltDrop({
 export function legVoltDrop({
   cable, lengthM = 0, distributedKva = 0, terminalKva = 0, meterCount = 0,
   unbalanced = false, distFactor = 0.5, unbalConst = 4.14, voltageV = 400,
+  /* ── Two terms the spreadsheet has and this did not ──
+
+     `blockKva` is a load on the section that is not a house: a block of
+     flats, a pumping station, a school. The spreadsheet carries it in
+     its column L and adds it to the section's load and to its drop.
+
+     `groupKva` is the small group diversity allowance — its B5, 8 kVA
+     on the schemes seen so far — added once to every section that
+     carries customers, and to none that carries no customers at all.
+
+     Neither was here. On Fox Covert Ln that made this calculation read
+     4.09% where the sheet reads 4.67%: under by 0.58 points, and
+     always in the direction that makes a design look further from the
+     limit than it is. The gap decomposed exactly into these two terms,
+     section by section, which is how they were found.
+
+     Both at FULL weight, not `distFactor`. A block load sits where it
+     sits and the allowance is a lump; only the distributed domestic
+     load is halved, because that is the one spread along the leg.
+
+     Zero by default, so every existing caller gets the numbers it got
+     before and nothing moves until a scheme says otherwise. They are
+     scheme facts rather than constants: the block load is whatever is
+     being fed, and the allowance is what the adopting DNO asks for. */
+  blockKva = 0,
+  groupKva = 0,
   /* ── What a plot connection costs ──
 
      A service joint is not free: cutting a main and jointing a service
@@ -189,7 +215,8 @@ export function legVoltDrop({
      Volt drop and loop impedance do not use this. `pct` and `ohms` are
      worked out from kVA and length below and are unchanged; only the
      reported current moves. */
-  const amps = ampsOf((distributedKva || 0) + (terminalKva || 0), v);
+  const amps = ampsOf((distributedKva || 0) + (terminalKva || 0)
+    + (Number(blockKva) || 0) + (Number(groupKva) || 0), v);
 
   if (!cable || !lengthM) return { ohms: 0, pct: 0, amps, missingSpec: !cable };
 
@@ -215,7 +242,8 @@ export function legVoltDrop({
 
   const base = cable.Volt_Drop_Base != null ? Number(cable.Volt_Drop_Base) : null;
   let pct = 0;
-  const weightedKva = (distributedKva || 0) * distFactor + (terminalKva || 0);
+  const weightedKva = (distributedKva || 0) * distFactor + (terminalKva || 0)
+    + (Number(blockKva) || 0) + (Number(groupKva) || 0);
   /* Keyed on how many customers are on the section, not on current.
      That is the spreadsheet's own rule. */
   const corr = unbalanced && meterCount > 0
@@ -234,6 +262,8 @@ export function legVoltDrop({
     working: {
       distributedKva: distributedKva || 0,
       terminalKva: terminalKva || 0,
+      blockKva: Number(blockKva) || 0,
+      groupKva: Number(groupKva) || 0,
       weightedKva,
       chargedM,
       correction: corr,

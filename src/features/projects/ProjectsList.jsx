@@ -52,7 +52,20 @@ const COLUMNS = [
   { key: "cust",     label: "Customer",      width: 200, type: "multi",
     src: "developerBranches", idKey: "Organisation_Branch_ID",
     labelOf: (b) => branchLabelOf(b, b.Organisation_Name),
-    raw: (p) => p.Organisation_Branch_ID },
+    /* ── From the Stakeholder tab, not from the project's cache ──
+
+       `Project.Organisation_Branch_ID` is a cached copy of the main
+       developer kept by a trigger, and it drifts: project 25 read
+       Anwyl Homes (Lancashire) with Taylor Wimpey (North West) on
+       its Stakeholder tab. The developer rows come with the list
+       now, so this reads the one marked main.
+
+       The cache is the fallback and not the source, for the rows
+       that predate the developer records. Where the two disagree the
+       Stakeholder tab wins, because that is where somebody typed
+       it. */
+    raw: (p) => p.mainDeveloper?.Organisation_Branch_ID
+      ?? p.Organisation_Branch_ID },
   { key: "region",   label: "Region",        width: 120, type: "multi", src: "regions", idKey: "Region_ID", labelKey: "Region", raw: (p) => p.Region_ID },
   { key: "qt",       label: "Quote Type",    width: 120, type: "multi", src: "quoteTypes", idKey: "Quote_Type_ID", labelKey: "Quote_Type", raw: (p) => p.Quote_Type_ID },
   { key: "status",   label: "Status",        width: 150, type: "multi", src: "projectStatuses", idKey: "Project_Status_ID", labelKey: "Status", raw: (p) => p.Project_Status_ID },

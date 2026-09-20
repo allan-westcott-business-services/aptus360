@@ -7363,6 +7363,50 @@ characters is a hundred lines of prose and no rules at all.
      including the rule that the organisation is prefixed only where
      the branch has no dropdown form of its own.
 
+     **And it was reading a cached copy, which had drifted.**
+     `Project.Organisation_Branch_ID` and `Customer_ID` are a cache
+     of the MAIN DEVELOPER, kept by `sync_project_main_developer()`
+     — a trigger that is not in the migrations folder. Reported from
+     use: project 25 showed Anwyl Homes (Lancashire) in the list with
+     Taylor Wimpey (North West) on its Stakeholder tab.
+
+     The list fetches `Project_Developer` with each project now and
+     the column reads the row marked `Is_Main`. The cache stays as
+     the fallback for rows that predate the developer records; where
+     the two disagree the Stakeholder tab wins, because that is where
+     somebody typed it.
+
+     **Fourth stale cache in a week** — the calc sheet's stored meter
+     count (158), the link box's summed load (158), the FEP load that
+     was deliberately NOT stored (169), and this. The pattern is
+     worth stating plainly: a copy of a fact, kept by something that
+     runs at write time, is right until the next edit that misses it,
+     and nothing anywhere says which. Derive at read time unless
+     there is a measured reason not to.
+
+     Not done, and worth doing: the cached columns could come off
+     `Project` altogether. They are written by a trigger nobody can
+     see the source of, read by who knows what else, and every reader
+     that keeps using them inherits this fault.
+
+     Scoped while looking: `Customer_ID` and `Branch_ID` are now read
+     by nothing in the app except the PORTAL's legacy account scope,
+     which decides who may see what and must not be changed casually.
+     They stay in `PROJECT_COLUMNS` because that list is the nearest
+     thing this repo has to a schema — `checkportal` reads it to
+     decide whether a column exists — and the columns do still exist.
+     Taking the list to mean "what this endpoint selects" instead
+     broke the portal check immediately, which is the list doing its
+     job.
+
+     So the remaining work is: the portal's legacy scope, the trigger
+     `sync_project_main_developer()` whose source is not in this
+     folder, and then the DROP. Its own session.
+
+     And `Organisation_ID` is deliberately NOT on `Project`:
+     `Organisation_Branch` carries it, and storing it again would be
+     the same fault one level up.
+
      Two things this needed beyond the column definition. A `labelOf`
      on the column, because the text is composed rather than read off
      a field; and the FILTER list composing the same way, or the

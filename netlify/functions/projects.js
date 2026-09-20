@@ -9,9 +9,34 @@ const PROJECT_COLUMNS = [
   /* The two references the project is known by elsewhere: the AP number
      to the network operator, the tender reference to the client. */
   "AP_Number", "Tender_Ref",
+  /* ── Retired, and still on the table ──
+
+     `Customer_ID` and `Branch_ID` point at `Customer` and
+     `Customer_Branch`, emptied on 26 Aug with every project
+     repointed at the matching `Organisation_Branch`. They are null
+     on everything made since, and every reader that still took them
+     faded rather than failed \u2014 right on old rows, empty on the ones
+     being worked on. Two were found that way: the projects list's
+     Customer column and the customer projects page.
+
+     Kept in this list because this list is the nearest thing the
+     repo has to a schema \u2014 checkportal reads it to decide whether a
+     column exists \u2014 and the columns DO still exist. Nothing in the
+     app reads their values any more except the portal's legacy
+     account scope.
+
+     Dropping them means dealing with `sync_project_main_developer()`,
+     the trigger that writes them, whose source is not in this
+     folder, and with that portal path, which decides who may see
+     what. Neither is a tack-on.
+  */
   "Customer_ID", "Branch_ID",
-  /* The branch where it is an Organisation_Branch (0154). A project
-     names one or the other, never both. */
+  /* The branch where it is an Organisation_Branch (0154).
+
+     Itself a cached copy of the main developer, and a drifted one:
+     checkportal records eleven unrelated live schemes all carrying
+     branch 17, and forbids authorisation from reading it. Read only
+     as a fallback behind the Project_Developer row. */
   "Organisation_Branch_ID",
   "Region_ID", "Sub_Region_ID",
   "Site_Name", "Site_Address", "Postcode", "Eastings", "Northings",
@@ -111,7 +136,23 @@ export default withAuth(async function handler(req, context) {
           /* Designer_ID as well: the list shows who is on each outline
              design and filters by them, and without it the column can
              only count. */
-          `${PROJECT_COLUMNS},Project_Scope(Utility_ID,Scope_Status_ID,Design_Status_ID,Designer_ID),Plot(count)`,
+          /* ── The developer, from the Stakeholder tab ──
+
+             `Project.Organisation_Branch_ID` is a CACHED COPY of the
+             main developer, kept by a trigger. The list read it and
+             showed the wrong company on projects whose cache had
+             drifted — project 25 said Anwyl Homes (Lancashire) with
+             Taylor Wimpey (North West) on its Stakeholder tab.
+
+             So the real row comes with the project. Embedded rather
+             than fetched separately: one round trip, and a list that
+             cannot show a developer the project does not have.
+
+             Every developer, not just the main one, because
+             `Is_Main` is a column on a row somebody edits and the
+             list has to be able to say "none marked" rather than
+             silently pick one. */
+          `${PROJECT_COLUMNS},Project_Scope(Utility_ID,Scope_Status_ID,Design_Status_ID,Designer_ID),Project_Developer(Project_Developer_ID,Organisation_Branch_ID,Branch_ID,Is_Main),Plot(count)`,
           { count: "exact" }
         )
         .order("Date_Received", { ascending: false })
@@ -124,11 +165,17 @@ export default withAuth(async function handler(req, context) {
       if (error) throw error;
 
       const rows = (data || []).map((r) => {
-        const { Plot, Project_Scope, ...rest } = r;
+        const { Plot, Project_Scope, Project_Developer, ...rest } = r;
+        const devs = Project_Developer || [];
         return {
           ...rest,
           Plot_Count: Plot?.[0]?.count ?? 0,
           scopes: Project_Scope || [],
+          developers: devs,
+          /* The one marked main, and nothing where none is. Falling
+             back to the first would name a company nobody chose, on
+             a project whose Stakeholder tab shows three. */
+          mainDeveloper: devs.find((d) => d.Is_Main) ?? null,
         };
       });
       return json({ rows, total: count });

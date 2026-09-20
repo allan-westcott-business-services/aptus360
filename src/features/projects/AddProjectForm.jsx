@@ -113,12 +113,19 @@ export default function AddProjectForm({ onCreated, onGoToPlots, onReset }) {
            something back, which is what a cached copy of the main
            developer is for. Dropping the columns is a separate
            decision. */
-        Branch_ID: null,
         Organisation_Branch_ID: id,
-        /* Customer_ID came off a Customer_Branch. An organisation's
-           branch has no Customer to name, and inventing one would put a
-           project under a customer nobody chose. */
-        Customer_ID: null,
+        /* ── Customer_ID and Branch_ID are not sent at all ──
+
+           They were sent as explicit nulls, to stop a default or a
+           trigger putting something back. They are off the list
+           entirely now: nothing reads them, they point at tables
+           emptied on 26 Aug, and a form that writes a column no
+           reader wants is a form keeping a dead field alive.
+
+           If a trigger does put something back, that is worth
+           knowing rather than hiding — and it will show up in the
+           one place that still reads Organisation_Branch_ID as a
+           fallback. */
         /* ── The developer, not just the cached copy of it ──
 
            Project.Branch_ID and Customer_ID are a cached copy of the

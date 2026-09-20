@@ -3,6 +3,7 @@ import Banner from "../../components/Banner.jsx";
 import { listProjects } from "../../api/projects.js";
 import { getLookups } from "../../api/lookups.js";
 import ProjectDetail from "../projects/ProjectDetail.jsx";
+import { branchLabelOf } from "../stakeholders/developerBranch.js";
 
 /* Customer branches, with their projects underneath.
 
@@ -51,16 +52,33 @@ export default function CustomerProjectsPage() {
 
   const groups = useMemo(() => {
     if (!lookups) return [];
-    const branches = lookups.branches || [];
-    const customers = lookups.customers || [];
+    /* ── Organisation branches, not the retired Customer_Branch ──
+
+       This grouped on `Project.Branch_ID` and listed
+       `lookups.branches`, which are `Customer_Branch` rows. That
+       table was emptied on 26 Aug and every project repointed at the
+       matching `Organisation_Branch` — so `Branch_ID` is null on
+       everything made since and every new project fell into "No
+       branch set", under a list of branches that no longer exist.
+
+       It faded rather than failed, which is why it went unnoticed:
+       correct on the old rows, wrong on the ones being worked on. */
+    const branches = lookups.developerBranches || [];
     const q = search.trim().toLowerCase();
 
     const rows = projects.filter((p) =>
       !(hideClosed && statusById(p.Project_Status_ID)?.Is_Terminal));
 
+    /* From the Stakeholder tab where there is one, and the project's
+       cached copy otherwise — the same order the projects list reads
+       in, because two screens disagreeing about whose project it is
+       is worse than either being wrong. */
+    const branchOf = (p) => p.mainDeveloper?.Organisation_Branch_ID
+      ?? p.Organisation_Branch_ID ?? 0;
+
     const byBranch = new Map();
     for (const p of rows) {
-      const key = p.Branch_ID ?? 0;
+      const key = branchOf(p);
       if (!byBranch.has(key)) byBranch.set(key, []);
       byBranch.get(key).push(p);
     }
@@ -72,13 +90,14 @@ export default function CustomerProjectsPage() {
        Branch_Dropdown already reads "Anwyl Homes (Wales)" — it is
        maintained by a trigger, so it follows a customer rename without
        anything here having to join. */
-    const custName = (id) =>
-      customers.find((c) => c.Customer_ID === id)?.Customer_Name ?? "";
     const out = branches.map((b) => ({
-      id: b.Branch_ID,
-      name: b.Branch_Dropdown || `${custName(b.Customer_ID)} (${b.Branch_Name})`,
-      customer: custName(b.Customer_ID),
-      projects: (byBranch.get(b.Branch_ID) || [])
+      id: b.Organisation_Branch_ID,
+      /* `branchLabelOf` composes it the same way the projects list
+         and the project form do, so one branch is called one thing
+         across the app. */
+      name: branchLabelOf(b, b.Organisation_Name) || b.Branch_Name || "",
+      customer: b.Organisation_Name || "",
+      projects: (byBranch.get(b.Organisation_Branch_ID) || [])
         .sort((a, b2) => String(b2.Project_Ref).localeCompare(String(a.Project_Ref))),
     }));
 

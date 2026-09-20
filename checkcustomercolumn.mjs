@@ -56,7 +56,9 @@ const list = readFileSync("./src/features/projects/ProjectsList.jsx", "utf8");
     if (!/src: "developerBranches"/.test(col)) {
       fail("the Customer column does not read the branch list");
     }
-    if (!/raw: \(p\) => p\.Organisation_Branch_ID/.test(col)) {
+    /* Matched on the branch, however it is reached — case 3 holds it
+       to reading the Stakeholder tab first and the cache second. */
+    if (!/Organisation_Branch_ID/.test(col)) {
       fail("the column filters on something other than the project's branch");
     }
     if (!/labelOf: \(b\) => branchLabelOf\(b, b\.Organisation_Name\)/.test(col)) {
@@ -66,7 +68,73 @@ const list = readFileSync("./src/features/projects/ProjectsList.jsx", "utf8");
   }
 }
 
-// 3. The filter list says what the cells say.
+// 3. It reads the Stakeholder tab, not the project's cache.
+{
+  /* `Project.Organisation_Branch_ID` is a cached copy of the main
+     developer kept by a trigger, and it drifts: project 25 read
+     Anwyl Homes (Lancashire) with Taylor Wimpey (North West) on its
+     Stakeholder tab. A cached copy that nothing checks is the same
+     fault as the calc sheet's stored meter count and the link box's
+     stored load \u2014 three in one week.
+
+     The cache stays as the FALLBACK, for rows that predate the
+     developer records. Where the two disagree the Stakeholder tab
+     wins, because that is where somebody typed it. */
+  const at = list.indexOf('key: "cust"');
+  const col = at < 0 ? "" : list.slice(at, list.indexOf("},", at + 200));
+  if (!/mainDeveloper\?\.Organisation_Branch_ID/.test(col)) {
+    fail("the Customer column reads the project's cached branch rather than "
+      + "the developer on the Stakeholder tab, so a drifted cache names the "
+      + "wrong company");
+  }
+  if (!/\?\? p\.Organisation_Branch_ID/.test(col)) {
+    fail("the cache is not kept as a fallback, so a project with no "
+      + "developer record shows nothing at all");
+  }
+
+  const api = readFileSync("./netlify/functions/projects.js", "utf8");
+  if (!/Project_Developer\(Project_Developer_ID,Organisation_Branch_ID,Branch_ID,Is_Main\)/.test(api)) {
+    fail("the list does not fetch the developers, so there is nothing for "
+      + "the column to read");
+  }
+  if (!/devs\.find\(\(d\) => d\.Is_Main\) \?\? null/.test(api)) {
+    fail("the main developer is not picked by Is_Main \u2014 falling back to the "
+      + "first would name a company nobody chose on a project with three");
+  }
+}
+
+// 4. The customer projects page groups by the same branch.
+{
+  /* It grouped on `Project.Branch_ID` and listed `lookups.branches`,
+     which are Customer_Branch rows. Both retired on 26 Aug, so every
+     project made since fell into "No branch set" under a list of
+     branches that no longer exist — the same fade as the Customer
+     column, on the page whose whole job is grouping by customer.
+
+     Two screens disagreeing about whose project it is would be worse
+     than either being wrong, so it reads in the same order: the
+     Stakeholder tab first, the project's cache second. */
+  const page = readFileSync("./src/features/customers/CustomerProjectsPage.jsx", "utf8");
+  /* In code, not in the comment that explains why it was taken out
+     — the first run of this case failed on its own explanation. */
+  const code = page.replace(/\/\*[\s\S]*?\*\//g, "");
+  if (/lookups\.branches/.test(code)) {
+    fail("the customer projects page still lists Customer_Branch rows, which "
+      + "were deleted on 26 Aug");
+  }
+  if (!/lookups\.developerBranches/.test(code)) {
+    fail("the customer projects page does not list organisation branches");
+  }
+  if (!/mainDeveloper\?\.Organisation_Branch_ID/.test(page)) {
+    fail("the customer projects page groups on the project's cached branch "
+      + "rather than the developer on the Stakeholder tab");
+  }
+  if (!/branchLabelOf\(b, b\.Organisation_Name\)/.test(page)) {
+    fail("the page names a branch differently from the projects list");
+  }
+}
+
+// 5. The filter list says what the cells say.
 {
   /* A dropdown offering "Lancashire" against cells reading "Anwyl
      Homes (Lancashire)" is two names for one thing on one screen. */
@@ -89,7 +157,7 @@ const list = readFileSync("./src/features/projects/ProjectsList.jsx", "utf8");
   }
 }
 
-// 4. And the display path uses it.
+// 6. And the display path uses it.
 {
   if (!/c\.labelOf\s*\n?\s*\? labelFrom\(c, c\.raw\(p\)\)/.test(list)) {
     fail("the cell falls back to the plain lookup, so the composed label "

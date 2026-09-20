@@ -207,7 +207,74 @@ const items = (features, more = {}) =>
   }
 }
 
-// 6. An invented meter is not part of the drawing.
+// 6. A moved label is moved on paper too, and a hidden one is absent.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  /* ── Movable on screen ──
+
+     A point's name sat where the rule put it, which on a busy corner
+     is over a cable or another name. Lines have been movable for
+     years; the substation and the board are the two most often in
+     the way and both were fixed. The board had no name on screen at
+     all, though the SHEET has always written one — so it was called
+     MSDB 3 on paper and nothing on the drawing. */
+  if (!/labelHits\.current\.push\(\{\s*\n\s*id: f\.Feature_ID, idx: null, anchor: f\.Geometry\[0\]/
+    .test(canvas)) {
+    fail("a point's name is not registered as grabbable, so the substation "
+      + "label cannot be moved");
+  }
+  const boardAt = canvas.indexOf('if (f.Feature_Role === "msdb")');
+  const board = boardAt < 0 ? "" : canvas.slice(boardAt, boardAt + 4000);
+  if (!board) fail("the canvas no longer draws a board");
+  else {
+    if (!/ctx\.fillText\(f\.Label/.test(board)) {
+      fail("a board draws no name on the canvas, so there is nothing to move "
+        + "\u2014 and the sheet writes one, which is the two disagreeing");
+    }
+    if (!/labelHits\.current\.push/.test(board)) {
+      fail("a board's name cannot be grabbed");
+    }
+  }
+
+  /* ── And moved on paper ──
+
+     The offset is metres of ground, so it scales with the sheet
+     exactly as it does with the zoom. Drawn at the rule's position
+     regardless, a name moved clear of a cable on screen went back
+     over it on paper. */
+  const moved = {
+    Feature_ID: 11, Feature_Type: "point", Feature_Role: "substation",
+    Layer_Key: "electric", Label: "Substation", Geometry: [[30, 30]],
+    Attributes: { Label_Offset: [10, 0] },
+  };
+  const put = items([moved]).find((i) => i.kind === "text");
+  const still = items([{ ...moved, Attributes: {} }]).find((i) => i.kind === "text");
+  if (!put || !still) fail("a substation prints without its name");
+  else if (Math.abs(put.at[0] - still.at[0]) < 1) {
+    fail("a label moved on the canvas prints where the rule would have put "
+      + "it, not where somebody put it");
+  }
+
+  /* ── And not printed at all when the screen would not ──
+
+     The board writes its own name rather than going through the
+     label pass, so the pass's rules have to be repeated there. Miss
+     them and a board is named on a sheet with every label switch
+     off, which is the one thing "print what is shown" prevents. */
+  const quiet = items([point("msdb", [20, 20], { Label: "MSDB 1" })],
+    { showLabels: false });
+  if (quiet.some((i) => i.kind === "text" && i.text === "MSDB 1")) {
+    fail("a board is named on the sheet with the Labels layer switched off");
+  }
+  /* DB stays: it is the symbol, not a label. */
+  if (!quiet.some((i) => i.kind === "text" && i.text === "DB")) {
+    fail("the letters inside a board vanish with the Labels layer \u2014 they are "
+      + "the symbol, not a label");
+  }
+}
+
+// 7. An invented meter is not part of the drawing.
 {
   const board = point("msdb", [20, 20], { Label: "MSDB 1" });
   const assumed = {

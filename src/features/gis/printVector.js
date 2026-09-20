@@ -430,10 +430,25 @@ export function pageDrawList(features = [], tile, {
       });
       /* Its name beside it, the way the canvas writes one. The label
          pass below skips a role it has already written. */
-      if (f.Label) {
+      /* ── And only if the screen would write it ──
+
+         The board's name is written here rather than by the label
+         pass, so the pass's rules have to be repeated: the master
+         Labels switch and the per-kind ones, through the same
+         `labelShown` the screen uses. Without it a board was named
+         on the sheet with every label switched off — the one thing
+         "print what is shown" is meant to prevent.
+
+         And at the offset somebody dragged it to, like any other
+         point's name. */
+      if (f.Label && labelShown(f, { lineTypes, showLabels, kinds: labelKinds })) {
+        const lo = f.Attributes?.Label_Offset;
         out.push({
           kind: "text",
-          at: [p0[0] + half + 0.8, p0[1] + 0.9],
+          at: [
+            p0[0] + half + 0.8 + (Array.isArray(lo) ? (Number(lo[0]) || 0) * k : 0),
+            p0[1] + 0.9 + (Array.isArray(lo) ? (Number(lo[1]) || 0) * k : 0),
+          ],
           text: String(f.Label),
           sizePt: 6,
           colour: ap.labelColour ?? "#0f172a",
@@ -798,9 +813,23 @@ export function pageDrawList(features = [], tile, {
           sub.pts.map(([x, y]) => Math.hypot(x - toPage(at)[0], y - toPage(at)[1]))))
         : SYMBOL_FALLBACK_MM / 2;
       const p = toPage(at);
+      /* ── Where somebody moved it to ──
+
+         A point's name can be dragged on the canvas and the offset
+         is kept in `Label_Offset`, in metres. The sheet drew every
+         one at the rule's position, so a name moved clear of a cable
+         on screen went back over it on paper — and the drawing
+         somebody moved it on is the one they were looking at when
+         they decided it was in the way.
+
+         Metres times millimetres-per-metre: the offset is ground, so
+         it scales with the sheet exactly as it does with the zoom. */
+      const lo = f.Attributes?.Label_Offset;
+      const ox = Array.isArray(lo) ? (Number(lo[0]) || 0) * k : 0;
+      const oy = Array.isArray(lo) ? (Number(lo[1]) || 0) * k : 0;
       out.push({
         kind: "text",
-        at: [p[0] + r + 0.8, p[1] + 0.9],
+        at: [p[0] + r + 0.8 + ox, p[1] + 0.9 + oy],
         text: String(text),
         /* Points, not millimetres: type is measured in points
            everywhere else and a PDF writer expects them. 6 pt is the

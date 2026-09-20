@@ -7211,6 +7211,42 @@ characters is a hundred lines of prose and no rules at all.
      Where somebody asks for it to go entirely, that is the `if (tag)
      return tag;` line and the canvas's `: tag || ""`.
 
+167. **A point's name can be moved, and the board finally has one.**
+     Lines have been movable for a long time; a point's name sat
+     where the rule put it, which on a busy corner is over a cable or
+     another name. Asked for on the substation and the board.
+
+     Nothing new is stored. `Label_Offset` is the key the label drag
+     already writes when there is no index and no kind, so the
+     existing drag, the existing save and the print's existing reader
+     all worked the moment the label was registered in `labelHits`.
+     Worth remembering before building: the machinery was complete
+     and the label simply was not grabbable.
+
+     **The board drew no name on the canvas at all** — its branch
+     returns before the generic label pass — while the SHEET has
+     always written one. So a board was MSDB 3 on paper and nothing
+     on the drawing, and the request to move it was really a request
+     for it to exist. It is drawn beside the square now, movable, and
+     the print already says the same words.
+
+     **And a label the screen would not write is no longer written on
+     paper.** Two halves: the sheet now reads `Label_Offset` for a
+     point, in metres, so a name moved clear of a cable on screen
+     stays clear of it on paper; and the board's own name goes
+     through `labelShown` like everything else, because a branch that
+     writes its own label has to repeat the pass's rules or it
+     escapes them. Without it a board was named on a sheet with every
+     label switch off — the one thing "print what is shown" exists to
+     prevent. The DB inside the square stays either way: that is the
+     symbol, not a label.
+
+     `checknrs` failed on this and was wrong: it matched
+     `Feature_Role === "nrs"` within 200 characters of `fillText`
+     within 120 of `p.y +`, and the offset went in between. Fourth
+     window this month. It tests the ternary now — supply adds to
+     p.y, everything else subtracts.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

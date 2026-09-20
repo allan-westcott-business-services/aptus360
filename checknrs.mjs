@@ -353,9 +353,24 @@ const plotById = () => ({ kva_load: 5 });
 //     and reads as belonging to whatever is further up. A plot number
 //     over a house has no such gap.
 {
+  /* ── The rule, not the two lines that used to carry it ──
+
+     This matched `Feature_Role === "nrs"` within 200 characters of
+     `fillText(f.Label)` within 120 of `p.y +`. When a point's name
+     was made movable the offset went in between them, the windows
+     closed, and the case reported that supplies had stopped being
+     labelled below their triangles. They had not.
+
+     What matters is the ternary: the supply branch adds to p.y and
+     everything else subtracts from it. */
   const src = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-  if (!/Feature_Role === "nrs"[\s\S]{0,200}fillText\(f\.Label[\s\S]{0,120}p\.y \+/.test(src)) {
-    fail("a supply's label is not drawn below its symbol");
+  const at = src.indexOf("const isSupply = f.Feature_Role === \"nrs\"");
+  const block = at < 0 ? "" : src.slice(at, src.indexOf("fillText(f.Label", at) + 200);
+  if (!block) fail("the supply label is not drawn where this case looks");
+  else if (!/isSupply \? p\.y \+ \d+ : p\.y -/.test(block)) {
+    fail("a supply's label is not drawn below its symbol \u2014 a triangle points "
+      + "into the space above it, so a name set there reads as belonging to "
+      + "whatever is further up");
   }
 }
 

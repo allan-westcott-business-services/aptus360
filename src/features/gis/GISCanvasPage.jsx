@@ -5183,6 +5183,42 @@ export default function GISCanvasPage() {
               ctx.textBaseline = "alphabetic";
             }
             ctx.restore();
+
+            /* ── And its name, beside it ──
+
+               The board drew none. The SHEET always has — the label
+               pass wrote it — so a board was called MSDB 3 on paper
+               and nothing at all on screen, and there was nothing to
+               move because there was nothing there. Reported as
+               wanting to move it, which is the same request.
+
+               Written here rather than by the generic label pass
+               below, because this branch returns before reaching it
+               and because the board alone knows how wide its box came
+               out and therefore where the name clears it. The print
+               says the same in the same words.
+
+               Movable, on `Label_Offset`, which is the key the label
+               drag writes when there is no index and no kind. */
+            if (f.Label && labelShown(f, on) && vs > 2.5) {
+              const lo = f.Attributes?.Label_Offset;
+              const lx = p.x + half + 6 + (Array.isArray(lo) ? Number(lo[0]) * vs : 0);
+              const ly = p.y + 4 + (Array.isArray(lo) ? Number(lo[1]) * vs : 0);
+              ctx.save();
+              ctx.fillStyle = on ? "#1d4ed8" : (ps.labelColour ?? "#0f172a");
+              ctx.font = "600 11px ui-monospace, Menlo, monospace";
+              ctx.textAlign = "left";
+              ctx.fillText(f.Label, lx, ly);
+              const lw = ctx.measureText(f.Label).width;
+              labelHits.current.push({
+                id: f.Feature_ID, idx: null, anchor: f.Geometry[0], txt: f.Label,
+                cx: lx + lw / 2, cy: ly,
+                x: lx - 2, y: ly - 11, w: lw + 4, h: 15,
+                spin: 0,
+              });
+              ctx.restore();
+            }
+
             /* The square is the symbol; the circle below would sit on
                top of it. */
             return;
@@ -5781,8 +5817,39 @@ export default function GISCanvasPage() {
              and text drawn at that same offset downward would touch
              it. */
           const isSupply = f.Feature_Role === "nrs";
-          ctx.fillText(f.Label, p.x,
-            isSupply ? p.y + 21 : p.y - (isSeed ? 15 : 11));
+          /* ── Where somebody PUT it ──
+
+             A point's name sat where the rule put it, and on a busy
+             corner that is over a cable, another symbol or a second
+             name. Lines have been movable for a long time; the
+             substation and the board are the two most often in the
+             way, and both were fixed in place.
+
+             `Label_Offset` is the key the label drag already writes
+             when there is no index and no kind, so nothing new had
+             to be stored and the print reads it already. In METRES,
+             like every other offset, so a label stays where it was
+             put as the drawing is zoomed. */
+          const lo = f.Attributes?.Label_Offset;
+          const dx = Array.isArray(lo) ? Number(lo[0]) * vs : 0;
+          const dy = Array.isArray(lo) ? Number(lo[1]) * vs : 0;
+          const lx = p.x + dx;
+          const ly = (isSupply ? p.y + 21 : p.y - (isSeed ? 15 : 11)) + dy;
+          ctx.fillText(f.Label, lx, ly);
+
+          /* Grabbable. The box is measured from the text actually
+             drawn rather than guessed, so a long name is as easy to
+             take hold of as a short one.
+
+             `idx: null` and no `kind`, which is what sends the drag
+             to the `Label_Offset` branch on release. */
+          const lw = ctx.measureText(f.Label).width;
+          labelHits.current.push({
+            id: f.Feature_ID, idx: null, anchor: f.Geometry[0], txt: f.Label,
+            cx: lx, cy: ly,
+            x: lx - lw / 2 - 2, y: ly - 11, w: lw + 4, h: 15,
+            spin: 0,
+          });
         }
       } else {
         const st = styleFor(f);

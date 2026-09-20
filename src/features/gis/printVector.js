@@ -36,7 +36,7 @@
 import {
   resolveStyle, appearance, subjectOf, symbolPath, STROKE_ONLY, SYMBOL_TEXT,
 } from "../../lib/gisStyle.js";
-import { isBottleEnd, symbolSpin } from "./joints.js";
+import { isBottleEnd, symbolSpin, BOTTLE_END_COLOUR } from "./joints.js";
 import { VALVE_WIDTH_M } from "./serviceValves.js";
 import { lineLabelText } from "./lineLabel.js";
 import { labelShown, DEFAULT_LABEL_KINDS } from "./labelKinds.js";
@@ -602,7 +602,16 @@ export function pageDrawList(features = [], tile, {
     out.push({
       kind: "paths",
       subs,
-      colour: ap.colour ?? "#334155",
+      /* ── A bottle end in its own green ──
+
+         It is the sealed end of a cable, and its symbol — a stem
+         with three diminishing bars — is the earth symbol lying on
+         its side, which is what it gets called on a drawing. In the
+         layer's amber it was one more amber thing among the joints.
+
+         One constant in joints.js, read here and by the canvas, so
+         the two cannot drift. */
+      colour: sym === "bottleend" ? BOTTLE_END_COLOUR : (ap.colour ?? "#334155"),
       /* Filled like the screen fills it: a cross and a bottle end have
          no inside, and a hollow diamond reads as a joint on every plan
          anybody has drawn. */

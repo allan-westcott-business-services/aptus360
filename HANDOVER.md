@@ -7247,6 +7247,30 @@ characters is a hundred lines of prose and no rules at all.
      window this month. It tests the ternary now — supply adds to
      p.y, everything else subtracts.
 
+168. **The bottle end is green.** Asked for as "the Earth symbol",
+     twice, and there is no earth anything in this app — no role, no
+     style, no symbol of that name, and the only Earth in the GIS
+     side is cable type 13 in the catalogue.
+
+     It is the BOTTLE END. `symbolPath` draws it as a stem with three
+     diminishing bars, which is the earth symbol lying on its side,
+     and that is what it gets called on a drawing. Worth writing down
+     because the next person to hear "the earth symbol" will search
+     for `earth` and find nothing, as happened here.
+
+     `BOTTLE_END_COLOUR` in joints.js, read by the canvas and the
+     sheet, so one fitting cannot be green on screen and amber on
+     paper.
+
+     **Why not a style row.** The cascade resolves on layer, line
+     type and ROLE, and a bottle end's role is `joint` — a row for it
+     would turn every joint on the drawing green with it. A constant
+     is the narrow change. The wide one is a style axis for
+     `Joint_Type`, worth doing when a second joint kind wants its own
+     colour and not before; the same argument applies to colouring a
+     run by its CABLE TYPE, which was asked about earlier and refused
+     for the same reason.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

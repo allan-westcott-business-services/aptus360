@@ -168,6 +168,25 @@ export function symbolSpin(f, features = [], opts = {}) {
    the drawing, the editor and the placement buttons — and a test on
    Attributes.Joint_Type written out three times is three chances to
    compare against the label instead of the key, or to forget the role. */
+/* ── The colour a bottle end is drawn in ──
+
+   Green, and not the layer's amber. A bottle end is the sealed end
+   of a cable — the symbol is a stem with three diminishing bars,
+   which is the earth symbol lying on its side, and that is what it
+   gets called on a drawing.
+
+   Its own colour rather than a style row, because the style cascade
+   resolves on layer, line type and ROLE, and a bottle end's role is
+   `joint`: a row for it would turn every joint on the drawing green
+   with it. Giving it a constant here is the narrow change; the wide
+   one is a style axis for `Joint_Type`, which is worth doing when a
+   second joint kind wants its own colour and not before.
+
+   Here rather than in either renderer, so the canvas, the sheet and
+   the DXF cannot drift — the fault this whole run of print work has
+   been about. */
+export const BOTTLE_END_COLOUR = "#16a34a";
+
 export function isBottleEnd(feature) {
   return feature?.Feature_Role === "joint"
     && String(feature?.Attributes?.Joint_Type ?? "") === "bottleend";

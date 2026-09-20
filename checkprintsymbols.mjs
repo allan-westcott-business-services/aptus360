@@ -23,6 +23,7 @@
 import { readFileSync } from "node:fs";
 import { pageDrawList } from "./src/features/gis/printVector.js";
 import { lineLabelText } from "./src/features/gis/lineLabel.js";
+import { BOTTLE_END_COLOUR } from "./src/features/gis/joints.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -274,7 +275,41 @@ const items = (features, more = {}) =>
   }
 }
 
-// 7. An invented meter is not part of the drawing.
+// 7. A bottle end is green, and only a bottle end.
+{
+  /* Its symbol — a stem with three diminishing bars — is the earth
+     symbol lying on its side, which is what it gets called on a
+     drawing. Asked for in green, and in the layer's amber it was one
+     more amber thing among the joints.
+
+     One constant, read by the canvas and the sheet, because a
+     fitting that is green on screen and amber on paper is the fault
+     this whole run of work has been about. */
+  const be = point("joint", [20, 20], { Attributes: { Joint_Type: "bottleend" } });
+  const other = point("joint", [40, 40], { Attributes: { Joint_Type: "service" } });
+  const out = items([be, other]);
+  const of = (f) => out.find((i) => i.kind === "paths" && i.id === f.Feature_ID);
+
+  if (of(be)?.colour !== BOTTLE_END_COLOUR) {
+    fail(`a bottle end prints ${of(be)?.colour}, wanted ${BOTTLE_END_COLOUR}`);
+  }
+  /* And nothing else moved with it. A style row could not have done
+     this: the cascade resolves on role, and a bottle end's role is
+     `joint` — so a row for it would turn every joint on the drawing
+     green too. */
+  if (of(other)?.colour === BOTTLE_END_COLOUR) {
+    fail("every joint went green with the bottle end \u2014 the colour belongs to "
+      + "the fitting, not to the role it shares with the others");
+  }
+
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/sym === "bottleend" \? BOTTLE_END_COLOUR/.test(canvas)) {
+    fail("the canvas does not draw a bottle end in the same green, so the "
+      + "screen and the sheet disagree about the colour of one fitting");
+  }
+}
+
+// 8. An invented meter is not part of the drawing.
 {
   const board = point("msdb", [20, 20], { Label: "MSDB 1" });
   const assumed = {

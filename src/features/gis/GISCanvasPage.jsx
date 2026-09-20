@@ -124,6 +124,7 @@ import {
 } from "./feederColour.js";
 import {
   planJoints, reconcileJoints, JOINT_KINDS, isBottleEnd, bottleEndAngle,
+  BOTTLE_END_COLOUR,
   jointAtEnd, jointAtPoint, withCable, withoutCable, jointCables,
   JOIN_REACH_M, cablesHeldAt, jointAngle as jointAngleOf, servedPlots,
 } from "./joints.js";
@@ -5612,7 +5613,11 @@ export default function GISCanvasPage() {
 
           symbolPath(ctx, sym, p.x, p.y, r);
           if (STROKE_ONLY.has(sym)) {
-            ctx.strokeStyle = on ? "#1d4ed8" : (ps.colour ?? fill);
+            /* A bottle end in its own green. It is the sealed end of
+               a cable and reads as the earth symbol; in the layer's
+               amber it was one more amber thing among the joints. */
+            ctx.strokeStyle = on ? "#1d4ed8"
+              : (sym === "bottleend" ? BOTTLE_END_COLOUR : (ps.colour ?? fill));
             ctx.lineWidth = 2.5;
             ctx.stroke();
             ctx.beginPath();

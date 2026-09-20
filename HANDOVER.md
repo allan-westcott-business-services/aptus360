@@ -218,6 +218,7 @@ caught a fault that had already shipped at least once.
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checklayerswitches.mjs` | The switches say what they govern; the picker says what things are |
 | `node checkenquiryfile.mjs` | An enquiry takes a document: straight to storage, and only its own |
 | `node checktrunkload.mjs` | A link box's input carries what it serves, each customer once |
 | `node checkservicejoint.mjs` | One service, one joint: the cables decide, the distance shortlists |
@@ -6962,6 +6963,102 @@ characters is a hundred lines of prose and no rules at all.
      and reports what the trench holds. 0215's other annotation —
      north points, revision clouds, detail bubbles — belongs beside
      Place Text Note when it is built, rather than reviving a menu.
+
+163. **Two switches on the Layers menu, and a name that lied.**
+
+     "Span node levels" was renamed **"Node levels"**. It governs the
+     level labels at feeder end points as well, and naming one of the
+     two kinds read as though the other had a switch somewhere else.
+
+     **Feeder end points had no switch at all.** Span Nodes did not
+     cover them — a span node belongs to the trench and a feeder end
+     point to the cable, they carry different roles and are placed by
+     different routines — so the only way to clear them off a busy
+     drawing was to hide the whole electric layer. They have their own
+     now, stepped in under Electric, which is where somebody looks for
+     it.
+
+     Worth remembering how little it took: `classKeys` already gives
+     every feature a `role:` key and hide, show and solo all work on
+     those, so the switch needed no plumbing whatever. It simply had
+     never been offered. The next thing that looks like it needs
+     building is worth checking against that first.
+
+     `MenuLayer` gained an `indent` prop for the stepped-in row. A
+     prop passed to a component that drops it is a step-in that looks
+     right in the source and does nothing on the screen, so
+     `checklayerswitches` asserts the component takes it.
+
+     **The picker now says what a thing IS, then what it is called.**
+     Selecting near a feeder point listed "Point A5" over
+     "feederpoint": the name line printed whatever the Label happened
+     to be, and the kind line printed a role KEY — a database value,
+     fine in a status line and wrong on the one dialog whose whole
+     job is telling four overlapping things apart.
+
+     `featureName` in snapping.js puts the kind first and the
+     identifier after: "Feeder End Point A5", "Electric Main A2". The
+     line beneath carries only what QUALIFIES the thing — circuit,
+     which output of a box, whether the end was clicked — and is not
+     drawn at all when there is nothing to qualify.
+
+     Three cases it has to get right, all on that one screenshot: a
+     feeder point's number comes from `Span_Label`, because its Label
+     is already "Point A5" and pasting the kind in front gives
+     "Feeder End Point Point A5"; something already named for what it
+     is, like a joint called "Service Joint", is left alone; and a
+     feature with no label of its own is the kind alone rather than
+     the kind and a trailing space.
+
+     `roleName` beside it turns a role key into a name. Listed, not
+     derived, for the reason the bill's own list records: nothing
+     turns `feederpoint` into "Feeder End Point" and `poc` into "POC"
+     by rule. Anything unlisted falls back to the key capitalised, so
+     a role added tomorrow reads as something and shows up as the odd
+     one out.
+
+     **The picker says what a thing IS, then what it is called.** It
+     read "Point A5" over "feederpoint" — a Label that says almost
+     nothing over a role KEY, which is a database value and fine in a
+     status line but wrong on the one dialog whose whole job is
+     telling four overlapping things apart. Now: "Feeder End Point
+     A5", "Electric Main A2", with only what QUALIFIES the thing
+     underneath — circuit, box output, whether it was the end that
+     was clicked — and no second line at all where there is nothing
+     to qualify.
+
+     `featureName` and `roleName` in snapping.js, beside `classLabel`
+     because the three are read together. The role names are LISTED,
+     for the reason the bill's own list records: there is no rule
+     that turns `feederpoint` into "Feeder End Point" and `poc` into
+     "POC".
+
+     Three cases that are not "kind then label": a feeder point's
+     Label is already "Point A5", so its number comes from
+     `Span_Label` or the name reads "Feeder End Point Point A5";
+     anything already named for what it is ("Service Joint") is left
+     alone; and a joint says **who it feeds** — "Service Joint Plot
+     54" — because every service joint on a drawing has the same name
+     and the plot is the only thing that tells them apart.
+
+     **`servedPlots` answered "no plots" for 84 of project 20's 85
+     service joints.** It followed the service cable's own `Plot_ID`
+     or its `Seed_Feature_ID`, and a cable laid by Auto Lay Service
+     Cable carries neither — it is drawn between two points and told
+     nothing about who it feeds. The METER at the far end knows,
+     which is the link `serviceFor` follows from the other direction.
+     With that route it resolves 82. It also names a non-residential
+     supply now, which has an `NRS_ID` and no plot number at all;
+     `checknrs`'s call-site count caught the missing `nrsById` the
+     moment the picker started asking.
+
+     **And the Notes layer is not the Annotation layer**, which was
+     asked and is worth writing down. `note` is the fallback layer for
+     a free-drawn line whose line type names no layer — sketch lines,
+     a scribbled route. `annotation` is what 0215 made for things that
+     describe the drawing rather than sit in the ground: cross-section
+     marks and text notes. Separate so that hiding a utility, or Print
+     to Scale hiding the trench, cannot take the annotation with it.
 
 ## Decisions worth knowing
 

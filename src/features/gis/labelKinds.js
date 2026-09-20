@@ -65,7 +65,11 @@ export const LABEL_KINDS = [
   { key: "mains", label: "Mains labels", on: false },
   { key: "services", label: "Service labels", on: false },
   { key: "joints", label: "Joint labels", on: false },
-  { key: "levels", label: "Span node levels", on: true },
+  /* "Node levels" rather than "Span node levels": the labels this
+     switch controls sit at span nodes AND at feeder end points, and
+     naming one of the two read as though the other had its own
+     switch somewhere. */
+  { key: "levels", label: "Node levels", on: true },
 ];
 
 export const DEFAULT_LABEL_KINDS = Object.fromEntries(

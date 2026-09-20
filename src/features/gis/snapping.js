@@ -170,6 +170,104 @@ export function classLabel(f, lineTypes = []) {
   return t?.Label || f.Layer_Key;
 }
 
+/* ── What a role is CALLED ──
+
+   `classLabel` gives a point its role key, which is a database value
+   and not a name: "feederpoint", "spannode", "hdcutout". Fine in a
+   status line, wrong on a dialog somebody is reading to choose
+   between four things lying on top of each other.
+
+   Listed rather than derived, for the reason the bill's own list
+   records: there is no rule that turns `feederpoint` into "Feeder
+   End Point" and `poc` into "POC". The names are facts about the
+   trade, not about the string. Anything not here falls back to the
+   key with its first letter raised, so a role added tomorrow reads
+   as something rather than blank — and shows up as the odd one out
+   when somebody looks. */
+const ROLE_NAMES = {
+  feederpoint: "Feeder End Point",
+  spannode: "Span Node",
+  servicevalve: "Service Valve",
+  linkbox: "Link Box",
+  poc: "POC",
+  msdb: "MSDB",
+  hdcutout: "HDCO",
+  column: "Lighting Column",
+  governor: "Gas Governor",
+  openpoint: "Normally Open Point",
+  ringsub: "Ring Substation",
+  primary: "Primary Substation",
+  sectionmark: "Cross-section Mark",
+  textnote: "Text Note",
+  nrs: "NRS",
+};
+
+export function roleName(role) {
+  const k = String(role || "");
+  if (!k) return "";
+  return ROLE_NAMES[k] ?? (k.charAt(0).toUpperCase() + k.slice(1));
+}
+
+/* ── What to call a feature on a list ──
+
+   The name line of the picker, and of anything else that has to say
+   which of several things it means. The KIND comes first and the
+   thing's own identifier after it: "Feeder End Point A5", "Electric
+   Main A2". Reported from use — the dialog read "Point A5" over
+   "feederpoint", so the useful half of the name was the part in
+   small grey type underneath.
+
+   Three cases, in order:
+
+     - a point whose role has a node number of its own (a feeder
+       point's `Span_Label`) is the kind and that number. Its `Label`
+       is "Point A5", so pasting the kind in front of the Label would
+       give "Feeder End Point Point A5";
+     - anything already named for what it is — a joint called "Service
+       Joint", a line type used as its own label — is left alone,
+       because "Joint Service Joint" is worse than either half;
+     - everything else is the kind and then the label.
+
+   Pure, and beside `classLabel` because the two are read together. */
+export function featureName(f, lineTypes = [], plots = []) {
+  if (!f) return "";
+  const kind = f.Feature_Type === "point"
+    ? roleName(f.Feature_Role) : classLabel(f, lineTypes);
+  const own = f.Attributes?.Span_Label || f.Label || "";
+
+  /* ── Who it serves ──
+
+     A service joint is called "Service Joint" and so is every other
+     one on the drawing, which is no help at all on a dialog asking
+     which of four things you meant. The plot it feeds is the thing
+     that tells them apart, and it is what somebody is looking for
+     when they click there.
+
+     Passed in rather than worked out here, because finding it means
+     reading every service cable on the drawing and this stays pure.
+     `servedPlots` in joints.js is what produces it.
+
+     Plural where a joint feeds more than one, which a shared
+     footway joint does. */
+  const served = (plots || []).filter((x) => x != null && x !== "");
+  if (served.length) {
+    const who = `${served.length > 1 ? "Plots" : "Plot"} ${served.join(", ")}`;
+    return own ? `${own} ${who}` : `${kind} ${who}`;
+  }
+
+  if (!own) return kind || "Unnamed";
+  if (!kind) return String(own);
+
+  /* Already says it. A joint labelled "Service Joint" needs no
+     "Joint" in front of it, and a line whose label IS its type needs
+     no type in front of it. */
+  const a = String(own).toLowerCase();
+  const b = String(kind).toLowerCase();
+  if (a.includes(b) || b.includes(a)) return String(own);
+
+  return `${kind} ${own}`;
+}
+
 const meets = (a, b, tol) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= tol;
 
 /* Chain lines end to end into one polyline.

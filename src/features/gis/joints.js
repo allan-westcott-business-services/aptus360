@@ -858,8 +858,26 @@ export function reconcileJoints(planned = [], existing = [], tolM = 0.25) {
    Plot_ID, or the seed it was drawn for. Following only one of them left
    half the cables unattributed, which is the same fault that made
    circuit isolation miss them. */
+/* The plot of the meter at a service's OTHER end.
+
+   `near` says which end of the cable is at the joint; the plot comes
+   from the meter standing at the other one. Two metres of slack,
+   which is what `serviceFor` allows between a meter and the cable
+   that feeds it — a meter is drawn at the property and the cable
+   stops at the wall. */
+function meterAtEnd(cable, near, meters, atMeterM = 2) {
+  const g = cable.Geometry || [];
+  if (g.length < 2) return null;
+  const far = near(g[0]) ? g[g.length - 1] : g[0];
+  for (const m of meters) {
+    const p = m.Geometry[0];
+    if (Math.hypot(p[0] - far[0], p[1] - far[1]) <= atMeterM) return m;
+  }
+  return null;
+}
+
 export function servedPlots(joint, features = [], opts = {}) {
-  const { tolM = 0.25, plotById = () => null } = opts;
+  const { tolM = 0.25, plotById = () => null, nrsById = () => null } = opts;
   const at = (joint?.Geometry || [])[0];
   if (!at) return [];
 
@@ -874,7 +892,12 @@ export function servedPlots(joint, features = [], opts = {}) {
 
   const near = (p) => p && Math.hypot(p[0] - at[0], p[1] - at[1]) <= tolM;
 
+  /* The meters, once, rather than once per cable. */
+  const meters = features.filter((m) => m.Feature_Role === "meter"
+    && (m.Geometry || []).length);
+
   const ids = new Set();
+  const supplies = new Set();
   for (const f of features) {
     if (f.Feature_Type !== "line" || f.Layer_Key !== "electric") continue;
     if (!String(f.Attributes?.Line_Type || "").endsWith("_service")) continue;
@@ -888,12 +911,42 @@ export function servedPlots(joint, features = [], opts = {}) {
     const pid = f.Plot_ID
       ?? (f.Attributes?.Seed_Feature_ID != null
         ? seedToPlot.get(String(f.Attributes.Seed_Feature_ID))
-        : null);
-    if (pid != null) ids.add(Number(pid));
+        : null)
+      /* ── And the meter at the far end ──
+
+         A third route, and on some drawings the only one. A service
+         laid by Auto Lay Service Cable carries neither `Plot_ID` nor
+         `Seed_Feature_ID` — it is drawn between two points and told
+         nothing about who it feeds — so following the cable alone
+         returned nothing at all and every service joint on project
+         20 answered "no plots".
+
+         The cable knows where it ends and the METER there knows its
+         plot. That is the same link `serviceFor` follows from the
+         other direction, and it holds for a cable drawn by hand as
+         well as a generated one. */
+      ?? meterAtEnd(f, near, meters)?.Plot_ID;
+    if (pid != null) { ids.add(Number(pid)); continue; }
+
+    /* ── A supply is not a plot ──
+
+       A non-residential supply — a pump, a substation's own feed, a
+       lift — has no plot number: it carries an `NRS_ID` and a name
+       of its own. A joint feeding one answered "no plots" and read
+       as an unlabelled Service Joint beside eighty others.
+
+       Named rather than numbered, because that is what an NRS has.
+       Anything reading this list gets the same shape either way. */
+    const nrsId = meterAtEnd(f, near, meters)?.Attributes?.NRS_ID;
+    if (nrsId != null) {
+      const n = nrsById(nrsId);
+      supplies.add(n?.Supply_Name || n?.Name || `NRS ${nrsId}`);
+    }
   }
 
   return [...ids]
     .map((id) => ({ plotId: id, number: plotById(id)?.plot_number ?? String(id) }))
+    .concat([...supplies].map((name) => ({ plotId: null, number: name })))
     .sort((a, b) => {
       const na = Number(String(a.number).replace(/\D/g, ""));
       const nb = Number(String(b.number).replace(/\D/g, ""));

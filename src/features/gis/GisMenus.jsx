@@ -200,9 +200,15 @@ export function MenuBranch({ label, hint, disabled, children, defaultOpen = fals
    the same layer either way. */
 export function MenuLayer({
   label, hidden, shown, solo, onHide, onShow, onSolo, colour, count,
+  /* A row that belongs to the one above it: a feeder end point under
+     Electric, say. Stepped in rather than given a heading of its own,
+     because a heading would separate it from the layer it qualifies
+     and that relationship is the whole reason it is there. */
+  indent = false,
 }) {
   return (
-    <div className={hidden ? "gm-row off" : "gm-row"} data-keep-open>
+    <div className={`gm-row${hidden ? " off" : ""}${indent ? " gm-sub" : ""}`}
+      data-keep-open>
       {colour && <span className="gm-dot" style={{ background: colour }} />}
       <span className="gm-lbl">{label}</span>
       {count != null && <em>{count}</em>}
@@ -419,6 +425,10 @@ const CSS = `
 .gm-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 9px;
   border-radius: 6px; font-size: 12.5px; }
 .gm-row:hover { background: var(--bg); }
+/* A row that qualifies the one above it. Stepped in far enough to
+   read as belonging to it and not so far that the H and S buttons
+   stop lining up with the others. */
+.gm-sub { padding-left: 24px; }
 .gm-row .gm-lbl { flex: 1; }
 .gm-row.off .gm-lbl { color: var(--muted); text-decoration: line-through; }
 .gm-row.off .gm-dot { opacity: .3; }

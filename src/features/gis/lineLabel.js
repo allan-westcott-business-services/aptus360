@@ -56,7 +56,7 @@ export function lineTag(f, lineTypes = []) {
    the print does not, and inventing a second source for them is how
    the two drawings come apart. A sheet that needs them is a sheet that
    should pass them in. */
-export function lineLabelText(f, { lineTypes = [] } = {}) {
+export function lineLabelText(f, { lineTypes = [], cableName = null } = {}) {
   if (!f || (f.Geometry || []).length < 2) return "";
   const a = f.Attributes || {};
   const tag = lineTag(f, lineTypes);
@@ -68,6 +68,30 @@ export function lineLabelText(f, { lineTypes = [] } = {}) {
   const sized = (f.Layer_Key === "water" || f.Layer_Key === "gas") && a.Size
     ? [String(a.Size), lengthLabel(f)]
     : null;
+
+  /* ── A cable says what it is and how long it is ──
+
+     Water and gas have said their size and length here all along
+     because the size is written on the feature. A cable's is not: it
+     is a `VD_Cable_Size_ID` pointing at a catalogue, so this returned
+     the tag alone and an issued sheet showed a cable marked "D" —
+     one letter, where the screen shows "3c Wave 185" and its length.
+     Reported from use, on a drawing about to go out.
+
+     The catalogue is passed IN rather than looked up, which is what
+     the note above this function asks for: `cableName` is a function
+     from a size id to its name, and a caller that has no catalogue
+     passes nothing and gets what it got before. The canvas builds
+     exactly such a map already.
+
+     The manual size first, as everywhere else: an override is the
+     size that would be built. */
+  const cable = typeof cableName === "function"
+    ? cableName(a.Manual_VD_Cable_Size_ID ?? a.VD_Cable_Size_ID)
+    : null;
+  if (cable) {
+    return [tag || null, cable, lengthLabel(f)].filter(Boolean).join("\n");
+  }
 
   if (sized) return [tag || null, ...sized].filter(Boolean).join("\n");
   if (tag) return tag;

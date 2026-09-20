@@ -185,6 +185,10 @@ function touches(f, tile, padM = 1) {
    then cables, then points, then labels — because a PDF has no
    z-order beyond the order operators are written in. */
 export function pageDrawList(features = [], tile, {
+  /* Size id to the cable's name, from the caller's own catalogue. A
+     sheet given none labels a cable as it always did \u2014 by its tag
+     alone \u2014 rather than inventing a second source for the name. */
+  cableName = null,
   layers = [],
   styles = [],
   lineTypes = [],
@@ -289,6 +293,22 @@ export function pageDrawList(features = [], tile, {
 
        No symbol and no label pass — this writes both, and the label
        pass is told to leave notes alone below. */
+    /* ── A meter that is not on the drawing ──
+
+       `withAssumedMeters` invents one per flat behind a board, so the
+       build, the levels and the circuit report can work from a load
+       that exists. They are not features: they have no Feature_ID,
+       they are never saved, and the CANVAS does not draw them.
+
+       The print was handed them and drew them, all at the board's own
+       anchor, so every MSDB on an issued sheet wore a stack of filled
+       meter symbols the screen had never shown. A print is of the
+       drawing as shown; an invented meter is not part of the drawing.
+
+       Skipped here rather than by not passing them, because a later
+       pass may legitimately want to count them. */
+    if (f.Attributes?.Assumed) continue;
+
     if (role === NOTE_ROLE) {
       const box = noteBox(f);
       const ink = f.Attributes?.Note_Colour
@@ -355,6 +375,71 @@ export function pageDrawList(features = [], tile, {
           id: f.Feature_ID,
         });
       });
+      continue;
+    }
+
+    /* ── A board is a square with DB in it ──
+
+       Drawn as the canvas draws it: a white square, upright rather
+       than turned to the cable, with the letters inside. A board is a
+       thing in a riser cupboard and a building does not lean with the
+       trench.
+
+       Without this branch it fell through to the symbol cascade,
+       which gave it a square filled in the default slate — a solid
+       black block on the sheet where the screen shows an outlined
+       one you can read. It carried no letters either, so four boards
+       on a page were four identical blocks.
+
+       White fill and not none: it sits over the cable that feeds it,
+       and a transparent box with a line through it does not read as
+       a board. */
+    if (role === "msdb") {
+      const half = Math.max(1.6, symbolRadiusMm(st, k) * 1.05);
+      const box = [
+        [p0[0] - half, p0[1] - half], [p0[0] + half, p0[1] - half],
+        [p0[0] + half, p0[1] + half], [p0[0] - half, p0[1] + half],
+      ];
+      out.push({
+        kind: "paths",
+        subs: [{ pts: box, closed: true }],
+        colour: "#ffffff",
+        fill: true,
+        widthMm: 0.1,
+        id: f.Feature_ID,
+      });
+      out.push({
+        kind: "paths",
+        subs: [{ pts: box, closed: true }],
+        colour: "#0f172a",
+        fill: false,
+        widthMm: 0.3,
+        id: f.Feature_ID,
+      });
+      out.push({
+        kind: "text",
+        /* Roughly centred: the writer sets text from its left on a
+           baseline, so the box's middle less half the glyphs' width
+           and a third of their height. */
+        at: [p0[0] - half * 0.62, p0[1] + half * 0.38],
+        text: "DB",
+        sizePt: Math.max(3, half * 2.83465 * 0.9),
+        colour: "#0f172a",
+        align: "left",
+        id: f.Feature_ID,
+      });
+      /* Its name beside it, the way the canvas writes one. The label
+         pass below skips a role it has already written. */
+      if (f.Label) {
+        out.push({
+          kind: "text",
+          at: [p0[0] + half + 0.8, p0[1] + 0.9],
+          text: String(f.Label),
+          sizePt: 6,
+          colour: ap.labelColour ?? "#0f172a",
+          id: f.Feature_ID,
+        });
+      }
       continue;
     }
 
@@ -436,8 +521,20 @@ export function pageDrawList(features = [], tile, {
       /* Filled like the screen fills it: a cross and a bottle end have
          no inside, and a hollow diamond reads as a joint on every plan
          anybody has drawn. */
-      fill: !STROKE_ONLY.has(sym)
-        && !(role === "joint" || role === "hdcutout" || role === "openpoint"),
+      /* ── Filled exactly as the screen fills it ──
+
+         `STROKE_ONLY` and nothing else. This carried three more roles
+         — joint, hdcutout, openpoint — on the argument that a hollow
+         diamond reads as a joint on a plan. It may, but the screen
+         fills them, and a sheet that draws a fitting differently from
+         the drawing it was taken from is a sheet somebody has to
+         learn to read twice. Reported from use, on both the joints
+         and the heavy duty cut-outs.
+
+         If hollow fittings are wanted on paper, that is a style
+         choice and belongs in the style table where the screen will
+         honour it too. */
+      fill: !STROKE_ONLY.has(sym),
       widthMm: STROKE_ONLY.has(sym) ? Math.max(0.3, rMm * 0.3) : 0.25,
       id: f.Feature_ID,
     });
@@ -532,7 +629,7 @@ export function pageDrawList(features = [], tile, {
          the vertices happen to be evenly spaced, which a tee makes sure
          they are not. */
       if (isLine(f)) {
-        const txt = lineLabelText(f, { lineTypes });
+        const txt = lineLabelText(f, { lineTypes, cableName });
         if (!txt) continue;
         const pts = (f.Geometry || []).filter(Array.isArray).map(toPage);
         if (pts.length < 2) continue;

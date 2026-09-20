@@ -11709,6 +11709,14 @@ export default function GISCanvasPage() {
     styles,
     lineTypes,
     utilities,
+    /* ── The cable catalogue ──
+
+       A cable's size is an id pointing at a table, not a figure on
+       the feature, so without this the sheet could only label a
+       cable with its tag: one letter, where the screen shows
+       "3c Wave 185" and the length under it. `cableNames` is the map
+       the canvas labels from, so the two say the same words. */
+    cableName: (id) => (id == null ? null : cableNames.get(Number(id)) || null),
     /* The screen's own label switches, so the sheet writes what the
        screen writes: the master Labels layer and the per-kind
        switches travel with the print rather than being re-decided
@@ -11726,7 +11734,7 @@ export default function GISCanvasPage() {
     when: new Date().toLocaleDateString("en-GB",
       { day: "numeric", month: "short", year: "numeric" }),
     filename: `${project?.Contract_Number || "drawing"}.pdf`,
-  }), [layers, styles, lineTypes, utilities, showLabels, labelKinds,
+  }), [layers, styles, lineTypes, utilities, cableNames, showLabels, labelKinds,
     basemap, basemapBytes, project, standard]);
 
   /* ── The print is of the drawing AS SHOWN ──

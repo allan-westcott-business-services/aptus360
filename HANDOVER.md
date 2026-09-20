@@ -218,6 +218,7 @@ caught a fault that had already shipped at least once.
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checkprintsymbols.mjs` | The sheet draws what the screen draws |
 | `node checklayerswitches.mjs` | The switches say what they govern; the picker says what things are |
 | `node checkenquiryfile.mjs` | An enquiry takes a document: straight to storage, and only its own |
 | `node checktrunkload.mjs` | A link box's input carries what it serves, each customer once |
@@ -7059,6 +7060,53 @@ characters is a hundred lines of prose and no rules at all.
      describe the drawing rather than sit in the ground: cross-section
      marks and text notes. Separate so that hiding a utility, or Print
      to Scale hiding the trench, cannot take the annotation with it.
+
+164. **Five ways the printed sheet was not the drawing.** All reported
+     off one issued PDF, and four of them the same fault: the sheet
+     decided something the screen had already decided.
+
+     - **Every MSDB printed as a solid black block.** There was no
+       board branch, so it fell through to the symbol cascade and got
+       a square filled in the default slate, with no letters. The
+       screen draws a white square with DB in it. Now so does the
+       sheet.
+     - **Joints and heavy duty cut-outs printed hollow.** The sheet
+       carried an extra unfill for `joint`, `hdcutout` and
+       `openpoint`, on the argument that a hollow diamond reads as a
+       joint on a plan. It may — but the screen fills them, and a
+       sheet drawing a fitting differently from the drawing it came
+       from is one somebody has to learn to read twice. `STROKE_ONLY`
+       and nothing else now, as on screen. If hollow fittings ARE
+       wanted on paper, that is a style choice and belongs in the
+       style table where both surfaces honour it.
+     - **Every cable was labelled with one letter.** Not the same
+       fault: here the sheet was missing a fact rather than inventing
+       one. A cable's size is a `VD_Cable_Size_ID` pointing at a
+       catalogue the print was never given, so `lineLabelText` could
+       only return the tag — "D" on a drawing somebody digs from.
+       lineLabel.js's own note asked for exactly the fix: the
+       catalogue is PASSED IN as `cableName`, from the map the canvas
+       labels with, so the two say the same words. A caller with no
+       catalogue still gets the tag.
+     - **A stack of filled meters sat on every board.**
+       `withAssumedMeters` invents one per flat so the build, the
+       levels and the circuit report have a load to work from. They
+       have no Feature_ID, are never saved, and the CANVAS DOES NOT
+       DRAW THEM — the print was handed them and did, all at the
+       board's own anchor. Skipped in `pageDrawList` rather than by
+       not passing them, since a later pass may want to count them.
+
+     Reported as "feeder end points are printing though they are
+     switched off", and they were not: Print to Scale hides
+     `role:feederpoint` and the filter works. The circles were the
+     assumed meters. Worth remembering that a symbol somewhere
+     unexpected is not evidence about which feature it is.
+
+     `checkprintsymbols.mjs` holds all five. Its first fixture used a
+     tile shaped `{x, y, wMm, hMm}`; a tile is a rectangle of GROUND
+     — `minX/minY/maxX/maxY` — so every feature fell outside the page
+     and the whole check passed on an empty list. A fixture that makes
+     a check pass by producing nothing is the worst kind.
 
 ## Decisions worth knowing
 

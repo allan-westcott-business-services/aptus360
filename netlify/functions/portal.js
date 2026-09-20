@@ -45,7 +45,10 @@ function mineOrNull(path, access) {
    by its SITE NAME and by Display_Ref, which is the reference printed
    on everything a developer will have seen from us. */
 const PROJECT_COLS = "Project_ID,Display_Ref,Project_Ref,Site_Name,"
-  + "Site_Address,Postcode,Project_Status_ID,Customer_ID,Organisation_Branch_ID,"
+  /* `Customer_ID` was here and is gone from the table (20 Sept).
+     PostgREST refuses the whole select over one missing column, so
+     this took the developer portal's project list down with it. */
+  + "Site_Address,Postcode,Project_Status_ID,Organisation_Branch_ID,"
   /* Date_Received is the enquiry milestone. It was derived from and
      never SELECTED, so the field arrived undefined and the stage showed
      "to come" on every site — recurring fault 4 again: a column not on
@@ -283,10 +286,10 @@ async function contactAccessFor(db, user) {
 
 /* The projects this caller may see, as ids.
 
-   A developer's sites are the ones their customer owns — by
-   Project.Customer_ID, and by Project_Developer for schemes where more
-   than one developer is involved and the project's own customer is
-   somebody else. Both, because either alone leaves sites out. */
+   A developer's sites are the ones their developer record names.
+   `Project.Customer_ID` was read as well until that column was
+   dropped on 20 Sept; it was a cached copy of the same fact and
+   said nothing `Project_Developer` does not. */
 async function mine(db, access) {
   if (!access) return [];
   if (access.Audience === "staff") return null;          // null = no limit
@@ -310,15 +313,25 @@ async function mine(db, access) {
      reason, not merely as an optimisation. */
   if (access.Project_ID != null) return [Number(access.Project_ID)];
 
+  /* ── An account recorded against the old Customer table ──
+
+     `Project.Customer_ID` was one of the two places this looked.
+     The column is gone (20 Sept), and a select naming it does not
+     return fewer rows \u2014 it throws, and this is the function that
+     decides which sites somebody may see. A throw here is a portal
+     that will not open, which is the safe direction and still a
+     broken portal.
+
+     `Project_Developer.Customer_ID` is still there, so the scope
+     survives for any account that has one: a developer's sites are
+     found through the DEVELOPER RECORD, which is where
+     `checkportal` already insists authorisation looks. Losing the
+     `Project` half loses nothing a developer record does not also
+     say \u2014 that column was a cached copy of exactly this. */
   if (access.Customer_ID != null) {
-    const [own, shared] = await Promise.all([
-      db.from("Project").select("Project_ID").eq("Customer_ID", access.Customer_ID),
-      db.from("Project_Developer").select("Project_ID")
-        .eq("Customer_ID", access.Customer_ID),
-    ]);
-    if (own.error) throw own.error;
+    const shared = await db.from("Project_Developer").select("Project_ID")
+      .eq("Customer_ID", access.Customer_ID);
     if (shared.error) throw shared.error;
-    for (const r of own.data || []) ids.add(Number(r.Project_ID));
     for (const r of shared.data || []) ids.add(Number(r.Project_ID));
   }
 

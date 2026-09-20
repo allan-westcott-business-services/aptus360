@@ -9,34 +9,18 @@ const PROJECT_COLUMNS = [
   /* The two references the project is known by elsewhere: the AP number
      to the network operator, the tender reference to the client. */
   "AP_Number", "Tender_Ref",
-  /* ── Retired, and still on the table ──
+  /* ── Customer_ID and Branch_ID are GONE from the table ──
 
-     `Customer_ID` and `Branch_ID` point at `Customer` and
-     `Customer_Branch`, emptied on 26 Aug with every project
-     repointed at the matching `Organisation_Branch`. They are null
-     on everything made since, and every reader that still took them
-     faded rather than failed \u2014 right on old rows, empty on the ones
-     being worked on. Two were found that way: the projects list's
-     Customer column and the customer projects page.
+     They pointed at `Customer` and `Customer_Branch`, emptied on
+     26 Aug with every project repointed at `Organisation_Branch`,
+     and the columns themselves were dropped on 20 Sept.
 
-     Kept in this list because this list is the nearest thing the
-     repo has to a schema \u2014 checkportal reads it to decide whether a
-     column exists \u2014 and the columns DO still exist. Nothing in the
-     app reads their values any more except the portal's legacy
-     account scope.
-
-     Dropping them means dealing with `sync_project_main_developer()`,
-     the trigger that writes them, whose source is not in this
-     folder, and with that portal path, which decides who may see
-     what. Neither is a tack-on.
+     Off this list, and that matters twice over: PostgREST refuses a
+     select naming a column that does not exist, so leaving them
+     here breaks the projects list outright \u2014 and `checkportal`
+     reads this list to decide whether a column is real, so leaving
+     them would have it bless a portal query that cannot run.
   */
-  "Customer_ID", "Branch_ID",
-  /* The branch where it is an Organisation_Branch (0154).
-
-     Itself a cached copy of the main developer, and a drifted one:
-     checkportal records eleven unrelated live schemes all carrying
-     branch 17, and forbids authorisation from reading it. Read only
-     as a fallback behind the Project_Developer row. */
   "Organisation_Branch_ID",
   "Region_ID", "Sub_Region_ID",
   "Site_Name", "Site_Address", "Postcode", "Eastings", "Northings",

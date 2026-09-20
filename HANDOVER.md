@@ -7371,10 +7371,20 @@ characters is a hundred lines of prose and no rules at all.
      Taylor Wimpey (North West) on its Stakeholder tab.
 
      The list fetches `Project_Developer` with each project now and
-     the column reads the row marked `Is_Main`. The cache stays as
-     the fallback for rows that predate the developer records; where
-     the two disagree the Stakeholder tab wins, because that is where
-     somebody typed it.
+     the column reads the row marked `Is_Main`.
+
+     **The cache is not used at all, not even as a fallback**, and
+     the live data is why. Counted on 26 projects: the two disagree
+     on **19**. Eleven carry cached branch **17**, and on seven of
+     those the recorded developer is a different branch entirely
+     (413 to 419). Project 25 is one — cache 17, record 419.
+
+     A wrong company that looks right is worse than a blank. A blank
+     is a question somebody answers on the Stakeholder tab; 17 is
+     Anwyl Homes on somebody else's site with nothing on screen to
+     doubt it. Seven projects have no main developer recorded at all
+     (9, 12, 13, 15, 16, 18, 21) and now show blank, which is the
+     point.
 
      **Fourth stale cache in a week** — the calc sheet's stored meter
      count (158), the link box's summed load (158), the FEP load that
@@ -7400,8 +7410,71 @@ characters is a hundred lines of prose and no rules at all.
      job.
 
      So the remaining work is: the portal's legacy scope, the trigger
-     `sync_project_main_developer()` whose source is not in this
-     folder, and then the DROP. Its own session.
+     `sync_project_main_developer()`, and then the DROP. Its own
+     session.
+
+     **The function was read, and it did not drift — it stopped
+     (0231).** `sync_project_main_developer()` selects `Customer_ID`
+     and `Branch_ID` off the main developer row. Both are
+     `Customer_Branch` columns, and on 26 Aug that table was emptied
+     and every developer repointed at `Organisation_Branch`. So from
+     that day it has selected two nulls, found no difference to
+     write, and done nothing. It has never heard of
+     `Organisation_Branch_ID`.
+
+     That accounts for all three groups exactly: the eleven at branch
+     17 are what the cache held before 26 Aug, the six with a record
+     and no cache were made after it stopped, and the seven
+     disagreements are both at once.
+
+     **And it can wipe a correct answer.** The worse half, and the
+     reason 0231 is not optional:
+
+         "Organisation_Branch_ID" = CASE
+            WHEN main."Branch_ID" IS NOT NULL THEN NULL
+            ELSE p."Organisation_Branch_ID" END
+
+     Sound when a project named one branch table or the other (0154).
+     With one branch table it means any developer row still carrying
+     a legacy `Branch_ID` nulls out a perfectly good
+     `Organisation_Branch_ID` the next time somebody saves the
+     Stakeholder tab. A landmine, not a stale figure.
+
+     **And the columns were dropped mid-conversation**, ahead of the
+     portal work, by running the drop statement from the end of the
+     SQL set early. Not a disaster — it was the intended end state —
+     but it turned three things from planned work into live faults,
+     and it is worth knowing how each announced itself.
+
+     `PROJECT_COLUMNS` still named both. **PostgREST refuses a whole
+     select over one missing column**, so the projects list did not
+     come back short, it did not come back. Same for the developer
+     portal's own project select. Both fixed by taking the names out
+     — which is now also correct, where before it was wrong.
+
+     The portal's legacy account scope read `Project.Customer_ID` to
+     decide which sites a contact may see. It reads
+     `Project_Developer.Customer_ID` alone now, which still exists
+     and is where authorisation is supposed to look anyway;
+     `checkportal` has said so for a while. The `Project` half was a
+     cached copy of the same fact.
+
+     **`log_project_changes()` is still broken and this does not fix
+     it.** It builds a dynamic query naming the columns it records
+     and one of them is gone:
+
+         ERROR: column "Customer_ID" not found in data type "Project"
+         CONTEXT: PL/pgSQL function log_project_changes() line 16
+
+     Every UPDATE on `Project` that reaches it fails, which is how
+     it was found — it refused 0231's own backfill. Its body has not
+     been read; the two queries to fetch are at the foot of 0231. A
+     history trigger decides whether a change is recorded, and a
+     wrong one either blocks the save or loses the record of it, so
+     it wants its own migration rather than a guess.
+
+     0231 itself now touches `Organisation_Branch_ID` and nothing
+     else, because nothing else is there to touch.
 
      And `Organisation_ID` is deliberately NOT on `Project`:
      `Organisation_Branch` carries it, and storing it again would be

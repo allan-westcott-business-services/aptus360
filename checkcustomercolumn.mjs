@@ -87,9 +87,19 @@ const list = readFileSync("./src/features/projects/ProjectsList.jsx", "utf8");
       + "the developer on the Stakeholder tab, so a drifted cache names the "
       + "wrong company");
   }
-  if (!/\?\? p\.Organisation_Branch_ID/.test(col)) {
-    fail("the cache is not kept as a fallback, so a project with no "
-      + "developer record shows nothing at all");
+  /* ── And NOT as a fallback ──
+
+     It was kept as one until the live data was counted: on 26
+     projects the two disagree on 19, and eleven carry cached branch
+     17 — seven of those with a real developer on a different branch.
+     A wrong company that looks right is worse than a blank, because
+     a blank is a question somebody answers and 17 is Anwyl Homes on
+     somebody else's site with nothing on screen to doubt. */
+  if (/\?\? p\.Organisation_Branch_ID/.test(col)) {
+    fail("the project's cached branch is used when no developer is recorded "
+      + "\u2014 on live data that cache is wrong on nineteen projects out of "
+      + "twenty-six, so it shows a plausible wrong company instead of a "
+      + "blank somebody would fix");
   }
 
   const api = readFileSync("./netlify/functions/projects.js", "utf8");
@@ -125,9 +135,13 @@ const list = readFileSync("./src/features/projects/ProjectsList.jsx", "utf8");
   if (!/lookups\.developerBranches/.test(code)) {
     fail("the customer projects page does not list organisation branches");
   }
-  if (!/mainDeveloper\?\.Organisation_Branch_ID/.test(page)) {
+  if (!/mainDeveloper\?\.Organisation_Branch_ID/.test(code)) {
     fail("the customer projects page groups on the project's cached branch "
       + "rather than the developer on the Stakeholder tab");
+  }
+  if (/\?\? p\.Organisation_Branch_ID/.test(code)) {
+    fail("the customer projects page falls back to the cached branch, which "
+      + "is wrong on nineteen live projects");
   }
   if (!/branchLabelOf\(b, b\.Organisation_Name\)/.test(page)) {
     fail("the page names a branch differently from the projects list");
@@ -169,6 +183,110 @@ const list = readFileSync("./src/features/projects/ProjectsList.jsx", "utf8");
   if (!/String\(x\[c\.idKey\]\) === String\(id\)/.test(list)) {
     fail("the branch is matched strictly, so a number against a string "
       + "empties the column");
+  }
+}
+
+// 7. Nothing asks Project for a column it no longer has.
+{
+  /* `Customer_ID` and `Branch_ID` were dropped from `Project` on
+     20 Sept. PostgREST refuses a whole select over one missing
+     column, so a list naming them does not come back short — it
+     does not come back. The projects list and the developer
+     portal's project list were both doing it.
+
+     `PROJECT_COLUMNS` is this repo's stand-in for the schema and has
+     to follow the table, or `checkportal` blesses a query that
+     cannot run. */
+  const api = readFileSync("./netlify/functions/projects.js", "utf8");
+  const declared = (api.match(/const PROJECT_COLUMNS = \[([\s\S]*?)\]/) || ["", ""])[1]
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const dead of ["Customer_ID", "Branch_ID"]) {
+    if (new RegExp(`"${dead}"`).test(declared)) {
+      fail(`PROJECT_COLUMNS still declares ${dead}, which is not on the `
+        + "table — the projects list fails outright, and checkportal reads "
+        + "this list to decide whether a column is real");
+    }
+  }
+
+  const portal = readFileSync("./netlify/functions/portal.js", "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  if (/from\("Project"\)[\s\S]{0,200}"Customer_ID"/.test(portal)) {
+    fail("the portal still asks Project for Customer_ID — and that is the "
+      + "function deciding who may see which sites, so it does not degrade, "
+      + "it throws");
+  }
+  /* The developer record still carries it, and that is where the
+     scope belonged anyway. */
+  if (!/from\("Project_Developer"\)[\s\S]{0,120}eq\("Customer_ID"/.test(portal)) {
+    fail("an account recorded against the old Customer table can no longer "
+      + "find its sites at all");
+  }
+}
+
+// 8. The trigger that keeps the cache knows the column in use.
+{
+  /* `sync_project_main_developer()` read `Customer_ID` and
+     `Branch_ID` off the main developer row. Both are Customer_Branch
+     columns, emptied on 26 Aug, so since that day it selected two
+     nulls, found nothing to write and did nothing \u2014 which is the
+     whole of the drift. It was not decaying; it stopped.
+
+     And the worse half: it CLEARED `Organisation_Branch_ID`
+     whenever the main developer had a legacy `Branch_ID`. Sound when
+     a project named one branch or the other; with one branch table
+     it wipes the only column anything reads, the next time somebody
+     saves a Stakeholder tab. */
+  let sql = "";
+  try {
+    sql = readFileSync("./supabase/migrations/0231_main_developer_sync.sql", "utf8");
+  } catch { /* reported below */ }
+
+  if (!sql) {
+    fail("0231 is missing, so the cache is still written by a function that "
+      + "has never heard of Organisation_Branch_ID");
+  } else {
+    /* The statements, not the explanation above them. The first run
+       of this case failed on its own comment quoting the old CASE —
+       twice this week, once in JSX and once here. */
+    const body = sql.replace(/--[^\n]*/g, "");
+    /* The developer's branch, and only that. An earlier draft read
+       `Customer_ID` and `Branch_ID` too, to keep the project's
+       copies in step — and they are already off `Project`, which is
+       how the history trigger fault was found. */
+    if (!/SELECT d\."Organisation_Branch_ID"/.test(body)) {
+      fail("the replacement function does not read the developer's "
+        + "Organisation_Branch_ID, which is the only branch column in use");
+    }
+    if (/SET[\s\S]{0,80}"Customer_ID"|SET[\s\S]{0,80}p\."Branch_ID"/.test(body)) {
+      fail("the function writes a column that is no longer on Project");
+    }
+    /* The clearing CASE must be gone. Matched on the shape rather
+       than the whole statement, because what matters is that no
+       branch is set to NULL on the strength of another column. */
+    if (/WHEN main\."Branch_ID" IS NOT NULL THEN NULL/.test(body)) {
+      fail("the replacement still clears Organisation_Branch_ID when the "
+        + "developer carries a legacy Branch_ID \u2014 that is the landmine, not "
+        + "the drift");
+    }
+    /* Nothing is ever cleared: a developer that names no branch
+       leaves what is there alone, and no main developer returns
+       early. A save on the Stakeholder tab has never been meant to
+       empty a project's customer. */
+    if (!/IF branch IS NULL THEN\s*\n\s*RETURN NULL;/.test(body)) {
+      fail("a developer that names no branch empties the project's, where it "
+        + "should leave what is there alone");
+    }
+    /* And the live rows brought into line, or the fix only applies
+       to projects somebody edits from now on. */
+    if (!/UPDATE "Project" p\s*\n\s*SET "Organisation_Branch_ID" = d\."Organisation_Branch_ID"/.test(body)) {
+      fail("0231 does not backfill, so nineteen projects stay wrong until "
+        + "each one is touched by hand");
+    }
+    /* Not dropping the columns: the portal's legacy scope still
+       reads Project.Customer_ID and that decides who sees what. */
+    if (/DROP COLUMN IF EXISTS "Customer_ID"/.test(body)) {
+      fail("0231 drops Customer_ID while the portal still scopes on it");
+    }
   }
 }
 

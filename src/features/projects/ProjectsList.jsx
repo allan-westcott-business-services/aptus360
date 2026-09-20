@@ -60,12 +60,24 @@ const COLUMNS = [
        its Stakeholder tab. The developer rows come with the list
        now, so this reads the one marked main.
 
-       The cache is the fallback and not the source, for the rows
-       that predate the developer records. Where the two disagree the
-       Stakeholder tab wins, because that is where somebody typed
-       it. */
-    raw: (p) => p.mainDeveloper?.Organisation_Branch_ID
-      ?? p.Organisation_Branch_ID },
+       ── And the cache is not a fallback either ──
+
+       It was, until the live data was counted. On 26 projects the
+       two disagree on 19, and **eleven carry cached branch 17** —
+       seven of those with a real developer on a different branch
+       altogether (413 to 419). Project 25's cache says 17 and its
+       Stakeholder tab says 419.
+
+       A wrong company that looks right is worse than a blank. A
+       blank is a question somebody answers on the Stakeholder tab;
+       17 is Anwyl Homes on somebody else's site, and nothing on the
+       screen says to doubt it. `checkportal` reached the same
+       conclusion for authorisation before this came up.
+
+       So: the record or nothing. The seven projects with no main
+       developer show blank until somebody sets one, which is the
+       point. */
+    raw: (p) => p.mainDeveloper?.Organisation_Branch_ID ?? null },
   { key: "region",   label: "Region",        width: 120, type: "multi", src: "regions", idKey: "Region_ID", labelKey: "Region", raw: (p) => p.Region_ID },
   { key: "qt",       label: "Quote Type",    width: 120, type: "multi", src: "quoteTypes", idKey: "Quote_Type_ID", labelKey: "Quote_Type", raw: (p) => p.Quote_Type_ID },
   { key: "status",   label: "Status",        width: 150, type: "multi", src: "projectStatuses", idKey: "Project_Status_ID", labelKey: "Status", raw: (p) => p.Project_Status_ID },

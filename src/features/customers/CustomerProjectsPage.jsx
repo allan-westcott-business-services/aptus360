@@ -69,12 +69,16 @@ export default function CustomerProjectsPage() {
     const rows = projects.filter((p) =>
       !(hideClosed && statusById(p.Project_Status_ID)?.Is_Terminal));
 
-    /* From the Stakeholder tab where there is one, and the project's
-       cached copy otherwise — the same order the projects list reads
-       in, because two screens disagreeing about whose project it is
-       is worse than either being wrong. */
-    const branchOf = (p) => p.mainDeveloper?.Organisation_Branch_ID
-      ?? p.Organisation_Branch_ID ?? 0;
+    /* The Stakeholder tab, and nothing else — the same rule the
+       projects list follows, because two screens disagreeing about
+       whose project it is would be worse than either being wrong.
+
+       The project's cached branch is NOT used as a fallback: on the
+       live data eleven projects carry cached branch 17, seven of
+       them with a different developer actually recorded. A project
+       with no developer falls into "No branch set", where it can be
+       seen and fixed. */
+    const branchOf = (p) => p.mainDeveloper?.Organisation_Branch_ID ?? 0;
 
     const byBranch = new Map();
     for (const p of rows) {

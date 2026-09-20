@@ -443,6 +443,76 @@ export function pageDrawList(features = [], tile, {
       continue;
     }
 
+    /* ── A heavy duty cut-out ──
+
+       A rectangle lying ALONG the cable with two fuse ways in it,
+       white-filled so the conductor does not show through — the same
+       symbol the canvas draws, for the same reason: it is a body the
+       cable enters and leaves.
+
+       Without a branch it took the symbol cascade, and when the fill
+       rule was corrected to match the screen that turned it from a
+       hollow square into a solid slate one. Neither is a cut-out. A
+       bespoke symbol on screen needs a bespoke symbol on paper;
+       there is no cascade entry that can produce this shape.
+
+       Turned to the run, unlike the board: this one is a fitting in
+       the ground and leans with the trench. */
+    if (role === "hdcutout") {
+      const base = symbolRadiusMm(st, k);
+      const wHalf = Math.max(1.6, base * 1.5);
+      const hHalf = Math.max(1.1, base * 1.0);
+      const rr = Math.max(0.4, base * 0.34);
+      const deg = Number(f.Attributes?.Angle_Deg);
+      const rad = Number.isFinite(deg) ? (deg * Math.PI) / 180 : 0;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const put = ([x, y]) => [p0[0] + x * cos - y * sin, p0[1] + x * sin + y * cos];
+
+      out.push({
+        kind: "paths",
+        subs: [{
+          pts: [[-wHalf, -hHalf], [wHalf, -hHalf], [wHalf, hHalf], [-wHalf, hHalf]]
+            .map(put),
+          closed: true,
+        }],
+        colour: "#ffffff",
+        fill: true,
+        widthMm: 0.1,
+        id: f.Feature_ID,
+      });
+
+      /* The body and its two ways, stroked in one item so they are
+         one colour and one weight, as on screen. Circles are drawn
+         as twelve-sided rings, which is what the recorder does with
+         an arc everywhere else in this file. */
+      const ring = (cx) => {
+        const pts = [];
+        for (let i = 0; i < 12; i++) {
+          const t = (i / 12) * Math.PI * 2;
+          pts.push(put([cx + Math.cos(t) * rr, Math.sin(t) * rr]));
+        }
+        return { pts, closed: true };
+      };
+      out.push({
+        kind: "paths",
+        subs: [
+          {
+            pts: [[-wHalf, -hHalf], [wHalf, -hHalf], [wHalf, hHalf], [-wHalf, hHalf]]
+              .map(put),
+            closed: true,
+          },
+          ring(-wHalf * 0.42),
+          ring(wHalf * 0.42),
+        ],
+        colour: ap.colour ?? "#0f172a",
+        fill: false,
+        widthMm: 0.3,
+        id: f.Feature_ID,
+      });
+      continue;
+    }
+
     if (role === "servicevalve") {
       const deg = Number(f.Attributes?.Angle_Deg);
       const rad = Number.isFinite(deg) ? (deg * Math.PI) / 180 : 0;

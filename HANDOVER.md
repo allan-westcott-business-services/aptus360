@@ -7116,6 +7116,29 @@ characters is a hundred lines of prose and no rules at all.
      looking for the first writer before shipping. All three of the
      roles around it in that pass are there for this exact reason.
 
+     **Then the cut-out printed as a solid slate square.** It has a
+     BESPOKE symbol on screen — a white body lying along the cable
+     with two fuse ways in it — and no branch on paper, so it took
+     the symbol cascade. Correcting the fill rule turned it from a
+     hollow square into a solid one: both wrong, and the second more
+     obviously. It has its own branch now.
+
+     **Seven more are in the same position**, and this is the thing
+     to act on rather than the cut-out itself. The canvas draws ten
+     roles with bespoke symbols; the sheet now draws three of them.
+     Still taking the cascade on paper: `reducer`, `hvtt`,
+     `sectionmark`, `primary`, `ringsub`, `openpoint` and `linkbox`.
+     Each will print as a plain filled shape in the layer's colour
+     where the screen shows something particular, and each will be
+     reported the first time one appears on an issued drawing. A
+     command that lists them is in the check's own comment.
+
+     The general lesson: a bespoke symbol on screen is a bespoke
+     symbol needed on paper. `printVector.js` calls itself a SECOND
+     renderer at the top of the file and that is exactly the cost —
+     every shape has to be drawn twice, and the cascade cannot
+     produce what the canvas hand-draws.
+
      `checkprintsymbols.mjs` holds all five. Its first fixture used a
      tile shaped `{x, y, wMm, hMm}`; a tile is a rectangle of GROUND
      — `minX/minY/maxX/maxY` — so every feature fell outside the page

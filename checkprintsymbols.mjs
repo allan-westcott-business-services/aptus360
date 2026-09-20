@@ -85,9 +85,31 @@ const items = (features, more = {}) =>
   }
 }
 
-// 2 and 3. A fitting is filled on paper because it is filled on screen.
+// 2. A cut-out is a body the cable runs through.
 {
-  for (const role of ["joint", "hdcutout", "openpoint"]) {
+  const out = items([point("hdcutout", [30, 30], {
+    Attributes: { Angle_Deg: 30 },
+  })]);
+  const paths = out.filter((i) => i.kind === "paths");
+  if (paths.length < 2) {
+    fail("a heavy duty cut-out draws as one shape \u2014 the screen draws a "
+      + "white body with two fuse ways in it, and no entry in the symbol "
+      + "cascade can produce that");
+  }
+  if (!paths.some((i) => i.fill && String(i.colour).toLowerCase() === "#ffffff")) {
+    fail("a cut-out is not filled white, so the cable shows through the body "
+      + "it runs into \u2014 and when the fill rule was corrected it printed as "
+      + "a solid slate square instead");
+  }
+  const ways = paths.find((i) => !i.fill);
+  if (!ways || ways.subs.length < 3) {
+    fail("a cut-out prints without its two fuse ways");
+  }
+}
+
+// 3. A fitting is filled on paper because it is filled on screen.
+{
+  for (const role of ["joint", "openpoint"]) {
     const out = items([point(role, [30, 30])]);
     const paths = out.filter((i) => i.kind === "paths");
     if (!paths.length) { fail(`a ${role} draws nothing`); continue; }
@@ -164,6 +186,25 @@ const items = (features, more = {}) =>
   };
   if (items([real]).length === 0) fail("a drawn meter no longer prints");
 }
+
+/* ── Not held here, and worth knowing ──
+
+   The canvas draws ten roles with a bespoke symbol; the sheet draws
+   three. Still taking the symbol cascade on paper, and so printing
+   as a plain shape where the screen shows something particular:
+
+     reducer, hvtt, sectionmark, primary, ringsub, openpoint, linkbox
+
+   Not asserted, because a case demanding seven symbols nobody has
+   drawn yet is a case that fails until somebody writes them, and
+   this list changes as they are. To regenerate it:
+
+     node -e "const fs=require('fs');
+       const c=fs.readFileSync('src/features/gis/GISCanvasPage.jsx','utf8');
+       const p=fs.readFileSync('src/features/gis/printVector.js','utf8');
+       const a=[...new Set([...c.matchAll(/if \\(f\\.Feature_Role === .([a-z]+).\\) \\{/g)].map(m=>m[1]))];
+       const b=[...new Set([...p.matchAll(/if \\(role === .([a-z]+).\\)/g)].map(m=>m[1]))];
+       console.log(a.filter(r=>!b.includes(r)).join(', '))" */
 
 console.log(bad ? `\n${bad} problem(s)`
   : "The sheet draws what the screen draws.");

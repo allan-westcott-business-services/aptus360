@@ -218,6 +218,7 @@ caught a fault that had already shipped at least once.
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checkcustomercolumn.mjs` | The Customer column names the branch, not the company |
 | `node checkloadthrough.mjs` | A feeder end point says what it carries, worked out each time |
 | `node checkprintdefaults.mjs` | Print to Scale defaults what nobody set, and keeps what somebody did |
 | `node checkprintsymbols.mjs` | The sheet draws what the screen draws |
@@ -7337,6 +7338,39 @@ characters is a hundred lines of prose and no rules at all.
      Only built while the levels are showing: the label it joins is
      the levels label, and modelling a drawing whose figures are not
      on screen is work for nothing.
+
+171. **The projects list's Customer column named the company, not the
+     branch.** It read `Customer_Name` off the old `Customer` table:
+     "Anwyl Homes", the same on every Anwyl scheme in the country.
+     Which OFFICE the work belongs to is what anybody scanning that
+     column wants — "Anwyl Homes (Lancashire)".
+
+     **And the table it read is empty.** `Customer` and
+     `Customer_Branch` were emptied and their rows deleted on 26 Aug,
+     every project repointed at the matching `Organisation_Branch`
+     first. So `Customer_ID` is null on everything made since and the
+     column was going blank on new work while still looking right on
+     old.
+
+     Worth naming the shape: **a column reading a retired table does
+     not fail, it fades.** Correct on the rows that predate the
+     change, empty on the ones that matter, and nothing anywhere
+     says so.
+
+     The column reads `developerBranches` now and composes its text
+     with `branchLabelOf`, which is the same helper the project form
+     and the stakeholder panel use — so all three say the same words,
+     including the rule that the organisation is prefixed only where
+     the branch has no dropdown form of its own.
+
+     Two things this needed beyond the column definition. A `labelOf`
+     on the column, because the text is composed rather than read off
+     a field; and the FILTER list composing the same way, or the
+     dropdown offers "Lancashire" against cells reading "Anwyl Homes
+     (Lancashire)" — two names for one thing on one screen. The
+     filter reads a label in two places, the row and the button
+     summary, and a case that tested "somewhere" passed with one of
+     them still blank.
 
 ## Decisions worth knowing
 

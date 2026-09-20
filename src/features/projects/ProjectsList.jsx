@@ -4,6 +4,7 @@ import { getLookups } from "../../api/lookups.js";
 import { listProjects, setPriority, deleteProject, resurrectProject } from "../../api/projects.js";
 import { useColumnReorder } from "../../lib/useTableLayout.js";
 import ColumnsMenu from "../../components/ColumnsMenu.jsx";
+import { branchLabelOf } from "../stakeholders/developerBranch.js";
 import BurgerMenu, { BURGER_CSS } from "../../components/BurgerMenu.jsx";
 import CreateRevisionModal from "./CreateRevisionModal.jsx";
 import { UTILITIES } from "../../lib/utilities.js";
@@ -31,7 +32,27 @@ const COLUMNS = [
   { key: "plots",    label: "Plots",         width: 76,  type: "num",   align: "right", raw: (p) => p.Plot_Count ?? 0 },
   { key: "date",     label: "Date Received", width: 130, type: "date",  raw: (p) => p.Date_Received },
   { key: "kpi",      label: "KPI Date",      width: 130, type: "date",  raw: (p) => p.KPI_Date },
-  { key: "cust",     label: "Customer",      width: 180, type: "multi", src: "customers", idKey: "Customer_ID", labelKey: "Customer_Name", raw: (p) => p.Customer_ID },
+  /* ── The customer is a BRANCH, not a company ──
+
+     It read `Customer_Name` off the old `Customer` table: "Anwyl
+     Homes", the same on every Anwyl scheme in the country. Which
+     office the work belongs to is the thing anybody scanning this
+     column wants, and the branch carries it: "Anwyl Homes
+     (Lancashire)".
+
+     `Organisation_Branch` is where that lives. Customer and
+     Customer_Branch were emptied and their rows deleted on 26 Aug
+     with every project repointed first, so `Customer_ID` is null on
+     anything made since and this column was going blank on new work.
+
+     `labelOf` rather than a `labelKey`, because the text is composed
+     — the organisation's name only where the branch has no dropdown
+     form of its own, which is what `branchLabelOf` decides. Both the
+     cell and the filter list read it, so they cannot disagree. */
+  { key: "cust",     label: "Customer",      width: 200, type: "multi",
+    src: "developerBranches", idKey: "Organisation_Branch_ID",
+    labelOf: (b) => branchLabelOf(b, b.Organisation_Name),
+    raw: (p) => p.Organisation_Branch_ID },
   { key: "region",   label: "Region",        width: 120, type: "multi", src: "regions", idKey: "Region_ID", labelKey: "Region", raw: (p) => p.Region_ID },
   { key: "qt",       label: "Quote Type",    width: 120, type: "multi", src: "quoteTypes", idKey: "Quote_Type_ID", labelKey: "Quote_Type", raw: (p) => p.Quote_Type_ID },
   { key: "status",   label: "Status",        width: 150, type: "multi", src: "projectStatuses", idKey: "Project_Status_ID", labelKey: "Status", raw: (p) => p.Project_Status_ID },
@@ -201,13 +222,25 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
   const nameOf = (src, idKey, labelKey, id) =>
     lookups?.[src]?.find((x) => x[idKey] === id)?.[labelKey] ?? "";
 
+  /* A column whose text is composed rather than read off one field.
+     Matched loosely on the id, because a lookup list and a project row
+     do not always agree about number against string. */
+  const labelFrom = (c, id) => {
+    if (id == null) return "";
+    const row = (lookups?.[c.src] || [])
+      .find((x) => String(x[c.idKey]) === String(id));
+    return (row ? c.labelOf(row) : "") || "";
+  };
+
   const display = useMemo(() => {
     if (!lookups) return {};
     const d = {};
     COLUMNS.forEach((c) => {
       d[c.key] =
         c.type === "date" ? (p) => fmtDate(c.raw(p))
-        : c.type === "multi" ? (p) => nameOf(c.src, c.idKey, c.labelKey, c.raw(p))
+        : c.type === "multi" ? (p) => (c.labelOf
+          ? labelFrom(c, c.raw(p))
+          : nameOf(c.src, c.idKey, c.labelKey, c.raw(p)))
         : c.type === "designs" ? (p) => (c.raw(p) || [])
             .map((sc) => [
               nameOf("designStatuses", "Design_Status_ID", "Status", sc.Design_Status_ID),
@@ -231,6 +264,14 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
       };
     }
     const list = lookups?.[c.src] || [];
+    /* The filter list says what the cells say. A column whose text is
+       composed has to compose it here too, or the dropdown offers
+       "Lancashire" against cells reading "Anwyl Homes (Lancashire)". */
+    if (c.labelOf) {
+      return list.map((b) => ({ ...b, __label: c.labelOf(b) || "" }))
+        .filter((b) => b.__label)
+        .sort((a, b) => a.__label.localeCompare(b.__label));
+    }
     if (c.key !== "status") return list;
     return list.map((s) => ({ ...s, Status: `${s.Stage} · ${s.Status}` }));
   };
@@ -779,7 +820,10 @@ function FilterControl({ col, value, onChange, options, open, setOpen }) {
     const on = value.length > 0;
     const label = !on ? "All"
       : value.length === 1
-        ? (options.find((o) => String(o[col.idKey]) === value[0])?.[col.labelKey] ?? "1 selected")
+        /* `__label` where the column composes its text — optionsFor
+           puts it there so the dropdown reads what the cells read. */
+        ? (options.find((o) => String(o[col.idKey]) === value[0])?.[col.labelKey ?? "__label"]
+          ?? "1 selected")
         : `${value.length} selected`;
     const toggle = (id) =>
       onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
@@ -806,7 +850,7 @@ function FilterControl({ col, value, onChange, options, open, setOpen }) {
                 return (
                   <label className={value.includes(id) ? "fc-opt on" : "fc-opt"} key={id}>
                     <input type="checkbox" checked={value.includes(id)} onChange={() => toggle(id)} />
-                    {o[col.labelKey]}
+                    {o[col.labelKey ?? "__label"]}
                   </label>
                 );
               })}

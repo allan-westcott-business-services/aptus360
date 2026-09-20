@@ -63,7 +63,17 @@ const items = (features, more = {}) =>
     fail("a board prints with no letters in it, so four boards on a page are "
       + "four identical blocks");
   }
-  if (!text.includes("MSDB 1")) fail("a board prints without its name");
+  /* Once, and only once. The board branch writes its own name
+     because it alone knows how wide its box came out; the label pass
+     wrote it again a millimetre or two away, and two greys
+     overlapping reads as a smudge. Reported from use, on the fix for
+     the block above. */
+  const named = text.filter((t) => t === "MSDB 1").length;
+  if (named === 0) fail("a board prints without its name");
+  if (named > 1) {
+    fail(`a board's name is printed ${named} times \u2014 the board branch writes `
+      + "it and so does the label pass, a millimetre apart");
+  }
 
   const filled = out.filter((i) => i.kind === "paths" && i.fill);
   if (!filled.some((i) => String(i.colour).toLowerCase() === "#ffffff")) {

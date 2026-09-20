@@ -604,6 +604,21 @@ export function pageDrawList(features = [], tile, {
          size, over the top of the real one. The canvas skips it for
          the same reason and in the same words. */
       if (role === NOTE_ROLE) continue;
+      /* ── And a board, which has already written its own ──
+
+         The board branch above draws the square, the DB inside it and
+         the name beside it, because it alone knows how big its box
+         came out and therefore where the name clears it. Left in this
+         pass as well, the name was written TWICE — once clear of the
+         square and once at the symbol radius the cascade would have
+         given a board that does not use one, a millimetre or two
+         apart. Two greys overlapping reads as a smudge, which is how
+         it was reported.
+
+         Same rule as the note and the wash out directly either side:
+         whoever writes the symbol writes the words that belong to
+         it. */
+      if (role === "msdb") continue;
       /* And a wash out, which writes WO inside its own symbol: the
          screen stopped putting the number beside it for want of room on
          a dense plan, and a sheet that kept doing so would be labelling

@@ -7102,6 +7102,20 @@ characters is a hundred lines of prose and no rules at all.
      assumed meters. Worth remembering that a symbol somewhere
      unexpected is not evidence about which feature it is.
 
+     **And the board's name then printed twice**, reported straight
+     back. The board branch writes its own, because it alone knows
+     how wide its box came out and therefore where the name clears
+     it; the label pass wrote it again at the symbol radius the
+     cascade would have given a board that uses no symbol — a
+     millimetre or two apart, which reads as a smudge rather than as
+     two labels. The pass skips `msdb` now, the same rule the note
+     and the wash out either side of it follow: whoever draws the
+     symbol writes the words that belong to it.
+
+     A fix that adds a second writer of the same thing is worth
+     looking for the first writer before shipping. All three of the
+     roles around it in that pass are there for this exact reason.
+
      `checkprintsymbols.mjs` holds all five. Its first fixture used a
      tile shaped `{x, y, wMm, hMm}`; a tile is a rectangle of GROUND
      — `minX/minY/maxX/maxY` — so every feature fell outside the page

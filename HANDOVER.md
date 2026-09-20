@@ -218,6 +218,7 @@ caught a fault that had already shipped at least once.
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checkloadthrough.mjs` | A feeder end point says what it carries, worked out each time |
 | `node checkprintdefaults.mjs` | Print to Scale defaults what nobody set, and keeps what somebody did |
 | `node checkprintsymbols.mjs` | The sheet draws what the screen draws |
 | `node checklayerswitches.mjs` | The switches say what they govern; the picker says what things are |
@@ -7270,6 +7271,42 @@ characters is a hundred lines of prose and no rules at all.
      colour and not before; the same argument applies to colouring a
      run by its CABLE TYPE, which was asked about earlier and refused
      for the same reason.
+
+169. **A feeder end point says what it carries.** Total load through
+     the point — every plot, board and supply at it or beyond it —
+     in the point's own editor. The first question anybody asks of a
+     point on a network, and it was answered in the levels check, the
+     circuit report and the calc sheet but not on the thing itself.
+
+     **Derived, never stored, and that IS the feature.** The three
+     things asked for — a plot's load changed, a supply
+     disconnected, a cable unplugged from the main — are not three
+     pieces of work. They are one decision: read the drawing every
+     time and there is no copy to keep in step. A figure written onto
+     the point when the build ran would be right until the next thing
+     anybody did.
+
+     The calc sheet's stored `Meters` count is the cautionary tale
+     and it is only a week old: the canvas recounted, the sheet did
+     not, one drawing gave two answers, and it took a rebuild to
+     notice (fault 158).
+
+     `loadThrough` reads `buildFeederModel`'s own `cumKva` rather
+     than accumulating again, so the panel cannot disagree with the
+     levels check about what a cable carries.
+
+     Two things worth knowing about what the figure MEANS:
+
+     - A supply teeing off AT the point counts. Its current still
+       travels through the node on the way to the tee. "Downstream"
+       is a question about the tree, not about which side of the
+       point something is drawn on — which is why this is read off
+       the model rather than counted by hand.
+     - **Null is not zero.** Zero says the cable carries nothing;
+       null says the drawing cannot answer — nothing built yet, or
+       the point sitting off the dig. The panel says so in words. A
+       0.0 kVA on an unbuilt drawing tells somebody their design is
+       empty.
 
 ## Decisions worth knowing
 

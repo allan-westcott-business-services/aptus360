@@ -45,6 +45,7 @@ import {
 import {
   NOTE_ROLE, NOTE_DEFAULTS, noteBox, defaultLeader,
 } from "./textNotes.js";
+import { loadThrough, suppliesThrough } from "./loadThrough.js";
 
 /* Editing whatever you right-clicked.
 
@@ -511,6 +512,22 @@ export default function FeatureEditor({
   /* A note written on the drawing. Nearly every field in this panel is
      about something that was dug or laid, and none of them apply. */
   const isNote = feature.Feature_Role === NOTE_ROLE;
+
+  /* ── What the load figure is worked out from ──
+
+     Memoised on the drawing and the two catalogues that give a
+     supply its kVA, so the routing graph is rebuilt when one of them
+     changes and not while somebody types in another field.
+
+     `allFeatures` covers all three of the cases this has to follow:
+     a plot's load lives in plotList, and both disconnecting a supply
+     and unplugging a cable change the features. */
+  const loadOpts = useMemo(() => ({
+    lineTypes,
+    plotById: (id) => (plotList || []).find((pl) => pl.plot_id === id) || null,
+    nrsById: (id) => (nrsList || [])
+      .find((nn) => Number(nn.NRS_ID) === Number(id)) || null,
+  }), [lineTypes, plotList, nrsList]);
 
   /* ── Outside the building, or inside it ──
 
@@ -3056,6 +3073,57 @@ export default function FeatureEditor({
 
               A plain figure as well, because on a phase nobody has
               designed the mix usually is not known. */}
+          {/* ── What this point carries ──
+
+              Every plot, board and supply at it or beyond it. The
+              first question anybody asks of a point on a network and
+              the one it could not answer: the load was in the levels
+              check, the circuit report and the calc sheet, and not on
+              the thing itself.
+
+              DERIVED, never stored. A figure written on when the
+              build ran would be right until the next thing anybody
+              did — a plot's load changed, a service disconnected, a
+              teed feeder unplugged — and would then sit there looking
+              authoritative and be wrong. That is exactly what the
+              calc sheet's stored meter count did, and it took a
+              rebuild to notice. Here there is no copy to go stale:
+              the drawing is read each time the panel renders, and the
+              panel renders whenever the drawing changes.
+
+              Memoised on the things that can change the answer, so
+              the routing graph is built when one of them does and not
+              on every keystroke in another field. */}
+          {feature.Feature_Role === "feederpoint" && (() => {
+            const kva = loadThrough(feature, allFeatures, loadOpts);
+            const n = suppliesThrough(feature, allFeatures, loadOpts);
+            return (
+              <div className="fld">
+                <label>Load through this point</label>
+                {kva == null ? (
+                  /* Not zero. Zero says the cable carries nothing;
+                     this says the drawing cannot answer yet — no
+                     network built, or the point sits off the dig. */
+                  <p className="hint">
+                    Not known yet. It is worked out from the network, so it
+                    appears once the LV network has been built and this point
+                    sits on a cable.
+                  </p>
+                ) : (
+                  <>
+                    <p className="sn-code">{kva.toFixed(1)} kVA</p>
+                    <p className="hint">
+                      {n === 1 ? "1 supply" : `${n} supplies`} at this point or
+                      beyond it. Worked out from the drawing each time it is
+                      opened, so it follows a load changed at a plot, a supply
+                      disconnected, or a cable unplugged from the main.
+                    </p>
+                  </>
+                )}
+              </div>
+            );
+          })()}
+
           {(feature.Feature_Role === "spannode" || feature.Feature_Role === "feederpoint") && (
             <FutureAllowance
               value={f.Attributes.Future_Allowance ?? null}

@@ -218,6 +218,7 @@ caught a fault that had already shipped at least once.
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checkprintdefaults.mjs` | Print to Scale defaults what nobody set, and keeps what somebody did |
 | `node checkprintsymbols.mjs` | The sheet draws what the screen draws |
 | `node checklayerswitches.mjs` | The switches say what they govern; the picker says what things are |
 | `node checkenquiryfile.mjs` | An enquiry takes a document: straight to storage, and only its own |
@@ -7144,6 +7145,44 @@ characters is a hundred lines of prose and no rules at all.
      — `minX/minY/maxX/maxY` — so every feature fell outside the page
      and the whole check passed on an empty list. A fixture that makes
      a check pass by producing nothing is the worst kind.
+
+165. **Print to Scale turned the service labels back on.** Somebody
+     switched them off, pressed Print to Scale, and got them back —
+     every time, with no way to issue a sheet without them. Reported
+     from use, and fairly.
+
+     It was not doing it by accident. Both label switches default to
+     OFF, and a sheet issued with anonymous cables is the fault the
+     print's label pass was written to fix, so setting them up for
+     issue is right. The mistake was not telling a DEFAULT from a
+     DECISION: "off" means different things when it is the factory
+     setting and when somebody has just set it.
+
+     A switch nobody has touched now takes the issue default; a
+     switch somebody has set keeps what they set, whichever way.
+     `labelKindSet` is the record — a ref, because nothing renders
+     from it.
+
+     Two traps either side of this, both live:
+
+     - Turning a switch on FOR issue must not count as touching it,
+       or the first Print to Scale marks both and every later one
+       skips the default. Hence `setLabelKinds` directly there rather
+       than `setLabelKind`, which is the recorder.
+     - The app turning labels off is not a person deciding. The
+       call-off flow quiets them while plots are being picked and
+       restores them after; those calls stay raw, or raising one
+       call-off would stop every later sheet being labelled.
+
+     And the status line says what it actually changed rather than
+     claiming both kinds went on — a drawing that reports turning on
+     something it left alone is the drawing lying to the person who
+     just turned it off.
+
+     `checkprintsetup` asserted the two literal calls and failed. Its
+     intent — both kinds considered, both switched on where nobody
+     has decided — is what it tests now. Third check this month whose
+     case pinned the line rather than the rule.
 
 ## Decisions worth knowing
 

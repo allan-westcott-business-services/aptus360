@@ -71,11 +71,28 @@ const listed = (() => {
     fail("the print set-up cannot be found where it was \u2014 this check "
       + "needs re-anchoring, not deleting");
   } else {
-    if (!/setLabelKind\("mains", true\)/.test(fn)) {
-      fail("mains labels are not switched on for a sheet");
+    /* ── On for a sheet, unless somebody said otherwise ──
+
+       This asserted the two calls literally. They are gone: a
+       switch somebody has SET is now left as they set it, because
+       forcing service labels back on gave no way to issue a sheet
+       without them. Reported from use.
+
+       So the case tests the intent it always meant — both kinds are
+       named, and both are still turned on where nobody has decided
+       — rather than the two lines that used to do it. */
+    for (const kind of ["mains", "services"]) {
+      if (!new RegExp(`"${kind}"`).test(fn)) {
+        fail(`${kind} labels are not considered when setting up a sheet`);
+      }
     }
-    if (!/setLabelKind\("services", true\)/.test(fn)) {
-      fail("service labels are not switched on for a sheet");
+    if (!/setLabelKinds\(/.test(fn)) {
+      fail("nothing switches the labels on for a sheet, so a drawing issues "
+        + "with anonymous cables");
+    }
+    if (!/labelKindSet\.current\.has\(k\)/.test(fn)) {
+      fail("the labels are switched on whether or not somebody has already "
+        + "decided about them, so a sheet cannot be issued without them");
     }
     if (!/setShowLabels\(true\)/.test(fn)) {
       fail("the master Labels switch is left alone, so turning the two "

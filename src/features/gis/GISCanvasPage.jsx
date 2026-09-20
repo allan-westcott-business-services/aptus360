@@ -351,7 +351,38 @@ export default function GISCanvasPage() {
   const [labelKinds, setLabelKinds] = useState(
     () => ({ ...DEFAULT_LABEL_KINDS, ...(recall("gisLabelKinds", null) || {}) }),
   );
+  /* ── Which label switches somebody has decided about ──
+
+     Print to Scale turns the mains and service labels on, because a
+     sheet for issue with anonymous cables is the fault that pass was
+     written to fix, and both default to off. But it was turning them
+     on for EVERYBODY — including somebody who had just switched
+     service labels off and pressed Print to Scale expecting a sheet
+     without them. Reported from use, and fairly: a default is where
+     to start, not what to insist on.
+
+     So the two are told apart. A switch nobody has touched takes the
+     issue default; a switch somebody has set keeps what they set,
+     whichever way they set it. A ref rather than state: nothing
+     renders from it, and re-rendering the canvas because a set was
+     added would be a redraw for nothing.
+
+     Not remembered between sessions, deliberately. "I turned this
+     off six weeks ago" is not a thing anybody holds in their head,
+     and a sheet that quietly came out unlabelled because of it would
+     be worse than one labelled when it need not be. */
+  const labelKindSet = useRef(new Set());
+
+  /* The master Labels switch, told apart the same way. Turning it off
+     and pressing Print to Scale should give a sheet with no labels on
+     it, not a sheet that turns them back on. */
+  const setLabelsShown = useCallback((on) => {
+    labelKindSet.current.add("__master");
+    setShowLabels(on);
+  }, []);
+
   const setLabelKind = useCallback((key, on) => {
+    labelKindSet.current.add(key);
     setLabelKinds((k) => {
       const next = { ...k, [key]: on };
       remember("gisLabelKinds", next);
@@ -22717,19 +22748,40 @@ export default function GISCanvasPage() {
     const added = PRINT_OFF_KEYS.filter((k) => !was.has(k));
     if (added.length) setHidden([...was, ...added]);
 
-    /* The master switch too: the per-kind switches say nothing while
-       Labels itself is off. */
-    const labelsWere = showLabels && labelKinds.mains && labelKinds.services;
-    if (!showLabels) setShowLabels(true);
-    if (!labelKinds.mains) setLabelKind("mains", true);
-    if (!labelKinds.services) setLabelKind("services", true);
+    /* ── Labels on for issue, unless somebody said otherwise ──
+
+       Both default to off and a sheet issued with anonymous cables
+       is the fault the label pass exists to fix, so Print to Scale
+       turns them on. Only the ones nobody has decided about, though:
+       a switch somebody has set keeps what they set.
+
+       `labelKindSet` holds the ones that have been touched. Turning
+       one on here must not mark it touched, or the first Print to
+       Scale would make every later one leave it alone — which is the
+       same bug pointing the other way. Hence setLabelKinds directly
+       rather than through setLabelKind. */
+    const wanted = ["mains", "services"]
+      .filter((k) => !labelKinds[k] && !labelKindSet.current.has(k));
+    const masterOff = !showLabels && !labelKindSet.current.has("__master");
+    const labelsWere = !wanted.length && showLabels;
+
+    if (masterOff) setShowLabels(true);
+    if (wanted.length) {
+      setLabelKinds((k) => {
+        const next = { ...k };
+        for (const w of wanted) next[w] = true;
+        remember("gisLabelKinds", next);
+        return next;
+      });
+    }
 
     setPrintOpen(true);
 
     if (added.length || !labelsWere) {
       setStatus("Set up for issue \u2014 trench, plot seeds, span nodes and "
-        + "feeder end points off; mains and service labels on. The layer "
-        + "menu puts any of it back.");
+        + "feeder end points off"
+        + (wanted.length ? `; ${wanted.join(" and ")} labels on` : "")
+        + ". The layer menu puts any of it back.");
       setTimeout(() => setStatus(""), 9000);
     }
   }
@@ -24694,7 +24746,7 @@ export default function GISCanvasPage() {
                           layers with an H button — the same question asked
                           two different ways in one menu. */}
                       <MenuLabels kinds={LABEL_KINDS}
-                        showLabels={showLabels} onShowLabels={setShowLabels}
+                        showLabels={showLabels} onShowLabels={setLabelsShown}
                         value={labelKinds} onKind={setLabelKind} />
 
                       <div className="gm-sep" />
@@ -24964,7 +25016,7 @@ export default function GISCanvasPage() {
                           different menu from the one they are in. The same
                           switch, offered where it is wanted. */}
                       <MenuLabels kinds={LABEL_KINDS}
-                        showLabels={showLabels} onShowLabels={setShowLabels}
+                        showLabels={showLabels} onShowLabels={setLabelsShown}
                         value={labelKinds} onKind={setLabelKind} />
                       <MenuLayer label="Span nodes" colour="#1e3a5f"
                         count={classCount["role:spannode"] || 0}
@@ -25469,7 +25521,7 @@ export default function GISCanvasPage() {
                           it. */}
                       <div className="gm-sep" />
                       <MenuLabels kinds={LABEL_KINDS}
-                        showLabels={showLabels} onShowLabels={setShowLabels}
+                        showLabels={showLabels} onShowLabels={setLabelsShown}
                         value={labelKinds} onKind={setLabelKind} />
 
                     </Menu>
@@ -25742,7 +25794,7 @@ export default function GISCanvasPage() {
                               they are in. The same switch, offered where
                               it is wanted. */}
                           <MenuLabels kinds={LABEL_KINDS}
-                            showLabels={showLabels} onShowLabels={setShowLabels}
+                            showLabels={showLabels} onShowLabels={setLabelsShown}
                             value={labelKinds} onKind={setLabelKind} />
                           {/* As on the Electric menu: the whole utility as
                               a named action, not only the S on the layer
@@ -25850,7 +25902,7 @@ export default function GISCanvasPage() {
                           different menu from the one they are in. The same
                           switch, offered where it is wanted. */}
                       <MenuLabels kinds={LABEL_KINDS}
-                        showLabels={showLabels} onShowLabels={setShowLabels}
+                        showLabels={showLabels} onShowLabels={setLabelsShown}
                         value={labelKinds} onKind={setLabelKind} />
                       {typesOn("lighting").map((t) => (
                         <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}

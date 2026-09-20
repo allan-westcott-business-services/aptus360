@@ -7184,6 +7184,33 @@ characters is a hundred lines of prose and no rules at all.
      has decided — is what it tests now. Third check this month whose
      case pinned the line rather than the rule.
 
+166. **The circuit letter is off the line label.** It led every one:
+     "D" above the cable and its length, from `Circuit_Letter`, which
+     the build writes on each main. `lineTag` put it there and both
+     the canvas and the sheet showed it.
+
+     Asked for, and it reverses a deliberate decision — the comment
+     beside the canvas's composition argued that "1B is how a circuit
+     is spoken about on site, and dropping it to make room for the
+     cable would trade one fact for another". The counter-argument
+     that won: the label is for what is IN THE GROUND, and which
+     circuit a run belongs to is already said three other ways — by
+     its colour, by the letters drawn along the run itself, and by
+     the picker.
+
+     Taken off BOTH surfaces in the same change. A label that reads
+     one way on screen and another on paper is the fault this whole
+     stretch of work has been about.
+
+     **Kept as the last resort.** A run with no size set has nothing
+     else to say, and a blank label reads as a cable nobody has
+     looked at rather than one whose size is not set. So the order is
+     now: the cable and its length, else the size and its length,
+     else the tag, else the run's own name.
+
+     Where somebody asks for it to go entirely, that is the `if (tag)
+     return tag;` line and the canvas's `: tag || ""`.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

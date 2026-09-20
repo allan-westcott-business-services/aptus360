@@ -6270,8 +6270,21 @@ export default function GISCanvasPage() {
              the first with spaces: run together it made the top line
              far wider than the two below it and pushed the whole plate
              off the pipe. */
+          /* ── Without the circuit letter ──
+
+             The tag led every label: "D" above the cable and its
+             length. Asked for and taken off, on both surfaces at
+             once so the sheet and the screen keep saying the same
+             thing. Which circuit a run belongs to is already told by
+             its colour, by the letters drawn along the run, and by
+             the picker; the label is for what is in the ground.
+
+             Still the last resort. A run with nothing else to say —
+             no size set, no length worth printing — shows its tag
+             rather than nothing, because a blank label reads as a
+             cable nobody has looked at. */
           const txt = own
-            ? [on ? null : tag, own].filter(Boolean).join("\n")
+            ? own
             : (on
               ? [spelled || sizeShown, lengthLabel(f)]
                 .filter(Boolean).join("  ")

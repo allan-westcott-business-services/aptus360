@@ -89,11 +89,23 @@ export function lineLabelText(f, { lineTypes = [], cableName = null } = {}) {
   const cable = typeof cableName === "function"
     ? cableName(a.Manual_VD_Cable_Size_ID ?? a.VD_Cable_Size_ID)
     : null;
-  if (cable) {
-    return [tag || null, cable, lengthLabel(f)].filter(Boolean).join("\n");
-  }
 
-  if (sized) return [tag || null, ...sized].filter(Boolean).join("\n");
+  /* ── The circuit letter is not part of the label ──
+
+     It used to lead it: "D" above the cable and its length, from
+     `Circuit_Letter`. The argument for it was that 1B is how a
+     circuit is spoken about on site. Asked for and taken off: the
+     label says what is in the ground, and which circuit a run
+     belongs to is already told by its colour, by the letters drawn
+     along the run itself, and by the picker.
+
+     Kept as the LAST resort, below. A run with no size set has
+     nothing else to say, and a blank label is worse than a letter —
+     it reads as a cable nobody has looked at rather than one whose
+     size is not set. */
+  if (cable) return [cable, lengthLabel(f)].filter(Boolean).join("\n");
+
+  if (sized) return sized.filter(Boolean).join("\n");
   if (tag) return tag;
   /* Nothing configured to say: fall back to whatever the run is
      called, which is what the build wrote on it (W1, G3). */

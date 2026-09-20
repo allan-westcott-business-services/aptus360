@@ -138,9 +138,26 @@ const items = (features, more = {}) =>
   /* Without a catalogue it says what it always said. A sheet with no
      lookup must not invent a second source for the name. */
   const bare = lineLabelText(cable, { lineTypes });
-  if (bare !== "2D") fail(`with no catalogue a cable reads "${bare}", wanted "2D"`);
+  if (bare !== "2D") {
+    fail(`with no catalogue and no size a cable reads "${bare}", wanted the `
+      + "tag \u2014 a blank label reads as a cable nobody has looked at rather "
+      + "than one whose size is not set");
+  }
 
   const named = lineLabelText(cable, { lineTypes, cableName: () => "3c Wave 185" });
+  /* ── And without the circuit letter ──
+
+     The label led with the tag — "2D" above the cable and its
+     length — and it was asked for and taken off. The label says what
+     is in the ground; which circuit a run belongs to is told by its
+     colour, by the letters along the run, and by the picker.
+
+     Asserted both ways round, because the tag is still the last
+     resort where a run has nothing else to say. */
+  if (/^2D/.test(named)) {
+    fail(`a cable label still leads with its circuit letter: `
+      + `"${named.replace(/\n/g, " / ")}"`);
+  }
   if (!named.includes("3c Wave 185")) {
     fail(`a cable reads "${named.replace(/\n/g, " / ")}" \u2014 one letter is not a `
       + "label on a drawing somebody digs from");
@@ -162,7 +179,35 @@ const items = (features, more = {}) =>
   }
 }
 
-// 5. An invented meter is not part of the drawing.
+// 5. And the canvas does not lead with it either.
+{
+  /* The label is composed twice — once here for the sheet, once in
+     the canvas's own draw. Taking the circuit letter off one and not
+     the other is the fault this whole stretch of work has been
+     about, so the canvas's composition is held to the same rule.
+
+     By source, because the canvas's version is inside a two thousand
+     line draw routine with a dozen locals in scope and cannot be
+     called from here. The rule: whatever it builds, the tag is not
+     part of it except as the fallback. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("const txt = own");
+  const block = at < 0 ? "" : canvas.slice(at, canvas.indexOf(";", at));
+  if (!block) fail("the canvas no longer composes a line label where this "
+    + "case looks for it");
+  else {
+    if (/\[on \? null : tag, own\]/.test(block)) {
+      fail("the canvas label still leads with the circuit letter, so the "
+        + "screen and the sheet disagree about what a cable is called");
+    }
+    if (!/: tag \|\| ""/.test(block)) {
+      fail("the canvas drops the tag entirely, so a run with no size set has "
+        + "a blank label \u2014 which reads as a cable nobody has looked at");
+    }
+  }
+}
+
+// 6. An invented meter is not part of the drawing.
 {
   const board = point("msdb", [20, 20], { Label: "MSDB 1" });
   const assumed = {

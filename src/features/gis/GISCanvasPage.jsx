@@ -102,7 +102,7 @@ import CircuitReport from "./CircuitReport.jsx";
 import AptusCalcSheet from "./AptusCalcSheet.jsx";
 import BulkDelete from "./BulkDelete.jsx";
 import { circuitBuildParts, circuitMembership, SPAN_REACH_M, SNAP_TOL,
-  carriedOverrides, carriedOverrideFor } from "./feeder.js";
+  carriedOverrides, carriedOverrideFor, buildFeederModel } from "./feeder.js";
 import { planFeederPoints, planInsertion, nextSeqFor, marksOnPart,
   partEndMark, jointMarks } from "./feederPoints.js";
 import { anchorSnapshot, withMovedAnchor, anchorUpdates } from "./anchorFollow.js";
@@ -129,6 +129,7 @@ import {
   JOIN_REACH_M, cablesHeldAt, jointAngle as jointAngleOf, servedPlots,
 } from "./joints.js";
 import { lineTag } from "./lineLabel.js";
+import { loadThrough } from "./loadThrough.js";
 import { alpha } from "../../lib/colour.js";
 import PrintModal from "./PrintModal.jsx";
 import {
@@ -2103,6 +2104,43 @@ export default function GISCanvasPage() {
     () => (hidden.includes("electric") ? null : liveLevels),
     [liveLevels, hidden],
   );
+
+  /* ── What each point carries, for the labels ──
+
+     One model for the whole drawing rather than one per label: the
+     levels labels are drawn on every frame and building the routing
+     graph per node per frame would be a redraw nobody could pan
+     through.
+
+     Keyed by the point's Feature_ID, so the draw does a map lookup.
+     Rebuilt when the drawing changes or a plot's load does, which is
+     what makes the figure follow a load edited at a plot, a supply
+     disconnected, or a cable unplugged — there is no stored copy to
+     go stale.
+
+     Only while there are levels to sit beside: the label it joins is
+     the levels label, and building a model for a drawing whose
+     figures are not being shown is work for nothing. */
+  const loadAt = useMemo(() => {
+    const out = new Map();
+    if (!elecLevelsAt) return out;
+    const points = features.filter((f) => f.Feature_Role === "feederpoint"
+      || f.Feature_Role === "spannode");
+    if (!points.length) return out;
+
+    const model = buildFeederModel(features, {
+      lineTypes,
+      plotById: (pid) => plotList.find((pl) => pl.plot_id === pid),
+      nrsById: (nid) => nrsList.find((nn) => Number(nn.NRS_ID) === Number(nid)) || null,
+    });
+    if (!model || model.error) return out;
+
+    for (const p of points) {
+      const kva = loadThrough(p, features, { model });
+      if (kva != null) out.set(Number(p.Feature_ID), kva);
+    }
+    return out;
+  }, [elecLevelsAt, features, lineTypes, plotList, nrsList]);
 
   /* The figure at a board: read off the stop standing on it.
 
@@ -7527,7 +7565,31 @@ export default function GISCanvasPage() {
              Read off the same worked figures the editor shows, so the
              drawing and the panel cannot disagree. */
           const worst = worstFlatAt(f);
-          const text = `${shownPct.toFixed(2)}% · ${vd.ohms.toFixed(3)}Ω`
+          /* ── And what the point carries ──
+
+             The load through it, in front of the two figures it
+             governs. A volt drop and an impedance are consequences of
+             a load, and reading them without it meant opening the
+             point to find out what was behind the numbers.
+
+             The same `loadThrough` the editor shows, so the drawing
+             and the panel cannot disagree. Worked out from the
+             network rather than stored, so it follows a load changed
+             at a plot, a supply disconnected or a cable unplugged
+             with nothing to keep in step.
+
+             Left off where it cannot be said rather than shown as
+             zero: a point off the dig, or a drawing with nothing
+             built, has no answer, and 0.0 kVA in front of a volt drop
+             reads as a cable carrying nothing.
+
+             It includes the non-domestic supplies, which the Plots
+             tab's total does not — 48 plots and three pumps is 51
+             supplies and 40 kVA more. That is the cable's figure: a
+             pump draws through it like anything else. */
+          const carried = loadAt.get(Number(f.Feature_ID));
+          const text = (carried != null ? `${carried.toFixed(1)} kVA · ` : "")
+            + `${shownPct.toFixed(2)}% · ${vd.ohms.toFixed(3)}Ω`
             + (worst ? `  → ${worst.pct.toFixed(2)}% at ${worst.label}` : "");
           ctx.font = `600 ${Math.max(9, fontPx - 1)}px system-ui, sans-serif`;
           ctx.textAlign = "left";

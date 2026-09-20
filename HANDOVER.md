@@ -7302,11 +7302,41 @@ characters is a hundred lines of prose and no rules at all.
        is a question about the tree, not about which side of the
        point something is drawn on — which is why this is read off
        the model rather than counted by hand.
+     - **It includes the non-domestic supplies, and the Plots tab's
+       total does not.** Asked as "shouldn't these be the same?" on
+       project 16: the point read 176.5 kVA and the Plots tab 136.5.
+       They should not. 51 supplies on that circuit is 48 plots plus
+       Pump 1, Pump 2 and TBS1, and the 40 kVA between the two
+       figures is those three. The cable's figure is the one that
+       matters for sizing — a pump draws through it like anything
+       else. Worth knowing before somebody "fixes" the difference.
      - **Null is not zero.** Zero says the cable carries nothing;
        null says the drawing cannot answer — nothing built yet, or
        the point sitting off the dig. The panel says so in words. A
        0.0 kVA on an unbuilt drawing tells somebody their design is
        empty.
+
+170. **The load is on the node label too.** `136.5 kVA · 1.32% ·
+     0.053Ω`, in front of the two figures it explains: a volt drop
+     and an impedance are consequences of a load, and reading them
+     without it meant opening the point to find out what was behind
+     the numbers.
+
+     One model for the whole drawing, memoised, not one per label.
+     The levels labels are drawn on every frame and building the
+     routing graph per node per frame is a redraw nobody can pan
+     through. Keyed by Feature_ID so the draw is a map lookup.
+
+     The memo's dependency list is the feature: `[elecLevelsAt,
+     features, lineTypes, plotList, nrsList]`. `plotList` is what
+     makes a load edited in the Plots tab reach the drawing;
+     `features` covers a supply disconnected and a cable unplugged.
+     Drop one and the drawing keeps showing the figure from before
+     the edit, which is the stale-copy fault again in a new place.
+
+     Only built while the levels are showing: the label it joins is
+     the levels label, and modelling a drawing whose figures are not
+     on screen is work for nothing.
 
 ## Decisions worth knowing
 

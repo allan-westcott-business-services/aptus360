@@ -208,6 +208,48 @@ function scheme({ loads = [3, 3, 3], drop = [] } = {}) {
   }
 }
 
+// 8. And it is on the label, in front of the figures it explains.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("const carried = loadAt.get");
+  const block = at < 0 ? "" : canvas.slice(at, canvas.indexOf(";", canvas.indexOf("const text =", at)));
+  if (!block) fail("the levels label does not show what the point carries");
+  else {
+    if (!/carried != null \? `\$\{carried\.toFixed\(1\)\} kVA/.test(block)) {
+      fail("the load is not written in front of the volt drop and the "
+        + "impedance \u2014 both are consequences of it");
+    }
+    /* Left off rather than shown as zero where it cannot be said: a
+       point off the dig has no answer, and 0.0 kVA in front of a
+       volt drop reads as a cable carrying nothing. */
+    if (!/carried != null \?/.test(block)) {
+      fail("a point with no answer shows 0.0 kVA rather than nothing");
+    }
+  }
+
+  /* One model for the drawing, not one per label. The levels labels
+     are drawn every frame, and building the routing graph per node
+     per frame is a redraw nobody can pan through. */
+  const memo = canvas.indexOf("const loadAt = useMemo");
+  const body = memo < 0 ? "" : canvas.slice(memo, memo + 1600);
+  if (!body) fail("nothing works out the load for the labels");
+  else {
+    if ((body.match(/buildFeederModel\(/g) || []).length !== 1) {
+      fail("the routing graph is built more than once for the labels");
+    }
+    if (!/loadThrough\(p, features, \{ model \}\)/.test(body)) {
+      fail("each label builds its own model rather than sharing one");
+    }
+    /* Rebuilt when a plot's load changes, or the figure on the
+       drawing is the one from before the edit. */
+    if (!/\[elecLevelsAt, features, lineTypes, plotList, nrsList\]/.test(body)) {
+      fail("the load map does not follow a plot's load or a supply's, so a "
+        + "figure edited in the plot tab leaves the drawing showing the old "
+        + "one");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "A feeder end point says what it carries, worked out each time.");
 process.exit(bad ? 1 : 0);

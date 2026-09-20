@@ -111,15 +111,35 @@ $function$;
 
 -- ── Bringing the live rows into line ──
 --
--- Only where a main developer actually names a branch. The seven
--- projects with no main developer keep whatever they hold and are
--- listed by the second check below: they want a developer setting on
--- the Stakeholder tab, and no amount of SQL can invent one.
+-- Only where a main developer actually names a branch. The projects
+-- with no main developer keep whatever they hold and are listed by
+-- the second check below: they want a developer setting on the
+-- Stakeholder tab, and no amount of SQL can invent one.
 --
 -- Note that the app no longer READS this cache — the projects list
 -- and the customer projects page both go to `Project_Developer`
 -- directly. The backfill is for anything else that still does, and
 -- so the column stops contradicting the record.
+--
+-- ── Why the history trigger is off for it ──
+--
+-- `log_project_changes()` is broken: it names `Customer_ID` in a
+-- dynamic query and that column is gone, so EVERY update to a
+-- project fails, this one included. It refused an earlier run of
+-- this file, which is how it was found.
+--
+-- Suspended around the backfill rather than waiting for it, for two
+-- reasons. The repair is worth having now — the cache contradicts
+-- the record on nineteen projects. And a backfill is not a change
+-- anybody made: a history row saying the branch changed, with no
+-- person and no reason behind it, is noise in the one table people
+-- go to when they want to know who did what.
+--
+-- This does NOT fix the trigger. Every ordinary edit to a project
+-- still fails until it is dealt with — see the foot of this file.
+-- Suspending it here buys the repair, not the fix.
+ALTER TABLE "Project" DISABLE TRIGGER project_history_trg;
+
 UPDATE "Project" p
    SET "Organisation_Branch_ID" = d."Organisation_Branch_ID"
   FROM "Project_Developer" d
@@ -127,6 +147,11 @@ UPDATE "Project" p
    AND d."Is_Main"
    AND d."Organisation_Branch_ID" IS NOT NULL
    AND p."Organisation_Branch_ID" IS DISTINCT FROM d."Organisation_Branch_ID";
+
+-- Back on immediately. A trigger left disabled is a table that
+-- quietly stops recording, and nothing about the next change would
+-- say so.
+ALTER TABLE "Project" ENABLE TRIGGER project_history_trg;
 
 -- ── Checks ──────────────────────────────────────────────────────
 --
@@ -167,10 +192,16 @@ UPDATE "Project" p
 -- how it was found.
 --
 -- Not fixed here because its body has not been read. Fetch it
--- first:
+-- first — `prosrc` rather than `pg_get_functiondef`, which the SQL
+-- editor has been truncating:
 --
---   SELECT pg_get_functiondef(oid) FROM pg_proc
---    WHERE proname = 'log_project_changes';
+--   SELECT prosrc FROM pg_proc WHERE proname = 'log_project_changes';
+--
+-- And anything else that still names the dead columns, so the sweep
+-- is done once:
+--
+--   SELECT proname FROM pg_proc
+--    WHERE prosrc ILIKE '%Customer_ID%' OR prosrc ILIKE '%Branch_ID%';
 --
 -- and the columns the table really has, so the list can be checked
 -- against something rather than guessed at:

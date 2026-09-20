@@ -186,7 +186,64 @@ const list = readFileSync("./src/features/projects/ProjectsList.jsx", "utf8");
   }
 }
 
-// 7. Nothing asks Project for a column it no longer has.
+// 7. Every column sorts by what the reader can see.
+{
+  /* The comparator tested `typeof === "number"` before it tested
+     for a lookup column, and a foreign key is a number — so every
+     `multi` column sorted by id and never reached the branch that
+     sorts by what the cell says.
+
+     It passed for years because ids were handed out in roughly the
+     order names were added. Branches broke the illusion: Customer
+     ascending gave Seddon, SJ Roberts, Castle Green, Gleeson —
+     413, 414, 415, 416, which is an order and not one anybody can
+     see. Reported from use, off a screenshot.
+
+     Asserted by POSITION, because both branches are still there and
+     which comes first is the whole fault. */
+  const multiAt = list.indexOf('if (col?.type === "multi" || col?.type === "designs")');
+  const numAt = list.indexOf('typeof va === "number" && typeof vb === "number"');
+  if (multiAt < 0 || numAt < 0) {
+    fail("the sort comparator has moved; re-anchor this case rather than "
+      + "deleting it");
+  } else if (numAt < multiAt) {
+    fail("the numeric shortcut is tested before the lookup branch, so a "
+      + "column showing names sorts by the ids behind them — which is an "
+      + "order the reader cannot see");
+  }
+  if (!/display\[col\.key\]\?\.\(a\) \?\? ""/.test(list)) {
+    fail("a row with nothing in a lookup column throws the comparator, or "
+      + "sorts as the text \"undefined\"");
+  }
+
+  /* ── And every other kind sorts by what it shows too ──
+
+     Asked for across the whole table, not just Customer.
+
+     `designs` sorted by HOW MANY outline designs a project had,
+     which is a number the cell does not contain. The comment
+     defending it said an order across a list of statuses would mean
+     nothing \u2014 true of the statuses, and beside the point: the cell
+     shows words, so the words are what to sort.
+
+     Dates and numbers keep their own order, and that is the same
+     rule rather than an exception: their display is a faithful
+     rendering of the value. Sorting the rendered text would put
+     01/09 before 12/08 and 10 before 2. */
+  if (!/col\?\.type === "multi" \|\| col\?\.type === "designs"/.test(list)) {
+    fail("the outline design column still sorts by how many there are, "
+      + "which is a number the cell does not show");
+  }
+  const dateSorted = /typeof va === "number" && typeof vb === "number"/.test(list);
+  if (!dateSorted) {
+    fail("numbers no longer sort numerically, so 10 comes before 2");
+  }
+  if (/case "date"[\s\S]{0,120}display/.test(list)) {
+    fail("a date sorts by its rendered text, so 01/09 comes before 12/08");
+  }
+}
+
+// 8. Nothing asks Project for a column it no longer has.
 {
   /* `Customer_ID` and `Branch_ID` were dropped from `Project` on
      20 Sept. PostgREST refuses a whole select over one missing
@@ -223,7 +280,7 @@ const list = readFileSync("./src/features/projects/ProjectsList.jsx", "utf8");
   }
 }
 
-// 8. The trigger that keeps the cache knows the column in use.
+// 9. The trigger that keeps the cache knows the column in use.
 {
   /* `sync_project_main_developer()` read `Customer_ID` and
      `Branch_ID` off the main developer row. Both are Customer_Branch
@@ -276,6 +333,23 @@ const list = readFileSync("./src/features/projects/ProjectsList.jsx", "utf8");
       fail("a developer that names no branch empties the project's, where it "
         + "should leave what is there alone");
     }
+    /* ── The repair runs with history suspended, and puts it back ──
+
+       `log_project_changes()` names a dropped column, so every
+       update to a project fails and the backfill cannot run at all.
+       Suspended for that one statement: a backfill is not a change
+       anybody made, and a history row with no person behind it is
+       noise in the table people go to for who did what.
+
+       Enabled again in the same file. A trigger left off is a table
+       that quietly stops recording, and nothing about the next
+       change would say so \u2014 which is a worse fault than the one
+       being worked around. */
+    if (/DISABLE TRIGGER/.test(body) && !/ENABLE TRIGGER/.test(body)) {
+      fail("the history trigger is disabled and never put back \u2014 the table "
+        + "stops recording and nothing says so");
+    }
+
     /* And the live rows brought into line, or the fix only applies
        to projects somebody edits from now on. */
     if (!/UPDATE "Project" p\s*\n\s*SET "Organisation_Branch_ID" = d\."Organisation_Branch_ID"/.test(body)) {

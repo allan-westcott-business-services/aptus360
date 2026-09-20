@@ -384,16 +384,38 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
     out = [...out].sort((a, b) => {
       const va = col ? col.raw(a) : "";
       const vb = col ? col.raw(b) : "";
+
+      /* ── Every column sorts by what the reader can see ──
+
+         The rule, in one place, because it was in three and the
+         order they were tested in decided the answer.
+
+         A column whose raw value is an OPAQUE KEY — a lookup id, a
+         list of design rows — sorts by the text in the cell. An id's
+         ordering means nothing to anybody reading the table, and a
+         column sorted by a value it does not show is unsortable as
+         far as they are concerned. Customer ascending gave Seddon,
+         SJ Roberts, Castle Green, Gleeson: 413, 414, 415, 416.
+
+         A column whose display is a faithful rendering of its value
+         — a date, a number — sorts by the VALUE, and that is not an
+         exception to the rule but the same rule. 01/09/2026 after
+         12/08/2026 is what a reader means by a date column in
+         order; sorting the rendered text would put 01 before 12 and
+         claim September came first. Likewise 2 before 10.
+
+         So: keys by their words, everything else by itself. */
+      if (col?.type === "multi" || col?.type === "designs") {
+        return String(display[col.key]?.(a) ?? "")
+          .localeCompare(String(display[col.key]?.(b) ?? ""),
+            undefined, { numeric: true }) * dir;
+      }
+
       if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
-      if (col?.type === "multi") {
-        return String(display[col.key](a)).localeCompare(String(display[col.key](b))) * dir;
-      }
-      /* Sorted on how many outline designs a project has. Sorting on the
-         statuses would need an order across a list of them, and there
-         isn't one that means anything. */
-      if (col?.type === "designs") {
-        return ((col.raw(a) || []).length - (col.raw(b) || []).length) * dir;
-      }
+
+      /* `numeric` so a text column holding numbers reads the way it
+         looks: 2608.9 before 2608.10 is the order of the digits, not
+         of the references. */
       return String(va ?? "").localeCompare(String(vb ?? ""), undefined, { numeric: true }) * dir;
     });
 

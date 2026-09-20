@@ -7480,6 +7480,36 @@ characters is a hundred lines of prose and no rules at all.
      `Organisation_Branch` carries it, and storing it again would be
      the same fault one level up.
 
+     **And the column would not sort.** Reported off a screenshot:
+     Customer ascending gave Seddon, SJ Roberts, Castle Green,
+     Gleeson. That is 413, 414, 415, 416 — the branch ids.
+
+     The comparator DOES have a branch that sorts a `multi` column
+     by what the cell shows. It never reached it: `typeof va ===
+     "number"` was tested first and a foreign key is a number. Every
+     lookup column on the list has sorted by id since it was
+     written, and it passed unnoticed for years because ids were
+     handed out in roughly the order the names were added. Branch
+     names broke the illusion because they were not.
+
+     The rule is now stated once, for every column, and it was asked
+     for across the whole table rather than just Customer:
+
+       a column whose raw value is an OPAQUE KEY — a lookup id, a
+       list of design rows — sorts by the TEXT IN THE CELL;
+       a column whose display is a faithful rendering of its value —
+       a date, a number — sorts by the VALUE.
+
+     The second is not an exception to the first but the same rule:
+     01/09/2026 after 12/08/2026 is what a reader means by a date
+     column in order, and sorting the rendered text would claim
+     September came first. Likewise 10 before 2.
+
+     `designs` moved as well. It sorted by HOW MANY outline designs
+     a project had, defended by a comment saying an order across a
+     list of statuses would mean nothing — true of the statuses, and
+     beside the point, because the cell shows words.
+
      Two things this needed beyond the column definition. A `labelOf`
      on the column, because the text is composed rather than read off
      a field; and the FILTER list composing the same way, or the

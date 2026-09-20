@@ -126,8 +126,37 @@ const intent = readFileSync("./src/lib/projectIntent.js", "utf8");
       fail("the one item somebody was sent here for is itself gated");
     }
   }
-  if ((tools.match(/!callOffOnly/g) || []).length < 2) {
-    fail("the rest of the tools menu is left live");
+  /* ── Everything that is not a call-off sits behind the gate ──
+
+     This counted `!callOffOnly` and wanted at least two of them. The
+     count is a proxy for the rule and not the rule: when four items
+     were taken off this menu the remaining ones fell under a single
+     gate, which is tidier and reads the same to a visitor — and the
+     case failed, saying the menu had been left live when it had not.
+
+     The rule is that a call-off visitor sees the call-off items and
+     nothing else. So: every item before the gate opens must be a
+     call-off item, and the gate must not close until after the last
+     item. Counts cannot say that; positions can. */
+  const gateAt = tools.indexOf("{!callOffOnly && (");
+  if (gateAt < 0) {
+    fail("nothing in the tools menu is gated, so a call-off visitor sees the "
+      + "whole of it");
+  } else {
+    const ungated = tools.slice(0, gateAt);
+    for (const m of ungated.matchAll(/<MenuItem label=(?:"([^"]*)"|\{[^}]*\})/g)) {
+      const label = m[1] ?? "";
+      if (!/Call-off/i.test(label)) {
+        fail(`"${label || "an item built from an expression"}" is live for a `
+          + "call-off visitor, who was sent here for the call-off alone");
+      }
+    }
+    const lastItem = tools.lastIndexOf("<MenuItem");
+    const closes = tools.indexOf("</>", gateAt);
+    if (closes > gateAt && closes < lastItem) {
+      fail("the gate closes before the end of the menu, so the items after it "
+        + "are live for a call-off visitor");
+    }
   }
 }
 

@@ -300,13 +300,34 @@ const noteOf = (text, attrs = {}, at = [10, 20]) => ({
       + "offer to re-make the fault 0215 fixed");
   }
 
-  /* On a menu of its own rather than a utility's: a note belongs to
-     none of them. */
-  if (!/<Menu id="annotation" label="Annotation"/.test(canvas)) {
-    fail("there is no Annotation menu");
-  }
+  /* ── On Tools & Reporting, not on a utility's menu ──
+
+     A note belongs to no utility, so it was given a menu of its own
+     called Annotation. That menu held one item, which is a menu
+     somebody opens to find out there is nothing else in it, and it
+     was moved. What matters is unchanged: not under Electric, Gas,
+     Water or Street Lighting, because a note on a gas drawing should
+     not be asked for from the electric menu.
+
+     The LAYER is still `annotation` and that is the part that must
+     not drift — it is what keeps a note visible when a utility is
+     hidden, and what Print to Scale relies on. */
   if (!/placeNode\(NOTE_ROLE, "annotation"\)/.test(canvas)) {
-    fail("the menu does not arm a note placement");
+    fail("nothing arms a note placement");
+  }
+  const menuAt = canvas.indexOf('label="Place Text Note"');
+  if (menuAt < 0) fail("the note cannot be placed from any menu");
+  else {
+    const toolsAt = canvas.indexOf('<Menu id="tools"');
+    if (!(menuAt > toolsAt)) {
+      const before = canvas.slice(0, menuAt);
+      const inUtility = ["electric", "gas", "water", "lighting"]
+        .filter((u) => before.lastIndexOf(`<Menu id="${u}"`)
+          > before.lastIndexOf("</Menu>"));
+      fail(`the note is placed from the ${inUtility[0] ?? "wrong"} menu \u2014 it `
+        + "belongs to no utility, and a note on a gas drawing should not be "
+        + "asked for from another trade's menu");
+    }
   }
 }
 
@@ -369,6 +390,22 @@ const noteOf = (text, attrs = {}, at = [10, 20]) => ({
      the beginning scrolls out of sight while the end is typed. */
   if (!/<textarea id="fe-note-text"/.test(editor)) {
     fail("the note is written in a one-line box");
+  }
+
+  /* ── And the panel offers nothing that has no meaning on a note ──
+
+     The shared Notes box is somewhere to say something about a feature
+     that its fields do not cover. On a note the words ARE the feature,
+     so a Notes field on a Note is a second place to write — and the
+     one place that never reaches the drawing, since the canvas, the
+     sheet and the DXF all draw the Label. Reported from use. The
+     Label box and the Layer dropdown are suppressed for the same
+     reason, each covered above. */
+  if (!/\{!isNote && \(\s*\n\s*<div className="fld">\s*\n\s*<label htmlFor="fe-notes">/
+    .test(editor)) {
+    fail("the note panel still carries the shared Notes box, which is a "
+      + "second place to write on a thing whose whole purpose is being "
+      + "written on \u2014 and nothing typed there ever appears on the drawing");
   }
 
   /* Off is null and not white. They look identical on screen and print

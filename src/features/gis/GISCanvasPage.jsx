@@ -25824,29 +25824,6 @@ export default function GISCanvasPage() {
                       )}
                     </Menu>
 
-                    {/* ── Writing on the drawing ──
-
-                        Its own menu, and not a utility's. A note
-                        belongs to none of them: it says something about
-                        the job, and putting it under Electric would be
-                        asking somebody annotating a gas drawing to go
-                        to the electric menu for a pencil.
-
-                        The cross-section mark is the counter-example
-                        and stays where it is — that one goes ON a
-                        trench, reports what the trench holds, and is
-                        asked for from the thing it cuts.
-
-                        0215 named what else this menu is for when it
-                        made the annotation layer: north points, notes,
-                        revision clouds, detail bubbles. One of the four
-                        is built. */}
-                    <Menu id="annotation" label="Annotation" open={open} setOpen={setOpen}>
-                      <MenuItem label="Place Text Note"
-                        hint="Click where it goes. Drag the corner to size it, the edge to re-wrap it"
-                        disabled={!projectId || !!busy}
-                        onClick={() => placeNode(NOTE_ROLE, "annotation")} />
-                    </Menu>
                     </>
                   )}
 
@@ -25854,58 +25831,23 @@ export default function GISCanvasPage() {
                     {/* Hidden while raising a call-off: the build order
                         is about making the design, and this visit is
                         about reading it. */}
-                    {!callOffOnly && (
-                    <>
-                    {/* The order the electric design is built in.
+                    {/* ── Four items removed from here ──
 
-                        Shown rather than only enforced: somebody who
-                        knows what is blocked can go and do it, and
-                        somebody who does not is otherwise guessing at
-                        which of eight things comes next. */}
-                    <MenuItem label={`Electric build order \u00b7 ${steps.doneCount} of 8`}
-                      hint={steps.next ? `Next: ${steps.next.title}` : "All steps done"}
-                      onClick={() => setStepsOpen(true)} />
-                    </>
-                    )}
+                        Electric build order, Build the Whole Design,
+                        Build All Mains and Lay All Services. Asked
+                        for: this menu is where the design is read and
+                        reported on, and the four of them ran it
+                        instead \u2014 each one doing at a stroke what the
+                        utility menus do a utility at a time.
 
-                    {/* The six steps in one, in the order they depend on
-                        each other.
-
-                        Here rather than under a utility because it is
-                        all three at once, and because the order is the
-                        whole point of it: run from the utility menus
-                        these are six items in four places, and the
-                        sequence is remembered rather than written
-                        down. */}
-                    <MenuItem label={busy === "wholedesign"
-                      ? "Building\u2026" : "Build the Whole Design"}
-                      hint={"Service trenches, meters, span nodes, mains, services and joints \u2014 for every utility that is contracted"}
-                      disabled={!!busy || !projectId}
-                      onClick={() => runWholeDesign()} />
-
-                    {/* The second half of Auto Service, for all three at
-                        once. The dig goes in on its own and the cable
-                        and pipe follow, which until now meant three
-                        menus in three places and the order kept in
-                        somebody's head. */}
-                    {/* The mains for all three, in one. Three routines
-                        on three menus, each with its own name for the
-                        same act \u2014 and unlike the services, each one
-                        first has to be shown that the utility is
-                        actually contracted. */}
-                    <MenuItem label={busy === "mainsall"
-                      ? "Building\u2026" : "Build All Mains"}
-                      hint={"LV network, gas main and water main \u2014 for every utility with an outline design and an AV agreement"}
-                      disabled={!!busy || !projectId}
-                      onClick={() => runAllMains()} />
-
-                    <MenuItem label={busy === "layall"
-                      ? "Laying\u2026" : "Lay All Services"}
-                      hint="Electric, gas and water service cable and pipe into the trenches already dug"
-                      disabled={!!busy || !projectId}
-                      onClick={() => runAllServices()} />
-
-                    <div className="gm-sep" />
+                        The routines are still in this file and still
+                        work; nothing but these items called them, so
+                        they are now unreachable from the interface.
+                        Left rather than deleted, because putting
+                        `runWholeDesign` back on a menu is one line and
+                        rewriting it is not. If they are still
+                        unreachable in six months, that is the point to
+                        take them out. */}
 
                     {/* A call-off is a report on what is to be laid, not
                         a change to the drawing \u2014 it belongs with the
@@ -26008,7 +25950,34 @@ export default function GISCanvasPage() {
                         live item and six dead ones reads as broken. */}
                     {!callOffOnly && (
                     <>
-  <MenuItem label="Bill of Materials"
+                      {/* ── Writing on the drawing ──
+
+                          Moved here from a menu of its own. A note
+                          belongs to no utility — it says something
+                          about the job — and Annotation held one
+                          item, which is a menu somebody opens to find
+                          out there is nothing else in it.
+
+                          Behind the call-off gate with everything
+                          else that changes the drawing: a visitor
+                          sent here to raise a call-off is reading the
+                          design, not annotating it.
+
+                          The cross-section mark stays on Trench. That
+                          one goes ON a trench and reports what the
+                          trench holds, so it is asked for from the
+                          thing it cuts. 0215's other annotation —
+                          north points, revision clouds, detail
+                          bubbles — belongs beside this item when it
+                          is built. */}
+                      <MenuItem label="Place Text Note"
+                        hint="Click where it goes. Drag the corner to size it, the edge to re-wrap it"
+                        disabled={!projectId || !!busy}
+                        onClick={() => placeNode(NOTE_ROLE, "annotation")} />
+
+                      <div className="gm-sep" />
+
+                      <MenuItem label="Bill of Materials"
                         hint="Quantities by site, utility and surface"
                         disabled={!projectId} onClick={() => setBomOpen(true)} />
                       <div className="gm-sep" />

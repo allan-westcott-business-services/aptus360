@@ -6921,6 +6921,48 @@ characters is a hundred lines of prose and no rules at all.
      before this, so the column may already exist — the guard covers
      both cases.
 
+162. **Four items taken off Tools & Reporting.** Asked for: Electric
+     build order, Build the Whole Design, Build All Mains and Lay All
+     Services. That menu is where a design is read and reported on,
+     and the four of them ran it instead — each doing at a stroke
+     what the utility menus do a utility at a time.
+
+     `runWholeDesign`, `runAllMains` and `runAllServices` and the
+     build-order panel are still in GISCanvasPage and still work.
+     Nothing but those items called them, so they are now unreachable
+     from the interface. Left rather than deleted: putting one back
+     on a menu is a line, and rewriting `runWholeDesign` is not. If
+     they are still unreachable in six months, that is when to take
+     them out. `checkdead.py` does not flag them, which is worth
+     knowing — it finds unreachable statements, not unreachable
+     functions.
+
+     `checkcalloffroutes` failed on the removal, wrongly. It counted
+     `!callOffOnly` inside the tools menu and wanted at least two;
+     the remaining items now fall under a single gate, which is
+     tidier and reads the same to a visitor. **A count is a proxy for
+     a rule, not the rule.** It tests the rule by position now: every
+     item before the gate must be a call-off item, and the gate must
+     not close before the last item. Same family as the three stale
+     window slices in fault 160 — a check that measures the shape of
+     the source instead of what the source does.
+
+     **And Place Text Note moved onto this menu, with the Annotation
+     menu removed.** Asked for in the same breath. Annotation held one
+     item, which is a menu somebody opens to find out there is nothing
+     else in it. What mattered about it is unchanged and is what
+     `checktextnote` now tests: the note is not asked for from a
+     utility's menu, because it belongs to none of them and a note on
+     a gas drawing should not be reached through Electric. The LAYER
+     is still `annotation`, which is the part that must never drift —
+     it is what keeps a note visible when a utility is hidden, and
+     what Print to Scale relies on.
+
+     The cross-section mark stays on Trench: that one goes ON a trench
+     and reports what the trench holds. 0215's other annotation —
+     north points, revision clouds, detail bubbles — belongs beside
+     Place Text Note when it is built, rather than reviving a menu.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

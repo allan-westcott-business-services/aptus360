@@ -7727,6 +7727,17 @@ characters is a hundred lines of prose and no rules at all.
      so switching tabs is safe; two people editing the same project in
      two windows is not, and never was.
 
+176. **The Legal tab moved from Tender to Contract**, beside Detailed
+     Designs. It sat beside POC Applications on the argument that
+     legal work is what a point of connection waits on; moved on
+     request, because wayleaves and easements are signed once the job
+     is won and the route is fixed, which is the detailed design.
+
+     The id is still `legal`, so any section visibility set against it
+     in Admin still applies. A Tender project no longer shows the tab
+     at all — stage decides what a record can have and a section can
+     only take away — and a page open on it falls back to Details.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

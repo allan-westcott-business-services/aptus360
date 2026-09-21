@@ -25,14 +25,22 @@ export const TABS = [
   { id: "plots", label: "Plots", stages: ["tender", "contract"] },
   { id: "nrs", label: "Non-Res Supplies", stages: ["tender", "contract"] },
   { id: "poc", label: "POC Applications", stages: ["tender"] },
-  /* Tender stage only, and sits beside POC Applications because the
-     legal work is what the application waits on — wayleaves, easements
-     and land agreements are the usual reason a point of connection
-     stalls. */
-  { id: "legal", label: "Legal", stages: ["tender"] },
   { id: "designs", label: "Outline Designs", stages: ["tender"] },
   { id: "av", label: "Asset Value", stages: ["tender", "contract"] },
   { id: "contract-designs", label: "Detailed Designs", stages: ["contract"] },
+  /* ── Contract stage, beside Detailed Designs ──
+
+     It was Tender only, beside POC Applications, on the argument that
+     the legal work is what a point of connection waits on. Moved on
+     request: wayleaves, easements and land agreements are signed once
+     the job is won and the route is fixed — which is the detailed
+     design, so that is the tab it sits beside.
+
+     The id is unchanged, so section visibility already set against
+     "legal" in Admin still applies. A project at Tender no longer
+     shows the tab at all, because stage decides what a record can
+     have and a section setting can only take away. */
+  { id: "legal", label: "Legal", stages: ["contract"] },
   { id: "calloffs", label: "Call-offs", stages: ["contract"] },
   /* Invoices sits next to the designs it bills for, rather than at the
      far end after History and Comments. */

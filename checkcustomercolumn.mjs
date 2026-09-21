@@ -364,6 +364,50 @@ const list = readFileSync("./src/features/projects/ProjectsList.jsx", "utf8");
   }
 }
 
+// 10. The history trigger names no columns.
+{
+  /* `log_project_changes()` watched a fixed list of columns in a
+     dynamic query and broke the day one was dropped — every save on
+     every project, then creating one at all. Its body was never in
+     the folder. The replacement turns OLD and NEW into JSON and
+     compares every key, so it cannot name a column that is not
+     there, and a column added tomorrow is recorded without anybody
+     listing it. */
+  let sql = "";
+  try { sql = readFileSync("./supabase/migrations/0233_project_history_trigger.sql", "utf8"); }
+  catch { /* reported below */ }
+  if (!sql) fail("0233 is missing, so every project save still fails on the "
+    + "dropped column");
+  else {
+    const body = sql.replace(/--[^\n]*/g, "");
+    if (!/o := to_jsonb\(OLD\);/.test(body) || !/n := to_jsonb\(NEW\);/.test(body)) {
+      fail("the history trigger does not compare the rows as JSON, so it has "
+        + "to name columns and will break on the next drop");
+    }
+    if (/"Customer_ID"|"Branch_ID"/.test(body)) {
+      fail("the history trigger still names a dropped column");
+    }
+    if (!/\(o -> k\) IS DISTINCT FROM \(n -> k\)/.test(body)) {
+      fail("null against null is recorded as a change, or null against a value "
+        + "is not");
+    }
+    if (!/IF TG_OP <> 'UPDATE' THEN\s*\n\s*RETURN NEW;/.test(body)) {
+      fail("the trigger runs its comparison on INSERT, where there is no OLD "
+        + "to compare against");
+    }
+    if (!/'Updated_At'/.test(body)) {
+      fail("Updated_At is recorded as a change on every save, which is a row "
+        + "of noise per edit");
+    }
+  }
+
+  /* And the activity tab can name what the new trigger records. */
+  const tab = readFileSync("./src/features/activity/ActivityTab.jsx", "utf8");
+  if (!/Organisation_Branch_ID: "Customer branch"/.test(tab)) {
+    fail("a change of branch shows in the activity tab as a raw id");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The Customer column names the branch, not the company.");
 process.exit(bad ? 1 : 0);

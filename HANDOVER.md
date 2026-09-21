@@ -7479,6 +7479,30 @@ characters is a hundred lines of prose and no rules at all.
      0231 itself now touches `Organisation_Branch_ID` and nothing
      else, because nothing else is there to touch.
 
+     **Then creating a project failed too, and the trigger was
+     replaced blind (0233).** `log_project_changes()` fires on INSERT
+     as well as UPDATE, so once the column was gone nobody could make
+     a project. Its body was asked for twice and not received, and
+     people could not work while the question waited, so it was
+     rewritten from what is known: the table it writes (0077), the
+     readers of that table, and the error text, which says exactly
+     how it worked.
+
+     The replacement NAMES NO COLUMNS. It turns OLD and NEW into JSON
+     and compares every key, so it cannot break on a dropped column
+     and records an added one without anybody listing it. The trade,
+     stated in the file: it records every changed column rather than
+     a curated thirty, so the activity tab gets longer; it records
+     nothing on INSERT; and `Changed_By` is left to the column's
+     default — if the old body set it from the request's JWT, that
+     attribution is lost and is the one thing this cannot reconstruct
+     from outside. `prosrc` of the old function is still worth
+     fetching for that reason alone.
+
+     Fourth time this week a function whose source is not in the
+     folder has had to be replaced from its behaviour. The pattern is
+     the fault; each instance is a symptom.
+
      And `Organisation_ID` is deliberately NOT on `Project`:
      `Organisation_Branch` carries it, and storing it again would be
      the same fault one level up.

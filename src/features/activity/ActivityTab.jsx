@@ -32,6 +32,15 @@ const FIELD_LABELS = {
   Minimum_Service_Call_Off: "Min. call off", Audacia_Plot_Count: "Audacia plot count",
   Site_Contact: "Site contact", Notes: "Notes", Postcode: "Postcode",
   Eastings: "Eastings", Northings: "Northings", Option_Letter: "Option",
+  /* The branch is the customer now. Customer_ID and Branch_ID above
+     stay so that history written before 20 Sept still reads. */
+  Organisation_Branch_ID: "Customer branch",
+  Display_Ref: "Display ref", AP_Number: "AP number", Tender_Ref: "Tender ref",
+  Points_Note: "Points note", Total_Design_Points: "Design points",
+  Tender_Base_Points: "Tender base points", Tender_Total_Points: "Tender total points",
+  Manual_Base_Points: "Manual base points", Manual_Total_Points: "Manual total points",
+  Town_Council_ID: "Town council", County_Council_ID: "County council",
+  Fire_Organisation_ID: "Fire authority", Status_Changed_Date: "Status changed",
 };
 
 const LOOKUP_FOR = {
@@ -47,6 +56,7 @@ const LOOKUP_FOR = {
   Fire_Service_ID: ["fireServices", "Fire_Service_ID", "Fire_Service_Name"],
   Heat_Pump_Model_ID: ["heatPumpModels", "Heat_Pump_Model_ID", "Model"],
   Default_Heat_Source_ID: ["heatSources", "Heat_Source_ID", "Heat_Source"],
+  Organisation_Branch_ID: ["developerBranches", "Organisation_Branch_ID", "Branch_Dropdown"],
 };
 
 const when = (ts) => {

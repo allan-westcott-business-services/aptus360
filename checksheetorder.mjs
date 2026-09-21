@@ -176,9 +176,17 @@ const orderOf = (groups) => groups.flatMap((g) => g.questions.map((x) => x.Enqui
   if (!/The question to answer next is under/.test(portal)) {
     fail("a finished section gives no way back to the question being asked");
   }
-  /* One tab is no tabs. */
-  if (!/sections\.length > 1 &&/.test(portal)) {
-    fail("a sheet with one section shows a strip of one tab");
+  /* Shown for one section as well as several. Hiding it at one
+     made a one-section sheet look like a sheet with no tabs, and it
+     was reported as broken. Only a sheet whose questions carry no
+     section at all shows nothing. */
+  if (/sections\.length > 1 &&/.test(portal)) {
+    fail("the strip hides itself for a sheet with one section, which looks "
+      + "identical to the tabs not working");
+  }
+  if (!/sections\.some\(\(x\) => x\.title !== "Questions"\)/.test(portal)) {
+    fail("the strip is shown for a sheet whose questions carry no section, "
+      + "which is a single tab called Questions over the whole sheet");
   }
 }
 

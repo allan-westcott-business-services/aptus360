@@ -645,7 +645,15 @@ export default function DeveloperPortal({ onSignOut, who }) {
                     aria-label="Close">&times;</button>
                 </div>
 
-                {sections.length > 1 && (
+                {/* Shown whenever the sheet has a section at all — one
+                    included. It hid itself at one, on the grounds that
+                    a strip of one tab is no navigation; but a sheet
+                    with one section then looked identical to a sheet
+                    with no tabs, and was reported as the tabs not
+                    working. A single tab says "this sheet has one
+                    section", which is information. Only a sheet whose
+                    questions carry no section name shows nothing. */}
+                {sections.some((x) => x.title !== "Questions") && (
                   <div className="pt-tabs" role="tablist">
                     {sections.map((sec) => (
                       <button key={sec.title} type="button" role="tab"

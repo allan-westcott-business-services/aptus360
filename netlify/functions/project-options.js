@@ -4,7 +4,7 @@ import { supabase, json, fail, withAuth } from "./_supabase.js";
    differently. Its own endpoint rather than a branch on /projects,
    because that one already has an unconditional GET and a conditional
    one below it could never run. */
-export default withAuth(async function handler(req) {
+export default withAuth(async function handler(req, context, user) {
   const db = supabase();
   const url = new URL(req.url);
   const projectId = Number(url.searchParams.get("project"));
@@ -29,7 +29,7 @@ export default withAuth(async function handler(req) {
          is copied from the one before rather than all from the original,
          which makes no difference now and keeps working if copying ever
          becomes incremental. */
-      const { count = 1, copy_gis = false } = await req.json().catch(() => ({}));
+      const { count = 1, copy_gis = true } = await req.json().catch(() => ({}));
       const wanted = Math.max(1, Math.min(Number(count) || 1, 26));
       const made = [];
       for (let i = 0; i < wanted; i++) {
@@ -39,10 +39,36 @@ export default withAuth(async function handler(req) {
            the operation \u2014 so the default is off and the caller says. */
         const { data, error } = await db.rpc("create_project_option", {
           p_project: projectId,
-          p_copy_gis: copy_gis === true,
+          /* Left off, deliberately. The live function takes this flag
+             but the migration that added it is not in the repo, so
+             what it does with Connects, Joint_Cables, Seed_Feature_ID
+             and the plots is unknown. The copy below is the one whose
+             body can be read. */
+          p_copy_gis: false,
         });
         if (error) throw error;
         made.push(data);
+
+        /* ── The drawing, as its own instance ──
+
+           An option is a different design of the same scheme: it may
+           have a different number of plots, different heat sources,
+           or a different layout of roads. It gets its own plots for
+           that reason and its own drawing for the same one. The copy
+           remaps every id the drawing carries \u2014 cables to their
+           joints, meters to their seeds and their plots \u2014 or the new
+           drawing would be a set of lines that do not know each
+           other (0232).
+
+           On by default and switched off by the caller, which is the
+           opposite of the flag above: an option without its drawing
+           is the surprising case now. */
+        if (copy_gis !== false) {
+          const { error: gErr } = await db.rpc("copy_project_drawing", {
+            p_from: projectId, p_to: data,
+          });
+          if (gErr) throw gErr;
+        }
       }
       return json({ created: made }, 201);
     }

@@ -44,6 +44,32 @@ export async function currentUser(req) {
   }
 }
 
+/* ── Who to record as having done something ──
+
+   The name a change is written against in a history table. Every
+   endpoint uses the SERVICE key, so the database never sees the
+   signed-in user and a trigger cannot find out who it is: the name
+   has to be settled here, where the user is known, and passed down.
+
+   The same rule the comments use (activity.js): the Person record's
+   name for the login email, and the email itself where no Person
+   matches — a poor name but a real one, better than a change nobody
+   can trace. Settled server-side so it cannot be spoofed by a body. */
+export async function whoIs(user) {
+  const email = (user?.email || "").trim();
+  if (!email) return null;
+  try {
+    const { data } = await supabase().from("Person")
+      .select("Person_Name")
+      .ilike("Email", email)
+      .eq("Is_Active", true)
+      .maybeSingle();
+    return data?.Person_Name || email;
+  } catch {
+    return email;
+  }
+}
+
 export function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,

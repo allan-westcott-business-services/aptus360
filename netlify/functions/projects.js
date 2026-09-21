@@ -1,4 +1,4 @@
-import { supabase, json, fail, withAuth } from "./_supabase.js";
+import { supabase, json, fail, withAuth, whoIs } from "./_supabase.js";
 
 /* Columns are listed explicitly and in one place. If the schema moves, the
    query fails loudly at this boundary instead of being swallowed by a
@@ -87,7 +87,7 @@ function nullEmpty(obj) {
   return out;
 }
 
-export default withAuth(async function handler(req, context) {
+export default withAuth(async function handler(req, context, user) {
   const db = supabase();
   const id = context?.params?.id;
 
@@ -251,12 +251,33 @@ export default withAuth(async function handler(req, context) {
       const body = await req.json();
       const { scopes, Project_ID, ...changes } = body;
 
-      const { data: updated, error } = await db
-        .from("Project")
-        .update(onlyColumns(nullEmpty(changes)))
-        .eq("Project_ID", id)
-        .select(PROJECT_COLUMNS)
-        .single();
+      /* ── Who made the change, carried down to the history ──
+
+         `Updated_By` is set on every save so the history trigger
+         (0234) can record it: the database never sees the signed-in
+         user, because every call is made with the service key, so a
+         trigger has no way to know who it is unless the row says.
+
+         Set AFTER onlyColumns and not taken from the body, so a
+         client cannot write somebody else's name into the history. */
+      const who = await whoIs(user);
+      const save = (row) => db.from("Project").update(row)
+        .eq("Project_ID", id).select(PROJECT_COLUMNS).single();
+
+      let { data: updated, error } = await save(
+        { ...onlyColumns(nullEmpty(changes)), Updated_By: who });
+
+      /* ── And never at the cost of the save ──
+
+         If this reaches Netlify before 0234 reaches the database, the
+         column is not there yet and PostgREST refuses the whole
+         update. After a week of saves failing on columns that were
+         not there, a missing ATTRIBUTION column is not allowed to do
+         the same: the save goes through without it, and the history
+         says "\u2014" for who, exactly as it did before. */
+      if (error && /Updated_By/.test(error.message || "")) {
+        ({ data: updated, error } = await save(onlyColumns(nullEmpty(changes))));
+      }
       if (error) throw error;
 
       if (Array.isArray(scopes)) {

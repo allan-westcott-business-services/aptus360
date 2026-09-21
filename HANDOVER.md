@@ -218,6 +218,7 @@ caught a fault that had already shipped at least once.
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checkhistorywho.mjs` | The history says who, settled by the server and never at the cost of a save |
 | `node checkprojectfields.mjs` | What the create form asks for, the project can change afterwards |
 | `node checksheetorder.mjs` | The sheet is ordered by dragging: one move, everything renumbered, only changes written |
 | `node checkcopydrawing.mjs` | A copied project gets its own drawing, every id remapped |
@@ -7737,6 +7738,35 @@ characters is a hundred lines of prose and no rules at all.
      in Admin still applies. A Tender project no longer shows the tab
      at all — stage decides what a record can have and a section can
      only take away — and a page open on it falls back to Details.
+
+177. **The project history records who (0234).** Reported: the
+     History tab's "By" column was empty. The consequence 0233 warned
+     of, and the reason was more basic than a lost line in the old
+     trigger.
+
+     **Every Netlify function uses the SERVICE key**, so the database
+     never sees the signed-in user and a trigger has nothing to go on
+     — `auth.uid()` is the service role. The function does know
+     (`withAuth` hands the user to the handler). So every project save
+     sets `Updated_By` on the row, and the trigger reads it off NEW and
+     writes it as `Changed_By`, skipping `Updated_By` itself so the tab
+     is not filled with "Updated By: Jane → John".
+
+     `whoIs(user)` in _supabase.js settles the name: the Person record
+     for the login email, the email where none matches. The same rule
+     the comments already used, now in one place for any endpoint that
+     wants it. It is set AFTER the column filter, never from the body,
+     so nobody can write another person's name into the history.
+
+     **The save retries without `Updated_By` if the column is not
+     there.** Deploy order therefore cannot break a save — which,
+     after a week of saves failing on columns that were not there, is
+     the one property this change was not allowed to lack.
+
+     Left unstamped, deliberately: the option-collapse housekeeping in
+     project-options.js, and anything written from the SQL editor or a
+     backfill. The tab shows a dash for those, which is accurate.
+     History written before 0234 has no name and cannot be given one.
 
 ## Decisions worth knowing
 

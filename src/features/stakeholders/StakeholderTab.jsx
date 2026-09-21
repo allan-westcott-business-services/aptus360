@@ -9,6 +9,7 @@ import { listContacts, saveContact, deleteContact } from "../../api/stakeholders
 import { updateScope } from "../../api/scopes.js";
 import { utilityById } from "../../lib/utilities.js";
 import DevelopersSection from "./DevelopersSection.jsx";
+import { peopleWithRole, ROLE } from "../../lib/constants.js";
 
 /* Everyone outside Aptus with a stake in the site: the authorities that
    have to be satisfied, and the developer's own people. */
@@ -89,6 +90,9 @@ export default function StakeholderTab({ projectId }) {
      for that utility is recorded. */
   const [scopes, setScopes] = useState([]);
   const [savingDno, setSavingDno] = useState(null);
+  const [staff, setStaff] = useState(null);
+  const [staffSaved, setStaffSaved] = useState({});
+  const [savingStaff, setSavingStaff] = useState(false);
 
   function blankContact() {
     return { Contact_Name: "", Job_Title: "", Telephone: "", Email: "", Is_Primary: false };
@@ -107,6 +111,15 @@ export default function StakeholderTab({ projectId }) {
       };
       setF(picked);
       setSaved(picked);
+      /* Aptus's own people on the job. Kept apart from the
+         authorities so each section says "unsaved" only for its own
+         fields. */
+      const people = {
+        BDD_KAM_ID: proj.BDD_KAM_ID ?? "",
+        Estimator_ID: proj.Estimator_ID ?? "",
+      };
+      setStaff(people);
+      setStaffSaved(people);
       setContacts(cs.rows || []);
       setScopes(proj.scopes || []);
       setError("");
@@ -117,6 +130,31 @@ export default function StakeholderTab({ projectId }) {
 
   const set = (k) => (v) => setF((p) => ({ ...p, [k]: v }));
   const dirty = f && Object.keys(f).some((k) => String(f[k]) !== String(saved[k]));
+
+  const staffDirty = staff
+    && Object.keys(staff).some((k) => String(staff[k]) !== String(staffSaved[k]));
+
+  /* ── Aptus resources ──
+
+     The BDD / KAM and the estimator were asked for when a project is
+     made and then shown nowhere afterwards: the details form had no
+     field for either, so a project created with the wrong estimator
+     could not be corrected without the database. They live here now,
+     beside the other people on the job. Written to the same two
+     columns the create form writes. */
+  async function saveStaff() {
+    setSavingStaff(true);
+    try {
+      await updateProject(projectId, {
+        BDD_KAM_ID: staff.BDD_KAM_ID || null,
+        Estimator_ID: staff.Estimator_ID || null,
+      });
+      setStaffSaved({ ...staff });
+      setFlash("Aptus resources saved");
+      setTimeout(() => setFlash(""), 2400);
+    } catch (e) { setError(e.message); }
+    finally { setSavingStaff(false); }
+  }
 
   async function saveAuthorities() {
     setSaving(true);
@@ -228,6 +266,39 @@ export default function StakeholderTab({ projectId }) {
       {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <DevelopersSection projectId={projectId} />
+
+      <Section
+        title="Aptus Resources"
+        right={staffDirty && (
+          <button className="btn accent sm" disabled={savingStaff} onClick={saveStaff}>
+            {savingStaff ? "Saving\u2026" : "Save"}
+          </button>
+        )}>
+        {staff && (
+          <div className="grid6">
+            <div className="fld" style={{ gridColumn: "span 3" }}>
+              <label htmlFor="sk-kam">BDD / KAM</label>
+              <select id="sk-kam" value={staff.BDD_KAM_ID}
+                onChange={(e) => setStaff((p) => ({ ...p, BDD_KAM_ID: e.target.value }))}>
+                <option value="">&mdash;</option>
+                {peopleWithRole(lookups?.people, ROLE.BDD_KAM).map((pp) => (
+                  <option key={pp.Person_ID} value={pp.Person_ID}>{pp.Person_Name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="fld" style={{ gridColumn: "span 3" }}>
+              <label htmlFor="sk-est">Estimator</label>
+              <select id="sk-est" value={staff.Estimator_ID}
+                onChange={(e) => setStaff((p) => ({ ...p, Estimator_ID: e.target.value }))}>
+                <option value="">&mdash;</option>
+                {peopleWithRole(lookups?.people, ROLE.ESTIMATOR).map((pp) => (
+                  <option key={pp.Person_ID} value={pp.Person_ID}>{pp.Person_Name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+      </Section>
 
       <DnoSection scopes={scopes} lookups={lookups} onSet={setDno} saving={savingDno} />
 

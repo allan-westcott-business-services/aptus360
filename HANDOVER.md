@@ -218,6 +218,7 @@ caught a fault that had already shipped at least once.
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checkprojectfields.mjs` | What the create form asks for, the project can change afterwards |
 | `node checksheetorder.mjs` | The sheet is ordered by dragging: one move, everything renumbered, only changes written |
 | `node checkcopydrawing.mjs` | A copied project gets its own drawing, every id remapped |
 | `node checksplitcircuit.mjs` | A circuit past its size splits into equal circuits, subtree by subtree |
@@ -7702,6 +7703,29 @@ characters is a hundred lines of prose and no rules at all.
      The walk itself (`pathOf`, `currentQuestion`) is untouched and
      `checkenquiryflow` still holds it. A sheet with one section
      shows no strip.
+
+175. **BDD / KAM, Estimator and KPI date are editable after creation.**
+     All three are asked for when a project is made — the two people
+     are required — and appeared nowhere once it existed, so a
+     project made with the wrong estimator could not be corrected
+     without the database. Reported from use.
+
+     The people are in a new **Aptus Resources** section on the
+     Stakeholder tab, beside the other people on the job, limited by
+     role exactly as the create form limits them, with a save of their
+     own so saving them does not also save half-typed authorities.
+     The KPI date is in the **Quote** section of the Details tab, to
+     the left of Date sent — the date it is measured against.
+
+     `checkprojectfields` holds the broader rule: every field the
+     create form's REQUIRED list names has somewhere it can be edited
+     afterwards. A field added to the create form and forgotten on the
+     record now fails the suite rather than a user.
+
+     Worth knowing: the Details form posts the whole project back on
+     save, including these two people. It reloads when its tab opens,
+     so switching tabs is safe; two people editing the same project in
+     two windows is not, and never was.
 
 ## Decisions worth knowing
 

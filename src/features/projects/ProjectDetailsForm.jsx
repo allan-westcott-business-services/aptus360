@@ -435,6 +435,17 @@ export default function ProjectDetailsForm({ projectId, onSaved }) {
 
       <Section title="Quote">
         <div className="grid6">
+          {/* ── KPI date, beside the date it is measured against ──
+
+              Asked for when the project is made and then shown nowhere,
+              so a project created with the wrong KPI date could not be
+              put right. To the left of Date sent because that is the
+              comparison anybody makes: was the quote out by the date
+              it was due. The list's alarm clock reads this same column. */}
+          <Field label="KPI date" span={2} hint="When the quote is due">
+            <input type="date" value={f.KPI_Date || ""}
+              onChange={(e) => set("KPI_Date")(e.target.value || null)} />
+          </Field>
           <Field label="Date sent" span={2} hint="When the quote went to the customer">
             <input type="date" value={f.Date_Sent || ""}
               onChange={(e) => set("Date_Sent")(e.target.value)} />

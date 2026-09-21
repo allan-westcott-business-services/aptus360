@@ -245,6 +245,46 @@ export default function DeveloperPortal({ onSignOut, who }) {
   }, [sheet, answers, current]);
   const missing = useMemo(() => missingAnswers(sheet, answers), [sheet, answers]);
 
+  /* ── The sections, as tabs ──
+
+     Asked for. The sheet still goes one question at a time, because
+     the next question depends on this answer and showing a whole
+     section at once would mean showing questions somebody may never
+     be asked. So a tab is not a page of questions; it is where you
+     are.
+
+     Every section of the sheet, in sheet order, marked as DONE (every
+     question of it that was asked has been answered and the walk has
+     moved past), CURRENT (the question being asked is in it) or
+     AHEAD. A done tab opens that section's answers to look back
+     over; the current tab shows the question; a tab ahead is not
+     clickable, since nobody can be asked a question the walk has not
+     reached. */
+  const sections = useMemo(() => {
+    const titles = [];
+    for (const q of sheet) {
+      const t = q.Section || "Questions";
+      if (!titles.includes(t)) titles.push(t);
+    }
+    const currentTitle = current ? (current.Section || "Questions")
+      : (asked.length ? (asked[asked.length - 1].Section || "Questions") : titles[0]);
+    const reached = new Set(asked.map((q) => q.Section || "Questions"));
+    return titles.map((title) => ({
+      title,
+      state: title === currentTitle ? "current" : reached.has(title) ? "done" : "ahead",
+    }));
+  }, [sheet, asked, current]);
+
+  /* `sheetTab`, not `tab`: the portal already has a `tab` for its
+     own top-level pages. */
+  const [sheetTab, setSheetTab] = useState(null);
+  /* Follow the walk. When the question moves into a new section the
+     tab moves with it; a tab somebody clicked to look back at stays
+     until then. */
+  const currentTitle = sections.find((x) => x.state === "current")?.title ?? null;
+  useEffect(() => { setSheetTab(currentTitle); }, [currentTitle]);
+  const shownTitle = sheetTab ?? currentTitle;
+
   async function openEnquiry() {
     setError("");
     setSent(null);
@@ -605,8 +645,26 @@ export default function DeveloperPortal({ onSignOut, who }) {
                     aria-label="Close">&times;</button>
                 </div>
 
+                {sections.length > 1 && (
+                  <div className="pt-tabs" role="tablist">
+                    {sections.map((sec) => (
+                      <button key={sec.title} type="button" role="tab"
+                        className={`pt-tab ${sec.state}` + (sec.title === shownTitle ? " on" : "")}
+                        aria-selected={sec.title === shownTitle}
+                        disabled={sec.state === "ahead"}
+                        title={sec.state === "ahead"
+                          ? "Reached once the questions before it are answered" : undefined}
+                        onClick={() => setSheetTab(sec.title)}>
+                        {sec.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <div className="pt-sheet-body">
-                  {asked.filter((q) => q !== current).map((q) => (
+                  {asked.filter((q) => q !== current)
+                    .filter((q) => (q.Section || "Questions") === shownTitle)
+                    .map((q) => (
                     <div key={q.Enquiry_Question_ID} className="pt-answered">
                       <span className="pt-answered-q">{q.Question}</span>
                       <span className="pt-answered-a">
@@ -626,7 +684,19 @@ export default function DeveloperPortal({ onSignOut, who }) {
                     </div>
                   ))}
 
-                  {current ? (
+                  {/* Looking back at a finished section: say so, and say
+                      where the question is, rather than a tab with
+                      answers on it and no way on. */}
+                  {shownTitle !== currentTitle && (
+                    <p className="pt-quiet">
+                      {currentTitle
+                        ? <>The question to answer next is under <button type="button"
+                          className="pt-link" onClick={() => setSheetTab(currentTitle)}>{currentTitle}</button>.</>
+                        : "Every question has been answered."}
+                    </p>
+                  )}
+
+                  {current && shownTitle === currentTitle ? (
                     <div className="pt-asking">
                       <label className="pt-q" htmlFor="pt-answer">
                         {current.Question}
@@ -872,6 +942,21 @@ const CSS = `
   gap: 12px; padding: 14px 18px 12px; border-bottom: 1px solid var(--border); }
 .pt-sheet-head h3 { margin: 0; font-size: 16px; }
 .pt-sheet-body { overflow: auto; padding: 16px 18px; display: grid; gap: 16px; }
+/* ── Section tabs ──
+   Where you are on the sheet. Done sections open to look back over,
+   the current one holds the question, the ones ahead are named but
+   not yet reachable. */
+.pt-tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 18px 0;
+  border-bottom: 1px solid var(--border); }
+.pt-tab { border: 1px solid var(--border); border-bottom: 0; background: var(--bg);
+  border-radius: 8px 8px 0 0; padding: 7px 12px; font: inherit; font-size: 13px;
+  color: var(--muted); cursor: pointer; }
+.pt-tab.done { color: var(--text); }
+.pt-tab.current, .pt-tab.on { background: var(--white); color: var(--text); font-weight: 600; }
+.pt-tab.on { border-color: var(--accent); box-shadow: inset 0 2px 0 var(--accent); }
+.pt-tab.ahead { opacity: .55; cursor: default; }
+.pt-link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent);
+  text-decoration: underline; cursor: pointer; }
 .pt-sheet-foot { display: flex; gap: 10px; padding: 12px 18px 16px;
   border-top: 1px solid var(--border); }
 .pt-answered { display: grid; gap: 2px; padding-bottom: 10px;

@@ -147,6 +147,41 @@ const orderOf = (groups) => groups.flatMap((g) => g.questions.map((x) => x.Enqui
   }
 }
 
+// 6. The portal shows the sections as tabs, without breaking the walk.
+{
+  /* The portal asks one question at a time because the next depends
+     on this answer. A tab there is WHERE YOU ARE, not a page of
+     questions: done sections open to look back over, the current one
+     holds the question, and a section ahead cannot be clicked into,
+     since nobody can be asked a question the walk has not reached.
+
+     The walk itself — pathOf, currentQuestion — is untouched, and
+     checkenquiryflow still holds it. */
+  const portal = readFileSync("./src/features/portal/DeveloperPortal.jsx", "utf8");
+  if (!/className="pt-tabs" role="tablist"/.test(portal)) {
+    fail("the portal's enquiry sheet has no section tabs");
+  }
+  if (!/disabled=\{sec\.state === "ahead"\}/.test(portal)) {
+    fail("a section ahead of the walk can be clicked into, which would show "
+      + "questions nobody has reached and cannot yet be asked");
+  }
+  /* The tab follows the walk: when the question moves into a new
+     section, so does the tab. Otherwise answering the last question
+     of a section leaves the person staring at a finished tab. */
+  if (!/useEffect\(\(\) => \{ setSheetTab\(currentTitle\); \}, \[currentTitle\]\)/.test(portal)) {
+    fail("the tab does not follow the walk into the next section");
+  }
+  /* Looking back at a finished section says where the question is,
+     rather than leaving a tab with answers on it and no way on. */
+  if (!/The question to answer next is under/.test(portal)) {
+    fail("a finished section gives no way back to the question being asked");
+  }
+  /* One tab is no tabs. */
+  if (!/sections\.length > 1 &&/.test(portal)) {
+    fail("a sheet with one section shows a strip of one tab");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The sheet is ordered by dragging: one move, everything renumbered, only changes written.");
 process.exit(bad ? 1 : 0);

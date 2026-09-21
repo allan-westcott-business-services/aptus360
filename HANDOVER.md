@@ -7663,11 +7663,21 @@ characters is a hundred lines of prose and no rules at all.
      one, and forty in parallel against one sheet is a way to find
      out how PostgREST queues.
 
-     The portal's enquiry form was NOT changed: it walks one question
-     at a time with the answered list beside it, and "each section on
-     its own tab" was read as the editor. If it was meant for the
-     portal too, that is a different flow and worth asking about
-     before building.
+     **The portal has section tabs too**, asked for straight after.
+     The sheet still goes one question at a time — the next depends
+     on this answer, and a section shown whole would show questions
+     somebody may never be asked — so a tab there is WHERE YOU ARE,
+     not a page of questions. Every section of the sheet is a tab
+     marked done, current or ahead: a done one opens that section's
+     answers to look back over, the current one holds the question,
+     and one ahead is named but not clickable, since nobody can be
+     asked a question the walk has not reached. The tab follows the
+     walk into the next section; a tab somebody clicked to look back
+     stays until then, with a line saying where the question is.
+
+     The walk itself (`pathOf`, `currentQuestion`) is untouched and
+     `checkenquiryflow` still holds it. A sheet with one section
+     shows no strip.
 
 ## Decisions worth knowing
 

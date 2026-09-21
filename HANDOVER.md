@@ -218,6 +218,9 @@ caught a fault that had already shipped at least once.
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checksheetorder.mjs` | The sheet is ordered by dragging: one move, everything renumbered, only changes written |
+| `node checkcopydrawing.mjs` | A copied project gets its own drawing, every id remapped |
+| `node checksplitcircuit.mjs` | A circuit past its size splits into equal circuits, subtree by subtree |
 | `node checkcustomercolumn.mjs` | The Customer column names the branch, not the company |
 | `node checkloadthrough.mjs` | A feeder end point says what it carries, worked out each time |
 | `node checkprintdefaults.mjs` | Print to Scale defaults what nobody set, and keeps what somebody did |
@@ -7518,6 +7521,153 @@ characters is a hundred lines of prose and no rules at all.
      filter reads a label in two places, the row and the button
      summary, and a case that tested "somewhere" passed with one of
      them still blank.
+
+172. **Split Circuit.** Electric › Split Circuit… Past 80 meters, or
+     with its end-of-line levels out of tolerance, a circuit is
+     divided into circuits carrying as near as possible an equal
+     number of meters. Users were doing this by hand — add plots,
+     build, check levels, move plots, build again — and asked for a
+     quicker way.
+
+     **A split is a question about the tree.** The feeder model
+     already builds one, rooted at the origin, with a meter count
+     under every node. A circuit's cable is routed to its members
+     along the dig and two circuits can share a trench, so a subtree
+     can go to either circuit whole. `splitPlan.js` opens any branch
+     bigger than a share at its first junction and deals the parts
+     out largest-first to the lightest circuit. That is all it does.
+
+     **It proposes; the build and the levels judge.** The planner
+     chooses no cable sizes and runs no levels. Its output is a
+     membership, written through `createCircuitFrom` — the same
+     routine Link to Circuit uses — so a circuit made this way takes
+     a way, gets a name and letter, and has its origin node placed
+     like any other. Then Build LV Network, then Run Levels Check,
+     as the confirm says.
+
+     On the real drawings: project 16's 51 meters go 26 / 25 when
+     forced by the levels; project 20's 85 go 43 / 42 on the count,
+     or 29 / 28 / 28 asked for as three.
+
+     **"As close as possible" is taken literally.** The `slack`
+     setting says how far over a share a part may be before it is
+     opened, and it defaults to none. Each opened part is one more
+     place the second circuit's cable runs beside the first before
+     taking its own way, so a little slack is fewer parallel runs for
+     a few meters of imbalance — 46 / 39 at a tenth on project 20,
+     against 43 / 42. A choice, and written down as one.
+
+     **"Out of tolerance" is read off the last Run Levels Check**, by
+     asking whether any of the circuit's nodes sits over in
+     `elecLevelsAt`. A circuit never checked is judged on its count
+     alone, and the confirm names which reason it was. The count is
+     the rule of thumb; the levels are the measurement; the
+     measurement wins — a circuit under 80 but over 5% is split, and
+     one over 80 but within tolerance is split too, because 80 was
+     asked for as the ceiling.
+
+     Not built, and the natural next two: auto-sizing cables after a
+     split (the build puts the smallest on everything and expects a
+     hand to upsize), and running a split as a scenario without
+     writing it, so two proposals can be compared. Both were laid
+     out when this was asked for; this is the first of the three.
+
+173. **A copied project gets its own drawing (0232).** Asked as a
+     principle: a different design of the same developer scheme may
+     have a different number of plots, different heat sources or a
+     different layout of roads, so an option or a revision must be a
+     full instance — project, plots AND drawing. Plots already were;
+     the drawing was not. A carried-forward design opened on a blank
+     canvas, and `Carried_Forward` was set by the revision flow and
+     read by nothing.
+
+     **A drawing refers to itself**, which is why this is a function
+     and not `INSERT ... SELECT`. On project 20: `Connects` on 258
+     features, `Joint_Cables` on 88, `Circuit_Origin_ID` and
+     `Seed_Feature_ID` on 84 each, `Link_Box_ID` on 49, and a
+     `Plot_ID` column on 249. Copied as they stand, every cable knows
+     its OLD joints and every meter its OLD plot.
+
+     `copy_project_drawing(from, to)` refuses a destination with
+     features (a copy is not a merge), maps plots by `Plot_Number`,
+     copies the features recording old id to new, then rewrites any
+     attribute ending in `_ID` or named `Connects`/`Joint_Cables`
+     whose value is an id of the source. By RULE rather than by a
+     fixed list of names, so the next referencing attribute is
+     caught; and only ids that name a feature of the source, so
+     `NRS_ID` and `Cable_Size_ID` pass through untouched. The basemap
+     row comes with it — every column gis-basemap.js reads, image
+     shared in storage.
+
+     **Not run against a database.** It was written blind and is
+     held only by shape; the three verification queries at its foot
+     are what say whether it worked. Run it on a project you can
+     afford to look at closely first.
+
+     Both routes call it. An option copies by default (`copy_gis`
+     defaults true now, and false switches it off — the reverse of
+     before). A revision copies when any design is carried forward
+     AND plots are copied: a redraw starting from the old drawing is
+     not a redraw, and a drawing whose meters have no plots to point
+     at is half a drawing.
+
+     **The live `create_project_option` already takes a `p_copy_gis`
+     flag.** Its migration is not in this folder (the comment cites
+     0188, which is the call-off drawing), nothing in the UI ever
+     passed it true, and its body has not been read — so nobody knows
+     whether it remaps the ids or copies them raw. It is passed
+     `false` now, deliberately, and the readable copy runs instead.
+     Worth fetching:
+
+         SELECT prosrc FROM pg_proc WHERE proname = 'create_project_option';
+
+     Two things left open, at the foot of 0232: `NRS_ID` points at a
+     table the option copy does not duplicate, so a copied drawing's
+     pumps may name the source's supply records; and deleting a
+     basemap removes the storage object, which two projects now
+     share.
+
+174. **The enquiry sheet is ordered by dragging.** A question's place
+     was a number typed into an Order box; to put one third you
+     worked out what the second and fourth were called and chose
+     something between. Asked for as dragging, with a tab per
+     section, sections and questions deletable, and a renamed section
+     renaming its tab.
+
+     **A drag moves one thing and renumbers everything.** Sections
+     are TEXT on their questions and appear in the order their first
+     question does, so the sheet's order is fully described by walking
+     sections then questions. Every drag — a question within its
+     section, a tab among the tabs, a question into another section
+     — is the same three steps: rearrange the walk, renumber
+     `(position + 1) × 10`, write only the rows whose number changed.
+     `sheetOrder.js` is that, pure, and `checksheetorder` holds it. A
+     drag that lands where it started writes nothing.
+
+     Only the handle is draggable, not the row: a row that drags
+     starts a drag when somebody selects text in the question box.
+
+     **The tab is the name.** `activeTitle` is a section's title, not
+     an index, so a rename moves the tab with it and a section deleted
+     from the middle does not leave the tab on whatever slid into its
+     place.
+
+     **Delete retires.** A section is its questions, so deleting one
+     retires them all (`Is_Active: false`), after a confirm that says
+     how many. Retires rather than deletes for the reason a single
+     question always has: answers somebody has already given point at
+     these rows, and a row gone outright takes that answer's question
+     text with it.
+
+     Reorder writes go one row at a time. The admin endpoint takes
+     one, and forty in parallel against one sheet is a way to find
+     out how PostgREST queues.
+
+     The portal's enquiry form was NOT changed: it walks one question
+     at a time with the answered list beside it, and "each section on
+     its own tab" was read as the editor. If it was meant for the
+     portal too, that is a different flow and worth asking about
+     before building.
 
 ## Decisions worth knowing
 

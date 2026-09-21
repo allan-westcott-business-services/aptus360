@@ -30,6 +30,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
+import { moveQuestion, moveSection, moveToSection } from "./sheetOrder.js";
 
 /* The `Kind` values, exactly as the database's own check constraint
    spells them:
@@ -87,6 +88,27 @@ const CSS = `
 .ef-section { border: 1px solid var(--border); border-radius: 10px;
   padding: 16px 18px 18px; margin-bottom: 22px; background: var(--white); }
 .ef-section-head { margin-bottom: 14px; }
+
+/* ── Tabs, one per section ── */
+.ef-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 14px;
+  border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.ef-tab { border: 1px solid var(--border); background: var(--white); border-radius: 8px;
+  padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; color: var(--text);
+  display: inline-flex; align-items: center; gap: 8px; }
+.ef-tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.ef-tab.dragging { opacity: .5; }
+.ef-tab-n { font-size: 11px; opacity: .7; }
+.ef-tab-end { border: 1px dashed var(--border); border-radius: 8px; padding: 6px 12px;
+  font-size: 12px; color: var(--muted); }
+/* ── Dragging a question ── */
+.ef-handle { cursor: grab; user-select: none; color: var(--muted); font-size: 18px;
+  line-height: 1; float: left; margin: 2px 10px 0 -4px; }
+.ef-handle:active { cursor: grabbing; }
+.ef-question.dragging { opacity: .45; }
+.ef-question.over { box-shadow: inset 0 3px 0 var(--accent); }
+.ef-drop-end { border: 1px dashed var(--border); border-radius: 8px; padding: 10px;
+  text-align: center; font-size: 12px; color: var(--muted); margin-top: 10px; }
+.ef-drop-end.over { border-color: var(--accent); color: var(--accent); }
 
 /* A question inside a section. The rule above it is what separates one
    question from the next; the padding is what stops the rule reading as
@@ -277,11 +299,16 @@ export default function EnquiryFormsAdmin() {
   /* A section is the text on a question, so adding one means adding a
      question that carries it. There is nothing to create on its own,
      and a section with no questions in it would have nowhere to live. */
-  const addSection = () => run(() => adminCreate("Enquiry_Question", {
-    Enquiry_Form_ID: formId, Section: "New section",
-    Question: "New question", Kind: "text", Is_Required: false,
-    Is_Active: true, Sort_Order: (inOrder.length + 1) * 10,
-  }));
+  const addSection = () => run(async () => {
+    await adminCreate("Enquiry_Question", {
+      Enquiry_Form_ID: formId, Section: "New section",
+      Question: "New question", Kind: "text", Is_Required: false,
+      Is_Active: true, Sort_Order: (inOrder.length + 1) * 10,
+    });
+    /* Open the tab that was just made, or the new section is a tab
+       at the end of the strip somebody has to notice. */
+    setActiveTab("New section");
+  });
 
   const addQuestion = (g) => run(() => adminCreate("Enquiry_Question", {
     Enquiry_Form_ID: formId, Section: g.title, Question: "New question",
@@ -298,12 +325,75 @@ export default function EnquiryFormsAdmin() {
     run(() => adminUpdate("Enquiry_Question", q.Enquiry_Question_ID, patch));
   const saveO = (o, patch) =>
     run(() => adminUpdate("Enquiry_Option", o.Enquiry_Option_ID, patch));
+
+  /* ── Which section is open, and what is being dragged ──
+
+     `activeTitle` is the tab. It is a title rather than an index
+     because a rename changes the title and the tab has to follow it,
+     and because a section deleted from the middle must not leave the
+     tab pointing at whatever slid into its place. */
+  const [activeTitle, setActiveTab] = useState(null);
+  const [dragQ, setDragQ] = useState(null);
+  const [overQ, setOverQ] = useState(null);
+  const [dragTab, setDragTab] = useState(null);
+
+  const active = sheet.find((g) => g.title === activeTitle) ?? sheet[0] ?? null;
+
+  /* Writes the numbers a reorder produced. Sequential rather than
+     parallel, because the admin endpoint is one row at a time and
+     forty parallel updates against one sheet is a way to find out
+     how PostgREST queues. Only the changed rows come here. */
+  const applyOrder = (writes) => run(async () => {
+    for (const w of writes) {
+      await adminUpdate("Enquiry_Question", w.id, { Sort_Order: w.Sort_Order });
+    }
+  });
+
+  const reorderQuestion = (questionId, beforeId) => {
+    const { writes } = moveQuestion(sheet, questionId, beforeId);
+    if (writes.length) applyOrder(writes);
+  };
+
+  const reorderSection = (title, beforeTitle) => {
+    const { writes } = moveSection(sheet, title, beforeTitle);
+    if (writes.length) applyOrder(writes);
+  };
+
+  const moveQuestionTo = (q, title) => run(async () => {
+    await adminUpdate("Enquiry_Question", q.Enquiry_Question_ID, { Section: title });
+    const { writes } = moveToSection(sheet, q.Enquiry_Question_ID, title);
+    for (const w of writes) {
+      await adminUpdate("Enquiry_Question", w.id, { Sort_Order: w.Sort_Order });
+    }
+    setActiveTab(title);
+  });
+
+  /* Retired, not deleted, like a single question: answers somebody
+     has already given point at these rows. */
+  const deleteQuestion = (q) => {
+    if (!window.confirm(`Delete "${q.Question || "this question"}"?`)) return;
+    saveQ(q, { Is_Active: false });
+  };
+
+  const deleteSection = (g) => {
+    const n = g.questions.length;
+    if (!window.confirm(`Delete the section "${g.title}" and the ${n} question${n === 1 ? "" : "s"} in it?`)) return;
+    run(async () => {
+      for (const q of g.questions) {
+        await adminUpdate("Enquiry_Question", q.Enquiry_Question_ID, { Is_Active: false });
+      }
+      setActiveTab(null);
+    });
+  };
   /* Renaming a section renames it on every question that carries it:
      the section IS the text, so there is nothing else to change. */
   const renameSection = (g, title) => run(async () => {
     for (const q of g.questions) {
       await adminUpdate("Enquiry_Question", q.Enquiry_Question_ID, { Section: title });
     }
+    /* The tab is the name, so it moves with it. Without this the
+       rename landed on no tab at all and the first section opened. */
+    setActiveTab(title);
   });
 
   return (
@@ -372,19 +462,97 @@ export default function EnquiryFormsAdmin() {
         <p className="hint">No sheet yet. Make one to start.</p>
       ) : (
         <>
-          {sheet.map((g) => (
-            <div key={g.title} className="ef-section">
+          {/* ── One tab per section ──
+
+              A sheet of thirty questions in six sections was one long
+              scroll, and the section somebody was working on was
+              wherever they had scrolled to. Each section is a tab
+              now; the tab reads the section's name and follows a
+              rename, because the tab IS the name.
+
+              Tabs drag to reorder the sections. Sections have no
+              order of their own — they appear in the order their
+              first question does — so a tab moved is every question
+              renumbered so the walk comes out that way. */}
+          <div className="ef-tabs" role="tablist">
+            {sheet.map((g) => (
+              <button key={g.title} type="button" role="tab"
+                className={"ef-tab" + (g.title === activeTitle ? " on" : "")
+                  + (dragTab === g.title ? " dragging" : "")}
+                aria-selected={g.title === activeTitle}
+                draggable={!busy}
+                onClick={() => setActiveTab(g.title)}
+                onDragStart={(e) => { setDragTab(g.title); e.dataTransfer.effectAllowed = "move"; }}
+                onDragOver={(e) => { if (dragTab) e.preventDefault(); }}
+                onDrop={(e) => { e.preventDefault(); if (dragTab && dragTab !== g.title) reorderSection(dragTab, g.title); setDragTab(null); }}
+                onDragEnd={() => setDragTab(null)}>
+                {g.title}
+                <span className="ef-tab-n">{g.questions.length}</span>
+              </button>
+            ))}
+            {/* A drop zone past the last tab, so a section can be
+                dragged to the end and not only in front of another. */}
+            {dragTab && (
+              <span className="ef-tab-end"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); reorderSection(dragTab, null); setDragTab(null); }}>
+                to end
+              </span>
+            )}
+          </div>
+
+          {active && (
+            <div className="ef-section" key={active.title}>
               <div className="ef-grid">
+                <div className="fld" style={{ gridColumn: "span 2" }}>
+                  <label htmlFor={`sec-${active.title}`}>Section</label>
+                  {/* Renaming renames every question that carries the
+                      name, and the tab follows on the next render
+                      because the tab is the name. `activeTitle` is
+                      moved with it, or the rename would land you on
+                      no tab at all. */}
+                  <input id={`sec-${active.title}`} defaultValue={active.title}
+                    onBlur={(e) => e.target.value && e.target.value !== active.title
+                      && renameSection(active, e.target.value)} />
+                </div>
                 <div className="fld">
-                  <label htmlFor={`sec-${g.title}`}>Section</label>
-                  <input id={`sec-${g.title}`} defaultValue={g.title}
-                    onBlur={(e) => e.target.value && e.target.value !== g.title
-                      && renameSection(g, e.target.value)} />
+                  <label>&nbsp;</label>
+                  {/* ── Deleting a section ──
+
+                      A section is the text on its questions, so
+                      deleting it is retiring every question in it —
+                      retiring, not deleting, for the same reason a
+                      single question is: answers somebody has already
+                      given point at these rows. Confirmed with the
+                      count, because "delete section" on a tab of
+                      twelve questions is twelve things gone. */}
+                  <button className="btn delete" disabled={busy}
+                    onClick={() => deleteSection(active)}>
+                    Delete section
+                  </button>
                 </div>
               </div>
 
-              {g.questions.map((q) => (
-                <div key={q.Enquiry_Question_ID} className="ef-question">
+              {active.questions.map((q) => (
+                <div key={q.Enquiry_Question_ID}
+                  className={"ef-question" + (dragQ === q.Enquiry_Question_ID ? " dragging" : "")
+                    + (overQ === q.Enquiry_Question_ID ? " over" : "")}
+                  onDragOver={(e) => { if (dragQ) { e.preventDefault(); setOverQ(q.Enquiry_Question_ID); } }}
+                  onDragLeave={() => setOverQ((v) => (v === q.Enquiry_Question_ID ? null : v))}
+                  onDrop={(e) => { e.preventDefault(); if (dragQ) reorderQuestion(dragQ, q.Enquiry_Question_ID); setDragQ(null); setOverQ(null); }}>
+                  {/* ── The handle ──
+
+                      Drag it to put the question where it goes. This
+                      replaces the Order box, which asked somebody to
+                      know what the neighbours were numbered and pick
+                      something in between. The handle is the only
+                      draggable part, so selecting text in the
+                      question box does not start a drag. */}
+                  <span className="ef-handle" title="Drag to reorder" draggable={!busy}
+                    onDragStart={(e) => { setDragQ(q.Enquiry_Question_ID); e.dataTransfer.effectAllowed = "move"; }}
+                    onDragEnd={() => { setDragQ(null); setOverQ(null); }}>
+                    ⠇
+                  </span>
                   <div className="ef-grid">
                     <div className="fld" style={{ gridColumn: "span 2" }}>
                       <label htmlFor={`q-${q.Enquiry_Question_ID}`}>Question</label>
@@ -399,10 +567,19 @@ export default function EnquiryFormsAdmin() {
                         {TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                       </select>
                     </div>
+                    {/* Into another section, at its end. Dragging across
+                        tabs would need both on screen; a list of the
+                        sections is what somebody expects when the tabs
+                        are the sections. */}
                     <div className="fld">
-                      <label htmlFor={`qo-${q.Enquiry_Question_ID}`}>Order</label>
-                      <input id={`qo-${q.Enquiry_Question_ID}`} defaultValue={q.Sort_Order ?? 0}
-                        onBlur={(e) => saveQ(q, { Sort_Order: Number(e.target.value) || 0 })} />
+                      <label htmlFor={`qs-${q.Enquiry_Question_ID}`}>Move to</label>
+                      <select id={`qs-${q.Enquiry_Question_ID}`} value={active.title}
+                        onChange={(e) => e.target.value !== active.title
+                          && moveQuestionTo(q, e.target.value)}>
+                        {sheet.map((g) => (
+                          <option key={g.title} value={g.title}>{g.title}</option>
+                        ))}
+                      </select>
                     </div>
                     <div className="fld" style={{ gridColumn: "span 2" }}>
                       <label htmlFor={`qh-${q.Enquiry_Question_ID}`}>Help text</label>
@@ -482,17 +659,27 @@ export default function EnquiryFormsAdmin() {
 
                   {/* Retired, not deleted: an answer somebody has already
                       given points at this question. */}
-                  <button className="btn ghost" style={{ marginTop: 6 }} disabled={busy}
-                    onClick={() => saveQ(q, { Is_Active: false })}>Remove question</button>
+                  <button className="btn delete sm" style={{ marginTop: 6 }} disabled={busy}
+                    onClick={() => deleteQuestion(q)}>Delete question</button>
                 </div>
               ))}
 
+              {/* Past the last question, so one can be dragged to the
+                  end and not only in front of another. */}
+              {dragQ && (
+                <div className={"ef-drop-end" + (overQ === "__end" ? " over" : "")}
+                  onDragOver={(e) => { e.preventDefault(); setOverQ("__end"); }}
+                  onDrop={(e) => { e.preventDefault(); reorderQuestion(dragQ, null); setDragQ(null); setOverQ(null); }}>
+                  Drop here to put it last
+                </div>
+              )}
+
               <div className="ef-actions">
                 <button className="btn ghost" disabled={busy}
-                  onClick={() => addQuestion(g)}>Add a question</button>
+                  onClick={() => addQuestion(active)}>Add a question</button>
               </div>
             </div>
-          ))}
+          )}
 
           <button className="btn accent" disabled={busy} onClick={addSection}>
             Add a section

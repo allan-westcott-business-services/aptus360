@@ -24765,7 +24765,7 @@ export default function GISCanvasPage() {
                           to it by matched points. The plan and anything
                           drawn on it never move \u2014 the tile is placed to
                           meet them. */}
-                      <MenuItem label="Import OS Tile\u2026"
+                      <MenuItem label="Import OS Tile…"
                         hint="DXF from your OS supplier"
                         disabled={!projectId}
                         onClick={() => osFileRef.current?.click()} />
@@ -25678,17 +25678,17 @@ export default function GISCanvasPage() {
                           of it goes down as existing: it is theirs, and
                           nothing here is bought. */}
                       <MenuBranch label="HV Ring"
-                        hint="How the substation is fed \u2014 the shared circuit upstream of the POC">
+                        hint="How the substation is fed — the shared circuit upstream of the POC">
                         <MenuItem label="+ Primary Substation" indent
                           hint="The 33/11 kV primary whose way feeds the chain"
                           disabled={!projectId}
                           onClick={() => placeNode("primary", "electric")} />
                         <MenuItem label="+ Ring Substation" indent
-                          hint="Another substation looped into the same circuit \u2014 click on the HV run to sit on it"
+                          hint="Another substation looped into the same circuit — click on the HV run to sit on it"
                           disabled={!projectId}
                           onClick={() => placeNode("ringsub", "electric")} />
                         <MenuItem label="+ Normally Open Point" indent
-                          hint="Where the ring runs split \u2014 click on the HV run"
+                          hint="Where the ring runs split — click on the HV run"
                           disabled={!projectId}
                           onClick={() => placeNode("openpoint", "electric")} />
                         {[["elec_hv_existing", "Manually add Existing HV Cable"]]
@@ -26314,7 +26314,7 @@ export default function GISCanvasPage() {
                           {key === "water" && (
                             <MenuItem
                               label="Place Wash Out"
-                              hint="Click a water main \u2014 snaps to a vertex, midpoint or end of the pipe. Dragging it afterwards stretches the main with it"
+                              hint="Click a water main — snaps to a vertex, midpoint or end of the pipe. Dragging it afterwards stretches the main with it"
                               disabled={!projectId || !!busy}
                               onClick={() => placeNode("washout", "water")} />
                           )}

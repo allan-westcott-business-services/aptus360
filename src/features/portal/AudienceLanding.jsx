@@ -59,7 +59,7 @@ export default function AudienceLanding({ onChoose }) {
 
       <header className="home-head">
         <img className="home-logo" src="/aptus360-logo.png"
-          alt="Aptus360 \u2014 End-to-End MU Management" />
+          alt="Aptus360 — End-to-End MU Management" />
         <h1>Welcome</h1>
         <p>Tell us who you are, and we will take you to the right place.</p>
       </header>

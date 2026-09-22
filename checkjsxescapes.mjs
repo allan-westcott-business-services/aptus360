@@ -50,6 +50,7 @@ function strandedEscapes(src) {
   let line = 1;
   let state = "code";
   let quote = null;
+  let attr = false;
   const stack = [];
   while (i < src.length) {
     const c = src[i];
@@ -61,7 +62,24 @@ function strandedEscapes(src) {
       if (c === "/" && next === "/") { state = "line"; i += 2; continue; }
       /* Back out of a ${ } hole into the template that opened it. */
       if (c === "}" && stack.length) { state = "string"; quote = stack.pop(); i++; continue; }
-      if (c === '"' || c === "'" || c === "`") { state = "string"; quote = c; i++; continue; }
+      /* ── A quoted JSX ATTRIBUTE is not a JavaScript string ──
+
+         `label="Import OS Tile\\u2026"` shows six literal characters:
+         JSX takes a quoted attribute as written, like HTML, and never
+         processes its escapes. This scanner used to treat it as a JS
+         string, where the escape would work \u2014 so it passed, and the
+         Setup menu read "Import OS Tile\\u2026". Found from use, and
+         with it five older ones: four menu tooltips and a logo's alt
+         text read aloud by screen readers.
+
+         An attribute is written `name="` with nothing between name, =
+         and quote; code in this codebase writes `x = "`. That is the
+         test, and the string is marked so an escape inside it is
+         reported rather than excused. */
+      if (c === '"' || c === "'" || c === "`") {
+        attr = c === '"' && /[A-Za-z0-9_-]=$/.test(src.slice(Math.max(0, i - 40), i));
+        state = "string"; quote = c; i++; continue;
+      }
       if (c === "\\" && next === "u" && /^[0-9a-fA-F]{4}/.test(src.slice(i + 2, i + 6))) {
         out.push({ line, text: src.slice(i, i + 6) });
         i += 6;
@@ -79,6 +97,12 @@ function strandedEscapes(src) {
 
     if (state === "line") { i++; continue; }
 
+    /* In a JSX attribute an escape is text, and on screen as text. */
+    if (attr && c === "\\" && next === "u" && /^[0-9a-fA-F]{4}/.test(src.slice(i + 2, i + 6))) {
+      out.push({ line, text: src.slice(i, i + 6), attr: true });
+      i += 6;
+      continue;
+    }
     /* In a string: an escaped character cannot end it. */
     if (c === "\\") { i += 2; continue; }
     /* A ${ } hole inside a template is CODE again, and may hold
@@ -92,7 +116,7 @@ function strandedEscapes(src) {
       i += 2;
       continue;
     }
-    if (c === quote) { state = "code"; quote = null; }
+    if (c === quote) { state = "code"; quote = null; attr = false; }
     i++;
   }
   return out;
@@ -100,12 +124,16 @@ function strandedEscapes(src) {
 
 for (const path of files) {
   for (const hit of strandedEscapes(readFileSync(path, "utf8"))) {
-    fail(`${path}:${hit.line} has ${hit.text} loose in the markup, where it `
-      + `is six literal characters on screen \u2014 use {"${hit.text}"} or the `
-      + "named entity");
+    fail(hit.attr
+      ? `${path}:${hit.line} has ${hit.text} inside a quoted JSX attribute, which `
+        + "JSX never unescapes \u2014 it shows as six characters. Type the character "
+        + `itself, or write the attribute as {"\u2026${hit.text}\u2026"}`
+      : `${path}:${hit.line} has ${hit.text} loose in the markup, where it `
+        + `is six literal characters on screen \u2014 use {"${hit.text}"} or the `
+        + "named entity");
   }
 }
 
 console.log(bad ? `\n${bad} problem(s)`
-  : `No unicode escape is stranded in JSX text (${files.length} files).`);
+  : `No unicode escape is stranded in JSX text or attributes (${files.length} files).`);
 process.exit(bad ? 1 : 0);

@@ -41,6 +41,8 @@ import { VALVE_WIDTH_M } from "./serviceValves.js";
 import { lineLabelText } from "./lineLabel.js";
 import { labelShown, DEFAULT_LABEL_KINDS } from "./labelKinds.js";
 import { mmPerMetre } from "./printSheet.js";
+import { feederRenderPlan, offsetPolyline } from "./feederColour.js";
+import { lvOrigins } from "./electric.js";
 import {
   NOTE_ROLE, NOTE_DEFAULTS, noteBox, lineBaseline, leaderFrom, leaderHead,
 } from "./textNotes.js";
@@ -184,7 +186,15 @@ function touches(f, tile, padM = 1) {
    Returns primitives in the order they should be drawn — trenches,
    then cables, then points, then labels — because a PDF has no
    z-order beyond the order operators are written in. */
+/* The paper distance between two cables sharing a trench, per lane.
+   Lanes come out of the feeder plan as ±0.5, ±1, ±1.5 …, so two
+   cables in one trench sit 0.75 mm either side of the true line and
+   1.5 mm apart centre to centre. */
+export const PRINT_LANE_MM = 1.5;
+
 export function pageDrawList(features = [], tile, {
+  /* The canvas's feeder plan, where the caller already has one. */
+  feederPlan = null,
   /* Size id to the cable's name, from the caller's own catalogue. A
      sheet given none labels a cable as it always did \u2014 by its tag
      alone \u2014 rather than inventing a second source for the name. */
@@ -231,6 +241,32 @@ export function pageDrawList(features = [], tile, {
   const out = [];
   const here = features.filter((f) => touches(f, tile));
 
+  /* ── The feeder plan: the canvas's own colours and lanes ──
+
+     On screen every LV feeder cable is drawn in its CIRCUIT's colour
+     (or its link box output's), and cables sharing a trench are laid
+     side by side a little off the true line so each can be seen. The
+     sheet drew neither: every cable came out in the layer's amber, on
+     top of each other, so a trench carrying three circuits printed as
+     one line of one colour. Reported off an issued PDF.
+
+     Built with the same `feederRenderPlan` the canvas builds, from the
+     same inputs — the chosen colours live on the drawing's origins,
+     so the sheet can read them itself — and over EVERY feature rather
+     than this tile's, so a cable split across two sheets is in the
+     same lane on both. A caller that already has the plan passes it. */
+  const plan = feederPlan ?? feederRenderPlan(features, {
+    chosenColours: (() => {
+      const chosen = {};
+      for (const o of lvOrigins(features)) {
+        for (const [c, v] of Object.entries(o.Attributes?.Circuit_Colours || {})) {
+          if (chosen[c] == null && v) chosen[c] = v;
+        }
+      }
+      return chosen;
+    })(),
+  });
+
   /* Lines first, and trenches before cables: a cable is drawn along a
      trench and must sit on top of it, as it does on screen. */
   const lines = here.filter(isLine);
@@ -240,10 +276,31 @@ export function pageDrawList(features = [], tile, {
     const { st, ap } = styleOf(f);
     if (ap.visible === false) continue;
     const lt = lineTypes.find((t) => t.Type_Key === f.Attributes?.Line_Type);
+    const fp = plan?.get?.(Number(f.Feature_ID));
+
+    /* ── The lane, in millimetres of paper ──
+
+       On screen a lane is 300 mm of ground clamped to a readable
+       number of pixels. On paper the ground figure would be 0.6 mm at
+       1:500 — two cables in one trench would print as one smudge —
+       so the sheet uses a paper distance: PRINT_LANE_MM per lane,
+       which is a couple of millimetres between neighbours, the
+       spacing asked for. Fixed in mm, so it reads the same at every
+       scale, as a line weight does. */
+    let pts = (f.Geometry || []).filter(Array.isArray).map(toPage);
+    const offMm = fp?.lane != null && fp.lane !== 0
+      ? fp.lane * PRINT_LANE_MM
+      : (fp?.offsetPx ? fp.offsetPx * MM_PER_PX : 0);
+    if (offMm && pts.length > 1) {
+      pts = offsetPolyline(pts.map(([x, y]) => ({ x, y })), offMm).map((q) => [q.x, q.y]);
+    }
+
     out.push({
       kind: f.Feature_Type === "polygon" ? "polygon" : "polyline",
-      pts: (f.Geometry || []).filter(Array.isArray).map(toPage),
-      colour: ap.colour ?? lt?.Colour ?? "#64748b",
+      pts,
+      /* The circuit's colour where the plan has one, as on screen;
+         the style cascade otherwise. */
+      colour: fp?.colour ?? ap.colour ?? lt?.Colour ?? "#64748b",
       widthMm: widthMm(ap.widthPx ?? lt?.Width_px),
       /* A dash is a fact about the line type \u2014 an existing main is
          dashed because it is not ours \u2014 so it survives onto paper. In

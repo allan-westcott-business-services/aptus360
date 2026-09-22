@@ -334,6 +334,49 @@ const items = (features, more = {}) =>
   if (items([real]).length === 0) fail("a drawn meter no longer prints");
 }
 
+// 9. Feeder cables print in their circuit's colour, in their lanes.
+{
+  /* On screen every LV feeder cable is its circuit's colour and
+     cables sharing a trench sit side by side. The sheet drew neither:
+     one amber line where three circuits share a dig. Reported off an
+     issued PDF.
+
+     Lanes on paper are a PAPER distance, a couple of millimetres —
+     the ground figure the screen starts from would be 0.6 mm at
+     1:500 and two cables would print as one smudge. */
+  const main = (id, pts, circuit) => ({
+    Feature_ID: id, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: pts, Attributes: { Line_Type: "elec_main", Circuit_ID: circuit },
+  });
+  const a = main(101, [[10, 50], [110, 50]], 1);
+  const b = main(102, [[10, 50], [110, 50]], 2);
+  const plan = new Map([
+    [101, { colour: "#e90cd6", lane: -0.5 }],
+    [102, { colour: "#0ae5f5", lane: 0.5 }],
+  ]);
+  const out = items([a, b], { feederPlan: plan });
+  const pa = out.find((i) => i.id === 101);
+  const pb = out.find((i) => i.id === 102);
+  if (!pa || !pb) fail("a feeder cable does not print");
+  else {
+    if (pa.colour !== "#e90cd6" || pb.colour !== "#0ae5f5") {
+      fail(`feeders print ${pa.colour} and ${pb.colour} \u2014 their circuits are `
+        + "magenta and cyan, and the sheet must say which is which");
+    }
+    const gap = Math.abs(pa.pts[0][1] - pb.pts[0][1]);
+    if (gap < 1 || gap > 3) {
+      fail(`two cables in one trench print ${gap.toFixed(2)} mm apart \u2014 wanted a `
+        + "couple of millimetres, readable and not splayed");
+    }
+  }
+  /* The screen's plan, not one rebuilt from the visible features. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/\n\s*feederPlan,\n/.test(canvas.slice(canvas.indexOf("const pdfOptions"), canvas.indexOf("const pdfOptions") + 4000))) {
+    fail("the print builds its own feeder plan from what is visible, so its "
+      + "lanes and output colours can differ from the screen's");
+  }
+}
+
 /* ── Not held here, and worth knowing ──
 
    The canvas draws ten roles with a bespoke symbol; the sheet draws

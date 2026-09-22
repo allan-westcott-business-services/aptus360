@@ -130,6 +130,7 @@ import {
 } from "./joints.js";
 import { lineTag } from "./lineLabel.js";
 import { loadThrough } from "./loadThrough.js";
+import { splitPlan, SPLIT_DEFAULTS } from "./splitPlan.js";
 import { alpha } from "../../lib/colour.js";
 import PrintModal from "./PrintModal.jsx";
 import {
@@ -11895,6 +11896,15 @@ export default function GISCanvasPage() {
        "3c Wave 185" and the length under it. `cableNames` is the map
        the canvas labels from, so the two say the same words. */
     cableName: (id) => (id == null ? null : cableNames.get(Number(id)) || null),
+    /* ── The screen's feeder plan, not a second one ──
+
+       The sheet is handed only what is VISIBLE, and a plan built over
+       fewer runs can hand out different lanes and even different
+       output colours from the one on screen. The canvas's plan is
+       over every feature; passing it means a cable is in the same
+       lane and the same colour on paper as on the drawing it was
+       printed from. */
+    feederPlan,
     /* The screen's own label switches, so the sheet writes what the
        screen writes: the master Labels layer and the per-kind
        switches travel with the print rather than being re-decided
@@ -11912,7 +11922,7 @@ export default function GISCanvasPage() {
     when: new Date().toLocaleDateString("en-GB",
       { day: "numeric", month: "short", year: "numeric" }),
     filename: `${project?.Contract_Number || "drawing"}.pdf`,
-  }), [layers, styles, lineTypes, utilities, cableNames, showLabels, labelKinds,
+  }), [layers, styles, lineTypes, utilities, cableNames, feederPlan, showLabels, labelKinds,
     basemap, basemapBytes, project, standard]);
 
   /* ── The print is of the drawing AS SHOWN ──
@@ -13679,6 +13689,92 @@ export default function GISCanvasPage() {
      and they must produce identical circuits — a second implementation
      would drift, and the way allocation is the part that would drift
      silently. */
+  /* ── Split Circuit ──
+
+     Which circuit, why, and into what. The plan comes from
+     splitPlan.js; this decides what to feed it and what to do with
+     the answer.
+
+     One circuit at a time, and the one that most needs it: past the
+     count first, then out of tolerance, then the biggest. A drawing
+     with two circuits both over gets asked twice, which is one more
+     confirm than a routine that did both at once and one fewer
+     surprise.
+
+     "Out of tolerance" is read off the last Run Levels Check, so a
+     circuit that has never been checked is judged on its count alone
+     — and the confirm says which reason it was. */
+  async function proposeSplit() {
+    const circuits = circuitsFrom(features);
+    if (!circuits.length) { setError("No circuits defined yet."); return; }
+
+    const models = circuits.map((c) => {
+      const { seedIds, meterIds } = circuitMembership(features, c.id);
+      const model = buildFeederModel(features, {
+        lineTypes, seedIds, meterIds,
+        plotById: (id) => plotList.find((p) => p.plot_id === id),
+        nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
+        rootFeature: originNodeFor(features, c.id) || undefined,
+      });
+      const count = model?.error ? 0 : (Number(model.cum?.[model.S]) || 0);
+      /* Any node of this circuit the last levels check found over. */
+      const over = features.some((f) => (f.Feature_Role === "spannode"
+        || f.Feature_Role === "feederpoint")
+        && Number(f.Attributes?.Circuit_ID) === Number(c.id)
+        && (() => { const v = elecLevelsAt?.get(Number(f.Feature_ID));
+          return !!(v?.overPct || v?.overOhms); })());
+      return { c, model, count, over };
+    }).filter((x) => !x.model?.error && x.count > 0);
+
+    const pick = models
+      .sort((a, b) => (b.count > SPLIT_DEFAULTS.maxMeters) - (a.count > SPLIT_DEFAULTS.maxMeters)
+        || b.over - a.over || b.count - a.count)[0];
+    if (!pick) { setError("No circuit with meters on it to split."); return; }
+
+    const plan = splitPlan(pick.model, { over: pick.over });
+    if (!plan || !plan.groups) {
+      setStatus(`${pick.c.name}: ${plan?.reason ?? "nothing to split"}`
+        + (pick.over ? "" : " and its levels are within tolerance"));
+      return;
+    }
+
+    const why = pick.count > SPLIT_DEFAULTS.maxMeters
+      ? `${pick.count} meters is past ${SPLIT_DEFAULTS.maxMeters}`
+      : pick.over ? "its end-of-line levels are out of tolerance"
+        : `${pick.count} meters`;
+    const lines = plan.groups.map((g, i) =>
+      `  ${i === 0 ? pick.c.name : `new circuit ${i}`}: ${g.count} meters`
+      + (g.parts.length > 1 ? ` in ${g.parts.length} parts` : ""));
+    const stuck = plan.stuck.length
+      ? `\n\nOne part of ${plan.stuck[0].count} meters cannot be divided further, `
+        + "which is why the counts are not closer."
+      : "";
+    if (!window.confirm(`Split ${pick.c.name} \u2014 ${why}.\n\n${plan.circuits} circuits `
+      + `of about ${plan.target} meters each:\n${lines.join("\n")}${stuck}\n\n`
+      + "The first keeps its name and way; each of the others becomes a new "
+      + "circuit on its own LV way. Run Build LV Network afterwards.")) return;
+
+    setBusy("split");
+    try {
+      /* The first group stays where it is. Every other group is put
+         on a new circuit through the same routine Link to Circuit
+         uses — which takes a way, names the circuit, and places its
+         origin node — so a circuit made here is a circuit in every
+         way a drawn one is. */
+      for (const g of plan.groups.slice(1)) {
+        const made = await createCircuitFrom(g.meters, `split from ${pick.c.name}`);
+        if (made === false) return;
+      }
+      setStatus(`${pick.c.name} split into ${plan.circuits} circuits of `
+        + `${plan.groups.map((g) => g.count).join(" / ")} meters. Run Build LV `
+        + "Network, then Run Levels Check.");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function createCircuitFrom(asked, how, joinId = null, originId = null) {
     /* What the caller named. `meters` below is what is actually put on
        the circuit, which is this less any self-lay supply — reassigning
@@ -25482,6 +25578,21 @@ export default function GISCanvasPage() {
                           setTool(tool === "circuit" ? "select" : "circuit");
                           setSelected([]); setDraft([]);
                         }} />
+                      {/* ── Splitting a circuit that has grown too big ──
+
+                          Asked for: past 80 plots, or with its
+                          end-of-line levels out of tolerance, a circuit
+                          is divided into circuits carrying as near as
+                          possible an equal number of meters. The plan
+                          is worked out in splitPlan.js over the feeder
+                          model's tree; the write is the same one Link
+                          to Circuit does, meter by meter, so a split
+                          circuit is a circuit in every way the drawn
+                          one is. */}
+                      <MenuItem label={busy === "split" ? "Splitting\u2026" : "Split Circuit\u2026"}
+                        disabled={!!busy || !projectId || !circuitsFrom(features).length}
+                        hint="Past 80 meters or out of tolerance: divide into circuits of equal size"
+                        onClick={() => proposeSplit()} />
 
                       <MenuGroup label="Tools & Reporting" />
                       {/* Started from the utility's own menu, so what is

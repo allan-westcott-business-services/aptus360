@@ -7768,6 +7768,33 @@ characters is a hundred lines of prose and no rules at all.
      backfill. The tab shows a dash for those, which is accurate.
      History written before 0234 has no name and cannot be given one.
 
+178. **LV feeders print in their circuit's colour, in their lanes.**
+     On screen each feeder cable is drawn in its circuit's (or its
+     link box output's) colour, and cables sharing a trench are laid
+     side by side off the true line. The sheet did neither — every
+     cable in the layer's amber, stacked — so a trench with three
+     circuits printed as one line. Reported off project 20's PDF.
+
+     The sheet now uses the canvas's own `feederRenderPlan`, and the
+     canvas passes its plan in (`pdfOptions.feederPlan`) rather than
+     the print building one: the print is handed only VISIBLE
+     features, and a plan over fewer runs can hand out different
+     lanes and output colours from the screen's. Where no plan is
+     passed the sheet builds one over every feature it has, reading
+     the chosen colours off the origins itself.
+
+     **Lanes are a paper distance.** On screen a lane is 300 mm of
+     ground clamped to readable pixels; on paper that ground figure
+     is 0.6 mm at 1:500 and two cables print as a smudge. So
+     `PRINT_LANE_MM` = 1.5 per lane: two cables in one trench sit
+     0.75 mm either side of the line, 1.5 mm apart — the "couple of
+     millimetres" asked for, the same at every scale, as a line
+     weight is. One constant if it wants tuning.
+
+     Not carried across: `servicePairOffset`, the canvas's nudge for a
+     service pair outside the feeder plan. Services print on their
+     true line.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

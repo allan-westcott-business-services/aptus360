@@ -548,6 +548,39 @@ export default function GISCanvasPage() {
   const [surface, setSurface] = useState("");
   const [standard, setStandard] = useState("");   // operator whose style rules apply
   const [editing, setEditing] = useState(null);
+
+  /* ── Whether a point is on a drawn label ──
+
+     Tested in the label's own frame: the pointer is turned back about
+     the label's anchor by however far the label was turned forward,
+     then compared with the upright box it was drawn from, with six
+     pixels of slack on every side \u2014 a label is fifteen pixels tall and
+     often the smallest thing on the drawing.
+
+     At component level so the left-click that drags a label and the
+     right-click that edits its feature ask the same question the same
+     way. Two copies would drift, and the symptom \u2014 a label that drags
+     but will not right-click, or the reverse \u2014 reads as the canvas
+     being fussy. */
+  const labelContains = (r, px, py) => {
+    let x = px;
+    let y = py;
+    if (r.spin) {
+      const dx = px - r.cx;
+      const dy = py - r.cy;
+      const cos = Math.cos(-r.spin);
+      const sin = Math.sin(-r.spin);
+      x = r.cx + dx * cos - dy * sin;
+      y = r.cy + dx * sin + dy * cos;
+    }
+    const PAD = 6;
+    return x >= r.x - PAD && x <= r.x + r.w + PAD
+      && y >= r.y - PAD && y <= r.y + r.h + PAD;
+  };
+  /* The label on top at a point, newest first so the one drawn last \u2014
+     the one visibly on top \u2014 wins. */
+  const labelUnder = (px, py) =>
+    [...labelHits.current].reverse().find((r) => labelContains(r, px, py)) ?? null;
   const [bulkOpen, setBulkOpen] = useState(false);
   /* Which way the bulk editor opens: against the selection, or against
      kinds named on the drawing. It is one panel either way and the
@@ -6587,16 +6620,24 @@ export default function GISCanvasPage() {
                one the printed sheet uses (LABEL_PLATE_TINT), so a
                label reads the same on paper as on screen.
 
-               One rule: the plate matches the line it names. A
-               selected cable's line is drawn blue, so its label's
-               plate goes pale blue with it \u2014 which is the same rule
-               and also says which label belongs to what was picked. */
+               ── Selected: solid blue, white text ──
+
+               A selected cable is drawn in the selection blue, and
+               every label it carries goes SOLID in that blue with
+               white text \u2014 asked for, so the labels of the thing
+               picked stand out from the pale plates around them rather
+               than being one more tint among several. Every label on
+               the cable, not just its main one: hand-placed labels are
+               part of the same selection.
+
+               Unselected, the plate is its circuit's colour paled, as
+               on the printed sheet. */
             const plateColour = on ? "#1d4ed8" : (fp?.colour ?? st.colour);
-            ctx.fillStyle = own
-              ? tint(plateColour, LABEL_PLATE_TINT)
-              : "rgba(255,255,255,.92)";
+            ctx.fillStyle = on
+              ? "#1d4ed8"
+              : own ? tint(plateColour, LABEL_PLATE_TINT) : "rgba(255,255,255,.92)";
             ctx.fill();
-            if (own) {
+            if (own && !on) {
               ctx.strokeStyle = tint(plateColour, 0.45);
               ctx.lineWidth = 1;
               ctx.stroke();
@@ -6605,7 +6646,9 @@ export default function GISCanvasPage() {
                exists so a tag can be read over a trench, and colouring
                it with the label would take that away just where it is
                needed most. */
-            ctx.fillStyle = st.labelColour;
+            /* White on the selection blue; the label's own ink
+               otherwise. */
+            ctx.fillStyle = on ? "#ffffff" : st.labelColour;
             lines.forEach((t, li) => {
               ctx.fillText(t, mid.x, mid.y - 9 + li * lineH
                 - (lines.length - 1) * lineH / 2);
@@ -8085,29 +8128,7 @@ export default function GISCanvasPage() {
          upright box it was drawn from. A box that does not rotate with
          what it stands for is the whole reason these were hard to
          catch. */
-      const inLabel = (r) => {
-        let x = px;
-        let y = py;
-        if (r.spin) {
-          const dx = px - r.cx;
-          const dy = py - r.cy;
-          const cos = Math.cos(-r.spin);
-          const sin = Math.sin(-r.spin);
-          x = r.cx + dx * cos - dy * sin;
-          y = r.cy + dx * sin + dy * cos;
-        }
-        /* Six pixels of slack on every side, not four on two of them.
-
-           A label is fifteen pixels tall and often the smallest thing
-           on the drawing; asking for a click inside those fifteen is
-           asking for precision nobody has with a trackpad on a moving
-           plan. The padding is even, so aiming slightly left is as
-           forgiving as aiming slightly high. */
-        const PAD = 6;
-        return x >= r.x - PAD && x <= r.x + r.w + PAD
-          && y >= r.y - PAD && y <= r.y + r.h + PAD;
-      };
-      const lab = [...labelHits.current].reverse().find(inLabel);
+      const lab = labelUnder(px, py);
       if (lab) {
         const f = features.find((x) => x.Feature_ID === lab.id);
         drag.current = {
@@ -27664,6 +27685,32 @@ export default function GISCanvasPage() {
                 const r = e.currentTarget.getBoundingClientRect();
                 const px = e.clientX - r.left;
                 const py = e.clientY - r.top;
+
+                /* ── A label opens the editor of what it names ──
+
+                   Asked for. A label is often dragged clear of its
+                   cable to be read, which puts it over empty ground or
+                   over some other feature \u2014 so a right-click on it
+                   found nothing, or found the wrong thing. The label
+                   knows which feature it belongs to, so it is asked
+                   first, the same way a left-click that drags it is:
+                   it sits on top, and anyone clicking a label means
+                   the label.
+
+                   Straight into the editor rather than the menu, as
+                   asked: the only thing to do with a label's feature
+                   from its label is look at it. Selected too, so the
+                   cable goes blue and its labels go solid blue \u2014 which
+                   shows which cable the editor is open on. */
+                const lab = !drawing && !placing ? labelUnder(px, py) : null;
+                const owner = lab ? features.find((x) => x.Feature_ID === lab.id) : null;
+                if (owner) {
+                  setSelected([owner.Feature_ID]);
+                  setCtx(null);
+                  setEditing(owner);
+                  return;
+                }
+
                 const hit = featureAt(px, py);
                 if (!hit) { setCtx(null); return; }
                 setSelected([hit.Feature_ID]);

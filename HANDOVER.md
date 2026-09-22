@@ -7825,8 +7825,23 @@ characters is a hundred lines of prose and no rules at all.
      re-exports rather than keeping its own.
 
      The rule is one line: the plate matches the line it names. A
-     selected cable is drawn blue, so its label's plate goes pale blue
-     with it. (Asked beforehand whether a selected label turns blue; it
+     selected cable is drawn blue, and — asked for next — every label
+     it carries goes SOLID selection blue with white text, so the
+     picked cable's labels stand out from the pale plates around them
+     rather than being one more tint among several.
+
+     **Right-clicking a label opens its feature's editor.** Asked for.
+     A label is often dragged clear of its cable to be read, onto empty
+     ground or another feature, and a right-click asked only "which
+     feature is here?" — so it found nothing or the wrong thing. The
+     label knows its owner (`labelHits` records the id), so the
+     right-click asks it first, selects the cable, and opens the editor
+     directly rather than the menu.
+
+     The label hit test was a closure inside the pointerdown handler;
+     it is `labelContains` / `labelUnder` at component level now, used
+     by both the drag and the right-click, so a label cannot drag but
+     refuse a right-click or the reverse. The check counts copies. (Asked beforehand whether a selected label turns blue; it
      did not — only the line did — and the answer given was wrong. The
      rule above is what was built instead, and says the same thing.)
 

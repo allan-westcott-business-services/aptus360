@@ -439,8 +439,56 @@ const items = (features, more = {}) =>
   if (!/tint\(plateColour, LABEL_PLATE_TINT\)/.test(canvas)) {
     fail("the canvas plate uses a different strength from the sheet's");
   }
+  /* Selected: SOLID selection blue with white text, not a pale tint
+     \u2014 asked for, so the picked cable's labels stand out from the
+     pale plates around them. */
+  if (!/ctx\.fillStyle = on\s*\n\s*\? "#1d4ed8"/.test(canvas)) {
+    fail("a selected cable's labels are not solid blue");
+  }
+  if (!/ctx\.fillStyle = on \? "#ffffff" : st\.labelColour;/.test(canvas)) {
+    fail("a selected cable's label text is not white on the blue");
+  }
   if (/tint\(st\.colour, 0\.86\)/.test(canvas)) {
     fail("the canvas still tints labels from the layer colour at its old strength");
+  }
+}
+
+// 12. Right-clicking a label opens the editor of the feature it names.
+{
+  /* A label is often dragged clear of its cable, onto empty ground or
+     another feature, so a right-click that asked only "which feature
+     is here?" found nothing or the wrong thing. The label knows its
+     owner; it is asked first. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("onContextMenu={(e) => {\n                e.preventDefault();");
+  const block = at < 0 ? "" : canvas.slice(at, at + 3200);
+  if (!block) fail("the canvas right-click handler has moved");
+  else {
+    const labelAt = block.indexOf("labelUnder(px, py)");
+    const featAt = block.indexOf("featureAt(px, py)");
+    if (labelAt < 0) {
+      fail("a right-click never asks whether it landed on a label");
+    } else if (featAt >= 0 && featAt < labelAt) {
+      fail("a right-click asks for the feature under the label before the "
+        + "label itself, so a label sitting over another feature opens that one");
+    }
+    if (!/setEditing\(owner\)/.test(block)) {
+      fail("a right-click on a label does not open its feature's editor");
+    }
+    if (!/setSelected\(\[owner\.Feature_ID\]\)/.test(block)) {
+      fail("the cable is not selected as its editor opens, so nothing on the "
+        + "drawing shows which cable the editor is on");
+    }
+  }
+  /* One hit test for a label, used by the drag and the right-click, so
+     a label cannot drag but refuse a right-click or the reverse. */
+  const copies = (canvas.match(/const PAD = 6;/g) || []).length;
+  if (copies !== 1) {
+    fail(`the label hit test exists ${copies} times \u2014 the drag and the `
+      + "right-click would drift apart");
+  }
+  if (!/const lab = labelUnder\(px, py\);/.test(canvas)) {
+    fail("dragging a label does not use the shared hit test");
   }
 }
 

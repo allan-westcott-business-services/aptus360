@@ -218,6 +218,7 @@ caught a fault that had already shipped at least once.
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checkplotranges.mjs` | Plots go in as ranges and numbers, a house type per row, and nothing overlaps |
 | `node checkplanscale.mjs` | A PDF's scale is worked in points; an image claims none |
 | `node checkosalign.mjs` | OS tiles read from the numbers, and a plan is tied to the grid without moving |
 | `node checkhistorywho.mjs` | The history says who, settled by the server and never at the cost of a save |
@@ -7947,6 +7948,40 @@ characters is a hundred lines of prose and no rules at all.
      Only the REPORTED scale was wrong. The calibration itself — metres
      per unit, from two points and a typed distance — never used this
      sum, so every drawing calibrated so far is correct.
+
+183. **Plots are entered a house type per row.** Asked for off a
+     mockup. Project › Plots › Add plots is now one row per house type
+     — house type, optional prefix, PLOTS, a running count, heat source,
+     PV — and ADD HOUSE TYPE adds a row. The PLOTS field takes ranges,
+     single numbers or both: `1-20, 24, 26, 31, 48-52`. An en dash is
+     read as a hyphen (Word and phones put one in "1–20"); 43A and B1
+     are single plots as typed; the prefix goes on every plot in the row.
+
+     **Nothing is dropped.** The old form de-duplicated silently and
+     skipped plots already on the project without saying which, so a
+     typo that repeated a number vanished rather than being fixed. Now
+     every problem is named under its row and the batch will not save
+     until it is sorted: a plot twice in one row ("1-12, 11, 16" — 11),
+     a plot under two house types ("10, 17 are also under 4 Bed
+     Detached", on both rows), a plot already on the project, a range
+     that runs backwards (with the right way round suggested), one over
+     a thousand plots, or text that is neither. A row with plots and no
+     house type is refused, since a plot with no type has no load.
+
+     The rules are pure, in `plotRanges.js`, and `checkplotranges` holds
+     every example from the request word for word — the mockup's rows
+     count 23 and 29.
+
+     Each row's HEAT SOURCE and PV go on its plots (the old form used the
+     project's heat source for everything). A row whose heat source takes
+     a heat pump gets the project's default model, since the row has no
+     model field; changeable per plot on the Plots tab.
+
+     **The "of 416" has no home.** Nothing on a project records how many
+     plots a scheme is meant to have. There is an optional "Plots on the
+     scheme" box for the running check — "52 of 416 plots entered · 364
+     still to enter" — but it is not saved. A stored expected count
+     would want a column on Project and somewhere to set it.
 
 ## Decisions worth knowing
 

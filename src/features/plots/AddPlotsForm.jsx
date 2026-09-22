@@ -1,53 +1,47 @@
 import { useState, useEffect, useMemo } from "react";
-import Field from "../../components/Field.jsx";
-import Section from "../../components/Section.jsx";
 import Select from "../../components/Select.jsx";
 import Toggle from "../../components/Toggle.jsx";
 import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listPlots, createPlots } from "../../api/plots.js";
-import HeatPumpPicker from "../../components/HeatPumpPicker.jsx";
 import { sourceTakesHeatPump } from "../../lib/heatPump.js";
+import { checkBatch } from "./plotRanges.js";
 
-/* Mirrors the "Add Plots to Tender" flow from the original app:
-   shared attributes, two ways to enter numbers, a preview that flags
-   duplicates, then one batch insert. */
+/* ── Adding plots, a house type per row ──
 
-const MAX_RANGE = 1000;
+   One row per house type: its prefix, its plot numbers typed as ranges
+   and single numbers ("1-10, 17, 20, 24, 31-40"), its heat source and
+   PV. ADD HOUSE TYPE adds a row. The count beside each field and the
+   total underneath update as you type.
 
-/* "10" sorts after "9", not before — plot numbers are text because of
-   43A and B1, so compare numeric prefixes when both have them. */
-function naturalCompare(a, b) {
-  const re = /^(\d+)(.*)$/;
-  const ma = re.exec(a);
-  const mb = re.exec(b);
-  if (ma && mb) {
-    const diff = Number(ma[1]) - Number(mb[1]);
-    return diff !== 0 ? diff : ma[2].localeCompare(mb[2]);
-  }
-  return a.localeCompare(b, undefined, { numeric: true });
-}
+   It replaced a form that took one house type at a time, with a From
+   and To box and a separate list for single numbers, and a preview
+   that silently dropped repeats and plots already on the project. Here
+   nothing is dropped: a plot typed twice in one row, a plot under two
+   house types, or a plot already on the project is named under its row
+   and the batch will not save until it is sorted out. The rules are in
+   plotRanges.js.
+
+   Self-lay is not asked. It is set per utility on the Plots tab, against
+   the plots this creates — a plot can be self-lay for water and ours for
+   electric, and one tick here could not say which. */
+
+let rowSeq = 0;
+const newRow = (heatSourceId = "") => ({
+  key: ++rowSeq, configId: "", prefix: "", text: "", heatSourceId: heatSourceId || "", pv: false,
+});
 
 export default function AddPlotsForm({
-  projectId, projectRef = "", existingNumbers = null, defaultHeatSourceId = null, onDone,
+  projectId, projectRef = "", existingNumbers = null,
+  defaultHeatSourceId = null, defaultHeatPumpModelId = null, onDone,
 }) {
   const [lookups, setLookups] = useState(null);
   const [existing, setExisting] = useState([]);
-  const [pending, setPending] = useState([]);
+  const [rows, setRows] = useState([newRow(defaultHeatSourceId)]);
+  const [expected, setExpected] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(0);
-
-  // attributes applied to every plot in this batch
-  const [attrs, setAttrs] = useState({
-    Property_Config_ID: "",
-    PV: false,
-    Heat_Pump_Model_ID: "",
-    KVA_Load: "",
-  });
-
-  const [individual, setIndividual] = useState("");
-  const [range, setRange] = useState({ from: "1", to: "", prefix: "" });
 
   useEffect(() => {
     let live = true;
@@ -61,70 +55,75 @@ export default function AddPlotsForm({
         setExisting((res.rows || []).map((p) => String(p.Plot_Number)));
       })
       .catch((e) => live && setError(e.message));
-    return () => {
-      live = false;
-    };
+    return () => { live = false; };
   }, [projectId]);
-
-  const existingSet = useMemo(() => new Set(existing), [existing]);
-  const fresh = pending.filter((p) => !existingSet.has(p));
-  const dupes = pending.filter((p) => existingSet.has(p));
-
-  const setAttr = (k) => (v) => setAttrs((p) => ({ ...p, [k]: v }));
 
   const typeName = (id) =>
     (lookups?.propertyTypes || []).find((t) => t.Property_Type_ID === id)?.Property_Type ?? "";
+  const configName = (id) => {
+    const c = (lookups?.propertyConfigs || []).find((x) => String(x.Property_Config_ID) === String(id));
+    return c ? `${c.Bedrooms} Bed ${typeName(c.Property_Type_ID)}` : "";
+  };
 
-  function addIndividual() {
-    const vals = individual
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (!vals.length) return;
-    setPending((p) => [...new Set([...p, ...vals])].sort(naturalCompare));
-    setIndividual("");
-    setError("");
-  }
+  /* Every row checked against every other and against the project,
+     on every keystroke. Cheap: a few hundred labels. */
+  const check = useMemo(() => checkBatch(
+    rows.map((r, i) => ({
+      key: r.key, prefix: r.prefix, text: r.text,
+      name: configName(r.configId) || `row ${i + 1}`,
+    })),
+    existing,
+  ), [rows, existing, lookups]);
+  const resultOf = (key) => check.rows.find((x) => x.key === key);
 
-  function addRange() {
-    const from = parseInt(range.from, 10) || 1;
-    const to = parseInt(range.to, 10);
-    if (!to) return setError("Enter a To value.");
-    if (from > to) return setError("From must be less than or equal to To.");
-    if (to - from >= MAX_RANGE) return setError(`Range too large (max ${MAX_RANGE}).`);
-    const labels = [];
-    for (let i = from; i <= to; i++) labels.push(`${range.prefix}${i}`);
-    setPending((p) => [...new Set([...p, ...labels])].sort(naturalCompare));
-    setError("");
-  }
+  const setRow = (key, patch) =>
+    setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
-  const removePlot = (label) => setPending((p) => p.filter((x) => x !== label));
+  /* A row with nothing in it is ignored rather than refused: the form
+     starts with one, and ADD HOUSE TYPE may leave a spare. A row with
+     plots but no house type is refused — a plot with no type has no
+     load, and the levels check would read it as nothing. */
+  const unnamed = rows.filter((r) => resultOf(r.key)?.count && !r.configId);
+  const canSave = check.ok && !unnamed.length && !saving;
 
   async function save() {
-    if (!fresh.length) return setError("Nothing new to save.");
+    if (!canSave) return;
     setSaving(true);
     setError("");
     try {
-      const payload = fresh.map((label) => ({
-        Plot_Number: label,
-        Property_Config_ID: attrs.Property_Config_ID ? Number(attrs.Property_Config_ID) : null,
-        PV: !!attrs.PV,
-        Heat_Pump_Model_ID: attrs.Heat_Pump_Model_ID ? Number(attrs.Heat_Pump_Model_ID) : null,
-        KVA_Load: attrs.KVA_Load === "" ? null : Number(attrs.KVA_Load),
-      }));
+      const payload = [];
+      for (const r of rows) {
+        const res = resultOf(r.key);
+        if (!res?.count) continue;
+        /* The project's heat pump model where this row's heat source
+           takes one — the row has no model field of its own, and a heat
+           pump plot with no model has no load figure. Changeable per
+           plot on the Plots tab. */
+        const pump = r.heatSourceId
+          && sourceTakesHeatPump(r.heatSourceId, lookups.heatSources || [])
+          ? (defaultHeatPumpModelId ? Number(defaultHeatPumpModelId) : null) : null;
+        for (const label of res.plots) {
+          payload.push({
+            Plot_Number: label,
+            Property_Config_ID: Number(r.configId),
+            Heat_Source_ID: r.heatSourceId ? Number(r.heatSourceId) : null,
+            Heat_Pump_Model_ID: pump,
+            PV: !!r.pv,
+            KVA_Load: null,
+          });
+        }
+      }
       const res = await createPlots(projectId, payload, projectRef);
       /* The plots are in either way. What may not be is their utility
-         rows, and a plot with none takes part in nothing — it cannot be
-         marked self-lay, scheduled, or listed on Plot Connections, and
-         it looks exactly like a plot nobody has got to yet. Said out
-         loud rather than swallowed. */
+         rows, and a plot with none takes part in nothing — so it is
+         said, not swallowed. */
       if (res?.utility_error) {
-        setError(`${fresh.length} plot(s) added, but their utilities were not: `
+        setError(`${payload.length} plot(s) added, but their utilities were not: `
           + `${res.utility_error}. Generate connections on the Plots tab to fill them in.`);
       }
-      setExisting((p) => [...p, ...fresh]);
-      setDone(fresh.length);
-      setPending([]);
+      setExisting((p) => [...p, ...payload.map((x) => x.Plot_Number)]);
+      setDone(payload.length);
+      setRows([newRow(defaultHeatSourceId)]);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -135,6 +134,8 @@ export default function AddPlotsForm({
   if (error && !lookups) return <Banner kind="error">Couldn&rsquo;t load: {error}</Banner>;
   if (!lookups) return <div className="loading">Loading&hellip;</div>;
 
+  const expectedN = Number(expected) || 0;
+
   return (
     <div>
       <style>{CSS}</style>
@@ -143,15 +144,19 @@ export default function AddPlotsForm({
         <div>
           <h3>Add plots</h3>
           <p className="tab-sub">
-            Build the list first &mdash; nothing is saved until you commit the batch.
+            A row per house type. Type plot numbers as ranges and single numbers:
+            <code> 1-20, 24, 26, 48-52</code>.
             {existing.length > 0 && ` ${existing.length} plot${existing.length === 1 ? "" : "s"} already on this project.`}
           </p>
         </div>
-        {onDone && (
-          <button className="btn ghost" onClick={onDone}>
-            &larr; Back to plots
+        <div className="ap-head-actions">
+          <button className="btn accent" onClick={() => setRows((rs) => [...rs, newRow(defaultHeatSourceId)])}>
+            Add house type
           </button>
-        )}
+          {onDone && (
+            <button className="btn ghost" onClick={onDone}>&larr; Back to plots</button>
+          )}
+        </div>
       </div>
 
       {done > 0 && (
@@ -161,150 +166,90 @@ export default function AddPlotsForm({
       )}
       {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
-      <Section title="Applied to every plot in this batch">
-        <div className="grid6">
-          <Field label="House type" span={3} hint="Bedrooms and property type, configured in Admin">
-            <Select value={attrs.Property_Config_ID} onChange={setAttr("Property_Config_ID")}>
-              <option value="">&mdash; optional &mdash;</option>
-              {(lookups.propertyConfigs || []).map((c) => (
-                <option key={c.Property_Config_ID} value={c.Property_Config_ID}>
-                  {c.Code} &mdash; {c.Bedrooms} Bed {typeName(c.Property_Type_ID)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="KVA load">
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              value={attrs.KVA_Load}
-              onChange={(e) => setAttr("KVA_Load")(e.target.value)}
-            />
-          </Field>
-          {/* This form has no heat source of its own — plots created here
-              take the project's — so it gates on that. Without it the
-              field would offer a heat pump for a site heated by gas. */}
-          {sourceTakesHeatPump(defaultHeatSourceId, lookups.heatSources || []) && (
-            <Field label="Heat pump model" span={2}>
-              <HeatPumpPicker
-                models={lookups.heatPumpModels || []}
-                value={attrs.Heat_Pump_Model_ID}
-                onChange={setAttr("Heat_Pump_Model_ID")}
-              />
-            </Field>
-          )}
-          {/* ── Self-lay is not asked here ──
-
-              It used to be a toggle beside PV, writing one boolean for
-              the whole plot. A plot can be self-lay for water and ours
-              for electric, so that boolean could not say what was
-              meant, and it marked every utility from one tick.
-
-              It is set per utility on the Plots tab, against the plots
-              this form has just created — where the bulk bar can do a
-              phase at a time and the column shows which utilities each
-              plot's answer covers. */}
-          <Field label="Options" span={6} hint="Self-lay is set per utility on the Plots tab, once these are added.">
-            <div className="toggle-row">
-              <Toggle checked={attrs.PV} onChange={setAttr("PV")} label="PV" />
-            </div>
-          </Field>
+      <div className="ap-grid" role="table">
+        <div className="ap-row ap-headrow" role="row">
+          <span>House type</span>
+          <span>Prefix (optional)</span>
+          <span>Plots</span>
+          <span className="ap-n" title="Plots in this row">&Sigma;</span>
+          <span>Heat source</span>
+          <span className="ap-c">PV</span>
+          <span />
         </div>
-      </Section>
 
-      <Section title="Add individual plots">
-        <div className="inline-add">
-          <div className="inline-grow">
-            <input
-              value={individual}
-              placeholder="e.g. 42, 43A, B1 &mdash; separate with commas"
-              onChange={(e) => setIndividual(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addIndividual()}
-            />
-            <p className="hint">Enter plot numbers separated by commas, then press Enter or click Add.</p>
-          </div>
-          <button className="btn accent" onClick={addIndividual}>
-            Add
-          </button>
-        </div>
-      </Section>
-
-      <Section title="Add a range">
-        <div className="grid6">
-          <Field label="From" span={2}>
-            <input
-              type="number"
-              min="1"
-              value={range.from}
-              onChange={(e) => setRange((p) => ({ ...p, from: e.target.value }))}
-            />
-          </Field>
-          <Field label="To" span={2}>
-            <input
-              type="number"
-              min="1"
-              value={range.to}
-              onChange={(e) => setRange((p) => ({ ...p, to: e.target.value }))}
-            />
-          </Field>
-          <Field label="Prefix (optional)" span={2} hint="e.g. B gives B1, B2, B3">
-            <input
-              value={range.prefix}
-              onChange={(e) => setRange((p) => ({ ...p, prefix: e.target.value }))}
-            />
-          </Field>
-        </div>
-        <button className="btn ghost" onClick={addRange}>
-          + Add range
-        </button>
-      </Section>
-
-      {pending.length > 0 && (
-        <Section title="Preview">
-          <div className="preview-box">
-            <p className="preview-count">
-              {fresh.length} new plot{fresh.length === 1 ? "" : "s"} to add
-              {dupes.length > 0 && (
-                <span className="dupe-note">
-                  {dupes.length} duplicate{dupes.length === 1 ? "" : "s"} will be skipped
+        {rows.map((r) => {
+          const res = resultOf(r.key) || { count: 0, problems: [] };
+          const troubled = res.problems.length > 0;
+          return (
+            <div key={r.key} className="ap-block">
+              <div className="ap-row" role="row">
+                <Select value={r.configId} onChange={(v) => setRow(r.key, { configId: v })}
+                  aria-label="House type">
+                  <option value="">&mdash; house type &mdash;</option>
+                  {(lookups.propertyConfigs || []).map((c) => (
+                    <option key={c.Property_Config_ID} value={c.Property_Config_ID}>
+                      {c.Bedrooms} Bed {typeName(c.Property_Type_ID)}
+                    </option>
+                  ))}
+                </Select>
+                <input value={r.prefix} aria-label="Prefix"
+                  placeholder="e.g. K"
+                  onChange={(e) => setRow(r.key, { prefix: e.target.value.replace(/[^A-Za-z0-9]/g, "") })} />
+                <input value={r.text} aria-label="Plot numbers"
+                  className={troubled ? "ap-bad" : ""}
+                  placeholder="1-10, 17, 20, 24, 31-40"
+                  onChange={(e) => setRow(r.key, { text: e.target.value })} />
+                <span className="ap-n">{res.count || ""}</span>
+                <Select value={r.heatSourceId} onChange={(v) => setRow(r.key, { heatSourceId: v })}
+                  aria-label="Heat source">
+                  <option value="">&mdash;</option>
+                  {(lookups.heatSources || []).map((h) => (
+                    <option key={h.Heat_Source_ID} value={h.Heat_Source_ID}>{h.Heat_Source}</option>
+                  ))}
+                </Select>
+                <span className="ap-c">
+                  <Toggle checked={r.pv} onChange={(v) => setRow(r.key, { pv: v })} />
                 </span>
+                <span className="ap-c">
+                  {rows.length > 1 && (
+                    <button type="button" className="ap-x" title="Remove this row"
+                      onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))}>&times;</button>
+                  )}
+                </span>
+              </div>
+              {(troubled || (res.count > 0 && !r.configId)) && (
+                <ul className="ap-problems">
+                  {res.count > 0 && !r.configId && <li>Choose a house type for these plots.</li>}
+                  {res.problems.map((p) => <li key={p}>{p}</li>)}
+                </ul>
               )}
-            </p>
-            <div className="chips">
-              {pending.map((label) => {
-                const dupe = existingSet.has(label);
-                return (
-                  <span className={dupe ? "chip dupe" : "chip"} key={label}>
-                    {label}
-                    {/* A dismissal, not a delete: these plots have not been
-                        created yet, so this takes one back off the list
-                        rather than removing anything. Named for the -x
-                        convention the closers elsewhere use. */}
-                    {!dupe && (
-                      <button className="chip-x" onClick={() => removePlot(label)}
-                        aria-label={`Take plot ${label} off the list`}>
-                        &#10005;
-                      </button>
-                    )}
-                  </span>
-                );
-              })}
             </div>
-          </div>
-        </Section>
-      )}
+          );
+        })}
+      </div>
 
-      <div className="actions">
-        {pending.length > 0 && (
-          <button className="btn ghost" onClick={() => setPending([])}>
-            Clear list
-          </button>
-        )}
-        <button className="btn accent" onClick={save} disabled={saving || !fresh.length}>
-          {saving
-            ? "Saving\u2026"
-            : `Save ${fresh.length} plot${fresh.length === 1 ? "" : "s"} to project`}
+      <div className="ap-foot">
+        <p className="ap-total">
+          <strong>{check.total}</strong>
+          {expectedN > 0 ? <> of <strong>{expectedN}</strong></> : null}
+          {" "}plot{check.total === 1 && !expectedN ? "" : "s"} entered
+          {expectedN > 0 && check.total + existing.length !== expectedN && (
+            <span className="ap-muted">
+              {" "}&middot; {Math.abs(expectedN - check.total - existing.length)}{" "}
+              {expectedN > check.total + existing.length ? "still to enter" : "more than expected"}
+              {existing.length > 0 ? ", counting those already on the project" : ""}
+            </span>
+          )}
+        </p>
+        {/* For the running check only — nothing on a project records how
+            many plots a scheme is meant to have, so it is not saved. */}
+        <label className="ap-expected">
+          Plots on the scheme
+          <input type="number" min="0" value={expected} placeholder="optional"
+            onChange={(e) => setExpected(e.target.value)} />
+        </label>
+        <button className="btn accent" disabled={!canSave} onClick={save}>
+          {saving ? "Adding…" : check.total ? `Add ${check.total} plot${check.total === 1 ? "" : "s"}` : "Add plots"}
         </button>
       </div>
     </div>
@@ -312,26 +257,26 @@ export default function AddPlotsForm({
 }
 
 const CSS = `
-.inline-add { display: flex; gap: 8px; align-items: flex-start; }
-.inline-grow { flex: 1; min-width: 0; }
-.preview-box { border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
-.preview-count { margin: 0 0 10px; font-size: 12.5px; font-weight: 700; }
-.dupe-note { color: #ef4444; font-size: 11.5px; font-weight: 600; margin-left: 10px; }
-.chips { display: flex; flex-wrap: wrap; gap: 5px; max-height: 260px; overflow-y: auto; }
-.chip {
-  display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px;
-  border-radius: 5px; font-size: 12px; font-family: ui-monospace, Menlo, monospace;
-  background: var(--accent-light); border: 1px solid #bfdbfe; color: var(--accent);
+.ap-head-actions { display: flex; gap: 8px; align-items: flex-start; }
+.ap-grid { display: grid; gap: 4px; margin-top: 10px; }
+.ap-row { display: grid; grid-template-columns: 2.2fr 1fr 3.6fr 48px 1.8fr 64px 28px;
+  gap: 10px; align-items: center; }
+.ap-headrow { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted); padding: 0 2px; }
+.ap-n { text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
+.ap-c { display: flex; justify-content: center; }
+.ap-bad { border-color: #dc2626 !important; box-shadow: 0 0 0 1px #dc2626 inset; }
+.ap-problems { margin: 2px 0 6px; padding: 0 0 0 18px; color: #b91c1c; font-size: 13px; }
+.ap-problems li { margin: 1px 0; }
+.ap-x { border: 0; background: none; font-size: 20px; line-height: 1; color: var(--muted); cursor: pointer; }
+.ap-x:hover { color: #b91c1c; }
+.ap-foot { display: flex; align-items: center; gap: 16px; margin-top: 18px; flex-wrap: wrap; }
+.ap-total { margin: 0; font-size: 18px; flex: 1; }
+.ap-muted { color: var(--muted); font-size: 13px; }
+.ap-expected { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.ap-expected input { width: 90px; }
+@media (max-width: 900px) {
+  .ap-row { grid-template-columns: 1fr 1fr; }
+  .ap-headrow { display: none; }
 }
-.chip.dupe { background: #fef2f2; border-color: #fca5a5; color: #ef4444; }
-.chip button, .chip .chip-x {
-  background: none; border: none; cursor: pointer; color: inherit;
-  font-size: 10px; padding: 0; line-height: 1;
-}
-.tab-head {
-  display: flex; align-items: flex-start; justify-content: space-between;
-  gap: 16px; margin-bottom: 14px;
-}
-.tab-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
-.tab-sub { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); max-width: 68ch; }
 `;

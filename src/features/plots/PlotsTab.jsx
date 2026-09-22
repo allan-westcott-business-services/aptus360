@@ -573,6 +573,9 @@ export default function PlotsTab({ projectId, projectRef }) {
         projectRef={projectRef}
         existingNumbers={plots.map((p) => String(p.Plot_Number))}
         defaultHeatSourceId={defaults.Default_Heat_Source_ID}
+        /* A row whose heat source takes a heat pump gets the project's
+           model, as a plot added one at a time always has. */
+        defaultHeatPumpModelId={defaults.Heat_Pump_Model_ID}
         onDone={() => {
           setMode("list");
           load();

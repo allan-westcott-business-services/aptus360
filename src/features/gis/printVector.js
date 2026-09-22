@@ -45,6 +45,7 @@ import { mmPerMetre } from "./printSheet.js";
 import { LABEL_PLATE_TINT } from "../../lib/pillColour.js";
 import { feederRenderPlan, offsetPolyline } from "./feederColour.js";
 import { lvOrigins } from "./electric.js";
+import { toCanvas } from "./gridLink.js";
 import {
   NOTE_ROLE, NOTE_DEFAULTS, noteBox, lineBaseline, leaderFrom, leaderHead,
 } from "./textNotes.js";
@@ -215,6 +216,10 @@ export function tint(hex, amount = PLATE_TINT) {
 export function pageDrawList(features = [], tile, {
   /* The canvas's feeder plan, where the caller already has one. */
   feederPlan = null,
+  /* OS tiles and the link that places them. Drawn first, under
+     everything, exactly as on screen. */
+  overlays = [],
+  gridLink = null,
   /* Size id to the cable's name, from the caller's own catalogue. A
      sheet given none labels a cable as it always did \u2014 by its tag
      alone \u2014 rather than inventing a second source for the name. */
@@ -259,6 +264,34 @@ export function pageDrawList(features = [], tile, {
     Math.max(MIN_W_MM, (Number(px) || 2) * MM_PER_PX));
 
   const out = [];
+
+  /* ── OS tiles, first, so everything designed sits on top ──
+
+     Through the same link the screen uses. Thin and dark: the map is
+     the reference, not the design. The reseller's furniture layers
+     stay hidden as they are on screen; the copyright line is not
+     furniture and prints \u2014 OS licensing expects it on the sheet. */
+  if (gridLink) {
+    for (const o of overlays || []) {
+      if (!o?.Visible) continue;
+      const hidden = new Set(o.Hidden_Layers || []);
+      for (const pl of o.Linework?.polylines || []) {
+        if (hidden.has(pl.layer)) continue;
+        const pts = pl.pts.map((en) => toCanvas(gridLink, en));
+        if (!pts.some((q) => q && q[0] >= tile.minX - 1 && q[0] <= tile.maxX + 1
+          && q[1] >= tile.minY - 1 && q[1] <= tile.maxY + 1)) continue;
+        out.push({
+          kind: "polyline",
+          pts: (pl.closed ? [...pts, pts[0]] : pts).map(toPage),
+          colour: "#1f2937",
+          widthMm: 0.13,
+          opacity: Number(o.Opacity ?? 0.8),
+          id: `os-${o.Overlay_ID}`,
+        });
+      }
+    }
+  }
+
   const here = features.filter((f) => touches(f, tile));
 
   /* ── The feeder plan: the canvas's own colours and lanes ──

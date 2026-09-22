@@ -27,6 +27,11 @@ import { listNrs } from "../../api/nrs.js";
 import { listConnections } from "../../api/connections.js";
 import { selfLaySet, selfLayNrsSet, isSelfLayMeter, isSelfLayFor } from "./selfLay.js";
 import { getBasemap } from "../../api/basemap.js";
+import {
+  getOverlays, addOverlay, updateOverlay, removeOverlay, saveGridLink, linkFromRow,
+} from "../../api/overlays.js";
+import { readOsTile } from "./osTile.js";
+import { solveLink, toGrid, toCanvas, fitVerdict } from "./gridLink.js";
 import { listDevelopers } from "../../api/developers.js";
 import { takeGisIntent } from "../../lib/gisIntent.js";
 import { remember, recall } from "../../lib/session.js";
@@ -406,6 +411,47 @@ export default function GISCanvasPage() {
     [lineTypes, showLabels, labelKinds],
   );
   const [basemap, setBasemap] = useState(null);
+
+  /* ── OS tiles, and how the drawing sits on the National Grid ──
+
+     `overlays` are OS tiles already read and stored in grid metres.
+     `gridLinkRow` is the stored link; `align` is the matching session
+     when one is open: the pairs so far, a PDF point waiting for its OS
+     partner, a live fit, and a PROVISIONAL placement used before there
+     is any fit at all, so a freshly imported tile is on screen to be
+     matched against. */
+  const [overlays, setOverlays] = useState([]);
+  const [gridLinkRow, setGridLinkRow] = useState(null);
+  const gridLink = useMemo(() => linkFromRow(gridLinkRow), [gridLinkRow]);
+  const [align, setAlign] = useState(null);
+  const osFileRef = useRef(null);
+
+  /* The link in force: a live fit while matching, the saved link
+     otherwise, and the provisional placement only while matching has
+     not yet produced a fit. */
+  const activeLink = align?.fit ?? gridLink ?? align?.provisional ?? null;
+
+  /* Every visible OS vertex in drawing metres, with the grid point it
+     came from. Worked out once per change of link or tiles rather than
+     every frame: the draw is a lookup, and matching snaps to these. */
+  const overlayDrawn = useMemo(() => {
+    if (!activeLink) return [];
+    return overlays.filter((o) => o.Visible).map((o) => {
+      const hidden = new Set(o.Hidden_Layers || []);
+      const lw = o.Linework || {};
+      return {
+        id: o.Overlay_ID,
+        opacity: Number(o.Opacity ?? 0.8),
+        lines: (lw.polylines || []).filter((pl) => !hidden.has(pl.layer)).map((pl) => ({
+          closed: !!pl.closed,
+          pts: pl.pts.map((en) => ({ c: toCanvas(activeLink, en), g: en })),
+        })),
+        texts: (lw.texts || []).filter((t) => !hidden.has(t.layer)).map((t) => ({
+          c: toCanvas(activeLink, t.at), text: t.text, height: t.height,
+        })),
+      };
+    });
+  }, [overlays, activeLink]);
   const [setupOpen, setSetupOpen] = useState(false);
   const [bgImage, setBgImage] = useState(null);
 
@@ -2363,6 +2409,12 @@ export default function GISCanvasPage() {
       })));
       setLookups(lk);
       setBasemap(bm);
+      /* Not fatal: a drawing with no OS tile is the ordinary case, and
+         one whose tiles cannot be read should still open. */
+      getOverlays(pid)
+        .then((r) => { setOverlays(r?.overlays || []); setGridLinkRow(r?.link || null); })
+        .catch(() => { setOverlays([]); setGridLinkRow(null); });
+      setAlign(null);
       setProject(projects.find((p) => String(p.Project_ID) === String(pid)) || null);
       setFeatures(res.features || []);
       setLayers(res.layers || []);
@@ -4053,6 +4105,62 @@ export default function GISCanvasPage() {
         ctx.drawImage(bgImage, o.x, o.y,
           bgImage.naturalWidth * mpp * vs,
           bgImage.naturalHeight * mpp * vs);
+      }
+      ctx.restore();
+    }
+
+    /* ── OS tiles, over the plan and under everything drawn ──
+
+       Placed through the grid link, so they meet a calibrated PDF
+       rather than moving it. Thin and dark: a reference to read the
+       plan against, not part of the design. */
+    for (const o of overlayDrawn) {
+      ctx.save();
+      ctx.globalAlpha = o.opacity;
+      ctx.strokeStyle = "#1f2937";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (const l of o.lines) {
+        l.pts.forEach((q, i) => {
+          const sp = pxOf(q.c);
+          if (i === 0) ctx.moveTo(sp.x, sp.y); else ctx.lineTo(sp.x, sp.y);
+        });
+        if (l.closed && l.pts.length > 2) ctx.closePath();
+      }
+      ctx.stroke();
+      if (vs > 1.5) {
+        ctx.fillStyle = "#1f2937";
+        for (const t of o.texts) {
+          const sp = pxOf(t.c);
+          ctx.font = `${Math.max(9, Math.min(16, t.height * vs))}px ui-sans-serif, system-ui`;
+          ctx.fillText(t.text, sp.x, sp.y);
+        }
+      }
+      ctx.restore();
+    }
+
+    /* The points matched so far: red on the plan, blue on the OS, each
+       numbered, so a pair can be found again when its error is high. */
+    if (align) {
+      ctx.save();
+      ctx.font = "600 11px ui-sans-serif, system-ui";
+      align.pairs.forEach((pr, i) => {
+        const a = pxOf(pr.canvas);
+        const gc = activeLink ? toCanvas(activeLink, pr.grid) : null;
+        ctx.fillStyle = "#dc2626";
+        ctx.beginPath(); ctx.arc(a.x, a.y, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillText(String(i + 1), a.x + 7, a.y - 6);
+        if (gc) {
+          const b = pxOf(gc);
+          ctx.fillStyle = "#2563eb";
+          ctx.fillRect(b.x - 4, b.y - 4, 8, 8);
+          ctx.fillText(String(i + 1), b.x + 7, b.y + 12);
+        }
+      });
+      if (align.pending) {
+        const a = pxOf(align.pending);
+        ctx.strokeStyle = "#dc2626"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(a.x, a.y, 9, 0, Math.PI * 2); ctx.stroke();
       }
       ctx.restore();
     }
@@ -7935,7 +8043,9 @@ export default function GISCanvasPage() {
       ctx.fillText(label, a.x + 5, a.y - 4);
       ctx.restore();
     }
-  }, [visible, selected, view, toPx, printFrame, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, jointFor, traceRun, tracedM, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, tool, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset, slpSet, slpNrsSet, layers]);
+  }, [visible, selected, view, toPx, printFrame, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, jointFor, traceRun, tracedM, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, tool, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset, slpSet, slpNrsSet, layers,
+    /* OS tiles and the matching session: a change to either is a redraw. */
+    overlayDrawn, align, activeLink]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -8079,6 +8189,11 @@ export default function GISCanvasPage() {
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const r = canvasRef.current.getBoundingClientRect();
     const px = e.clientX - r.left, py = e.clientY - r.top;
+
+    /* Matching an OS tile takes every left click until it is saved or
+       cancelled. The middle button still pans, so a point off screen
+       can be reached without leaving the matching. */
+    if (align && e.button === 0) { alignClick(px, py); return; }
 
     /* Working on the drawing puts the levels check away.
 
@@ -11944,6 +12059,10 @@ export default function GISCanvasPage() {
        lane and the same colour on paper as on the drawing it was
        printed from. */
     feederPlan,
+    /* The OS tiles and the link placing them, so the sheet shows the
+       map where the screen does. */
+    overlays,
+    gridLink,
     /* The screen's own label switches, so the sheet writes what the
        screen writes: the master Labels layer and the per-kind
        switches travel with the print rather than being re-decided
@@ -11961,7 +12080,7 @@ export default function GISCanvasPage() {
     when: new Date().toLocaleDateString("en-GB",
       { day: "numeric", month: "short", year: "numeric" }),
     filename: `${project?.Contract_Number || "drawing"}.pdf`,
-  }), [layers, styles, lineTypes, utilities, cableNames, feederPlan, showLabels, labelKinds,
+  }), [layers, styles, lineTypes, utilities, cableNames, feederPlan, overlays, gridLink, showLabels, labelKinds,
     basemap, basemapBytes, project, standard]);
 
   /* ── The print is of the drawing AS SHOWN ──
@@ -13811,6 +13930,111 @@ export default function GISCanvasPage() {
       setError(e.message);
     } finally {
       setBusy(null);
+    }
+  }
+
+  /* ── Importing an OS tile ──
+
+     Read in the browser (osTile.js): a DWG is refused with how to get
+     DXF, units are worked out from the numbers, and the reseller's logo
+     and scale bar are set aside. What is stored is the linework in grid
+     metres.
+
+     A drawing with no link yet opens the matching straight away \u2014 the
+     tile cannot be placed until it is matched, and a tile that imports
+     and then appears nowhere reads as a failed import. */
+  async function importOsTile(file) {
+    if (!file || !projectId) return;
+    setError("");
+    try {
+      const text = /\.dwg$/i.test(file.name) ? "" : await file.text();
+      const tile = readOsTile(text, file.name);
+      if (tile.error) { setError(tile.error); return; }
+      const row = await addOverlay(projectId, tile, file.name);
+      setOverlays((o) => [...o, row]);
+      if (!gridLink) {
+        startAlign(row);
+      } else {
+        setStatus(`${file.name} placed on the drawing through the saved alignment.`);
+        setTimeout(() => setStatus(""), 6000);
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  /* ── Matching the plan to the OS ──
+
+     Before any fit, the tile is put where it can be seen: its centre at
+     the middle of the screen, unturned, at the plan's own scale. That
+     placement is only for pointing at \u2014 every OS click snaps to a real
+     corner of the linework and takes that corner's TRUE easting and
+     northing, so where the tile happened to be drawn does not enter the
+     fit.
+
+     An existing alignment is opened with its points, so a fit can be
+     added to or corrected rather than started again. */
+  function startAlign(tileRow = null) {
+    const t = tileRow || overlays[0];
+    if (!t) { setError("Import an OS tile first."); return; }
+    const r = canvasRef.current?.getBoundingClientRect();
+    const xc = ((r ? r.width / 2 : 400) - view.x) / view.scale;
+    const yc = ((r ? r.height / 2 : 300) - view.y) / view.scale;
+    const ec = (Number(t.Min_E) + Number(t.Max_E)) / 2;
+    const nc = (Number(t.Min_N) + Number(t.Max_N)) / 2;
+    const pairs = gridLink?.points || [];
+    setAlign({
+      pairs,
+      pending: null,
+      fit: pairs.length >= 2 ? solveLink(pairs) : null,
+      provisional: { a: 1, b: 0, tx: ec - xc, ty: nc + yc },
+    });
+    setSelected([]);
+  }
+
+  /* One click while matching. The plan's point first, then the same
+     place on the OS. The OS click must land near a corner of the
+     linework and takes that corner exactly; a click in open ground is
+     refused, because an OS point that is a guess puts the guess into
+     every coordinate the drawing will ever report. */
+  function alignClick(px, py) {
+    const c = [(px - view.x) / view.scale, (py - view.y) / view.scale];
+    if (!align.pending) {
+      setAlign((a) => ({ ...a, pending: c }));
+      return;
+    }
+    let best = null;
+    let bestD = 16;
+    for (const o of overlayDrawn) {
+      for (const l of o.lines) {
+        for (const q of l.pts) {
+          const sp = toPx(q.c);
+          const d = Math.hypot(sp.x - px, sp.y - py);
+          if (d < bestD) { bestD = d; best = q; }
+        }
+      }
+    }
+    if (!best) {
+      setStatus("Click on a corner of the OS linework \u2014 the point snaps to the nearest one.");
+      setTimeout(() => setStatus(""), 5000);
+      return;
+    }
+    setAlign((a) => {
+      const pairs = [...a.pairs, { canvas: a.pending, grid: best.g }];
+      return { ...a, pairs, pending: null, fit: pairs.length >= 2 ? solveLink(pairs) : null };
+    });
+  }
+
+  async function saveAlign() {
+    if (!align?.fit) return;
+    try {
+      const row = await saveGridLink(projectId, align.fit, align.pairs);
+      setGridLinkRow(row);
+      setAlign(null);
+      setStatus(`OS tile aligned: ${fitVerdict(align.fit).words}`);
+      setTimeout(() => setStatus(""), 9000);
+    } catch (e) {
+      setError(e.message);
     }
   }
 
@@ -24534,6 +24758,35 @@ export default function GISCanvasPage() {
                       <MenuItem label={basemap?.Metres_Per_Pixel ? "Background Plan" : "Set Up Plan & Scale"}
                         hint={basemap?.Metres_Per_Pixel ? "Scaled" : "Not set yet"}
                         onClick={() => setSetupOpen(true)} />
+                      {/* ── OS mapping over the plan ──
+
+                          Import reads a DXF tile already on the
+                          National Grid; Align ties the calibrated plan
+                          to it by matched points. The plan and anything
+                          drawn on it never move \u2014 the tile is placed to
+                          meet them. */}
+                      <MenuItem label="Import OS Tile\u2026"
+                        hint="DXF from your OS supplier"
+                        disabled={!projectId}
+                        onClick={() => osFileRef.current?.click()} />
+                      <MenuItem label={gridLink ? "Realign OS Tile\u2026" : "Align OS Tile\u2026"}
+                        hint={gridLink
+                          ? `Aligned \u00b7 ${gridLink.rms != null ? `${(gridLink.rms * 100).toFixed(0)} cm rms` : "saved"}`
+                          : overlays.length ? "Not aligned yet" : "Import a tile first"}
+                        disabled={!overlays.length || !!align}
+                        onClick={() => startAlign()} />
+                      {overlays.map((o) => (
+                        <MenuItem key={o.Overlay_ID}
+                          label={`Remove ${o.File_Name || "OS tile"}`}
+                          danger
+                          onClick={async () => {
+                            if (!window.confirm(`Remove the OS tile ${o.File_Name || ""} from this drawing?`)) return;
+                            try {
+                              await removeOverlay(projectId, o.Overlay_ID);
+                              setOverlays((all) => all.filter((x) => x.Overlay_ID !== o.Overlay_ID));
+                            } catch (e) { setError(e.message); }
+                          }} />
+                      ))}
                       <MenuItem label={tool === "boundary" ? "Drawing Boundary\u2026" : "Draw Site Boundary"}
                         active={tool === "boundary"}
                         hint="Classifies runs as on or off site"
@@ -24917,6 +25170,27 @@ export default function GISCanvasPage() {
                                   soloClass(BASEMAP_KEY);
                                 }} />
                             )}
+
+                            {/* Each OS tile its own row: H hides it, S
+                                shows it alone with the plan. Stored on the
+                                tile, so it stays as left for everybody. */}
+                            {overlays.map((o) => {
+                              const flip = async (v) => {
+                                setOverlays((all) => all.map((x) => (x.Overlay_ID === o.Overlay_ID
+                                  ? { ...x, Visible: v } : x)));
+                                try { await updateOverlay(projectId, o.Overlay_ID, { Visible: v }); }
+                                catch (e) { setError(e.message); }
+                              };
+                              return (
+                                <MenuLayer key={`os-${o.Overlay_ID}`}
+                                  label={`OS Tile \u00b7 ${o.File_Name || o.Overlay_ID}`}
+                                  colour="#1f2937" count={(o.Linework?.polylines || []).length}
+                                  hidden={!o.Visible} solo={false} shown={false}
+                                  onHide={() => flip(!o.Visible)}
+                                  onShow={() => flip(true)}
+                                  onSolo={() => flip(true)} />
+                              );
+                            })}
 
                             {/* The two boundaries separately, and the
                                 layer they share not at all.
@@ -27608,6 +27882,57 @@ export default function GISCanvasPage() {
           onClose={() => setAddOpen(false)}
         />
       )}
+
+      <input ref={osFileRef} type="file" accept=".dxf,.dwg" hidden
+        onChange={(e) => { importOsTile(e.target.files?.[0]); e.target.value = ""; }} />
+
+      {align && (() => {
+        const verdict = fitVerdict(align.fit);
+        return (
+          <div className="os-align" role="dialog" aria-label="Align OS tile">
+            <div className="os-align-head">Align OS tile</div>
+            <p className="os-align-step">
+              {align.pending
+                ? "Now click the same place on the OS linework. It snaps to the nearest corner."
+                : `Click a point on the plan \u2014 pair ${align.pairs.length + 1}. `
+                  + "Use things that exist today: kerb corners, junctions, existing buildings."}
+            </p>
+            {align.pairs.length > 0 && (
+              <ol className="os-align-pairs">
+                {align.pairs.map((pr, i) => (
+                  <li key={i}>
+                    Pair {i + 1}
+                    {align.fit && (
+                      <span className={align.fit.residuals[i] > 1 ? "bad" : ""}>
+                        {` \u00b7 ${(align.fit.residuals[i] * 100).toFixed(0)} cm out`}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            )}
+            <p className={`os-align-verdict ${verdict.level}`}>{verdict.words}</p>
+            {align.fit && (
+              <p className="os-align-numbers">
+                Rotation {align.fit.rotationDeg.toFixed(2)}° · scale {align.fit.scale.toFixed(4)}
+              </p>
+            )}
+            <div className="os-align-actions">
+              <button type="button" className="btn ghost sm"
+                disabled={!align.pairs.length && !align.pending}
+                onClick={() => setAlign((a) => (a.pending
+                  ? { ...a, pending: null }
+                  : (() => {
+                    const pairs = a.pairs.slice(0, -1);
+                    return { ...a, pairs, fit: pairs.length >= 2 ? solveLink(pairs) : null };
+                  })()))}>Undo</button>
+              <button type="button" className="btn ghost sm" onClick={() => setAlign(null)}>Cancel</button>
+              <button type="button" className="btn accent sm" disabled={!align.fit}
+                onClick={saveAlign}>Save alignment</button>
+            </div>
+          </div>
+        );
+      })()}
 
       {setupOpen && projectId && (
         <BasemapSetup
@@ -30469,7 +30794,16 @@ export default function GISCanvasPage() {
               {cursor && (
                 <span className="hud-xy mono">
                   {cursor[0].toFixed(1)}, {cursor[1].toFixed(1)} m
-                  {basemap?.Ref_Easting != null && (
+                  {/* Through the fitted link where there is one: it
+                      knows the plan's rotation, so the easting and
+                      northing are right anywhere on the drawing. The
+                      old single reference point assumes north-up and
+                      drifts with distance on a turned plan. */}
+                  {gridLink ? (
+                    <span className="hud-grid" title="National Grid, from the OS alignment">
+                      {toGrid(gridLink, cursor).map((v) => v.toFixed(1)).join(", ")}
+                    </span>
+                  ) : basemap?.Ref_Easting != null && (
                     <span className="hud-grid">
                       {(Number(basemap.Ref_Easting) + (cursor[0] - Number(basemap.Ref_Canvas_X))).toFixed(1)},
                       {" "}
@@ -31268,6 +31602,20 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   border-left: 1px solid var(--text); border-right: 1px solid var(--text); }
 .hud-xy { font-family: ui-monospace, Menlo, monospace; }
 .hud-grid { margin-left: 10px; color: var(--accent); font-weight: 600; }
+/* ── Aligning an OS tile ── */
+.os-align { position: fixed; top: 84px; right: 18px; width: 300px; z-index: 40;
+  background: var(--white); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(15,23,42,.18); padding: 14px 16px; font-size: 13px; }
+.os-align-head { font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+.os-align-step { margin: 0 0 8px; color: var(--text); }
+.os-align-pairs { margin: 0 0 8px 18px; padding: 0; color: var(--muted); }
+.os-align-pairs .bad { color: #b91c1c; font-weight: 600; }
+.os-align-verdict { margin: 0 0 6px; padding: 6px 8px; border-radius: 8px; background: var(--bg); }
+.os-align-verdict.good { background: #ecfdf5; color: #065f46; }
+.os-align-verdict.fair { background: #fffbeb; color: #92400e; }
+.os-align-verdict.poor { background: #fef2f2; color: #991b1b; }
+.os-align-numbers { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+.os-align-actions { display: flex; gap: 6px; justify-content: flex-end; }
 .hud-zoom { font-weight: 600; }
 .hud-vector { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
   background: var(--ok-bg); color: var(--ok-text); border: 1px solid var(--ok-border);

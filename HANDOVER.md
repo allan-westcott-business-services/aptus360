@@ -218,6 +218,7 @@ caught a fault that had already shipped at least once.
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checkosalign.mjs` | OS tiles read from the numbers, and a plan is tied to the grid without moving |
 | `node checkhistorywho.mjs` | The history says who, settled by the server and never at the cost of a save |
 | `node checkprojectfields.mjs` | What the create form asks for, the project can change afterwards |
 | `node checksheetorder.mjs` | The sheet is ordered by dragging: one move, everything renumbered, only changes written |
@@ -7844,6 +7845,67 @@ characters is a hundred lines of prose and no rules at all.
      refuse a right-click or the reverse. The check counts copies. (Asked beforehand whether a selected label turns blue; it
      did not — only the line did — and the answer given was wrong. The
      rule above is what was built instead, and says the same thing.)
+
+180. **OS tiles over a calibrated PDF (0235).** Setup › Import OS
+     Tile… and Align OS Tile…. The workflow: a developer's PDF is
+     imported and calibrated by hand, a design is drawn on it, and a
+     bought OS tile — CAD, already on the National Grid — is brought in
+     and tied to the drawing by matching points.
+
+     **The drawing never moves.** The fit (`gridLink.js`) is a
+     similarity from drawing metres to grid metres, and it is applied
+     to the TILE: it is placed to meet the design, not the design moved
+     under it. Anything already drawn stays exactly where it is.
+
+     **Points, not typed numbers.** Click a point on the plan, then the
+     same place on the OS linework. The OS click must snap to a real
+     corner and takes that corner's TRUE easting and northing — a
+     click in open ground is refused, because a guessed OS point would
+     sit in every coordinate the drawing ever reports. Two points place
+     it; three or more report the error at each, in centimetres, and a
+     verdict in plain words. The scale is solved, not fixed, so a PDF
+     calibrated a few percent out is REPORTED ("1.2% small against the
+     OS") rather than silently absorbed.
+
+     The drawing's y runs south; the fit flips it before solving, so it
+     never has to find the mirror itself. The check proves a point 10 m
+     up the screen is 10 m north.
+
+     **Proved on the customer's own files before it was wired up**: the
+     developer's plan turned 17.3° and 1.2% out of scale was recovered
+     to 17.318° and 1.0118 from three clicks with a few centimetres of
+     error each, and every corner of the OS tile landed within 2.8 cm of
+     its true place.
+
+     **DXF, not DWG.** DWG is closed and the one free reader (LibreDWG)
+     is GPL — building it in would be a licensing decision. The resellers
+     all offer DXF; a DWG is refused with how to get one. Order the
+     "noFill" version.
+
+     **Units come from the numbers.** Both of the developer's real files
+     declared millimetres; one was metres. National Grid coordinates are
+     unmistakable, so the median coordinate decides and the header is
+     ignored.
+
+     **The tile's own furniture** — the reseller's logo, scale bar and
+     grid — comes in hidden. The copyright line does not: OS licensing
+     expects it on anything printed from the map.
+
+     The grid readout under the cursor now uses the fitted link where
+     there is one. The old Ref_Easting / Ref_Northing tie one point and
+     assume the plan is north-up; on a turned plan the coordinates they
+     give drift with distance from that point. They are still read where
+     no link exists.
+
+     The tile prints: `printVector` draws it through the same link.
+
+     **The customer's OS tile is NOT in the repository.** It is licensed
+     Ordnance Survey data; committing it would be redistributing it.
+     `checkosalign` builds small synthetic tiles of the same shape.
+
+     Not built yet, and the natural next piece: importing the
+     developer's own DXF, which lands on the grid with no matching at
+     all when it is drawn on it — as all three of their real files were.
 
 ## Decisions worth knowing
 

@@ -218,6 +218,7 @@ caught a fault that had already shipped at least once.
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checkhousetypes.mjs` | A development's house types have names, codes, types and plans; plots pick them by code |
 | `node checkplotranges.mjs` | Plots go in as ranges and numbers, a house type per row, and nothing overlaps |
 | `node checkplanscale.mjs` | A PDF's scale is worked in points; an image claims none |
 | `node checkosalign.mjs` | OS tiles read from the numbers, and a plan is tied to the grid without moving |
@@ -7977,11 +7978,57 @@ characters is a hundred lines of prose and no rules at all.
      a heat pump gets the project's default model, since the row has no
      model field; changeable per plot on the Plots tab.
 
-     **The "of 416" has no home.** Nothing on a project records how many
-     plots a scheme is meant to have. There is an optional "Plots on the
-     scheme" box for the running check — "52 of 416 plots entered · 364
-     still to enter" — but it is not saved. A stored expected count
-     would want a column on Project and somewhere to set it.
+     The foot reads **Total plots entered: N** — every row, each plot
+     counted once. An "of 416" expected-count box was tried first and
+     taken out on request: nothing on a project records how many plots a
+     scheme should have, so it could not be saved and was only a
+     calculator.
+
+184. **A development's plot breakdown (0236).** The builder's named
+     house types for a development — the Sunflower, code SUNF, a 3 bed
+     semi-detached, with its floor plan — in a panel at the top of
+     Project › Plots, collapsible, edited in place. Each shows how many
+     plots are built as it.
+
+     **Per development, not per developer.** A builder reuses its names
+     across sites but not always its specifications, so the breakdown is
+     part of the project's own record, like its plots. A developer-wide
+     library that projects copy from would be the next step, and
+     `Project_House_Type` is shaped to be what it copies into.
+
+     **The Code column** in Add plots sits to the right of House type
+     and offers the breakdown's codes. Choosing one SETS the row's house
+     type from the breakdown, so SUNF is always the Sunflower's type and
+     the two cannot be entered at odds; the type can still be changed
+     after, for a plot built differently. Clash messages name the house
+     — "10 is also under the Sunflower". A plot entered with no code is
+     sent without the field, exactly as before.
+
+     **Codes are unique within a development**, case aside, among those
+     in use — a unique index, and a refusal that names the house that
+     has it ("The code SUNF is already the Sunflower").
+
+     **Floor plans are private.** The `house-types` bucket is created by
+     0236 itself, private, and plans open through a five-minute signed
+     link. Uploads go on a signed slot minted by the server, so the
+     bucket needs no storage policies, and the path is checked on the
+     way back: only this row's folder. Replacing a plan removes the old
+     file, after the row points at the new one.
+
+     **Retired, never deleted.** Plots point at a house type by id; one
+     removed from the breakdown stays on the plots built as it, and the
+     confirm says how many.
+
+     Nothing about it can stop the Plots tab loading — the breakdown
+     loads beside the plots and an unreadable one (0236 not run) is just
+     empty. The plots list's own query was left alone for the same
+     reason; the breakdown endpoint counts plots per type itself.
+
+     **Found on the way:** `connectionPhotos.js` tested `supabase` before
+     declaring it with const. That is a ReferenceError, not undefined, so
+     every photo upload on the Connections panel threw "Cannot access
+     'supabase' before initialization" and attached nothing. Fixed and
+     held by `checkhousetypes`.
 
 ## Decisions worth knowing
 

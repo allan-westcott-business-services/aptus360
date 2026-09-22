@@ -13,11 +13,18 @@ export async function listPhotos(connectionId) {
    is invisible and harmless. */
 export async function addPhoto(connectionId, file, { caption, email } = {}) {
   if (USE_MOCKS) return { Photo_ID: 1, url: URL.createObjectURL(file) };
+
+  /* Fetched BEFORE it is tested. The test used to come first, which in
+     JavaScript is not "undefined" but a ReferenceError — `supabase` is
+     declared with const further down, so every photo upload on the
+     Connections panel threw "Cannot access 'supabase' before
+     initialization" and attached nothing. Found while building the
+     floor-plan upload. */
+  const supabase = await getSupabase();
   if (!supabase) throw new Error("Sign in before attaching a photo.");
 
   const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
   const path = `${connectionId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  const supabase = await getSupabase();
   const { error } = await supabase.storage.from(BUCKET)
     .upload(path, file, { cacheControl: "31536000", upsert: false, contentType: file.type });
   if (error) {

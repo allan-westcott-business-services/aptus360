@@ -112,6 +112,19 @@ const plots = (t, p) => parsePlotList(t, p).plots;
   if (!/PV: !!r\.pv/.test(f)) fail("each row's PV is not saved on its plots");
 }
 
+// 9. The foot shows the total, and nothing else.
+{
+  /* Asked for: "Total plots entered", not "52 of 416". The expected
+     count had no home on a project and was not saved, so it went. */
+  const f = readFileSync("./src/features/plots/AddPlotsForm.jsx", "utf8");
+  if (!/Total plots entered: <strong>\{check\.total\}<\/strong>/.test(f)) {
+    fail("the foot does not show the total plots entered");
+  }
+  if (/Plots on the scheme|expectedN/.test(f)) {
+    fail("the expected-count box is still there");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Plots go in as ranges and numbers, a house type per row, and nothing overlaps.");
 process.exit(bad ? 1 : 0);

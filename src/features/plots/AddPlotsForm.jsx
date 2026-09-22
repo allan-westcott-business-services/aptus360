@@ -28,17 +28,17 @@ import { checkBatch } from "./plotRanges.js";
 
 let rowSeq = 0;
 const newRow = (heatSourceId = "") => ({
-  key: ++rowSeq, configId: "", prefix: "", text: "", heatSourceId: heatSourceId || "", pv: false,
+  key: ++rowSeq, configId: "", houseTypeId: "", prefix: "", text: "",
+  heatSourceId: heatSourceId || "", pv: false,
 });
 
 export default function AddPlotsForm({
   projectId, projectRef = "", existingNumbers = null,
-  defaultHeatSourceId = null, defaultHeatPumpModelId = null, onDone,
+  defaultHeatSourceId = null, defaultHeatPumpModelId = null, houseTypes = [], onDone,
 }) {
   const [lookups, setLookups] = useState(null);
   const [existing, setExisting] = useState([]);
   const [rows, setRows] = useState([newRow(defaultHeatSourceId)]);
-  const [expected, setExpected] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(0);
@@ -65,15 +65,21 @@ export default function AddPlotsForm({
     return c ? `${c.Bedrooms} Bed ${typeName(c.Property_Type_ID)}` : "";
   };
 
+  const houseOf = (id) => houseTypes.find((h) => String(h.House_Type_ID) === String(id)) || null;
+
   /* Every row checked against every other and against the project,
-     on every keystroke. Cheap: a few hundred labels. */
+     on every keystroke. Cheap: a few hundred labels. A row is named in
+     messages by its house where it has one \u2014 "also under the
+     Sunflower" reads better than "also under 3 Bed Semi-detached" when
+     two rows share a type. */
   const check = useMemo(() => checkBatch(
     rows.map((r, i) => ({
       key: r.key, prefix: r.prefix, text: r.text,
-      name: configName(r.configId) || `row ${i + 1}`,
+      name: (houseOf(r.houseTypeId) && `the ${houseOf(r.houseTypeId).Name}`)
+        || configName(r.configId) || `row ${i + 1}`,
     })),
     existing,
-  ), [rows, existing, lookups]);
+  ), [rows, existing, lookups, houseTypes]);
   const resultOf = (key) => check.rows.find((x) => x.key === key);
 
   const setRow = (key, patch) =>
@@ -106,6 +112,9 @@ export default function AddPlotsForm({
           payload.push({
             Plot_Number: label,
             Property_Config_ID: Number(r.configId),
+            /* Only when a code was chosen, so a plot entered without
+               one is exactly what it was before the breakdown existed. */
+            ...(r.houseTypeId ? { House_Type_ID: Number(r.houseTypeId) } : {}),
             Heat_Source_ID: r.heatSourceId ? Number(r.heatSourceId) : null,
             Heat_Pump_Model_ID: pump,
             PV: !!r.pv,
@@ -133,8 +142,6 @@ export default function AddPlotsForm({
 
   if (error && !lookups) return <Banner kind="error">Couldn&rsquo;t load: {error}</Banner>;
   if (!lookups) return <div className="loading">Loading&hellip;</div>;
-
-  const expectedN = Number(expected) || 0;
 
   return (
     <div>
@@ -169,6 +176,7 @@ export default function AddPlotsForm({
       <div className="ap-grid" role="table">
         <div className="ap-row ap-headrow" role="row">
           <span>House type</span>
+          <span>Code</span>
           <span>Prefix (optional)</span>
           <span>Plots</span>
           <span className="ap-n" title="Plots in this row">&Sigma;</span>
@@ -189,6 +197,29 @@ export default function AddPlotsForm({
                   {(lookups.propertyConfigs || []).map((c) => (
                     <option key={c.Property_Config_ID} value={c.Property_Config_ID}>
                       {c.Bedrooms} Bed {typeName(c.Property_Type_ID)}
+                    </option>
+                  ))}
+                </Select>
+                {/* ── The builder's code, from the plot breakdown ──
+
+                    Choosing one sets the house type from the breakdown,
+                    so SUNF is always the Sunflower's 3 bed semi and the
+                    two cannot be entered at odds. The house type can
+                    still be changed after, for a plot built differently.
+                    Offered only when the development has a breakdown. */}
+                <Select value={r.houseTypeId} aria-label="Code"
+                  disabled={!houseTypes.length}
+                  onChange={(v) => {
+                    const h = houseOf(v);
+                    setRow(r.key, {
+                      houseTypeId: v,
+                      ...(h?.Property_Config_ID ? { configId: String(h.Property_Config_ID) } : {}),
+                    });
+                  }}>
+                  <option value="">{houseTypes.length ? "\u2014 code \u2014" : "no breakdown"}</option>
+                  {houseTypes.map((h) => (
+                    <option key={h.House_Type_ID} value={h.House_Type_ID}>
+                      {h.Code ? `${h.Code} \u2014 ${h.Name}` : h.Name}
                     </option>
                   ))}
                 </Select>
@@ -229,25 +260,10 @@ export default function AddPlotsForm({
       </div>
 
       <div className="ap-foot">
+        {/* The total across every row, each plot counted once. */}
         <p className="ap-total">
-          <strong>{check.total}</strong>
-          {expectedN > 0 ? <> of <strong>{expectedN}</strong></> : null}
-          {" "}plot{check.total === 1 && !expectedN ? "" : "s"} entered
-          {expectedN > 0 && check.total + existing.length !== expectedN && (
-            <span className="ap-muted">
-              {" "}&middot; {Math.abs(expectedN - check.total - existing.length)}{" "}
-              {expectedN > check.total + existing.length ? "still to enter" : "more than expected"}
-              {existing.length > 0 ? ", counting those already on the project" : ""}
-            </span>
-          )}
+          Total plots entered: <strong>{check.total}</strong>
         </p>
-        {/* For the running check only — nothing on a project records how
-            many plots a scheme is meant to have, so it is not saved. */}
-        <label className="ap-expected">
-          Plots on the scheme
-          <input type="number" min="0" value={expected} placeholder="optional"
-            onChange={(e) => setExpected(e.target.value)} />
-        </label>
         <button className="btn accent" disabled={!canSave} onClick={save}>
           {saving ? "Adding…" : check.total ? `Add ${check.total} plot${check.total === 1 ? "" : "s"}` : "Add plots"}
         </button>
@@ -259,7 +275,7 @@ export default function AddPlotsForm({
 const CSS = `
 .ap-head-actions { display: flex; gap: 8px; align-items: flex-start; }
 .ap-grid { display: grid; gap: 4px; margin-top: 10px; }
-.ap-row { display: grid; grid-template-columns: 2.2fr 1fr 3.6fr 48px 1.8fr 64px 28px;
+.ap-row { display: grid; grid-template-columns: 2fr 1.5fr 0.9fr 3.2fr 48px 1.6fr 64px 28px;
   gap: 10px; align-items: center; }
 .ap-headrow { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
   color: var(--muted); padding: 0 2px; }
@@ -272,9 +288,6 @@ const CSS = `
 .ap-x:hover { color: #b91c1c; }
 .ap-foot { display: flex; align-items: center; gap: 16px; margin-top: 18px; flex-wrap: wrap; }
 .ap-total { margin: 0; font-size: 18px; flex: 1; }
-.ap-muted { color: var(--muted); font-size: 13px; }
-.ap-expected { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
-.ap-expected input { width: 90px; }
 @media (max-width: 900px) {
   .ap-row { grid-template-columns: 1fr 1fr; }
   .ap-headrow { display: none; }

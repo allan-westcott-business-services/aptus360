@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
 import AddPlotsForm from "./AddPlotsForm.jsx";
+import PlotBreakdown from "./PlotBreakdown.jsx";
+import { listHouseTypes } from "../../api/houseTypes.js";
 import { getLookups } from "../../api/lookups.js";
 import { listPlots, deletePlot, setPlotSelfLay } from "../../api/plots.js";
 import { getProject, updateProject } from "../../api/projects.js";
@@ -152,7 +154,7 @@ function BedroomSummary({ plots, configFor, typeName }) {
       {missingKva > 0 && (
         <span className="bed-missing">
           {missingKva} plot{missingKva === 1 ? "" : "s"} without a kVA figure
-          {" \u2014 the estimate assumes they match the rest"}
+          {" — the estimate assumes they match the rest"}
         </span>
       )}
     </div>
@@ -246,6 +248,19 @@ export default function PlotsTab({ projectId, projectRef }) {
   const [developers, setDevelopers] = useState([]);
   const [bulkDev, setBulkDev] = useState("");
 
+  /* ── The development's plot breakdown ──
+
+     Loaded beside the plots and never allowed to stop them loading: a
+     project with no named house types is ordinary, and one whose
+     breakdown cannot be read — migration 0236 not yet run, say —
+     still shows its plots. */
+  const [houseTypes, setHouseTypes] = useState([]);
+  const [houseCounts, setHouseCounts] = useState({});
+  const loadHouseTypes = () => listHouseTypes(projectId)
+    .then((r) => { setHouseTypes(r?.rows || []); setHouseCounts(r?.counts || {}); })
+    .catch(() => { setHouseTypes([]); setHouseCounts({}); });
+  useEffect(() => { if (projectId) loadHouseTypes(); }, [projectId]);
+
   async function load() {
     setLoading(true);
     try {
@@ -320,10 +335,10 @@ export default function PlotsTab({ projectId, projectRef }) {
   const configFor = (id) =>
     (lookups?.propertyConfigs || []).find((c) => c.Property_Config_ID === id) || null;
   const typeName = (id) =>
-    (lookups?.propertyTypes || []).find((t) => t.Property_Type_ID === id)?.Property_Type ?? "\u2014";
+    (lookups?.propertyTypes || []).find((t) => t.Property_Type_ID === id)?.Property_Type ?? "—";
   const heatPumpName = (id) =>
     heatPumpShort((lookups?.heatPumpModels || []).find((m) => m.Heat_Pump_Model_ID === id))
-    || "\u2014";
+    || "—";
 
   const defaultsDirty =
     defaults.Default_Heat_Source_ID !== savedDefaults.Default_Heat_Source_ID ||
@@ -347,12 +362,12 @@ export default function PlotsTab({ projectId, projectRef }) {
 
   const devName = (id) => {
     const d = developers.find((x) => x.Project_Developer_ID === id);
-    if (!d) return "\u2014";
+    if (!d) return "—";
     /* Either branch table, through the one rule the Details and
        Stakeholders tabs use. This read lookups.branches — Customer_Branch
        — which was emptied on 26 Aug, so every developer name on this
        page had become an em dash. */
-    return developerBranchName(d, lookups) ?? "\u2014";
+    return developerBranchName(d, lookups) ?? "—";
   };
 
   /* ── Naming a utility ──
@@ -386,7 +401,7 @@ export default function PlotsTab({ projectId, projectRef }) {
 
   const hpName = (id) =>
     heatPumpShort((lookups?.heatPumpModels || []).find((m) => m.Heat_Pump_Model_ID === id))
-    || "\u2014";
+    || "—";
 
   const hsName = (id) =>
     (lookups?.heatSources || []).find((h) => String(h.Heat_Source_ID) === String(id))?.Heat_Source
@@ -576,9 +591,11 @@ export default function PlotsTab({ projectId, projectRef }) {
         /* A row whose heat source takes a heat pump gets the project's
            model, as a plot added one at a time always has. */
         defaultHeatPumpModelId={defaults.Heat_Pump_Model_ID}
+        houseTypes={houseTypes}
         onDone={() => {
           setMode("list");
           load();
+          loadHouseTypes();
         }}
       />
     );
@@ -589,6 +606,10 @@ export default function PlotsTab({ projectId, projectRef }) {
   return (
     <div>
       <style>{CSS}</style>
+
+      {/* At the top: what the plots below are entered against. */}
+      <PlotBreakdown projectId={projectId} rows={houseTypes} onChange={setHouseTypes}
+        lookups={lookups} plotCounts={houseCounts} />
 
       <div className="tab-head">
         <div>
@@ -714,7 +735,7 @@ export default function PlotsTab({ projectId, projectRef }) {
               <input type="number" step="0.1" placeholder="kVA" className="bulk-kva"
                 value={bulk.KVA_Load} onChange={(e) => setBulk((b) => ({ ...b, KVA_Load: e.target.value }))} />
               {/* Beside the kVA, because they are the same decision
-                  asked twice \u2014 what this plot draws, on each utility. */}
+                  asked twice — what this plot draws, on each utility. */}
               <input type="number" step="0.1" placeholder="Gas kW" className="bulk-kva"
                 value={bulk.Gas_Load_kW}
                 onChange={(e) => setBulk((b) => ({ ...b, Gas_Load_kW: e.target.value }))} />
@@ -864,14 +885,14 @@ export default function PlotsTab({ projectId, projectRef }) {
                           {col.key === "sel" ? (
                             <input type="checkbox" checked={on}
                               onChange={() => setSelected((s) => on ? s.filter((x) => x !== p.Plot_ID) : [...s, p.Plot_ID])} />
-                          ) : col.key === "ref" ? <span className="mono ref">{p.Plot_Ref || "\u2014"}</span>
+                          ) : col.key === "ref" ? <span className="mono ref">{p.Plot_Ref || "—"}</span>
                             : col.key === "num" ? <span className="mono">{p.Plot_Number}</span>
                             : col.key === "type" ? (c
                                 ? <span className="code-chip"
                                     title={`${c.Bedrooms} Bed ${typeName(c.Property_Type_ID)}`}>
                                     {c.Code}
                                   </span>
-                                : "\u2014")
+                                : "—")
                             : col.key === "dev" ? (
                               p._devInherited
                                 ? (
@@ -896,7 +917,7 @@ export default function PlotsTab({ projectId, projectRef }) {
                                         title="From the project default, not set on this plot">
                                         {hsName(savedDefaults.Default_Heat_Source_ID)}
                                       </span>
-                                    : "\u2014")
+                                    : "—")
                               )
                             : col.key === "kva" ? (
                                 (p.KVA_Resolved ?? p.KVA_Load) == null
@@ -1018,7 +1039,7 @@ const CSS = FILTER_CSS + `
 .inherited { color: var(--muted); font-style: italic; }
 .tick { color: #059669; font-weight: 700; }
 /* A developer nobody chose: the only one on the project. Greyed rather
-   than bracketed \u2014 the column is narrow and a name in brackets reads
+   than bracketed — the column is narrow and a name in brackets reads
    as a different name. */
 .dev-inherited { color: var(--muted); font-style: italic; }
 .dev-unassigned { margin: 0 0 10px; font-size: 12px; color: #92400e;
@@ -1031,7 +1052,7 @@ const CSS = FILTER_CSS + `
    a label.
 
    Grey rather than red. It is a fact about who does the work, not a
-   fault \u2014 the drawing marks the same thing with a black cross on the
+   fault — the drawing marks the same thing with a black cross on the
    meter, and neither is a warning. */
 .slp-chips { display: inline-flex; gap: 3px; }
 .slp-chip { display: inline-block; min-width: 17px; padding: 1px 4px; border-radius: 4px;

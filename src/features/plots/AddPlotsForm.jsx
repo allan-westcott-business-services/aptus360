@@ -129,7 +129,11 @@ export default function AddPlotsForm({
             Property_Config_ID: Number(r.configId),
             /* Only when a code was chosen, so a plot entered without
                one is exactly what it was before the breakdown existed. */
-            ...(r.houseTypeId ? { House_Type_ID: Number(r.houseTypeId) } : {}),
+            /* Project_House_Type_ID, not House_Type_ID: a column of
+               that name was already on Plot, pointing at Property_Type,
+               and writing a breakdown id into it failed its foreign key
+               (0237). */
+            ...(r.houseTypeId ? { Project_House_Type_ID: Number(r.houseTypeId) } : {}),
             Heat_Source_ID: r.heatSourceId ? Number(r.heatSourceId) : null,
             Heat_Pump_Model_ID: pump,
             PV: !!r.pv,

@@ -19,6 +19,7 @@ let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
 
 const sql = readFileSync("./supabase/migrations/0236_house_types.sql", "utf8").replace(/--[^\n]*/g, "");
+const sql37 = readFileSync("./supabase/migrations/0237_plot_house_type_link.sql", "utf8").replace(/--[^\n]*/g, "");
 const api = readFileSync("./netlify/functions/house-types.js", "utf8");
 const form = readFileSync("./src/features/plots/AddPlotsForm.jsx", "utf8");
 const tab = readFileSync("./src/features/plots/PlotsTab.jsx", "utf8");
@@ -34,11 +35,34 @@ const photos = readFileSync("./src/api/connectionPhotos.js", "utf8");
     fail("two house types in one development can share a code, so the Code dropdown "
       + "could offer two SUNFs meaning different houses");
   }
-  if (!/ADD COLUMN IF NOT EXISTS "House_Type_ID" bigint/.test(sql)) {
+  /* ── Its own column, and verified ──
+
+     0236 added Plot.House_Type_ID with IF NOT EXISTS; the live table
+     already had one pointing at Property_Type, holding 35 plots, and
+     the guard adopted it in silence. Adding plots with a code then
+     failed its foreign key. The link is Project_House_Type_ID, and
+     0237 STOPS if that name turns out to point anywhere else. */
+  if (/ALTER TABLE "Plot"\s*\n\s*ADD COLUMN IF NOT EXISTS "House_Type_ID"/.test(sql)) {
+    fail("0236 still adds Plot.House_Type_ID, a name the live table already used "
+      + "for something else");
+  }
+  if (!/ADD COLUMN IF NOT EXISTS "Project_House_Type_ID" bigint\s*\n\s*REFERENCES "Project_House_Type"/.test(sql37)) {
     fail("a plot cannot say which named house it is");
   }
+  if (!/IF target IS DISTINCT FROM '"Project_House_Type"' THEN\s*\n\s*RAISE EXCEPTION/.test(sql37)) {
+    fail("0237 trusts IF NOT EXISTS — the thing that caused this — rather than "
+      + "checking where the column points");
+  }
   /* A retired house type must not wipe the name off plots built as it. */
-  if (!/ON DELETE SET NULL/.test(sql)) fail("deleting a house type is not survivable by its plots");
+  if (!/ON DELETE SET NULL/.test(sql37)) fail("deleting a house type is not survivable by its plots");
+  /* The app writes and counts the new column, never the old one. */
+  if (/House_Type_ID: Number\(r\.houseTypeId\)/.test(form.replace(/Project_House_Type_ID/g, ""))) {
+    fail("plots are still written to the old House_Type_ID, which points at Property_Type");
+  }
+  if (!/select\("Project_House_Type_ID"\)/.test(api)) {
+    fail("the breakdown's plot counts read the old column, so a house type shows "
+      + "the plots whose old property type shares its id");
+  }
   if (!/\.update\(\{ Is_Active: false \}\)/.test(api) || /\.delete\(\)/.test(api)) {
     fail("a house type is deleted outright rather than retired — its plots lose the "
       + "name they were built as");
@@ -92,7 +116,7 @@ const photos = readFileSync("./src/api/connectionPhotos.js", "utf8");
     fail("choosing SUNF does not set the Sunflower's house type, so the two can be "
       + "entered at odds");
   }
-  if (!/\.\.\.\(r\.houseTypeId \? \{ House_Type_ID: Number\(r\.houseTypeId\) \} : \{\}\)/.test(form)) {
+  if (!/\.\.\.\(r\.houseTypeId \? \{ Project_House_Type_ID: Number\(r\.houseTypeId\) \} : \{\}\)/.test(form)) {
     fail("the chosen code is not saved on the plots, or is sent as null for plots "
       + "without one");
   }

@@ -8039,6 +8039,36 @@ characters is a hundred lines of prose and no rules at all.
      'supabase' before initialization" and attached nothing. Fixed and
      held by `checkhousetypes`.
 
+185. **IF NOT EXISTS adopted somebody else's column (0237).** Adding
+     plots with a code failed: `insert or update on table "Plot" violates
+     foreign key constraint "Plot_House_Type_ID_fkey"`.
+
+     0236 added `Plot.House_Type_ID` with `ADD COLUMN IF NOT EXISTS`. The
+     live `Plot` table already had a column of that name — added by hand,
+     never in this folder — referencing `Property_Type`, with values on
+     **35 plots**. The guard saw it and skipped the line in silence. The
+     breakdown then wrote Project_House_Type ids into a column checked
+     against Property_Type, and the breakdown's plot COUNTS read that
+     old column too, crediting each house type with the plots whose old
+     property type shared its id.
+
+     The old column and its 35 values are left untouched: nothing in the
+     app reads them, but nobody here knows what put them there. The link
+     is `Plot.Project_House_Type_ID`, added by 0237 — which does not
+     trust its own IF NOT EXISTS: a DO block confirms the column points
+     at `Project_House_Type` and RAISES if it does not, so a column of
+     that name made by hand cannot be adopted a second time. 0236's
+     line was taken out, with a note, so a database built fresh from
+     this folder matches the live one.
+
+     **The lesson, for every migration after this:** `ADD COLUMN IF NOT
+     EXISTS` on a table with hand-added schema is a guess about what is
+     already there. When the column matters, verify it afterwards and
+     stop if it is not what was meant. This is the fourth fault this
+     month from schema that exists in the database and not in the folder
+     — the migrations still missing (0138, 0163, 0198, 0208, 0210, 0221,
+     0222) are where the next one is.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

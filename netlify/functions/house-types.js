@@ -68,14 +68,19 @@ export default withAuth(async function handler(req, context, user) {
         db.from("Project_House_Type").select(C)
           .eq("Project_ID", projectId).eq("Is_Active", true)
           .order("Sort_Order").order("Name"),
-        db.from("Plot").select("House_Type_ID")
-          .eq("Project_ID", projectId).not("House_Type_ID", "is", null),
+        /* Project_House_Type_ID. The older House_Type_ID on Plot points
+           at Property_Type, so counting it gave each house type the
+           plots whose OLD property type happened to share its id. */
+        db.from("Plot").select("Project_House_Type_ID")
+          .eq("Project_ID", projectId).not("Project_House_Type_ID", "is", null),
       ]);
       if (ht.error) throw ht.error;
       /* How many plots are each house — counted here so the plots list's
          own query does not have to name the new column. */
       const counts = {};
-      for (const p of pl.data || []) counts[p.House_Type_ID] = (counts[p.House_Type_ID] || 0) + 1;
+      for (const p of pl.data || []) {
+        counts[p.Project_House_Type_ID] = (counts[p.Project_House_Type_ID] || 0) + 1;
+      }
       return json({ rows: ht.data || [], counts });
     }
 

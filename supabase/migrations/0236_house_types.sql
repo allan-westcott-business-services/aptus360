@@ -54,11 +54,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS project_house_type_code
   ON "Project_House_Type" ("Project_ID", lower("Code"))
   WHERE "Code" IS NOT NULL AND "Is_Active";
 
--- Which named house a plot is. Nullable: most plots entered before
--- this have none, and a scheme with no named types is ordinary.
-ALTER TABLE "Plot"
-  ADD COLUMN IF NOT EXISTS "House_Type_ID" bigint
-    REFERENCES "Project_House_Type" ("House_Type_ID") ON DELETE SET NULL;
+-- ── The plot's link is NOT here any more — see 0237 ──
+--
+-- This added `Plot.House_Type_ID` with IF NOT EXISTS. On the live
+-- database a column of that name already existed, referencing
+-- "Property_Type" and holding values on 35 plots, so the line did
+-- nothing and the breakdown wrote into the wrong column. Taken out so
+-- a fresh database built from this folder matches the live one; the
+-- link is `Plot.Project_House_Type_ID`, added and verified by 0237.
 
 -- ── The floor plans' bucket ──
 --

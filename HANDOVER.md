@@ -8004,6 +8004,15 @@ characters is a hundred lines of prose and no rules at all.
      — "10 is also under the Sunflower". A plot entered with no code is
      sent without the field, exactly as before.
 
+     **A row offers only its own type's codes.** Reported off a
+     screenshot: a 3 Bed Detached row offered the Sunflower (a 3 bed
+     semi) too. The Code list is filtered to the row's house type; with
+     no type chosen yet it offers every code, and picking one sets the
+     type. Changing a row's type clears a code that no longer matches,
+     rather than saving the Sunflower's name on a house it is not. A
+     breakdown entry with no type recorded matches no type, so it is
+     offered only before a type is chosen.
+
      **Codes are unique within a development**, case aside, among those
      in use — a unique index, and a refusal that names the house that
      has it ("The code SUNF is already the Sunflower").

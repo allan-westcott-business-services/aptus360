@@ -99,6 +99,28 @@ const photos = readFileSync("./src/api/connectionPhotos.js", "utf8");
   if (!/houseTypes=\{houseTypes\}/.test(tab)) fail("the add form is not given the breakdown");
 }
 
+// 4b. A row offers only the codes of its own house type.
+{
+  /* Reported off a screenshot: a 3 Bed Detached row offered SUNF, the
+     Sunflower's 3 bed semi, as well as CARN. */
+  if (!/houseTypes\.filter\(\(h\) => String\(h\.Property_Config_ID \?\? ""\) === String\(r\.configId\)\)/.test(form)) {
+    fail("the Code list is not filtered to the row's house type");
+  }
+  if (!/\{codesFor\(r\)\.map\(/.test(form) || /\{houseTypes\.map\(\(h\) => \(\s*\n\s*<option key=\{h\.House_Type_ID\}/.test(form)) {
+    fail("the Code list still offers every house type");
+  }
+  /* With no house type yet, all codes — picking one sets the type. */
+  if (!/: houseTypes\);/.test(form)) {
+    fail("a row with no house type chosen offers no codes, so the quicker way "
+      + "round — pick the code, get the type — is lost");
+  }
+  /* Changing the type clears a code that no longer matches. */
+  if (!/setRow\(r\.key, \{ configId: v, \.\.\.\(keep \? \{\} : \{ houseTypeId: "" \}\) \}\)/.test(form)) {
+    fail("changing a row's house type leaves a code of another type on it, so the "
+      + "Sunflower's name would be saved on a house it is not");
+  }
+}
+
 // 5. At the top of the Plots tab, and never in the way of it.
 {
   const bd = tab.indexOf("<PlotBreakdown");

@@ -67,6 +67,21 @@ export default function AddPlotsForm({
 
   const houseOf = (id) => houseTypes.find((h) => String(h.House_Type_ID) === String(id)) || null;
 
+  /* ── The codes a row can have ──
+
+     Only those whose type is the row's house type: a 3 Bed Detached row
+     offers the Carnation, not the Sunflower's 3 bed semi. Asked for off
+     a screenshot where every code was offered whatever the type.
+
+     With no house type chosen yet, every code is offered \u2014 choosing
+     one then sets the house type, which is the quicker way round. A
+     breakdown entry with no type recorded matches nothing, since there
+     is no telling which rows it belongs to; it appears only in that
+     no-type-yet list. */
+  const codesFor = (r) => (r.configId
+    ? houseTypes.filter((h) => String(h.Property_Config_ID ?? "") === String(r.configId))
+    : houseTypes);
+
   /* Every row checked against every other and against the project,
      on every keystroke. Cheap: a few hundred labels. A row is named in
      messages by its house where it has one \u2014 "also under the
@@ -191,8 +206,15 @@ export default function AddPlotsForm({
           return (
             <div key={r.key} className="ap-block">
               <div className="ap-row" role="row">
-                <Select value={r.configId} onChange={(v) => setRow(r.key, { configId: v })}
-                  aria-label="House type">
+                <Select value={r.configId} aria-label="House type"
+                  onChange={(v) => {
+                    /* A code chosen before is cleared if it is not this
+                       type \u2014 SUNF on a 3 Bed Detached row would save
+                       the Sunflower's name on a house it is not. */
+                    const h = houseOf(r.houseTypeId);
+                    const keep = h && String(h.Property_Config_ID ?? "") === String(v);
+                    setRow(r.key, { configId: v, ...(keep ? {} : { houseTypeId: "" }) });
+                  }}>
                   <option value="">&mdash; house type &mdash;</option>
                   {(lookups.propertyConfigs || []).map((c) => (
                     <option key={c.Property_Config_ID} value={c.Property_Config_ID}>
@@ -208,7 +230,7 @@ export default function AddPlotsForm({
                     still be changed after, for a plot built differently.
                     Offered only when the development has a breakdown. */}
                 <Select value={r.houseTypeId} aria-label="Code"
-                  disabled={!houseTypes.length}
+                  disabled={!codesFor(r).length}
                   onChange={(v) => {
                     const h = houseOf(v);
                     setRow(r.key, {
@@ -216,8 +238,11 @@ export default function AddPlotsForm({
                       ...(h?.Property_Config_ID ? { configId: String(h.Property_Config_ID) } : {}),
                     });
                   }}>
-                  <option value="">{houseTypes.length ? "\u2014 code \u2014" : "no breakdown"}</option>
-                  {houseTypes.map((h) => (
+                  <option value="">
+                    {!houseTypes.length ? "no breakdown"
+                      : codesFor(r).length ? "\u2014 code \u2014" : "none for this type"}
+                  </option>
+                  {codesFor(r).map((h) => (
                     <option key={h.House_Type_ID} value={h.House_Type_ID}>
                       {h.Code ? `${h.Code} \u2014 ${h.Name}` : h.Name}
                     </option>

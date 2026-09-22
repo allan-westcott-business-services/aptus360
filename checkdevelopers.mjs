@@ -292,15 +292,40 @@ const lookups = {
 
 // 9. The migration exists and is additive.
 {
-  const sql = readFileSync("supabase/migrations/0198_developer_organisation_branch.sql", "utf8");
-  if (!/ADD COLUMN IF NOT EXISTS "Organisation_Branch_ID"/.test(sql)) {
-    fail("0198 does not add the column");
+  /* ── Named, not thrown ──
+
+     0198 was pasted into the SQL editor and never committed. This read
+     it with a bare readFileSync, so the check died on load and reported
+     NOTHING — the eight sections above included, none of which are
+     about that file. A crash and a failure read alike in a summary line
+     and are not alike: one looked at something and one never got to
+     look.
+
+     The same try/fail/skip checkprojecttabs uses for 0138 and
+     checkbottleends for 0163. HANDOVER asked for it here by name.
+
+     Do NOT write 0198 from the three assertions below. They are what
+     somebody wanted it to say; the file itself wants recovering from
+     the live project, and a guess in that folder is worse than a gap
+     because a gap is visible. */
+  let sql = null;
+  try {
+    sql = readFileSync("supabase/migrations/0198_developer_organisation_branch.sql", "utf8");
+  } catch {
+    fail("supabase/migrations/0198_developer_organisation_branch.sql is "
+      + "missing \u2014 whether a developer may be an organisation branch, and "
+      + "whether it stayed additive, cannot be checked");
   }
-  if (!/CHECK \("Branch_ID" IS NULL OR "Organisation_Branch_ID" IS NULL\)/.test(sql)) {
-    fail("0198 does not make one-or-the-other a rule");
-  }
-  if (/DROP COLUMN|ALTER COLUMN "Branch_ID"/.test(sql)) {
-    fail("0198 touches Branch_ID \u2014 every developer already recorded points at it");
+  if (sql) {
+    if (!/ADD COLUMN IF NOT EXISTS "Organisation_Branch_ID"/.test(sql)) {
+      fail("0198 does not add the column");
+    }
+    if (!/CHECK \("Branch_ID" IS NULL OR "Organisation_Branch_ID" IS NULL\)/.test(sql)) {
+      fail("0198 does not make one-or-the-other a rule");
+    }
+    if (/DROP COLUMN|ALTER COLUMN "Branch_ID"/.test(sql)) {
+      fail("0198 touches Branch_ID \u2014 every developer already recorded points at it");
+    }
   }
 }
 

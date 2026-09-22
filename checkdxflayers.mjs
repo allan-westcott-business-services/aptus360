@@ -415,22 +415,57 @@ const at = (f, org = null) => layerFor(f, { rules, lineTypes, organisationId: or
     fail("the endpoint orders CAD layers by a dropped column");
   }
 
-  const status = readFileSync("./supabase/migrations/0222_cad_layer_status.sql", "utf8");
-  if (!/ADD COLUMN IF NOT EXISTS "Status"/.test(status)) {
-    fail("CAD_Layer has no Status column");
+  /* ── Two migrations this check does not own ──
+
+     0221 and 0222 were pasted into the SQL editor and never committed,
+     which is invisible until something reads them. This read them with
+     a bare readFileSync and THREW, so the whole check died on load and
+     reported nothing at all — including the twenty-odd cases above,
+     which have nothing to do with either file.
+
+     A crash and a failure read the same in a summary line and are not
+     the same thing: a check that reports a fault looked at something,
+     and one that throws never got to look. So each read degrades to a
+     named failure and its own section is skipped, which is what
+     checkprojecttabs does for 0138 and checkbottleends for 0163.
+
+     Do NOT write these files from what is asserted below. The
+     assertions are what somebody wanted the migration to say, not what
+     it says; recovering them from the live project is the only way to
+     get the truth back, and a plausible guess in that folder is worse
+     than a gap because a gap is visible. */
+  let status = null;
+  try {
+    status = readFileSync("./supabase/migrations/0222_cad_layer_status.sql", "utf8");
+  } catch {
+    fail("supabase/migrations/0222_cad_layer_status.sql is missing \u2014 the "
+      + "CAD layer's Status column and its three stages cannot be checked");
   }
-  /* Constrained, so a typo cannot create a fourth stage nobody
-     notices. */
-  if (!/IN \('Planned','Existing','As-Laid'\)/.test(status)) {
-    fail("the Status column accepts anything, so 'as laid' and 'As-Laid' "
-      + "become two stages");
+  if (status) {
+    if (!/ADD COLUMN IF NOT EXISTS "Status"/.test(status)) {
+      fail("CAD_Layer has no Status column");
+    }
+    /* Constrained, so a typo cannot create a fourth stage nobody
+       notices. */
+    if (!/IN \('Planned','Existing','As-Laid'\)/.test(status)) {
+      fail("the Status column accepts anything, so 'as laid' and 'As-Laid' "
+        + "become two stages");
+    }
   }
 
-  const trim = readFileSync("./supabase/migrations/0221_cad_layer_trim.sql", "utf8");
-  for (const col of ["ACI_Colour", "Linetype", "Sort_Order", "Notes"]) {
-    if (!trim.includes(`DROP COLUMN IF EXISTS "${col}"`)) {
-      fail(`${col} is still on CAD_Layer \u2014 a column that exists invites `
-        + "data somebody reasonably expects to do something");
+  let trim = null;
+  try {
+    trim = readFileSync("./supabase/migrations/0221_cad_layer_trim.sql", "utf8");
+  } catch {
+    fail("supabase/migrations/0221_cad_layer_trim.sql is missing \u2014 whether "
+      + "the columns the schedule replaced were dropped cannot be checked");
+  }
+  if (trim) {
+    for (const col of ["ACI_Colour", "Linetype", "Sort_Order", "Notes"]) {
+      if (!trim.includes(`DROP COLUMN IF EXISTS "${col}"`)) {
+        fail(`${col} is still on CAD_Layer \u2014 a column that exists invites `
+          + "data somebody reasonably expects to do something");
+      }
     }
   }
 

@@ -21,6 +21,27 @@ export default withAuth(async function handler(req, context) {
     });
     if (error) throw error;
 
+    /* ── The drawing comes with a carried-forward design ──
+
+       "Carried forward" has always meant "copied from the previous
+       revision rather than redrawn" \u2014 and until now it copied
+       nothing, so a carried design opened on a blank canvas. The
+       drawing comes across when any design is carried, remapped id
+       by id (0232), and stays behind when every design is being
+       redrawn, because a redraw that starts from the old drawing is
+       not a redraw.
+
+       Plots are the same rule: a revision that does not copy them
+       has nothing for the drawing's meters to point at, so the
+       drawing is left behind with them. */
+    const carrying = carry_scope_ids.length > 0 && copy_plots !== false;
+    if (carrying) {
+      const { error: gErr } = await db.rpc("copy_project_drawing", {
+        p_from: Number(id), p_to: newId,
+      });
+      if (gErr) throw gErr;
+    }
+
     const { data: created, error: readErr } = await db
       .from("Project").select(PROJECT_COLUMNS).eq("Project_ID", newId).single();
     if (readErr) throw readErr;

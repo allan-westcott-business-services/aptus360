@@ -10,17 +10,29 @@
        origin, a junction, a leaf end, the place a cable count changes.
        Made and deleted by Build LV Network on every run (0204).
 
-   And two more that are not measurements but WRITING — annotation, on
-   the annotation layer 0215 made for it:
+   And one that is not a measurement but WRITING:
 
-     - a **cross-section mark** says where a section is taken (0214);
-     - a **text note** is words somebody put on the plan (0228).
-
-   Both were counted until 0229. A bill that reads "Sectionmark 2 no."
-   beside the ducting is a bill somebody has to know to ignore.
+     - a **text note** is words somebody put on the plan (0228),
+       excluded by 0229.
 
    All of them say WHERE something is measured, or SAY something about
-   the job, rather than naming WHAT is to be bought. Everything physical stays: a link box is a chamber with fuses
+   the job, rather than naming WHAT is to be bought.
+
+   ── The cross-section mark is counted, and that is not settled ──
+
+   A `sectionmark` (0214) is annotation by exactly the same argument,
+   on the same annotation layer, and it IS on the bill — every project
+   where somebody placed one reads "Sectionmark 2 no." beside the
+   ducting.
+
+   Not asserted here, because taking it off changes bills that have
+   already been issued: rows disappear and totals drop. That is a
+   decision for whoever owns the commercial side, and a check is the
+   wrong place to make one on their behalf — a case that fails until
+   somebody does what it wants is a case that gets the migration
+   written to silence it. Recorded instead, so nobody has to rediscover
+   it, and 0229's own head carries the one-line change and the query
+   for seeing what it would affect. Everything physical stays: a link box is a chamber with fuses
    in it and is counted, even when it stands exactly where a feeder end
    point would be, because it is a `linkbox` and not a `feederpoint`.
 
@@ -62,10 +74,11 @@ else {
        connection somebody asked for, and it read "Nrs" on the sheet —
        initcap on an acronym, naming a line item nobody would
        recognise. */
-    /* `sectionmark` and `textnote` joined them at 0229: both are
-       annotation, and neither is a thing that arrives on a lorry. */
+    /* `textnote` joined them at 0229: a note is words on a drawing, and
+       nobody orders words. `sectionmark` is the same kind of thing and
+       is deliberately NOT here — see the head of this file. */
     for (const role of ["plot", "spannode", "feederpoint", "nrs",
-      "sectionmark", "textnote"]) {
+      "textnote"]) {
       if (!roles.includes(role)) {
         fail(`${newest} counts ${role}s on the bill \u2014 nobody orders one`);
       }

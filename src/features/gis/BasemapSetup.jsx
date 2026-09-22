@@ -4,6 +4,7 @@ import Banner from "../../components/Banner.jsx";
 import { getBasemap, saveBasemap, removeBasemap, uploadBasemap, readImageSize } from "../../api/basemap.js";
 import { pdfPageCount, pdfPageSize } from "./pdfToImage.js";
 import CalibrationView from "./CalibrationView.jsx";
+import { impliedScaleOf, statedScaleOf, scaleDisagrees } from "./planScale.js";
 
 /* Getting the canvas ready to draw on.
 
@@ -126,7 +127,11 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
     ? Math.hypot(calPts[1][0] - calPts[0][0], calPts[1][1] - calPts[0][1])
     : 0;
   const derivedMpp = calPx && Number(calDist) ? Number(calDist) / calPx : null;
-  const impliedScale = derivedMpp ? Math.round(derivedMpp * 1000) : null;
+  /* The scale the calibration implies, worked out in PDF POINTS
+     (planScale.js) \u2014 it was worked in millimetres and a correct
+     1:250 read as 1:88. None is claimed for an image. */
+  const isPdfPlan = basemap?.Source_Kind === "pdf";
+  const impliedScale = impliedScaleOf(derivedMpp, basemap?.Source_Kind);
 
   async function saveScale() {
     if (!derivedMpp) return setError("Place two points and enter the distance between them.");
@@ -140,7 +145,8 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
       });
       onChange(saved);
       setStep("ref");
-      setStatus(`Calibrated: 1 pixel = ${derivedMpp.toFixed(4)} m (about 1:${impliedScale})`);
+      setStatus(`Calibrated: 1 ${isPdfPlan ? "point" : "pixel"} = ${derivedMpp.toFixed(4)} m`
+        + (impliedScale ? ` (about 1:${impliedScale})` : ""));
       setTimeout(() => setStatus(""), 5000);
       setError("");
     } catch (e) { setError(e.message); }
@@ -307,8 +313,11 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
                 <div className="bs-result">
                   {derivedMpp ? (
                     <>
-                      <strong>1 px = {derivedMpp.toFixed(4)} m</strong>
-                      <span>roughly 1:{impliedScale} &middot; measured over {Math.round(calPx)} px</span>
+                      <strong>1 {isPdfPlan ? "pt" : "px"} = {derivedMpp.toFixed(4)} m</strong>
+                      <span>
+                        {impliedScale ? <>roughly 1:{impliedScale} &middot; </> : null}
+                        measured over {Math.round(calPx)} {isPdfPlan ? "points" : "px"}
+                      </span>
                       {calPx > 0 && calPx < 120 && (
                         <span className="bs-warn">
                           Short baseline &mdash; 1px of error here is about{" "}
@@ -321,9 +330,7 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
                           Good baseline &mdash; error stays under {(100 / calPx).toFixed(2)}%
                         </span>
                       )}
-                      {statedScale && impliedScale &&
-                        Math.abs(impliedScale - Number(statedScale.replace(/[^0-9]/g, ""))) >
-                          Number(statedScale.replace(/[^0-9]/g, "")) * 0.05 && (
+                      {scaleDisagrees(impliedScale, statedScaleOf(statedScale)) && (
                         <span className="bs-warn">
                           Doesn&rsquo;t match the stated {statedScale} &mdash; worth re-checking
                         </span>
@@ -428,7 +435,10 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
               </div>
 
               <div className="bs-summary">
-                <div><span>Scale</span><strong>1 px = {mpp?.toFixed(4)} m</strong></div>
+                <div><span>Scale</span><strong>
+                  1 {isPdfPlan ? "pt" : "px"} = {mpp?.toFixed(4)} m
+                  {impliedScaleOf(mpp, basemap?.Source_Kind) ? ` \u00b7 1:${impliedScaleOf(mpp, basemap?.Source_Kind)}` : ""}
+                </strong></div>
                 <div><span>Plan size</span>
                   <strong>{(basemap.Image_Width * (mpp || 0)).toFixed(0)} × {(basemap.Image_Height * (mpp || 0)).toFixed(0)} m</strong>
                 </div>

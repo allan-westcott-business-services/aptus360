@@ -218,6 +218,7 @@ caught a fault that had already shipped at least once.
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
+| `node checkplanscale.mjs` | A PDF's scale is worked in points; an image claims none |
 | `node checkosalign.mjs` | OS tiles read from the numbers, and a plan is tied to the grid without moving |
 | `node checkhistorywho.mjs` | The history says who, settled by the server and never at the cost of a save |
 | `node checkprojectfields.mjs` | What the create form asks for, the project can change afterwards |
@@ -7906,6 +7907,46 @@ characters is a hundred lines of prose and no rules at all.
      Not built yet, and the natural next piece: importing the
      developer's own DXF, which lands on the grid with no matching at
      all when it is drawn on it — as all three of their real files were.
+
+181. **Escapes inside quoted JSX attributes.** Reported off a
+     screenshot: the Setup menu read "Import OS Tile\u2026". Written as
+     `label="Import OS Tile\u2026"` — and JSX takes a quoted attribute
+     as written, like HTML, never processing its escapes. Inside `{…}`
+     it is JavaScript and works, which is why "Align OS Tile…" right
+     under it was fine.
+
+     `checkjsxescapes` missed it because it treated a quoted attribute
+     as a JavaScript string. It now tells them apart — `name="` with
+     nothing between the name, the = and the quote is an attribute;
+     code here writes `x = "` — and reports an escape inside one.
+
+     Turning it on found **five more, all older**: four menu tooltips
+     (substation feed, looped substation, open point, water main
+     click) showing a literal `\u2014`, and the portal logo's `alt`
+     text, which a screen reader reads out as "backslash u two zero one
+     four". All six now carry the real character.
+
+182. **"Doesn't match the stated 1:250" on a correct calibration.**
+     Reported off a screenshot: a plan calibrated at 0.0881 m per unit
+     read as "roughly 1:88", against a stated 1:250. The calibration was
+     right. The implied scale was `metres per unit × 1000` — one unit
+     of the plan taken as a millimetre of paper — and a PDF's unit is a
+     POINT, 1/72 inch, 0.3528 mm. So every PDF read at 0.35 of its true
+     scale, and every correct calibration of a PDF with a stated scale
+     tripped the warning. Worked properly, 0.0881 m per point is 1:250.
+
+     `planScale.js` does it in points now, and the setup, the saved
+     summary and the warning all read it. The calibration readout says
+     "1 pt" for a PDF rather than "1 px".
+
+     **An image claims no scale.** A pixel has no size on paper until
+     the scan resolution is known, which the file does not reliably
+     say, so nothing is shown and nothing compared — a number with no
+     basis would only be the same false alarm.
+
+     Only the REPORTED scale was wrong. The calibration itself — metres
+     per unit, from two points and a typed distance — never used this
+     sum, so every drawing calibrated so far is correct.
 
 ## Decisions worth knowing
 

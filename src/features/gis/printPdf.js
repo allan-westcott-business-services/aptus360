@@ -175,6 +175,29 @@ function drawItems(page, items, plan, font) {
          centred by its baseline sits a third of itself too high. */
       const centred = it.align === "centre" || it.align === "center";
       const w = centred ? font.widthOfTextAtSize(String(it.text), size) : 0;
+
+      /* ── A plate behind the words, where the item asks for one ──
+
+         A cable label carries its cable's colour, paled, so labels a
+         few millimetres apart can be told apart by which cable they
+         match. Measured from the font like the centring above, so
+         the plate fits the words whatever they say. Drawn before the
+         text, and tall enough that stacked rows of one label (cable,
+         then length) meet and read as one block. */
+      if (it.plate) {
+        const tw = font.widthOfTextAtSize(String(it.text), size);
+        const pad = size * 0.22;
+        const left = centred ? x - tw / 2 : x;
+        page.drawRectangle({
+          x: left - pad,
+          y: y - size * 0.3,
+          width: tw + pad * 2,
+          height: size * 1.12,
+          color: colour(it.plate),
+          borderWidth: 0,
+        });
+      }
+
       page.drawText(String(it.text), {
         x: centred ? x - w / 2 : x,
         y: centred ? y - size * 0.35 : y,

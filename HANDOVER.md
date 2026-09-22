@@ -7795,6 +7795,41 @@ characters is a hundred lines of prose and no rules at all.
      service pair outside the feeder plan. Services print on their
      true line.
 
+179. **Cable labels print on a pale plate of their cable's colour.**
+     Black labels a few millimetres apart, over three circuits in one
+     trench, gave no way to tell which belonged to which. Each cable
+     label now sits on a tint of the colour its cable prints in — the
+     feeder plan's circuit or output colour where there is one, the
+     style's otherwise — so a magenta cable's label is on pale
+     magenta. The text stays dark.
+
+     `tint()` mixes the colour 78% toward white (`PLATE_TINT`): plain
+     enough to match to its cable across a sheet, pale enough that 6 pt
+     text reads on it and the plate is not mistaken for a thick stroke
+     of cable. The PDF writer sizes each plate from the font, like the
+     centring beside it, and the rows of one label meet into one block.
+     Trench labels get none: a trench's label is its own name and has
+     no colour to borrow.
+
+     Checked on a real sheet of project 20, not only in the draw list:
+     the two labels that sat on top of each other at the corner of the
+     trunk now read as a cyan cable and an orange one.
+
+     **And the canvas now does the same.** It turned out the canvas
+     already drew a tinted plate — but from the STYLE colour, which is
+     the layer's amber for every electric cable, so a magenta circuit's
+     label and a cyan one's sat on the same pale amber. It reads the
+     feeder plan's colour now (`fp.colour`, the colour the line was
+     just drawn in), at `LABEL_PLATE_TINT` from pillColour.js — one
+     figure for both surfaces, which the sheet's `PLATE_TINT` now
+     re-exports rather than keeping its own.
+
+     The rule is one line: the plate matches the line it names. A
+     selected cable is drawn blue, so its label's plate goes pale blue
+     with it. (Asked beforehand whether a selected label turns blue; it
+     did not — only the line did — and the answer given was wrong. The
+     rule above is what was built instead, and says the same thing.)
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

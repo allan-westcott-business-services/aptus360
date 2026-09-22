@@ -69,6 +69,14 @@ export function contrast(a, b) {
    labels on one line look like two different things.
 
    `amount` is how far towards white, 0 to 1. */
+/* ── How pale a cable label's plate is ──
+
+   One figure for the canvas and the printed sheet, so a label reads
+   the same on both. 0.78 toward white: plain enough to match a label
+   to its cable across a drawing, pale enough that dark text reads on
+   it and the plate is not mistaken for a thick stroke of cable. */
+export const LABEL_PLATE_TINT = 0.78;
+
 export function tint(colour, amount = 0.85) {
   const rgb = parseHex(colour);
   if (!rgb) return "#ffffff";

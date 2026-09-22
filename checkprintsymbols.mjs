@@ -377,6 +377,73 @@ const items = (features, more = {}) =>
   }
 }
 
+// 10. A cable label sits on a pale plate of its cable's colour.
+{
+  /* Black labels a few millimetres apart, over three circuits in one
+     trench, gave no way to tell which belonged to which. Each now sits
+     on a tint of its cable's printed colour. */
+  const { tint, PLATE_TINT } = await import("./src/features/gis/printVector.js");
+  if (tint("#e90cd6", PLATE_TINT) !== "#facaf6") fail("the plate tint is not a pale version of the colour");
+  if (tint("nope") !== null) fail("a colour that is not hex gives a guessed plate");
+
+  const cable = {
+    Feature_ID: 201, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[10, 10], [110, 10]],
+    Attributes: { Line_Type: "elec_main", VD_Cable_Size_ID: 4, Length_m: 100 },
+  };
+  const out = items([cable], {
+    cableName: () => "3c Wave 300",
+    feederPlan: new Map([[201, { colour: "#0ae5f5" }]]),
+  });
+  const words = out.filter((i) => i.kind === "text" && i.id === 201);
+  if (!words.length) fail("the cable prints no label");
+  else if (!words.every((i) => i.plate === tint("#0ae5f5", PLATE_TINT))) {
+    fail("a cable label is not on a plate of its CIRCUIT's colour \u2014 the "
+      + "feeder plan's colour is the one the cable prints in");
+  }
+
+  /* A trench's label is its own name and has no colour to borrow. */
+  const trench = {
+    Feature_ID: 202, Feature_Type: "line", Layer_Key: "trench", Label: "T1",
+    Geometry: [[10, 60], [110, 60]], Attributes: { Line_Type: "trench" },
+  };
+  const t = items([trench]).filter((i) => i.kind === "text" && i.id === 202);
+  if (t.some((i) => i.plate)) fail("a trench's label is put on a coloured plate");
+
+  const writer = readFileSync("./src/features/gis/printPdf.js", "utf8");
+  if (!/if \(it\.plate\) \{[\s\S]{0,400}drawRectangle/.test(writer)) {
+    fail("the PDF writer ignores the plate, so it never reaches the page");
+  }
+}
+
+// 11. The canvas tints the same way, from the same place.
+{
+  /* The canvas already put a tint behind cable labels, but from the
+     STYLE colour \u2014 the layer's amber for every electric cable \u2014 so a
+     magenta circuit's label and a cyan one's sat on the same pale
+     amber. It reads the feeder plan's colour now, at the strength the
+     sheet uses, so a label reads alike on screen and on paper. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const pill = readFileSync("./src/lib/pillColour.js", "utf8");
+  const pv = readFileSync("./src/features/gis/printVector.js", "utf8");
+  if (!/export const LABEL_PLATE_TINT = /.test(pill)) {
+    fail("there is no one strength for a label plate, so screen and sheet drift");
+  }
+  if (!/export const PLATE_TINT = LABEL_PLATE_TINT;/.test(pv)) {
+    fail("the sheet's plate strength is its own number rather than the shared one");
+  }
+  if (!/const plateColour = on \? "#1d4ed8" : \(fp\?\.colour \?\? st\.colour\);/.test(canvas)) {
+    fail("the canvas plate is not tinted from the circuit colour the line is "
+      + "drawn in \u2014 every electric label sits on the same pale amber");
+  }
+  if (!/tint\(plateColour, LABEL_PLATE_TINT\)/.test(canvas)) {
+    fail("the canvas plate uses a different strength from the sheet's");
+  }
+  if (/tint\(st\.colour, 0\.86\)/.test(canvas)) {
+    fail("the canvas still tints labels from the layer colour at its old strength");
+  }
+}
+
 /* ── Not held here, and worth knowing ──
 
    The canvas draws ten roles with a bespoke symbol; the sheet draws

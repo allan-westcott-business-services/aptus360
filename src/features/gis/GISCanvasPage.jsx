@@ -242,7 +242,7 @@ import {
 } from "./undoStack.js";
 import TrenchCheck from "./TrenchCheck.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
-import { tint } from "../../lib/pillColour.js";
+import { tint, LABEL_PLATE_TINT } from "../../lib/pillColour.js";
 
 /* GIS canvas — stage 1.
 
@@ -6576,10 +6576,28 @@ export default function GISCanvasPage() {
               ctx.arcTo(bx, by, bx + w, by, rad);
               ctx.closePath();
             }
-            ctx.fillStyle = own ? tint(st.colour, 0.86) : "rgba(255,255,255,.92)";
+            /* ── The cable's own colour, not its layer's ──
+
+               The plate was tinted from the STYLE colour, which for
+               every electric cable is the layer's amber \u2014 so labels on
+               a magenta circuit and a cyan one sat on the same pale
+               amber and said nothing about which cable they named.
+               It reads the feeder plan's colour now, the colour the
+               line itself was just drawn in, and the strength is the
+               one the printed sheet uses (LABEL_PLATE_TINT), so a
+               label reads the same on paper as on screen.
+
+               One rule: the plate matches the line it names. A
+               selected cable's line is drawn blue, so its label's
+               plate goes pale blue with it \u2014 which is the same rule
+               and also says which label belongs to what was picked. */
+            const plateColour = on ? "#1d4ed8" : (fp?.colour ?? st.colour);
+            ctx.fillStyle = own
+              ? tint(plateColour, LABEL_PLATE_TINT)
+              : "rgba(255,255,255,.92)";
             ctx.fill();
             if (own) {
-              ctx.strokeStyle = tint(st.colour, 0.45);
+              ctx.strokeStyle = tint(plateColour, 0.45);
               ctx.lineWidth = 1;
               ctx.stroke();
             }

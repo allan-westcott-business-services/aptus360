@@ -39,8 +39,10 @@ import {
 import { isBottleEnd, symbolSpin, BOTTLE_END_COLOUR } from "./joints.js";
 import { VALVE_WIDTH_M } from "./serviceValves.js";
 import { lineLabelText } from "./lineLabel.js";
+import { isTrenchType } from "./snapping.js";
 import { labelShown, DEFAULT_LABEL_KINDS } from "./labelKinds.js";
 import { mmPerMetre } from "./printSheet.js";
+import { LABEL_PLATE_TINT } from "../../lib/pillColour.js";
 import { feederRenderPlan, offsetPolyline } from "./feederColour.js";
 import { lvOrigins } from "./electric.js";
 import {
@@ -191,6 +193,24 @@ function touches(f, tile, padM = 1) {
    cables in one trench sit 0.75 mm either side of the true line and
    1.5 mm apart centre to centre. */
 export const PRINT_LANE_MM = 1.5;
+
+/* How far a label's plate is mixed toward white — the SAME figure the
+   canvas uses, from one place, so a label reads the same on paper as on
+   screen. Re-exported under its old name for anything reading it here. */
+export const PLATE_TINT = LABEL_PLATE_TINT;
+
+/* A colour mixed toward white by `amount` (0 = unchanged, 1 = white).
+   Hex in, hex out; anything that is not a hex colour gives null
+   rather than a guess, and the label simply prints without a plate. */
+export function tint(hex, amount = PLATE_TINT) {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex || "").trim());
+  if (!m) return null;
+  let h = m[1];
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  const mix = (i) => Math.round(parseInt(h.slice(i, i + 2), 16)
+    + (255 - parseInt(h.slice(i, i + 2), 16)) * amount);
+  return "#" + [0, 2, 4].map((i) => mix(i).toString(16).padStart(2, "0")).join("");
+}
 
 export function pageDrawList(features = [], tile, {
   /* The canvas's feeder plan, where the caller already has one. */
@@ -849,6 +869,27 @@ export function pageDrawList(features = [], tile, {
         /* Stacked upward from the line, so a three-line tag grows away
            from the run rather than across it. */
         const rows = String(txt).split("\n");
+
+        /* ── A plate in the cable's own colour ──
+
+           Every cable label printed black on white, and where three
+           circuits share a trench their labels sit a few millimetres
+           apart with nothing to say which belongs to which. Reported
+           off an issued PDF. Each label now sits on a pale plate of
+           the colour its cable prints in \u2014 the feeder plan's circuit
+           colour where there is one, the style's otherwise \u2014 so a
+           magenta cable's label is on pale magenta.
+
+           Pale, not the colour itself: the text stays dark and must
+           stay readable, and a full-strength plate would also read as
+           a thick stroke of cable. The tint is the colour mixed
+           mostly with white. Only cables and pipes get one; a
+           trench's label is its own name and has no colour to borrow. */
+        const lineColour = plan?.get?.(Number(f.Feature_ID))?.colour
+          ?? ap.colour ?? null;
+        const plate = isTrenchType(f.Attributes?.Line_Type, lineTypes) || !lineColour
+          ? null : tint(lineColour, PLATE_TINT);
+
         for (const pl of placements) {
           const put = Array.isArray(pl?.at) && pl.at.length === 2
             ? toPage([Number(pl.at[0]), Number(pl.at[1])])
@@ -864,6 +905,7 @@ export function pageDrawList(features = [], tile, {
               text: line,
               sizePt: 6,
               colour: ap.labelColour ?? "#0f172a",
+              plate,
               id: f.Feature_ID,
             });
           });

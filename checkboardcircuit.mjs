@@ -631,6 +631,67 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
   }
 }
 
+/* ── Fault current at a node ──
+
+   Asked for on the levels table and the node label. Phase volts over
+   the loop impedance already reported at that point: what a fault to
+   neutral there would draw, and what the cut-out fuse has to clear.
+   Worst — lowest — at the end of the line, which is the figure worth
+   looking at.
+
+   Worked out where the levels are, with the circuit's own origin in
+   hand, so the table and the label read one number rather than each
+   dividing for itself. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/faultAmps: figure\.ohms > 0 \? phaseV \/ figure\.ohms : null/.test(canvas)) {
+    fail("fault current is not worked out with the levels");
+  }
+  /* Output_V is the LINE voltage by this app's convention, so phase
+     volts is that over root three. */
+  if (!/const phaseV = voltageOf\(r\.model\?\.origin \|\| station\) \/ Math\.sqrt\(3\)/.test(canvas)) {
+    fail("fault current uses the line voltage rather than the phase voltage, so "
+      + "every figure is 1.73 times what it should be");
+  }
+  /* Zero impedance divides to infinity, which prints as a number. */
+  if (!/figure\.ohms > 0 \?/.test(canvas)) {
+    fail("a node with no impedance yet prints an infinite fault current");
+  }
+  /* On the table, beside the impedance it comes from. */
+  const head = canvas.indexOf("Loop impedance from the origin");
+  const pscc = canvas.indexOf("PSCC", head);
+  const vd = canvas.indexOf("%VD{vdBasis", head);
+  if (pscc < 0) fail("the levels table has no fault current column");
+  else if (!(pscc < vd)) fail("the fault current column is not beside the impedance");
+  if (!/l\.vd\.faultAmps != null/.test(canvas)) {
+    fail("the table does not read the figure, or prints a blank as zero");
+  }
+
+  /* ── The node label, two lines ──
+
+       load · fault current
+       volt drop · impedance
+
+     What the point carries above what it costs. */
+  if (!/\$\{carried\.toFixed\(1\)\} kVA/.test(canvas)
+    || !/\$\{Math\.round\(amps\)\} A/.test(canvas)) {
+    fail("the node label's first line is not the load and the fault current");
+  }
+  if (!/lines\.forEach\(\(t, i\) => \{/.test(canvas)) {
+    fail("the node label is drawn as one line, so four figures run off into the "
+      + "drawing");
+  }
+  /* The plate and the grab box follow the two lines, or the label is
+     drawn outside its own background and cannot be dragged by half of
+     itself. */
+  if (!/ctx\.fillRect\(x - 2, y - h \/ 2, w \+ 4, h\)/.test(canvas)) {
+    fail("the label's plate is still one line tall");
+  }
+  if (!/x: x - 2, y: y - h \/ 2, w: w \+ 4, h,/.test(canvas)) {
+    fail("the label can only be grabbed by its first line");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "A circuit can be born on a spare way and membered by a board (flats-only designs build).");
 process.exit(bad ? 1 : 0);

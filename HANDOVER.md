@@ -8133,6 +8133,56 @@ characters is a hundred lines of prose and no rules at all.
      slices in 160, in a new form: a check that describes the code
      rather than what it does fails on every honest edit.
 
+188. **Fault current at every node.** Asked for on the levels table and
+     the node label. `phase volts ÷ the loop impedance at that point` —
+     the same division the Aptus Calc Sheet makes for a whole route,
+     made per node. A fault to NEUTRAL, which is what a service cut-out
+     sees, and lowest at the end of the line, which is the figure that
+     decides whether a fuse clears in time.
+
+     Worked out where the levels are, with the circuit's own origin in
+     hand, and carried on the figure as `faultAmps` — so the table and
+     the label read one number rather than each dividing for itself.
+     Null where the impedance is zero: dividing would print an infinite
+     current, which reads as a number.
+
+     `Output_V` is the LINE voltage by this app's convention (the POC
+     editor says amps are kVA over √3 × V), so phase volts is that over
+     √3. **This is the open question from the calc sheet note** — on
+     project 16 the POC holds 240, which is a phase voltage typed into
+     a line-voltage field, and the fault currents there read 1.73 times
+     low as a result. Settling `Output_V` fixes the amps column, the
+     calc sheet and this together.
+
+     **The node label wraps onto two lines**, cause above effect:
+
+         load · fault current
+         volt drop · impedance
+
+     The plate and the drag box grew with it, or the label would be
+     drawn outside its own background and be grabbable by half of
+     itself.
+
+     The levels table's own width was wrong before this: the section
+     heading spanned 12 of 13 columns and the totals row 10. With PSCC
+     they are 14, and both now say 14.
+
+189. **623 dash escapes became dashes in GISCanvasPage.** A
+     `.replace("\\u2014", "—")` written to tidy a block I was inserting
+     was applied to the whole file string, and JavaScript's string
+     replace takes the first match — but it ran once per edit, and over
+     many edits it swept the file. 451 of them are in comments.
+
+     Nothing behaves differently: `"\\u2014"` and `"—"` are the same
+     string once the file is read, and in JSX markup the literal is the
+     form `checkjsxescapes` wants. Left as it is rather than churned
+     back, but it explains a large diff in that file.
+
+     It did break `checkbreechplace`, which pinned two status messages
+     by their escape form. Both now accept either. That is the fourth
+     check this month that described the source rather than what it
+     does.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

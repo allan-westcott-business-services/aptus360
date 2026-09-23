@@ -114,7 +114,7 @@ import { anchorSnapshot, withMovedAnchor, anchorUpdates } from "./anchorFollow.j
 import { nodeFedBy as nodeFedByLine, runThrough as runThroughNode } from "./spanNodes.js";
 /* `cableIdOf` is the one rule for which size a run is laid in: the
    override where somebody set one, the build's own answer elsewhere.
-   Kept above the braces rather than inside them \u2014 a comment between
+   Kept above the braces rather than inside them — a comment between
    the names reads as a name to anything parsing the list, and
    checkimports reported two exports that do not exist. */
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
@@ -514,7 +514,7 @@ export default function GISCanvasPage() {
   /* Plant waiting for its click: { role, layerKey }. A POC is the point
      where the site meets the operator's network, and on a site fed
      from more than one of them WHICH trench it lands on decides which
-     network it owns \u2014 so it goes where somebody clicks, not in the
+     network it owns — so it goes where somebody clicks, not in the
      middle of whatever the view happens to be. Same one-shot shape as
      a lighting column: set by the menu, consumed by the next canvas
      click, cancelled by Escape. */
@@ -600,13 +600,13 @@ export default function GISCanvasPage() {
      Tested in the label's own frame: the pointer is turned back about
      the label's anchor by however far the label was turned forward,
      then compared with the upright box it was drawn from, with six
-     pixels of slack on every side \u2014 a label is fifteen pixels tall and
+     pixels of slack on every side — a label is fifteen pixels tall and
      often the smallest thing on the drawing.
 
      At component level so the left-click that drags a label and the
      right-click that edits its feature ask the same question the same
-     way. Two copies would drift, and the symptom \u2014 a label that drags
-     but will not right-click, or the reverse \u2014 reads as the canvas
+     way. Two copies would drift, and the symptom — a label that drags
+     but will not right-click, or the reverse — reads as the canvas
      being fussy. */
   const labelContains = (r, px, py) => {
     let x = px;
@@ -623,8 +623,8 @@ export default function GISCanvasPage() {
     return x >= r.x - PAD && x <= r.x + r.w + PAD
       && y >= r.y - PAD && y <= r.y + r.h + PAD;
   };
-  /* The label on top at a point, newest first so the one drawn last \u2014
-     the one visibly on top \u2014 wins. */
+  /* The label on top at a point, newest first so the one drawn last —
+     the one visibly on top — wins. */
   const labelUnder = (px, py) =>
     [...labelHits.current].reverse().find((r) => labelContains(r, px, py)) ?? null;
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -667,7 +667,7 @@ export default function GISCanvasPage() {
      rows are called "Service joint — Plot 21". */
   const [traceOrder, setTraceOrder] = useState("label");
   /* Which circuit the levels table shows, where the check ran several.
-     One at a time \u2014 two circuits' levels side by side at shared points
+     One at a time — two circuits' levels side by side at shared points
      read as one network with contradictory figures. Null means the
      first circuit; the trace's own single-circuit case never asks. */
   const [traceCircuit, setTraceCircuit] = useState(null);
@@ -716,7 +716,7 @@ export default function GISCanvasPage() {
        JOIN_REACH_M is a third of a metre: the distance at which two
        things are CONNECTED. Drawing is not that precise. A joint's
        symbol is drawn several metres wide on screen, and somebody
-       starting a cable at it clicks the symbol \u2014 which lands a metre or
+       starting a cable at it clicks the symbol — which lands a metre or
        two from the point the joint actually occupies unless the snap
        happened to fire.
 
@@ -724,7 +724,7 @@ export default function GISCanvasPage() {
        first and is worse in two ways: it reads the view during render,
        which is a dependency this function cannot have where it sits,
        and it makes the same drawing behave differently depending on how
-       far in somebody happened to be \u2014 invisibly.
+       far in somebody happened to be — invisibly.
 
        Being generous is safe here in a way it is not elsewhere: two
        fittings of different circuits within reach refuses outright
@@ -752,7 +752,7 @@ export default function GISCanvasPage() {
         /* ── "shape" is what a line IS, not what it is for ──
 
            Every line on these drawings carries `Feature_Role: "shape"`
-           \u2014 trenches, services, cables, and the circuit outlines alike.
+           — trenches, services, cables, and the circuit outlines alike.
            An earlier version of this required NO role, on the reading
            that a lasso was the odd one out; on a real drawing that
            matched nothing at all, and only fittings ever contributed.
@@ -835,8 +835,8 @@ export default function GISCanvasPage() {
     }
     if (!seen.size) return {};
     /* Nearest wins. A tie between two circuits is the one case nobody
-       can resolve from the drawing \u2014 the cable was started exactly
-       between them \u2014 and it refuses rather than picking. */
+       can resolve from the drawing — the cable was started exactly
+       between them — and it refuses rather than picking. */
     const ranked = [...seen.values()]
       .sort((x, y) => (x.rank - y.rank) || (x.d - y.d));
     /* A tie is two of the SAME kind at the same distance: a cable
@@ -1467,11 +1467,11 @@ export default function GISCanvasPage() {
   /* What the gas check depends on, as one string.
 
      One function, used both to record what a check measured and to
-     decide whether it is still valid \u2014 two implementations would
+     decide whether it is still valid — two implementations would
      eventually disagree, and the failure would be a check that never
      goes stale or one that never survives.
 
-     Geometry, pipe size and line type \u2014 the three things that change
+     Geometry, pipe size and line type — the three things that change
      an answer. Deliberately not the whole feature: a label offset, a
      note or a build status changes the drawing without changing the
      network, and treating those as edits threw away a valid check. */
@@ -1483,7 +1483,7 @@ export default function GISCanvasPage() {
 
      Cleared on any edit rather than left to go stale: a pressure beside
      a node after the pipe under it was resized is a number nobody can
-     tell is wrong, and it is wrong in the direction that matters \u2014 it
+     tell is wrong, and it is wrong in the direction that matters — it
      still says the design passes.
 
      Counted rather than deep-compared: features is replaced on every
@@ -1497,7 +1497,7 @@ export default function GISCanvasPage() {
        Comparing the features array by identity was too blunt: every
        edit makes a new array, including moving a label. Dragging a
        pressure label therefore cleared the pressures the moment it
-       started \u2014 they all vanished on mousedown.
+       started — they all vanished on mousedown.
 
        So the comparison is a fingerprint of what the check actually
        measured: which pipes exist, where they run, and what size they
@@ -1512,7 +1512,7 @@ export default function GISCanvasPage() {
   }, [networkFingerprint, gasLevelsResult]);
 
   /* The pressure at each span node, by its label, for drawing on the
-     canvas. Null when the gas layer is hidden or no check has run \u2014
+     canvas. Null when the gas layer is hidden or no check has run —
      both mean there is nothing to say rather than a figure of zero. */
   const gasPressureAt = useMemo(() => {
     if (!gasLevelsResult?.legs || hidden.includes("gas")) return null;
@@ -1521,7 +1521,7 @@ export default function GISCanvasPage() {
       if (l.to && l.at != null) m.set(String(l.to), l.at);
     }
     /* And the origin, which no leg ends at, from the figure the check
-       started with rather than from the highest leg \u2014 the highest leg
+       started with rather than from the highest leg — the highest leg
        is the first node after the source, which on any network with a
        drop is a different number. */
     const first = gasLevelsResult.legs[0]?.from;
@@ -1599,14 +1599,14 @@ export default function GISCanvasPage() {
       setMeasuredAsk({
         rows: changed,
         /* Pre-filled with the redrawn length, which is the answer most
-           of the time \u2014 but typed over freely, because the whole point
+           of the time — but typed over freely, because the whole point
            of a measured length is that the drawing is not it. */
         entry: changed[0].now.toFixed(1),
       });
     }
   }, [features]);
 
-  /* Keep, remove, or update \u2014 the three answers.
+  /* Keep, remove, or update — the three answers.
 
      Keeping writes nothing at all: the measurement is already what it
      should be, and the baseline above has moved on, so there is nothing
@@ -1624,7 +1624,7 @@ export default function GISCanvasPage() {
       await bulkUpdateFeatures(projectId, rows);
       await load(projectId);
       setStatus(how === "remove"
-        ? `${rows.length} measured length(s) cleared \u2014 the drawing answers again`
+        ? `${rows.length} measured length(s) cleared — the drawing answers again`
         : `${rows.length} measured length(s) set to ${v.toFixed(1)} m`);
       setTimeout(() => setStatus(""), 8000);
     } catch (e) { setError(e.message); }
@@ -1639,7 +1639,7 @@ export default function GISCanvasPage() {
 
      Kept per project, and restored when that project opens again.
 
-     The canvas lost its position whenever the page remounted \u2014 coming
+     The canvas lost its position whenever the page remounted — coming
      back to the tab after the browser had discarded it, a deploy
      swapping the chunk underneath, anything that unmounts the tree.
      `view` is component state, so a remount put somebody back at the
@@ -1685,7 +1685,7 @@ export default function GISCanvasPage() {
      the old behaviour and the honest answer when there is no cable to
      align to. */
   /* Both from joints.js, so the print turns a symbol exactly as the
-     screen does \u2014 the geometry is the same fact on either. Wrapped
+     screen does — the geometry is the same fact on either. Wrapped
      here only to bind the drawing they are read against. */
   const jointAngle = useCallback(
     (joint) => jointAngleOf(joint, features), [features]);
@@ -1730,8 +1730,8 @@ export default function GISCanvasPage() {
        is: the rest can be run again later.
 
        "There is nothing waiting for this step" is answered by saying
-       what running it would still do \u2014 re-lay a service whose ground
-       has moved, sweep a duplicate \u2014 because otherwise the only honest
+       what running it would still do — re-lay a service whose ground
+       has moved, sweep a duplicate — because otherwise the only honest
        answer is no, and somebody who meant to tidy the drawing has no
        way to ask for it. */
     if (r.warn && !window.confirm(r.settled
@@ -1907,8 +1907,8 @@ export default function GISCanvasPage() {
          A part rooted at it gives it one, and the chain across the link
          is applied below.
 
-         Worked out the same way the build works it out \u2014 nearer to the
-         source is first \u2014 because the two must agree about which board
+         Worked out the same way the build works it out — nearer to the
+         source is first — because the two must agree about which board
          is fed from which. */
       const msdbLinks = (() => {
         const boards = src.filter((x) => x.Feature_Role === "msdb"
@@ -1967,7 +1967,7 @@ export default function GISCanvasPage() {
          "The first part without an error" was fine while every part
          began at the substation. A part rooted at an MSDB does not: its
          model's origin is the BOARD, which has no transformer and no
-         declared output voltage \u2014 so `originMissing` reports it as
+         declared output voltage — so `originMissing` reports it as
          undeclared and `continue` skips the whole circuit, taking every
          feeder point's level with it.
 
@@ -1982,13 +1982,13 @@ export default function GISCanvasPage() {
       /* ── No declared origin, no levels ──
 
          Everything downstream is computed against the origin's own
-         figures, and a POC missing one does not fail \u2014 it defaults,
+         figures, and a POC missing one does not fail — it defaults,
          and every label on the circuit reads better than the truth by
          the missing amount. A number on the drawing is read as a
          measurement; one resting on an undeclared source is worse
          than a blank, for the reason the no-cable rule below gives.
          So a circuit whose origin is not fully declared shows nothing
-         at its feeder points, per circuit \u2014 on a two-POC site the
+         at its feeder points, per circuit — on a two-POC site the
          declared circuit keeps its levels while the other waits.
          originMissing is the one place "fully declared" is defined;
          the Run Levels Check panel still runs and still says what is
@@ -2004,7 +2004,7 @@ export default function GISCanvasPage() {
          run back DOWN to ground, the link drawn through the building,
          and the second board's run UP from ground.
 
-         Costed for the load the link carries \u2014 the second board's flats
+         Costed for the load the link carries — the second board's flats
          and everything beyond it. The first board's flats come off at
          the first board and never travel this.
 
@@ -2040,7 +2040,7 @@ export default function GISCanvasPage() {
            its own dig starts from.
 
            So it is the FIRST board's riser and the SECOND board's down
-           \u2014 the reverse was tried first and read both as nought on the
+           — the reverse was tried first and read both as nought on the
            reported drawing, because each board records only the one it
            has. Getting it backwards costs nothing visible when the
            other two fields are blank, which is exactly why it needed
@@ -2078,7 +2078,25 @@ export default function GISCanvasPage() {
            than a blank. */
         skip: (leg) => !cableAtNode(src, leg.stopId),
       });
-      for (const [stopId, figure] of figures) out.set(stopId, figure);
+      /* ── Fault current, carried with the figure ──
+
+         The phase voltage over the loop impedance at the node. Worked
+         out here, where this circuit's own origin is in hand, rather
+         than at the label — the drawing must not have to go looking for
+         a voltage, and the table and the label then read one number.
+
+         `Output_V` is the LINE voltage by this app's convention (the
+         POC editor says amps are kVA over √3 × V), so phase volts is
+         that over √3. A fault to neutral is what a service cut-out
+         sees. Null where the impedance is zero: dividing would print an
+         infinite current, which reads as a number. */
+      const phaseV = voltageOf(r.model?.origin || station) / Math.sqrt(3);
+      for (const [stopId, figure] of figures) {
+        out.set(stopId, {
+          ...figure,
+          faultAmps: figure.ohms > 0 ? phaseV / figure.ohms : null,
+        });
+      }
     }
     return out.size ? out : null;
   }, [lookups, lineTypes, plotList, cableAtNode]);
@@ -2097,7 +2115,7 @@ export default function GISCanvasPage() {
           || f.Feature_Role === "feederpoint"
           /* And a link box, for the same reason: the trace stops at it,
              so its figures are computed to it. Left out, a box moved
-             along the run kept the levels it had at the old place \u2014
+             along the run kept the levels it had at the old place —
              the check does not re-run, because nothing it watches has
              changed. */
           || f.Feature_Role === "linkbox"
@@ -2132,7 +2150,7 @@ export default function GISCanvasPage() {
            The levels walked the raw drawing, where a board is one
            point with nothing hanging off it. Its flats live in
            `MSDB_Plot_IDs` and are not meters on the canvas, so their
-           kVA was absent from every figure upstream of the board \u2014 the
+           kVA was absent from every figure upstream of the board — the
            cable arriving at it was costed for the load beyond it and
            nothing else.
 
@@ -2224,7 +2242,7 @@ export default function GISCanvasPage() {
 
   /* The figure at a board: read off the stop standing on it.
 
-     The levels are keyed on stops, and a board is not one \u2014 the build
+     The levels are keyed on stops, and a board is not one — the build
      places a feeder point AT the board and that is what the leg ends
      at. So the nearest stop with a figure, within a couple of metres,
      which is the same distance the build's own "did it reach" test
@@ -2235,8 +2253,8 @@ export default function GISCanvasPage() {
      riser, where nobody lives. The flat at the end of the longest tail
      is the one that has to pass.
 
-     Worked from the same functions the editor uses \u2014 `riserDrop` then
-     `apartmentLevels` \u2014 so the label and the panel cannot disagree. The
+     Worked from the same functions the editor uses — `riserDrop` then
+     `apartmentLevels` — so the label and the panel cannot disagree. The
      stop is matched to its board by the id the build stamps, falling
      back to position for boards stopped before that existed. */
   const worstFlatAt = useCallback((stop) => {
@@ -2391,7 +2409,7 @@ export default function GISCanvasPage() {
       if (pl._error) setError(`Couldn't read this project's plots: ${pl._error}`);
       if (conns?._error) {
         setError("Couldn't read which connections are self-lay: "
-          + `${conns._error} \u2014 no meters will be marked SLP.`);
+          + `${conns._error} — no meters will be marked SLP.`);
       }
       setSlpSet(selfLaySet(conns?.connections || []));
       setPlotList(pl.plots || []);
@@ -2606,7 +2624,7 @@ export default function GISCanvasPage() {
      Worked out as plots go on and off the call-off, not at the moment
      of raising. The gang works at each of these as well as at the
      meter, and somebody choosing which plots to put on a visit is
-     deciding how much work it is \u2014 which they cannot do if the answer
+     deciding how much work it is — which they cannot do if the answer
      only appears once the call-off exists.
 
      It also makes the trace checkable before anything is written: an
@@ -2633,7 +2651,7 @@ export default function GISCanvasPage() {
 
   /* A link box output waiting for its lasso: { boxId, way }. Armed
      from the box's editor, consumed by the same lasso Link to Circuit
-     draws \u2014 splitting a circuit across a box's outputs is the same
+     draws — splitting a circuit across a box's outputs is the same
      act as putting plots on a circuit, made with the same tool. */
   const [linkWayAssign, setLinkWayAssign] = useState(null);
 
@@ -2699,7 +2717,7 @@ export default function GISCanvasPage() {
      Nothing failed while nobody redrew a measured line, which is why it
      survived. Before adding a feature, look for it. */
 
-  /* Answering it. `keep` writes nothing \u2014 the measurement stands as it
+  /* Answering it. `keep` writes nothing — the measurement stands as it
      was, which is a real answer and the safe one. */
   async function answerMeasured(how, value) {
     const ask = measuredAsk;
@@ -2715,7 +2733,7 @@ export default function GISCanvasPage() {
       }]);
       await load(projectId);
       setStatus(next == null
-        ? `${ask.name}: measured length removed \u2014 back to the drawing`
+        ? `${ask.name}: measured length removed — back to the drawing`
         : `${ask.name}: measured length now ${Number(next).toFixed(1)} m`);
       setTimeout(() => setStatus(""), 7000);
     } catch (e) { setError(e.message); }
@@ -2758,7 +2776,7 @@ export default function GISCanvasPage() {
 
   /* ── The chosen circuit colours, from every origin ──
 
-     The map rode on the substation, and a POC-fed drawing has none \u2014
+     The map rode on the substation, and a POC-fed drawing has none —
      so there was nowhere to put a choice at all. Each origin now
      carries the colours of the circuits it feeds, set from its own
      editor or the Circuit Report, and the readers merge the lot.
@@ -3094,10 +3112,10 @@ export default function GISCanvasPage() {
      Three questions and an animation: where from, what to follow, and
      which way. `traceRun` holds the answers and the walk; `tracedM` is
      how far the token has travelled, in metres, advanced by a frame
-     loop. Not `traceAt` \u2014 that is taken, by the levels panel's note of
+     loop. Not `traceAt` — that is taken, by the levels panel's note of
      what the report was computed against, and two names a letter apart
      for two unrelated things is how somebody reads the wrong one. Metres rather than a fraction so every branch moves at the
-     same speed and the short ones arrive first \u2014 which is the trace
+     same speed and the short ones arrive first — which is the trace
      showing you which way is further. */
   const [traceFrom, setTraceFrom] = useState(null);
   const [traceRun, setTraceRun] = useState(null);
@@ -3111,8 +3129,8 @@ export default function GISCanvasPage() {
   const [breakAsk, setBreakAsk] = useState(null);
   /* ── The trace's three questions, asked together ──
 
-     What is being followed, which way, and \u2014 where several cables lie
-     under the pointer \u2014 which one. They were a floating panel and a
+     What is being followed, which way, and — where several cables lie
+     under the pointer — which one. They were a floating panel and a
      separate modal, so starting a trace meant answering in two places
      with the drawing in between. They are one decision: this is the
      click, and these are the things about it that are not yet known. */
@@ -3165,12 +3183,12 @@ export default function GISCanvasPage() {
          with it, which are the whole point of this view. */
       if (lightingView) return inLightingView(f);
 
-      /* Through classKeys like everything else \u2014 which includes the
+      /* Through classKeys like everything else — which includes the
          layer, so hiding Trenches hides the span nodes standing on
          them and hiding Electric hides the feeder points. The special
          case that dropped the layer key made the markers immortal:
          the dig vanished and its numbering hung in space. The other
-         direction \u2014 unhiding the markers must not unhide the dig \u2014
+         direction — unhiding the markers must not unhide the dig —
          is kinOf's business, which knows a layer from a role. */
       const keys = classKeys(f);
       /* ── What is being placed is always on screen ──
@@ -3221,7 +3239,7 @@ export default function GISCanvasPage() {
 
      Shown unless somebody turns them off. This used to ask whether any
      layer carrying a Utility_ID was visible, which made a mark that
-     belongs to every utility depend on a column set per database \u2014 and
+     belongs to every utility depend on a column set per database — and
      the drawing of it was gated on water besides, so the A appeared on
      one layer of three.
 
@@ -3333,8 +3351,8 @@ export default function GISCanvasPage() {
      is not possible once an H has been pressed as well. */
   /* Which layers are showing, remembered across a reload.
 
-     Everything else on this toolbar is \u2014 the basemap, the locked
-     classes, which project is open \u2014 and this was not, so a refresh
+     Everything else on this toolbar is — the basemap, the locked
+     classes, which project is open — and this was not, so a refresh
      put every layer back on and left somebody switching them off again.
 
      `shownOnly` is the one to keep: `hidden` and `solo` are both worked
@@ -3440,7 +3458,7 @@ export default function GISCanvasPage() {
          key that took them was the one nobody had thought to name.
 
          `role:nrs` alongside `role:plot`, because a non-residential
-         supply is a seed like a dwelling is one \u2014 it is where a
+         supply is a seed like a dwelling is one — it is where a
          service goes to, and a design with the pumping station missing
          is missing the load that sized the cable. */
       if (k === "plot") keep.add(k);
@@ -3456,7 +3474,7 @@ export default function GISCanvasPage() {
        and the survey away as a side effect of asking for a utility.
        But this rebuilt the hidden list from nothing, so a trench layer
        switched off on purpose was quietly switched back on by opening
-       the Electric menu \u2014 the sweep was not taking it away, the rebuild
+       the Electric menu — the sweep was not taking it away, the rebuild
        was putting it back. The two are different acts and only the
        first is this function's business.
 
@@ -3505,7 +3523,7 @@ export default function GISCanvasPage() {
     /* ── The sweep respects the hierarchy ──
 
        Gathering every key the class's features carry is right for the
-       isolate case this exists for \u2014 a plot seed hidden as "plot",
+       isolate case this exists for — a plot seed hidden as "plot",
        "role:plot" and "plot:role:plot" must come back with one press.
        But a span node carries "trench", its LAYER, and sweeping that
        meant unhiding Span Nodes unhid the whole dig: a child putting
@@ -3517,7 +3535,7 @@ export default function GISCanvasPage() {
        the parent; unhiding a role within it says nothing about it.
 
        And when the key pressed IS a layer, a role that covers only
-       part of it keeps its own state \u2014 Span Nodes hidden by their own
+       part of it keeps its own state — Span Nodes hidden by their own
        switch stay hidden when Trenches come back, because that switch
        is a decision someone made and this press was about the layer.
        A role that covers the WHOLE layer (every plot-layer feature is
@@ -3605,7 +3623,7 @@ export default function GISCanvasPage() {
 
        `only` turns the toggle off. Opening a utility menu isolates it,
        and a toggle there would mean opening the Gas menu twice showed
-       every layer again \u2014 the opposite of what opening it is for. */
+       every layer again — the opposite of what opening it is for. */
     if (only) { applyShown([key]); return; }
     applyShown(solo === key && shownOnly.length === 1 ? [] : [key]);
   }, [applyShown, solo, shownOnly]);
@@ -3670,7 +3688,7 @@ export default function GISCanvasPage() {
       return;
     }
     soloClass(layer.Layer_Key);
-    setStatus(`Showing ${layer.Label ?? layer.Layer_Key} only \u2014 `
+    setStatus(`Showing ${layer.Label ?? layer.Layer_Key} only — `
       + "Show Everything brings the rest back");
     setTimeout(() => setStatus(""), 9000);
   }, [pendingIsolate, layers, soloClass]);
@@ -3752,7 +3770,7 @@ export default function GISCanvasPage() {
 
          The same rule the dropdown applies: an HV run takes HV cable,
          an LV run takes LV. Where the default does not suit, nothing is
-         stamped \u2014 an empty size is a question the panel already asks
+         stamped — an empty size is a question the panel already asks
          plainly, and the wrong cable is a wrong answer nobody is
          prompted to check.
 
@@ -4093,7 +4111,7 @@ export default function GISCanvasPage() {
     /* ── Named so it cannot be shadowed ──
 
        This was `at`, and five places inside this routine already
-       declare an `at` of their own \u2014 a label's anchor, a boundary's
+       declare an `at` of their own — a label's anchor, a boundary's
        anchor, two corner helpers. Inside those scopes every call meant
        for the transform found a coordinate array instead: "at is not a
        function", on whichever layer happened to draw one of them.
@@ -4742,7 +4760,7 @@ export default function GISCanvasPage() {
 
          A substation is a large square and was drawn in creation order
          like everything else, so one added after its cables covered
-         them \u2014 the run appeared to stop at the edge of the box and
+         them — the run appeared to stop at the edge of the box and
          start again the other side. Cables and trenches are the thing
          being read; the plant is what they run to.
 
@@ -4765,7 +4783,7 @@ export default function GISCanvasPage() {
        Its own pass, over every feature rather than the visible ones.
        The flag is on the trench, so drawing it inside the trench's own
        draw call meant isolating gas hid the trench and took the
-       easement with it \u2014 but the easement is what the gas is laid in,
+       easement with it — but the easement is what the gas is laid in,
        and it does not stop being there because the layer filter is on.
        Span nodes are exempted from the filter for the same reason and
        in the same way.
@@ -4914,7 +4932,7 @@ export default function GISCanvasPage() {
            Declared with the other facts about this point rather than
            beside the drawing that uses it: the rotation is opened in
            one block and closed in another, and a const inside the
-           first is not in scope for the second \u2014 "spin is not
+           first is not in scope for the second — "spin is not
            defined", on every drawing with a joint on it. */
         /* Every joint lies along its cable, this one included.
 
@@ -4926,7 +4944,7 @@ export default function GISCanvasPage() {
            object sitting near the feeder rather than as its end.
 
            bottleEndAngle rather than jointAngle because this symbol has
-           a front and a back \u2014 see the note on it above. */
+           a front and a back — see the note on it above. */
         const spin = f.Feature_Role !== "joint" ? 0
           : (isBottleEnd(f) ? bottleEndSpin(f) : jointAngle(f));
         const isSeed = f.Feature_Role === "plot";
@@ -5066,7 +5084,7 @@ export default function GISCanvasPage() {
 
                One factor across all four measurements rather than a
                floor on each, so the shape is the same shape at every
-               zoom \u2014 clamping them separately would give a stubby tee
+               zoom — clamping them separately would give a stubby tee
                at site level and a long thin one up close. */
             const k = Math.max(1, HVTT_MIN_PX / Math.max(1e-6, HVTT_ALONG_M * vs));
             const half = (HVTT_ALONG_M / 2) * vs * k;
@@ -5089,7 +5107,7 @@ export default function GISCanvasPage() {
             ctx.closePath();
             ctx.fill();
             /* Outlined as well, so it stays visible where the fill and
-               the main it sits on are the same colour \u2014 which on gas
+               the main it sits on are the same colour — which on gas
                they always are. */
             ctx.strokeStyle = on ? "#1d4ed8" : styleFor(f, { labelColour: fill }).labelColour;
             ctx.lineWidth = Math.max(0.75, Math.min(2, 0.03 * vs));
@@ -5214,7 +5232,7 @@ export default function GISCanvasPage() {
 
                Drawn white-filled so the cable does not show through
                it and the symbol reads as a body the conductor enters
-               and leaves \u2014 which is what it is. The cable is NOT broken
+               and leaves — which is what it is. The cable is NOT broken
                here; the drawing says "through", and so does every rule
                that decides where a run ends.
 
@@ -5358,7 +5376,7 @@ export default function GISCanvasPage() {
                not lean with the trench.
 
                The letters are the symbol. A board carries no colour of
-               its own \u2014 it is one object on one circuit, and the cable
+               its own — it is one object on one circuit, and the cable
                either side says which. */
             const half = Math.max(7, ps.symbolPx * 1.05);
             ctx.save();
@@ -5367,8 +5385,8 @@ export default function GISCanvasPage() {
             /* ── A colour the canvas understands ──
 
                `var(--accent)` is a CSS variable. Assigning one to
-               fillStyle or strokeStyle is silently IGNORED \u2014 no error,
-               no warning \u2014 and the context keeps whatever colour it had.
+               fillStyle or strokeStyle is silently IGNORED — no error,
+               no warning — and the context keeps whatever colour it had.
                Here that left a white square drawn in white on a white
                page with white letters: the board vanished when it was
                selected and came back when it was not.
@@ -5438,7 +5456,7 @@ export default function GISCanvasPage() {
                A yellow square like a joint, rotated to the cable it
                was placed on, with its connection nodes on the faces:
                the input alone on the back face, the outputs on the
-               front \u2014 one for a 2 way, three for a 4 way, numbered
+               front — one for a 2 way, three for a 4 way, numbered
                1\u20133 so a schedule can say which fuse is which. Nodes
                and numbers arrive with zoom the way the valve's letters
                do; from a distance it is a square, which is enough to
@@ -5477,7 +5495,7 @@ export default function GISCanvasPage() {
                box on a cable running south-west would have it upside
                down.
 
-               Same rule as the nodes for when there is room \u2014 the
+               Same rule as the nodes for when there is room — the
                style sizes the symbol and the text is scaled to sit
                inside it, dropped rather than drawn as a smudge below
                about seven pixels. */
@@ -5556,7 +5574,7 @@ export default function GISCanvasPage() {
 
                  Only cables that actually END at the anchor count. The
                  first cut drew a leader to the nearest point of every
-                 cable claiming this box \u2014 and after a build, dozens of
+                 cable claiming this box — and after a build, dozens of
                  runs across the site carry that claim, so the box grew
                  a fan of dashes to all of them. A connection is a cable
                  ARRIVING here, which is a fact about its ends. */
@@ -5633,7 +5651,7 @@ export default function GISCanvasPage() {
               });
             }
             /* The label pass below writes the name; nothing else to
-               draw \u2014 the square is the symbol. */
+               draw — the square is the symbol. */
             return;
           }
 
@@ -5666,7 +5684,7 @@ export default function GISCanvasPage() {
 
              So they show whenever the circuit lasso is up, whatever the
              setting says, and go back to the setting when it is put
-             down. Not a second switch \u2014 one setting, temporarily
+             down. Not a second switch — one setting, temporarily
              overridden by the job in hand. */
           /* ── What this customer gets, beside this customer ──
 
@@ -5686,7 +5704,7 @@ export default function GISCanvasPage() {
              takes a FEATURE and asks whether that feature's label
              shows; passing it the string "levels" asked about a
              feature that does not exist, and it answered no every
-             time \u2014 so nothing was ever drawn. The switch these belong
+             time — so nothing was ever drawn. The switch these belong
              to is `labelKinds.levels`. */
           if (isMeter && cutoutAtMeter.size
             && labelKinds.levels !== false
@@ -5792,7 +5810,7 @@ export default function GISCanvasPage() {
           /* A joint lies along its cable.
 
              It is a box buried in the trench, laid the way the cable
-             runs \u2014 so a square drawn square to the page reads as a
+             runs — so a square drawn square to the page reads as a
              marker on the drawing rather than as the thing it
              represents. On a curved road a row of them all facing the
              same way looks like a mistake.
@@ -5842,7 +5860,7 @@ export default function GISCanvasPage() {
            A wash out is a filled disc with WO in it, and the letters
            are what make it one rather than any other round fitting on
            the drawing. From SYMBOL_TEXT so the sheet writes the same
-           letters in the same symbols \u2014 a table here and another there
+           letters in the same symbols — a table here and another there
            is how a symbol comes to read WO on screen and nothing on
            paper.
 
@@ -6423,9 +6441,9 @@ export default function GISCanvasPage() {
 
              Two circuits commonly share one trench, and a trench that
              names one of them is saying something untrue about the
-             other. It could only ever be there by mistake \u2014 as it was
+             other. It could only ever be there by mistake — as it was
              when a mains trench drawn between two boards came back
-             stamped with a link and a circuit \u2014 and a label drawn from
+             stamped with a link and a circuit — and a label drawn from
              a mistake is how the mistake gets believed.
 
              Refused at the point of drawing rather than only at the
@@ -6461,14 +6479,14 @@ export default function GISCanvasPage() {
 
              Gas as well as water. It was water only, on the grounds
              that labelling gas would put text on every main on every
-             existing drawing \u2014 which was the right caution then and is
+             existing drawing — which was the right caution then and is
              wrong now that a size can be set by hand: an override
              nobody can see on the drawing is a decision nobody can
              check.
 
-             The size shown is the one that will be built \u2014 the
+             The size shown is the one that will be built — the
              override where there is one, the calculated size elsewhere
-             \u2014 and it does not follow the Sizes menu. The menu governs
+             — and it does not follow the Sizes menu. The menu governs
              what the levels check measures; the drawing says what goes
              in the ground. */
           const sized = (f.Layer_Key === "water" || f.Layer_Key === "gas")
@@ -6514,7 +6532,7 @@ export default function GISCanvasPage() {
           /* The cable that will be pulled: the one set by hand where
              there is one, and the build's otherwise. It read only the
              calculated size, so a run somebody had overridden went on
-             showing the size the build chose \u2014 the same fault the gas
+             showing the size the build chose — the same fault the gas
              mains had, on the other utility.
 
              Stacked like a pipe, for the same reason: size and length
@@ -6535,7 +6553,7 @@ export default function GISCanvasPage() {
           /* The size in force, not the one the build worked out.
 
              A length upsized by hand is that size on the ground, so it
-             is that size on the drawing \u2014 a label still showing the
+             is that size on the drawing — a label still showing the
              calculated pipe is the one figure somebody reads off and
              orders from. Falls back to the calculated size where
              nothing has been overridden, which is what the label has
@@ -6546,7 +6564,7 @@ export default function GISCanvasPage() {
 
              The selected branch built its own one-line label, so
              clicking a main replaced the stacked size, length and flow
-             with a shorter version \u2014 and Q disappeared exactly when
+             with a shorter version — and Q disappeared exactly when
              somebody was looking closely at that length.
 
              The tag goes on its own line above, rather than joined to
@@ -6602,7 +6620,7 @@ export default function GISCanvasPage() {
             ctx.font = "700 11px ui-monospace, Menlo, monospace";
             ctx.textAlign = "center";
             /* Measured on the widest line, and the plate grown for the
-               rest \u2014 a box sized to one line of a three-line label
+               rest — a box sized to one line of a three-line label
                clips the other two. */
             const lines = String(txt).split("\n");
             const w = Math.max(...lines.map((t) => ctx.measureText(t).width)) + 10;
@@ -6726,7 +6744,7 @@ export default function GISCanvasPage() {
                clicked is what can be seen. Rounding the corners takes
                nothing off that: the radius is inside the rectangle. */
             /* Tall enough for however many lines the label has, and
-               centred on the same point a single line was \u2014 so a
+               centred on the same point a single line was — so a
                one-line label sits exactly where it always did and a
                three-line one grows evenly about it rather than
                downwards into the drawing. */
@@ -6751,7 +6769,7 @@ export default function GISCanvasPage() {
             /* ── The cable's own colour, not its layer's ──
 
                The plate was tinted from the STYLE colour, which for
-               every electric cable is the layer's amber \u2014 so labels on
+               every electric cable is the layer's amber — so labels on
                a magenta circuit and a cyan one sat on the same pale
                amber and said nothing about which cable they named.
                It reads the feeder plan's colour now, the colour the
@@ -6763,7 +6781,7 @@ export default function GISCanvasPage() {
 
                A selected cable is drawn in the selection blue, and
                every label it carries goes SOLID in that blue with
-               white text \u2014 asked for, so the labels of the thing
+               white text — asked for, so the labels of the thing
                picked stand out from the pale plates around them rather
                than being one more tint among several. Every label on
                the cable, not just its main one: hand-placed labels are
@@ -6848,7 +6866,7 @@ export default function GISCanvasPage() {
         /* The A, on every utility.
 
            This was drawn only where the water layer was showing and the
-           plot had water on it \u2014 so the point that electric, gas and
+           plot had water on it — so the point that electric, gas and
            water all measure to appeared on one of them. The comment a
            few lines up already says it belongs to every utility and is
            deliberately painted in a neutral colour; the gate below said
@@ -7009,7 +7027,7 @@ export default function GISCanvasPage() {
 
        The path behind each token is drawn as it is covered, so what has
        been reached reads at a glance and the whole traced network is
-       still there when the tokens arrive \u2014 an animation that leaves
+       still there when the tokens arrive — an animation that leaves
        nothing behind has to be watched to be read.
 
        Every branch travels at the same speed, so tokens on paths
@@ -7305,7 +7323,7 @@ export default function GISCanvasPage() {
            leg's stopId, and the box's id is in there. What was missing
            was any pass that would draw it. So the figures existed, were
            correct, and appeared on every stop except the one a designer
-           can point at on site \u2014 which reads as the box being outside
+           can point at on site — which reads as the box being outside
            the design rather than as a drawing that never asked.
 
            Widened rather than copied into the box's own branch, which
@@ -7315,7 +7333,7 @@ export default function GISCanvasPage() {
            with `isBox`, so the square and its fuse numbers stand. */
         /* And a straight joint, which is a feeder end point: the cable
            ends there and the next begins, so the figures are quoted at
-           it like any other stop. A service joint is not \u2014 one cable
+           it like any other stop. A service joint is not — one cable
            passes through it and nothing about the run changes. */
         && f.Feature_Role !== "linkbox") continue;
 
@@ -7336,7 +7354,7 @@ export default function GISCanvasPage() {
       if (!g.length) continue;
       const on = selected.includes(f.Feature_ID);
       const ps = styleFor(f);
-      /* A feeder point wears its circuit's colour \u2014 the same one the
+      /* A feeder point wears its circuit's colour — the same one the
          circuit's cable is drawn in, so the point and the run it
          belongs to can never disagree. The style row's colour is only
          the fallback for a point whose circuit has no colour yet.
@@ -7362,7 +7380,7 @@ export default function GISCanvasPage() {
 
          A span node is a marker on the dig, moved a metre or two clear
          so its label can be read. Moving it does not move where it is
-         measured from \u2014 that is its anchor \u2014 but with nothing drawn
+         measured from — that is its anchor — but with nothing drawn
          between them the pair looks like a node floating in a garden,
          and which point on the trench it belongs to is a guess.
 
@@ -7379,7 +7397,7 @@ export default function GISCanvasPage() {
            a line from a point to itself. The handle is not clutter in
            the same way: without it there is nothing to take hold of, so
            an anchor could only be corrected on a node somebody had
-           already dragged \u2014 and the ones worth correcting are exactly
+           already dragged — and the ones worth correcting are exactly
            the ones nobody has touched. */
         if (away > 0.4 || selected.includes(f.Feature_ID)) {
           const a = pxOf(anchor);
@@ -7481,12 +7499,12 @@ export default function GISCanvasPage() {
          it is dropped rather than drawn as an unreadable smudge — the
          node is still there and still says where it is. */
       /* A box's square is sized differently from a node's circle, and
-         the plate is placed at `r` from the centre \u2014 so taking the
+         the plate is placed at `r` from the centre — so taking the
          node's radius for a box would drop the figures on top of the
          symbol. Its own half-width, worked out the way its branch works
          it out. */
       /* A box's square is sized differently from a node's circle, and
-         the plate is placed at `r` from the centre \u2014 so taking the
+         the plate is placed at `r` from the centre — so taking the
          node's radius for a box would drop the figures on top of the
          symbol.
 
@@ -7511,7 +7529,7 @@ export default function GISCanvasPage() {
          site with twenty-odd spans is the slow half of the job.
 
          Outside the white ring, so it reads as something added to the
-         node rather than a change to the node itself \u2014 the same colours
+         node rather than a change to the node itself — the same colours
          as the report, so the two are obviously the same statement.
 
          Only where the check has run and the gas layer is showing:
@@ -7520,8 +7538,8 @@ export default function GISCanvasPage() {
       /* Matched on the label, and on the anchor where the label does
          not resolve.
 
-         The map is keyed on what the report calls each node \u2014 A19 and
-         so on \u2014 which comes from the run's own end. A node whose
+         The map is keyed on what the report calls each node — A19 and
+         so on — which comes from the run's own end. A node whose
          Span_Label differs from the name the report gave it, or which
          carries none, matched nothing and went unringed while its row
          sat plainly in red.
@@ -7548,7 +7566,7 @@ export default function GISCanvasPage() {
           * (1 - (gasLevelsResult?.amberPct ?? 80) / 100);
         /* A clear orange, not a dark amber.
 
-           #b45309 is a burnt amber \u2014 correct as a warning colour and,
+           #b45309 is a burnt amber — correct as a warning colour and,
            at three pixels on a ring the same size as the red one, near
            enough to #b91c1c that the two read as the same alert. The
            distinction only matters if it can be seen at a glance, so
@@ -7560,7 +7578,7 @@ export default function GISCanvasPage() {
           : mbarHere < amberAt ? "#f97316" : null;
         if (verdict) {
           /* A white ring under the coloured one, so the trench running
-             through does not cut the circle into arcs \u2014 which reads as
+             through does not cut the circle into arcs — which reads as
              a broken ring rather than a mark on the node. */
           ctx.beginPath();
           ctx.arc(q.x, q.y, r + 5, 0, Math.PI * 2);
@@ -7614,7 +7632,7 @@ export default function GISCanvasPage() {
          report and the cable schedule are all read against — hiding them
          hides the drawing's index rather than tidying it. */
       /* The box draws its own code on its square, so it is not drawn
-         again here \u2014 in white, centred, over a symbol this pass did
+         again here — in white, centred, over a symbol this pass did
          not paint. */
       if (code && !isBox && fontPx >= 7 && vs > 1.2) {
         ctx.font = `700 ${fontPx}px ui-monospace, Menlo, monospace`;
@@ -7633,7 +7651,7 @@ export default function GISCanvasPage() {
          the drawing, the answer is where the question is.
 
          Only while the gas layer is showing, and only after the check
-         has run \u2014 a pressure is a result rather than a property of a
+         has run — a pressure is a result rather than a property of a
          node, and one left on screen after the drawing changed would be
          a stale number nobody could tell was stale. Any edit clears the
          result, so this goes with it.
@@ -7691,19 +7709,19 @@ export default function GISCanvasPage() {
           /* A backing plate, because a figure over a trench or a
              building line is unreadable on its own. */
           ctx.fillStyle = "rgba(255,255,255,.88)";
-          ctx.fillRect(x - 2, y - 7, w + 4, 14);
+          ctx.fillRect(x - 2, y - h / 2, w + 4, h);
           ctx.fillStyle = bad ? "#b91c1c" : "#334155";
           ctx.fillText(text, x, y);
           ctx.textAlign = "center";
           ctx.textBaseline = "alphabetic";
 
           /* Picked up like any other label, using the same hit list and
-             the same drag \u2014 `kind` tells the drag which offset to
+             the same drag — `kind` tells the drag which offset to
              write. */
           labelHits.current.push({
             id: f.Feature_ID, idx: null, kind: "pressure", anchor: g[0], txt: text,
             cx: x + w / 2, cy: y,
-            x: x - 2, y: y - 7, w: w + 4, h: 14,
+            x: x - 2, y: y - h / 2, w: w + 4, h,
             spin: 0,
           });
         }
@@ -7790,13 +7808,35 @@ export default function GISCanvasPage() {
              supplies and 40 kVA more. That is the cable's figure: a
              pump draws through it like anything else. */
           const carried = loadAt.get(Number(f.Feature_ID));
-          const text = (carried != null ? `${carried.toFixed(1)} kVA · ` : "")
-            + `${shownPct.toFixed(2)}% · ${vd.ohms.toFixed(3)}Ω`
-            + (worst ? `  → ${worst.pct.toFixed(2)}% at ${worst.label}` : "");
+          /* ── Two lines, cause above effect ──
+
+              load · fault current
+              volt drop · impedance
+
+             Asked for. The two on the top line are what the point
+             CARRIES; the two below are what that costs. Read down a
+             column rather than along one line, so four figures no
+             longer run off into the drawing.
+
+             Fault current is the phase voltage over the loop impedance
+             at this point — the same division the calc sheet makes for
+             a whole route, made here for a node. Guarded: a node with
+             no impedance yet would divide by zero and print an infinite
+             current, which reads as a number. */
+          const amps = vd.faultAmps ?? null;
+          const lines = [
+            [carried != null ? `${carried.toFixed(1)} kVA` : null,
+              amps != null ? `${Math.round(amps)} A` : null].filter(Boolean).join(" · "),
+            `${shownPct.toFixed(2)}% · ${vd.ohms.toFixed(3)}Ω`
+              + (worst ? `  → ${worst.pct.toFixed(2)}% at ${worst.label}` : ""),
+          ].filter(Boolean);
+          const text = lines.join("\n");
           ctx.font = `600 ${Math.max(9, fontPx - 1)}px system-ui, sans-serif`;
           ctx.textAlign = "left";
           ctx.textBaseline = "middle";
-          const w = ctx.measureText(text).width;
+          const lineH = Math.max(11, fontPx + 1);
+          const w = Math.max(...lines.map((t) => ctx.measureText(t).width));
+          const h = lines.length * lineH;
 
           const off = f.Attributes?.Levels_Offset;
           const dragged = Array.isArray(off) && off.length === 2;
@@ -7833,7 +7873,9 @@ export default function GISCanvasPage() {
              is looking for, and the two limits are checked together
              because the plate carries both. */
           ctx.fillStyle = (vd.overPct || vd.overOhms) ? "#b91c1c" : "#334155";
-          ctx.fillText(text, x, y);
+          lines.forEach((t, i) => {
+            ctx.fillText(t, x, y - h / 2 + lineH / 2 + i * lineH);
+          });
           ctx.textAlign = "center";
           ctx.textBaseline = "alphabetic";
 
@@ -8000,7 +8042,7 @@ export default function GISCanvasPage() {
        dashed, so it reads as a guide rather than as something on the
        drawing.
 
-       Never on the sheet itself \u2014 `over` is the print pass, and a
+       Never on the sheet itself — `over` is the print pass, and a
        printed plan with a dashed line round the edge showing where the
        paper is would be a joke at the reader's expense. */
     if (!over && printFrame) {
@@ -8139,7 +8181,7 @@ export default function GISCanvasPage() {
 
          A point was hit only within HIT_PX of its centre. That is right
          for a meter, which is a small dot, and wrong for a substation,
-         which is a large square \u2014 clicking plainly inside one did
+         which is a large square — clicking plainly inside one did
          nothing, because the middle was the only part of it that could
          be picked up.
 
@@ -8152,7 +8194,7 @@ export default function GISCanvasPage() {
         ? Math.max(HIT_PX, (styleFor(f)?.symbolPx ?? 0) + 2)
         : HIT_PX;
 
-      /* Vertices measured where they are drawn too \u2014 see the note
+      /* Vertices measured where they are drawn too — see the note
          below on offset lines. Points have no offset and read as
          before. */
       const fpV = f.Feature_Type !== "point"
@@ -8172,7 +8214,7 @@ export default function GISCanvasPage() {
         /* ── Hit where it is drawn, not where it is stored ──
 
            Two cables sharing a trench are drawn offset either side of
-           it so they can be read \u2014 offsetPolyline, a few pixels, a
+           it so they can be read — offsetPolyline, a few pixels, a
            drawing convention. The hit test measured against the stored
            geometry, which is IN the trench: a click dead on the drawn
            cable missed it by exactly the offset, and a click on the
@@ -8372,7 +8414,7 @@ export default function GISCanvasPage() {
 
       if (clash.length) {
         setError(`${clash.map((sp) => `${sp.from}\u2013${sp.to}`).join(", ")} `
-          + `already called off \u2014 pick a run that is not pink.`);
+          + `already called off — pick a run that is not pink.`);
         setPick(null);
         return;
       }
@@ -8534,7 +8576,7 @@ export default function GISCanvasPage() {
       return;
     }
 
-    /* Plant goes where it is clicked too \u2014 through resolve, so a
+    /* Plant goes where it is clicked too — through resolve, so a
        click near the main lands ON the main the way every drawn line
        end does, and a click in open ground is taken exactly. One
        shot: the state is cleared before the create, so a slow save
@@ -8751,7 +8793,7 @@ export default function GISCanvasPage() {
       return;
     }
     setPicker(null);
-    /* The one already chosen, where it is among them \u2014 not the first.
+    /* The one already chosen, where it is among them — not the first.
 
        The guard above skips the list because "a click on something
        already selected goes straight to dragging it", and then this
@@ -8796,7 +8838,7 @@ export default function GISCanvasPage() {
       /* A link box takes its anchor with it.
 
          Its anchor is where the chamber stands, not a marker's note
-         about where a label was moved from \u2014 see anchorFollow.js for
+         about where a label was moved from — see anchorFollow.js for
          why a span node's does the opposite. Recorded here because the
          frame update rebuilds from the start position rather than
          nudging what it finds. */
@@ -8811,7 +8853,7 @@ export default function GISCanvasPage() {
          there to wherever its marker was nudged. Move the joint alone
          and the leader ends in mid air pointing at nothing.
 
-         Its marker does NOT move \u2014 somebody put that where it reads
+         Its marker does NOT move — somebody put that where it reads
          best, and the two are separate objects on purpose. Only the
          anchor travels, so the leader stretches.
 
@@ -8865,8 +8907,8 @@ export default function GISCanvasPage() {
          the other way round.
 
          Dragging one used to pull the trench end with it, and the
-         easement band \u2014 which is drawn from the trench's own geometry
-         \u2014 came too, so the hatching appeared tied to the node. Moving
+         easement band — which is drawn from the trench's own geometry
+         — came too, so the hatching appeared tied to the node. Moving
          the marker now moves the marker. */
       const movedPoints = next
         .map((id) => features.find((x) => x.Feature_ID === id))
@@ -8884,14 +8926,14 @@ export default function GISCanvasPage() {
            it; two circuits sharing a trench both pass within
            connecting distance of it, and every guard that worked by
            EXCLUDING the wrong one failed whenever the joint could not
-           name its circuit \u2014 a hand-placed joint has no Circuit_ID, so
+           name its circuit — a hand-placed joint has no Circuit_ID, so
            there was nothing to compare and both mains followed.
 
            So the feeder is CHOSEN, once, before anything follows: the
            one on the joint's own circuit where the joint names one,
            otherwise the single feeder within reach. Two feeders and no
            circuit to choose between them is an ambiguity, and the
-           honest answer is to move neither \u2014 the services still
+           honest answer is to move neither — the services still
            follow, and the joint can be told its circuit. */
         const jointFeeder = (() => {
           if (pt.Feature_Role !== "joint") return undefined;
@@ -8910,7 +8952,7 @@ export default function GISCanvasPage() {
              box, where a circuit's outputs are three runs of the same
              circuit passing the same joint: three matches, no winner,
              and the joint moved no cable at all while upstream joints
-             \u2014 with only the trunk in reach \u2014 behaved. A joint sits ON
+             — with only the trunk in reach — behaved. A joint sits ON
              one cable, so the nearest is the answer, and it is an
              answer that exists whatever the drawing looks like. */
           const cid = pt.Attributes?.Circuit_ID;
@@ -8940,7 +8982,7 @@ export default function GISCanvasPage() {
 
              And the interior vertices of an LV feeder under a JOINT.
              A service joint sits on the tee the service was let into,
-             which is a vertex in the middle of the main, not an end \u2014
+             which is a vertex in the middle of the main, not an end —
              so dragging the joint moved the service cable and left the
              feeder where it was, and the fitting no longer sat on the
              cable it joins.
@@ -8953,7 +8995,7 @@ export default function GISCanvasPage() {
 
              One cable arrives at a board and one leaves. Dragging it
              left both where they were, so the board came away from the
-             cables it sits on and had to be put back by hand \u2014 the same
+             cables it sits on and had to be put back by hand — the same
              fault a joint had, and the same rule fixes it.
 
              `isJoint` is the name the rest of this block uses for "a
@@ -8992,9 +9034,9 @@ export default function GISCanvasPage() {
              above says why: it sits ON a cable inside a trench, so
              pulling the dig about because a fitting moved is wrong.
 
-             A board is the other way round. The trench RUNS TO it \u2014 it
+             A board is the other way round. The trench RUNS TO it — it
              is the point the dig arrives at, the way a plot's service
-             ends at a meter \u2014 so the trench end belongs to the board and
+             ends at a meter — so the trench end belongs to the board and
              moving one without the other leaves a dig stopping in open
              ground.
 
@@ -9031,7 +9073,7 @@ export default function GISCanvasPage() {
              Two circuits' cables share a trench now, so both mains run
              through the tee a service joint sits on, and both have a
              vertex within tolerance of it. Geometry alone said the
-             joint was attached to each \u2014 dragging one service joint
+             joint was attached to each — dragging one service joint
              took two circuits' cables with it. A fitting belongs to
              one circuit's cable; the build stamps Circuit_ID on the
              joints it makes, and a point that names a circuit follows
@@ -9044,8 +9086,8 @@ export default function GISCanvasPage() {
              ways: named, the cable follows; not named while others are,
              it does not.
 
-             The circuit guard underneath is an inference \u2014 a good one,
-             for cables nobody has spoken about \u2014 and it was overruling
+             The circuit guard underneath is an inference — a good one,
+             for cables nobody has spoken about — and it was overruling
              the record. A joint carrying one circuit's stamp refused to
              move a cable from another that somebody had deliberately
              joined to it, which is the fitting disagreeing with the
@@ -9058,8 +9100,8 @@ export default function GISCanvasPage() {
              holds; it is the dig arriving at it.
 
              Without this exception the trench followed a board until
-             somebody connected a cable in the editor \u2014 which writes the
-             record \u2014 and then silently stopped. A rule that works until
+             somebody connected a cable in the editor — which writes the
+             record — and then silently stopped. A rule that works until
              an unrelated action is taken is worse than one that never
              works, because it is learnt and then wrong. */
           const isDig = isBoard && line.Layer_Key !== pt.Layer_Key;
@@ -9078,14 +9120,14 @@ export default function GISCanvasPage() {
              a trench. It does nothing for services, which carry no
              Circuit_ID at all: lineCid is null, the guard passes, and a
              service joint dragged at a tee took every service ending
-             near it \u2014 two plots' cables moving because one joint did.
+             near it — two plots' cables moving because one joint did.
 
              A joint knows its own cables: the link passes record
              Connects when the drawing is loaded and when features are
              joined. Where that list exists it is the answer, because it
              says what this joint is connected to rather than what
-             happens to end nearby. Where it does not \u2014 an older
-             drawing, a joint placed before the passes ran \u2014 geometry
+             happens to end nearby. Where it does not — an older
+             drawing, a joint placed before the passes ran — geometry
              is still the fallback, so nothing that worked stops
              working. */
           /* The chosen feeder, and no other. Services and everything
@@ -9142,8 +9184,8 @@ export default function GISCanvasPage() {
              one it IS the answer, and it says what this fitting holds
              rather than what happens to end nearby.
 
-             Where it has none \u2014 an older drawing, a joint placed
-             before the passes ran \u2014 geometry stays the fallback, so
+             Where it has none — an older drawing, a joint placed
+             before the passes ran — geometry stays the fallback, so
              nothing that worked stops working. */
           /* ── What the fitting was told it holds ──
 
@@ -9186,7 +9228,7 @@ export default function GISCanvasPage() {
                merely ends close to it, and the rule needs no record to be
                right.
 
-               A breech is not bounded this way \u2014 it takes an incoming
+               A breech is not bounded this way — it takes an incoming
                main and sends several out, and how many is the designer's
                business. */
             /* Always, not only where no record was written.
@@ -9249,7 +9291,7 @@ export default function GISCanvasPage() {
              `jointFeeder` picks the single nearest main, which is right
              for a fitting nobody has spoken about. It ran AFTER the
              record, so where two circuits share a trench it could throw
-             away the very cable the joint names \u2014 the fitting saying
+             away the very cable the joint names — the fitting saying
              "I hold this one" and the drag answering "the other one is
              nearer".
 
@@ -9266,7 +9308,7 @@ export default function GISCanvasPage() {
              Where the joint SAYS it holds this cable, the vertices that
              follow are the ones standing on it, wherever they fall. A
              service joint is let into the middle of a main, so its
-             cable meets it at an interior vertex \u2014 and offering only
+             cable meets it at an interior vertex — and offering only
              the ends would leave a deliberately joined cable behind
              while the fitting moved out from under it.
 
@@ -9435,13 +9477,13 @@ export default function GISCanvasPage() {
     /* ── Armed to place a fitting counts as aiming ──
 
        `placing` is the plot queue, not a plant placement. Arming a
-       cut-out sets `plantPlace`, which this did not mention \u2014 so the
+       cut-out sets `plantPlace`, which this did not mention — so the
        snap ran for a joint and a trace and not for the one mode where
        somebody is trying to land a symbol exactly on a cable, and the
        green circle that says "on the line" never appeared. */
     if (drawing || placing || jointFor || traceFrom || plantPlace) {
       /* Armed to place a joint on a cable, the snap is what makes the
-         cable say ON LINE under the pointer \u2014 which is the whole
+         cable say ON LINE under the pointer — which is the whole
          instruction for this mode. */
       const { point, hit } = resolve(raw[0], raw[1]);
       setCursor(point);
@@ -9472,7 +9514,7 @@ export default function GISCanvasPage() {
        so coming back inside the threshold does not put it down again.
 
        Above every mode branch, because the vertex and anchor branches
-       return before the delta is ever computed \u2014 a threshold below
+       return before the delta is ever computed — a threshold below
        them would guard the modes that were already the least likely to
        surprise. */
     if (d.mode !== "pan" && !d.moved) {
@@ -9688,7 +9730,7 @@ export default function GISCanvasPage() {
     const anchors = d.anchors || new Map();
     /* Anchors that follow a DIFFERENT feature: a feeder point standing
        at a joint. Its marker stays where somebody put it and its anchor
-       goes with the fitting, so the leader between them stretches \u2014
+       goes with the fitting, so the leader between them stretches —
        which is what being attached looks like. */
     const anchorOnly = d.anchorOnly || new Map();
     setFeatures((fs) => fs.map((f) => {
@@ -9857,7 +9899,7 @@ export default function GISCanvasPage() {
           setStatus("Line shortened to the next node");
           setTimeout(() => setStatus(""), 4000);
         } else {
-          setError("A line needs two points \u2014 delete the whole line instead.");
+          setError("A line needs two points — delete the whole line instead.");
           await load(projectId);
         }
         return;
@@ -9886,7 +9928,7 @@ export default function GISCanvasPage() {
           await moveFeatures(projectId, carried);
         }
 
-        /* Dropped on a joint, so it is joined to it \u2014 this is the
+        /* Dropped on a joint, so it is joined to it — this is the
            gesture that says so, and the drop has already snapped. The
            index is the vertex that moved: an end, or the middle of a
            main being put onto a service joint. */
@@ -10021,7 +10063,7 @@ export default function GISCanvasPage() {
     if (!d || d.mode !== "move") return;
     /* A click that never became a drag writes nothing. Belt and braces
        with the threshold above: the frame update is what moves things,
-       so if it never ran there is nothing to save \u2014 but a save of
+       so if it never ran there is nothing to save — but a save of
        unchanged geometry is still a write, an undo entry and a version
        bump for a gesture that did nothing. */
     if (!d.moved) return;
@@ -10043,7 +10085,7 @@ export default function GISCanvasPage() {
          still one request.
 
          Through bulkUpdateFeatures rather than moveFeatures because
-         that is the call that writes Attributes \u2014 under mocks
+         that is the call that writes Attributes — under mocks
          moveFeatures applies Geometry alone, so an anchor sent that way
          would work against the API and quietly do nothing in the mock
          fixtures, which is exactly the shape of a feature that ships
@@ -10057,7 +10099,7 @@ export default function GISCanvasPage() {
 
       /* And the stops that travelled with a joint. Their GEOMETRY never
          moved, so they are not in `updates` and moveFeatures never sees
-         them \u2014 only the anchor changed, and only bulkUpdateFeatures
+         them — only the anchor changed, and only bulkUpdateFeatures
          writes attributes. Left out, the leader would follow the joint
          until the next reload and then jump back, which is worse than
          not following at all: it would look right while being wrong. */
@@ -10077,7 +10119,7 @@ export default function GISCanvasPage() {
          it used to be. */
       /* And the anchor with it, from the snapshot taken at the same
          moment. Restoring the geometry and leaving the anchor moved is
-         a drawing nobody drew \u2014 and the readers that measure to the
+         a drawing nobody drew — and the readers that measure to the
          anchor would go on describing the undone position. */
       const beforeRows = updates
         .map((u) => {
@@ -10111,7 +10153,7 @@ export default function GISCanvasPage() {
          drawing down a line and let it spring back four seconds later.
 
          A message worth the jump is one that says something the drawing
-         does not \u2014 a refusal, a count of things that could NOT be done.
+         does not — a refusal, a count of things that could NOT be done.
          This was neither. */
     } catch (e) { setError(e.message); await load(projectId); }
   }
@@ -10328,7 +10370,7 @@ export default function GISCanvasPage() {
      broken, the fitting is placed on it, and the point on the run that
      the break creates is put beside it.
 
-     Which cable is passed IN \u2014 chosen by the click, or by the person
+     Which cable is passed IN — chosen by the click, or by the person
      when several lie under it. Never re-derived from geometry here,
      which is what put joints on the wrong run. */
   /* ── A cable end dropped on a joint is joined to it ──
@@ -10346,7 +10388,7 @@ export default function GISCanvasPage() {
      no joint and there is nothing to write, and a status for every
      nothing is a status nobody reads. */
   /* Letting go, deliberately. The cable stays exactly where it is and
-     stops moving with the fitting \u2014 releasing a connection is not the
+     stops moving with the fitting — releasing a connection is not the
      same as moving anything, and doing both would surprise. */
   async function disconnectCable(jointId, cableId) {
     const j = features.find((x) => Number(x.Feature_ID) === Number(jointId));
@@ -10362,7 +10404,7 @@ export default function GISCanvasPage() {
          The editor renders `editing`, a snapshot taken when it was
          opened, not the live row. So the write landed, the drawing
          changed, and the open panel went on showing the list from
-         before \u2014 which reads as the button doing nothing at all. */
+         before — which reads as the button doing nothing at all. */
       setEditing((e) => (e && e.Feature_ID === j.Feature_ID
         ? { ...e, Attributes: attrs } : e));
       const c = features.find((x) => Number(x.Feature_ID) === Number(cableId));
@@ -10372,7 +10414,7 @@ export default function GISCanvasPage() {
   }
 
   /* Joining, from the joint's own panel. The same record the drop
-     writes \u2014 one fact, two ways of stating it, because a joint drawn
+     writes — one fact, two ways of stating it, because a joint drawn
      before connections were recorded holds nothing and re-snapping
      every cable on a finished drawing is not a reasonable ask. */
   async function connectCable(jointId, cableId) {
@@ -10389,12 +10431,12 @@ export default function GISCanvasPage() {
          The editor renders `editing`, a snapshot taken when it was
          opened, not the live row. So the write landed, the drawing
          changed, and the open panel went on showing the list from
-         before \u2014 which reads as the button doing nothing at all. */
+         before — which reads as the button doing nothing at all. */
       setEditing((e) => (e && e.Feature_ID === j.Feature_ID
         ? { ...e, Attributes: attrs } : e));
       const c = features.find((x) => Number(x.Feature_ID) === Number(cableId));
       setStatus(`${c?.Label ?? "Cable"} joined to ${j.Label ?? "the joint"}`
-        + " \u2014 it moves with it now");
+        + " — it moves with it now");
       setTimeout(() => setStatus(""), 6000);
     } catch (e) { setError(e.message); }
   }
@@ -10402,7 +10444,7 @@ export default function GISCanvasPage() {
   /* What "the pipe" or "the cable" means on the menu you are standing
      on, and what counts as a source for it.
 
-     A trench has no source \u2014 a dig is not fed from anywhere \u2014 so
+     A trench has no source — a dig is not fed from anywhere — so
      upstream and downstream are not questions it can answer, and the
      panel says so rather than offering a direction that would pick one
      at random. */
@@ -10443,7 +10485,7 @@ export default function GISCanvasPage() {
      asking which one and giving no way to tell.
 
      So: what it is, then whatever tells it from the one beside it. A
-     service is named by the PLOT it feeds \u2014 which is the only thing a
+     service is named by the PLOT it feeds — which is the only thing a
      designer thinks of it by, and is not on the cable: it is read from
      the meter its far end reaches. Nothing else on the drawing says it,
      which is the same gap the jointing sheet has. */
@@ -10504,7 +10546,7 @@ export default function GISCanvasPage() {
 
   /* The frame loop. Speed in metres per second, so a trace across a
      housing estate takes about as long as one down a street rather
-     than the same number of seconds regardless of length \u2014 how far it
+     than the same number of seconds regardless of length — how far it
      went is part of what the animation is saying.
 
      Stops itself at the far end and leaves the token where it arrived,
@@ -10535,7 +10577,7 @@ export default function GISCanvasPage() {
 
   async function joinEndToJoint(line, vertexIndex = null) {
     const joints = features.filter((f) => f.Feature_Role === "joint");
-    /* The vertex that was dragged, where the caller knows which one \u2014
+    /* The vertex that was dragged, where the caller knows which one —
        an END is the common case, and the MIDDLE of a main is how a
        service joint is let into it. Both are somebody putting a point
        of a cable onto a fitting on purpose. */
@@ -10554,7 +10596,7 @@ export default function GISCanvasPage() {
       setFeatures((fs) => fs.map((x) =>
         (x.Feature_ID === j.Feature_ID ? { ...x, Attributes: attrs } : x)));
       setStatus(`${line.Label ?? "Cable"} joined to `
-        + `${j.Label ?? "the joint"} \u2014 it moves with it now`);
+        + `${j.Label ?? "the joint"} — it moves with it now`);
       setTimeout(() => setStatus(""), 6000);
     } catch (e) { setError(e.message); }
   }
@@ -10607,7 +10649,7 @@ export default function GISCanvasPage() {
       if (locked(line)) { setError(whyLocked(line)); return; }
       const ins = insertVertexAt(line.Geometry || [], at, CONNECT_M * 4);
       if (!ins) {
-        setError("That point is not on the cable \u2014 click one of its ends, "
+        setError("That point is not on the cable — click one of its ends, "
           + "a corner, or the middle of a run.");
         return;
       }
@@ -10640,7 +10682,7 @@ export default function GISCanvasPage() {
            chosen and the half that came out of breaking it.
 
            Not `Connects`, which the relink pass recomputes from
-           geometry \u2014 connectedTo takes anything with a vertex within a
+           geometry — connectedTo takes anything with a vertex within a
            quarter of a metre, so on a shared trench it lists cables
            this joint has nothing to do with, and every rule that read
            it dragged them. A fact somebody stated outlives a fact
@@ -10663,7 +10705,7 @@ export default function GISCanvasPage() {
     try {
       /* The saved row is kept: its id is what the stop beside it
          records as the fitting it stands at. An earlier version of this
-         reached for a `savedJoint` that had never been declared \u2014 the
+         reached for a `savedJoint` that had never been declared — the
          build compiled it, because a bare identifier is only a fault
          when the line runs. */
       const savedJoint = await addFeature(draftJoint);
@@ -10730,7 +10772,7 @@ export default function GISCanvasPage() {
           /* ── Which fitting this stop stands at ──
 
              The point and the joint are two objects, moved
-             independently \u2014 that is what was asked for. But the point
+             independently — that is what was asked for. But the point
              is AT the joint: its anchor is the joint's position, and
              its leader is drawn from there to wherever its marker has
              been nudged. Move the joint and leave the anchor behind,
@@ -10783,7 +10825,7 @@ export default function GISCanvasPage() {
        rather than copying the old list onto two runs that no longer go
        where it says. */
     /* Where the trace starts. Armed from a utility menu, so what is
-       being followed and which way are already answered \u2014 the click
+       being followed and which way are already answered — the click
        supplies the only thing the menu could not. */
     if (traceFrom) {
       const spec = traceFrom;
@@ -10792,8 +10834,8 @@ export default function GISCanvasPage() {
 
       /* ── Which cable, where several lie under the pointer ──
 
-         Cables sharing a trench are STORED with the same geometry \u2014 the
-         separation on screen is display offset \u2014 so no measuring can
+         Cables sharing a trench are STORED with the same geometry — the
+         separation on screen is display offset — so no measuring can
          tell which one the click meant. Taking the nearest started
          traces on the wrong circuit, and once on it the walk ran off in
          directions that had nothing to do with the question.
@@ -10805,8 +10847,8 @@ export default function GISCanvasPage() {
       /* ── A meter, a joint or a node is a place on the network too ──
 
          The trace asked for a LINE, so starting one from the thing you
-         are actually looking at \u2014 the meter whose supply you are
-         chasing, the joint you suspect \u2014 worked only by accident, when
+         are actually looking at — the meter whose supply you are
+         chasing, the joint you suspect — worked only by accident, when
          a cable happened to lie within reach of where you clicked.
 
          Where a point feature is under the pointer, the trace starts at
@@ -10831,7 +10873,7 @@ export default function GISCanvasPage() {
         .sort((a, b) => a.hit.d - b.hit.d);
 
       if (!near.length && spec.kind !== "trench") {
-        setError("Nothing to trace there \u2014 click a cable, a joint, a meter "
+        setError("Nothing to trace there — click a cable, a joint, a meter "
           + "or a node on the network.");
         return;
       }
@@ -10874,7 +10916,7 @@ export default function GISCanvasPage() {
         .sort((a, b) => a.d - b.d)[0]?.f;
 
       if (!seed) {
-        setError("No plot seed there \u2014 click the seed of the plot this "
+        setError("No plot seed there — click the seed of the plot this "
           + "trench serves. Still linking; Esc to stop.");
         return;
       }
@@ -10903,7 +10945,7 @@ export default function GISCanvasPage() {
         });
         await load(projectId);
         setStatus(`${line.Label ?? "The service trench"} now serves ${label} `
-          + "\u2014 Auto Service will not dig to it again.");
+          + "— Auto Service will not dig to it again.");
         setTimeout(() => setStatus(""), 8000);
         setError("");
       } catch (e) { setError(e.message); }
@@ -10929,15 +10971,15 @@ export default function GISCanvasPage() {
 
            This disarmed the mode BEFORE looking for a cable, so a
            click a few pixels off the line turned the tool off and said
-           only "click on an LV feeder cable". The next click \u2014 aimed
-           properly this time \u2014 did nothing whatever: no joint, no
+           only "click on an LV feeder cable". The next click — aimed
+           properly this time — did nothing whatever: no joint, no
            question, no error, because nothing was armed to answer it.
            Reported as "it is not asking me, and not even showing the
            joint", which is what two clicks in a row look like when the
            first one quietly ended the mode.
 
            A miss is a miss. The mode stays on, the message says so,
-           and Esc is what ends it \u2014 which is what the menu item has
+           and Esc is what ends it — which is what the menu item has
            claimed all along. */
         /* ── And say what IS there ──
 
@@ -10945,7 +10987,7 @@ export default function GISCanvasPage() {
            distinguish a click two pixels wide of the line from a
            drawing that has no LV mains on it at all. Reported as
            "nothing is happening", on a drawing carrying 877 service
-           cables and not one feeder \u2014 every click was a miss, and the
+           cables and not one feeder — every click was a miss, and the
            message could not say so.
 
            So it names what the pointer found instead, and where there
@@ -10965,12 +11007,12 @@ export default function GISCanvasPage() {
         setError(
           under
             ? `That is ${classLabel(under, lineTypes) || "not an LV feeder"}, `
-              + "not an LV feeder cable \u2014 a joint goes on a feeder. Still "
+              + "not an LV feeder cable — a joint goes on a feeder. Still "
               + "placing; Esc to stop."
             : feeders
-              ? "No LV feeder cable there \u2014 click where the cable says ON "
+              ? "No LV feeder cable there — click where the cable says ON "
                 + "LINE under the pointer. Still placing; Esc to stop."
-              : "This drawing has no LV feeder cables to joint yet \u2014 run "
+              : "This drawing has no LV feeder cables to joint yet — run "
                 + "Auto Build LV Network first. Esc to stop.",
         );
         return;
@@ -10990,7 +11032,7 @@ export default function GISCanvasPage() {
          and a joint on the wrong cable breaks the wrong run.
 
          The drawing cannot answer it and the pointer cannot either, so
-         the person who clicked is asked \u2014 named by what tells them
+         the person who clicked is asked — named by what tells them
          apart on screen: the circuit, the output, the colour. */
       if (near.length > 1) {
         setJointPick({
@@ -10998,7 +11040,7 @@ export default function GISCanvasPage() {
           options: near.map(({ line, hit }) => ({
             id: Number(line.Feature_ID),
             at: hit.q,
-            /* The same naming the trace dialog uses \u2014 two cables under
+            /* The same naming the trace dialog uses — two cables under
                one pointer is the same question wherever it is asked,
                and "Feeder" answered it in neither place. */
             label: cableTitle(line),
@@ -11314,7 +11356,7 @@ export default function GISCanvasPage() {
         setTool("select");
         await load(projectId);
         if (dev) {
-          setStatus(`${dev.label} area drawn \u2014 `
+          setStatus(`${dev.label} area drawn — `
             + "run Assign by Developer Area to apply it");
           setTimeout(() => setStatus(""), 9000);
         }
@@ -11374,7 +11416,7 @@ export default function GISCanvasPage() {
                A cable drawn from a breech joint is on that joint's
                circuit. The joint knows; the cable was arriving with
                nothing, so its editor showed none of the circuit fields
-               and the levels never saw it \u2014 a cable somebody had just
+               and the levels never saw it — a cable somebody had just
                drawn onto a circuit was not on it.
 
                Taken from what the ends TOUCH, and only where the two
@@ -11399,7 +11441,7 @@ export default function GISCanvasPage() {
                `stampLink` is given geometry and a list of boards; what
                kind of line it is has to be decided here, and was not.
                So a mains trench drawn board to board came back stamped
-               as a link and carrying a circuit \u2014 a dig belongs to no
+               as a link and carrying a circuit — a dig belongs to no
                circuit, and the build then had a link to route around a
                dig that had already joined them.
 
@@ -11515,7 +11557,7 @@ export default function GISCanvasPage() {
         ? [...new Set(runs.map((r) => surfaceFor(r.site, surface, surfaceTypes) ?? "none"))]
         : [];
       if (runs.length > 1) {
-        setStatus(`Split at the boundary \u2014 ${runs.length} runs, ${off} off site`
+        setStatus(`Split at the boundary — ${runs.length} runs, ${off} off site`
           + (surfaces.length ? ` \u00B7 surface: ${surfaces.join(", ")}` : ""));
         setTimeout(() => setStatus(""), 6000);
       } else if (surfaces.length) {
@@ -12008,7 +12050,7 @@ export default function GISCanvasPage() {
 
   /* And the other way round: the cable running through a node that no
      cable ends at. A junction where this circuit carries straight on
-     is one section to the router, so nothing ends there \u2014 the node is
+     is one section to the router, so nothing ends there — the node is
      fed by the section passing over it. Same options, same drawing. */
   const runThrough = useCallback((node, from = null) => runThroughNode(
     node, from || features,
@@ -12108,7 +12150,7 @@ export default function GISCanvasPage() {
     organisationId: standard || null,
     basemap: basemap?.Source_Kind === "pdf" ? basemap : null,
     basemapBytes: await basemapBytes(),
-    title: [project?.Contract_Number, project?.Name].filter(Boolean).join(" \u2014 "),
+    title: [project?.Contract_Number, project?.Name].filter(Boolean).join(" — "),
     when: new Date().toLocaleDateString("en-GB",
       { day: "numeric", month: "short", year: "numeric" }),
     filename: `${project?.Contract_Number || "drawing"}.pdf`,
@@ -12118,8 +12160,8 @@ export default function GISCanvasPage() {
   /* ── The print is of the drawing AS SHOWN ──
 
      Both handlers read `visible`, not `features`, so whatever the
-     screen is answering \u2014 hidden layers, a circuit or way isolate, the
-     lighting view, the live-trench filter \u2014 the paper answers too.
+     screen is answering — hidden layers, a circuit or way isolate, the
+     lighting view, the live-trench filter — the paper answers too.
      That is the point as much as the constraint: isolating one circuit
      and printing IS how one circuit's plan is issued. Reusing the
      canvas's own memo rather than re-deriving the predicate here means
@@ -12127,7 +12169,7 @@ export default function GISCanvasPage() {
      rule added to what the sheet shows, with no second copy to forget.
 
      `withAssumedMeters` runs on the filtered set, so a hidden electric
-     layer also synthesises no meters \u2014 the boards it works from are
+     layer also synthesises no meters — the boards it works from are
      gone before it looks. */
   const savePdfSheets = useCallback(async (plan) => {
     const src = withAssumedMeters(visible, {
@@ -12197,7 +12239,7 @@ export default function GISCanvasPage() {
       for (const line of features) {
         if (line.Feature_Type !== "line" || line.Layer_Key !== "electric") continue;
         if (line.Attributes?.Line_Type !== "elec_main") continue;
-        /* Ending at it, or running through it \u2014 a junction this circuit
+        /* Ending at it, or running through it — a junction this circuit
            carries straight over is fed by the section passing it. */
         const fed = nodesFedBy(line, features);
         if (!fed.some((n) => Number(n.Feature_ID) === Number(node.Feature_ID))) continue;
@@ -12257,7 +12299,7 @@ export default function GISCanvasPage() {
 
       setStatus(`${suggestion.changes
         .map((c) => `${c.fromLabel}\u2192${c.spanLabel} now ${c.toLabel}`).join(", ")}`
-        + ` \u2014 ${rows.length} feature(s) updated, trace re-run`);
+        + ` — ${rows.length} feature(s) updated, trace re-run`);
       setTimeout(() => setStatus(""), 9000);
       setError("");
     } catch (e) { setError(e.message); }
@@ -12276,7 +12318,7 @@ export default function GISCanvasPage() {
        arrives from the bulk editor and from anything written later.
 
        Existing ground and trenches marked for removal do not hold
-       anything back \u2014 one was never dug by this job and the other is
+       anything back — one was never dug by this job and the other is
        being taken out. Only Planned does. */
     const wanted = changes?.Attributes?.Build_Status;
     /* Only a cable or a pipe. A trench is not in a trench: trenchesUnder
@@ -12290,11 +12332,11 @@ export default function GISCanvasPage() {
       const holding = blocksLive(trenchesUnder([proposed], features, lineFollows));
       if (holding.length) {
         /* The editor greys these, so this is only reached from
-           somewhere that does not \u2014 the bulk editor, or anything
+           somewhere that does not — the bulk editor, or anything
            written later. Kept short: it is a backstop, not the place
            the reason is meant to be read. */
         setError(`${statusLabel(wanted) || "That stage"} `
-          + `needs the ground closed \u2014 ${holding.length === 1
+          + `needs the ground closed — ${holding.length === 1
             ? "the trench this lies in is"
             : `${holding.length} of the trenches this lies in are`} still Planned.`);
         /* False, so a caller setting many at once can say how many were
@@ -12345,7 +12387,7 @@ export default function GISCanvasPage() {
       if (changes.Attributes?.Build_Status === "live" && before) {
         const isMain = isMainFeature(before, lineTypes);
         if (!isMain) {
-          setStatus("Set live \u2014 but this is not recognised as a main "
+          setStatus("Set live — but this is not recognised as a main "
             + `(type ${before.Attributes?.Line_Type ?? "none"}, `
             + `layer ${before.Layer_Key ?? "none"}), so nothing else changed.`);
         }
@@ -12371,10 +12413,10 @@ export default function GISCanvasPage() {
            this main not joined to anything that reaches it. */
         if (chain == null) {
           setStatus(graph.roots.length
-            ? "Set live \u2014 but this main does not connect back to the "
+            ? "Set live — but this main does not connect back to the "
               + `${before.Layer_Key === "electric" ? "substation" : "POC"}, `
               + "so nothing upstream was changed."
-            : `Set live \u2014 but no ${before.Layer_Key} point of connection `
+            : `Set live — but no ${before.Layer_Key} point of connection `
               + "is placed on the drawing, so nothing upstream was changed.");
         }
 
@@ -12421,7 +12463,7 @@ export default function GISCanvasPage() {
         if (!also.length && !digs.length) {
           const trenchCount = world.filter((x) => x.Feature_Type === "line"
             && x.Layer_Key === "trench").length;
-          setStatus(`Set live \u2014 nothing else changed. `
+          setStatus(`Set live — nothing else changed. `
             + `${graph.mains.length} ${before.Layer_Key} main(s) on the drawing, `
             + `${graph.sources?.length ?? 0} source(s), `
             + `${graph.roots.length} of the mains reach one, `
@@ -12464,8 +12506,8 @@ export default function GISCanvasPage() {
 
          Both sizes are compared, not just the system one. This read
          VD_Cable_Size_ID on either side of the change, so overriding a
-         run \u2014 which writes Manual_VD_Cable_Size_ID and leaves the system
-         field alone \u2014 produced `nowCable === wasCable` and skipped the
+         run — which writes Manual_VD_Cable_Size_ID and leaves the system
+         field alone — produced `nowCable === wasCable` and skipped the
          whole block, warning and all. With the Sizes menu on "Manually
          set", every edit a designer makes took that dead path, which is
          why the only thing that appeared to happen came from elsewhere.
@@ -12493,7 +12535,7 @@ export default function GISCanvasPage() {
          further on than Planned comes back to Planned with it.
 
          Only downwards. Setting a trench As-Laid does not make the
-         cable in it live \u2014 laying a duct and energising a cable are
+         cable in it live — laying a duct and energising a cable are
          different visits, often weeks apart, and a rule that did both
          would be inventing work. Undoing a mistake is safe in a way
          that asserting progress is not.
@@ -12554,7 +12596,7 @@ export default function GISCanvasPage() {
          changing either bore moves it, adds one, or takes one away.
 
          Both sizes compared, not only the built one, because an
-         override is the commonest way a size changes here \u2014 the same
+         override is the commonest way a size changes here — the same
          trap the cable carry records having fallen into.
 
          Handed a patched drawing: state has not caught up with the
@@ -12633,7 +12675,7 @@ export default function GISCanvasPage() {
             const kva = Number(after.Attributes?.MSDB_Total_kVA) || 0;
             const way = assignWay(origin, cid, kva);
             if (way.full) {
-              setStatus(`${name}: all ${way.ways} LV ways are taken \u2014 `
+              setStatus(`${name}: all ${way.ways} LV ways are taken — `
                 + "add a way on the substation, or free one.");
               setTimeout(() => setStatus(""), 8000);
             } else if (way.changed) {
@@ -12657,7 +12699,7 @@ export default function GISCanvasPage() {
             });
             await load(projectId);
             setStatus(`${name} (${letter}): the board's flats are its members `
-              + `\u2014 node ${spanLabel(letter, 0)} stands at the `
+              + `— node ${spanLabel(letter, 0)} stands at the `
               + `${origin.Feature_Role === "substation" ? "substation" : "POC"}. `
               + "Run Build LV Network to route the cable to the board.");
             setTimeout(() => setStatus(""), 10000);
@@ -12723,7 +12765,7 @@ export default function GISCanvasPage() {
       const near = features.filter((f) =>
         servicePartOf(f, lineTypes) && f.Feature_ID !== id).length;
       if (near) {
-        setStatus("Plot seed deleted \u2014 no service of its own was found, "
+        setStatus("Plot seed deleted — no service of its own was found, "
           + `so nothing else was removed. (rule rev ${CASCADE_REV})`);
         setTimeout(() => setStatus(""), 9000);
       }
@@ -12838,9 +12880,9 @@ export default function GISCanvasPage() {
        message is the instruction for getting it there; for a note that
        sentence is advice to do the one thing a note should not do. */
     setStatus(role === NOTE_ROLE
-      ? `Click where ${what} goes \u2014 anywhere there is room to read it, `
+      ? `Click where ${what} goes — anywhere there is room to read it, `
         + "Esc to cancel"
-      : `Click where ${what} goes \u2014 on the main to sit on it, `
+      : `Click where ${what} goes — on the main to sit on it, `
         + "Esc to cancel");
   }
 
@@ -12851,7 +12893,7 @@ export default function GISCanvasPage() {
      with the networks never meeting. Gas and water have drawn this
      for a while; electric used to refuse the second POC because every
      electric walk assumed one origin. The walks now choose by
-     network \u2014 buildFeederModel roots each circuit at the origin on
+     network — buildFeederModel roots each circuit at the origin on
      its own trenches, the report measures each meter from the origin
      that reaches it, and two origins on ONE network is refused there
      by name. */
@@ -12869,20 +12911,20 @@ export default function GISCanvasPage() {
 
      Two circuits' cables share a trench and store the same route; the
      drawn separation is pixels of display offset. A snap measured
-     against the stored geometry is a coin toss between them \u2014 click
+     against the stored geometry is a coin toss between them — click
      dead on the orange dashes and take the blue circuit by a
      hair's-width tie-break. So placement measures exactly as the hit
      test now does: against the offset polyline the eye aimed at, in
      pixels, and maps the winning segment back onto the true geometry
      (the offset preserves vertices, so index and t carry across). The
      snap point returned is on the TRUE route, because the box stands
-     in the trench \u2014 only the choosing follows the drawing. */
+     in the trench — only the choosing follows the drawing. */
   /* ── An LV feeder, and only that ──
 
      `drawnMainAt` takes anything whose line type contains "main", which
      is right for a link box: HV never reaches one and a service is not
      a main. A cut-out is spliced into an LV FEEDER, so it says so
-     rather than relying on what happens not to match \u2014 `elec_hv` does
+     rather than relying on what happens not to match — `elec_hv` does
      not contain "main" today and a line type somebody adds tomorrow
      might.
 
@@ -13028,7 +13070,7 @@ export default function GISCanvasPage() {
       });
 
       await load(projectId);
-      setStatus("Note placed \u2014 open it to write it, drag the corner to "
+      setStatus("Note placed — open it to write it, drag the corner to "
         + "size it");
       setTimeout(() => setStatus(""), 7000);
       return;
@@ -13037,7 +13079,7 @@ export default function GISCanvasPage() {
     if (role === "sectionmark") {
       const snap = snapForSection(point, features, { lineTypes });
       if (!snap) {
-        setError("A cross-section is taken across a trench \u2014 click on one.");
+        setError("A cross-section is taken across a trench — click on one.");
         return;
       }
 
@@ -13073,7 +13115,7 @@ export default function GISCanvasPage() {
       });
 
       await load(projectId);
-      setStatus(`Section ${n} placed \u2014 right-click it to show the section`);
+      setStatus(`Section ${n} placed — right-click it to show the section`);
       setTimeout(() => setStatus(""), 6000);
       return;
     }
@@ -13081,7 +13123,7 @@ export default function GISCanvasPage() {
     if (role === "washout") {
       const snap = snapToMain(point, features, { lineTypes });
       if (!snap) {
-        setError("A wash out goes on a water main \u2014 click on the pipe, at "
+        setError("A wash out goes on a water main — click on the pipe, at "
           + "a bend, a midpoint or an end.");
         return;
       }
@@ -13123,7 +13165,7 @@ export default function GISCanvasPage() {
         Label: `WO ${n}`,
         Attributes: {
           Angle_Deg: Math.round(snap.angleDeg * 10) / 10,
-          /* The pipe it terminates, and nothing else \u2014 not the trench
+          /* The pipe it terminates, and nothing else — not the trench
              the pipe lies in, whose end is at this same point. */
           Connects: [snap.lineId],
           /* No Generated flag: this one was put here on purpose, so a
@@ -13139,11 +13181,11 @@ export default function GISCanvasPage() {
 
     /* ── A link box sits in the cable run ──
 
-       One input, one or three fused outputs \u2014 a point the feeder
+       One input, one or three fused outputs — a point the feeder
        cables connect to. Snapped onto an electric main within a
        click's reach so it lands in the run it belongs to, taking the
        cable's bearing so the input and output nodes draw along it; a
-       click in open ground places it flat and says so \u2014 the box can
+       click in open ground places it flat and says so — the box can
        be put down before the cables are, and the cables drawn to it.
        Ways and fuses are the editor's to fill in: 2 way seeds one
        empty fuse way, 4 way three, and the ratings on offer live in
@@ -13153,8 +13195,8 @@ export default function GISCanvasPage() {
        The cable runs THROUGH it: no loss, no break in the run, and no
        feeder end point at its position. None of that needs writing,
        because every rule that makes a fitting matter to the network
-       names the roles it acts on \u2014 `jointMarks` for a stop, `isBreak`
-       for a section end \u2014 and none of them mentions this one.
+       names the roles it acts on — `jointMarks` for a stop, `isBreak`
+       for a section end — and none of them mentions this one.
 
        Placed only on an LV feeder. Not HV, which is a different
        conductor at a different voltage, and not a service, which has a
@@ -13179,7 +13221,7 @@ export default function GISCanvasPage() {
       const dig = hit ? null : mainsTrenchAt(point);
       if (!hit && !dig) {
         setError("A heavy duty cut-out goes on an LV feeder cable, or on the "
-          + "end of a mains trench for the network to run out to \u2014 click on "
+          + "end of a mains trench for the network to run out to — click on "
           + "one. Not an HV cable, and not a service.");
         setPlantPlace(null);
         return;
@@ -13188,8 +13230,8 @@ export default function GISCanvasPage() {
 
       /* ── Where on the run ──
 
-         A midpoint, a vertex or an end of the cable \u2014 the three places
-         a fitting belongs \u2014 rather than wherever on the segment the
+         A midpoint, a vertex or an end of the cable — the three places
+         a fitting belongs — rather than wherever on the segment the
          click happened to land. `snapTargets` is the same list the
          drawing tools snap to, and the green circle under the pointer
          has been showing which one is about to be taken.
@@ -13206,7 +13248,7 @@ export default function GISCanvasPage() {
       for (const t of onThis) {
         /* A target carries `point`, not x and y. Read as x/y it came
            back undefined, every distance was NaN, and the first
-           candidate won by default \u2014 the cable's start, wherever
+           candidate won by default — the cable's start, wherever
            somebody had clicked. */
         const q = t.point;
         if (!Array.isArray(q)) continue;
@@ -13262,7 +13304,7 @@ export default function GISCanvasPage() {
         setStatus(hit
           ? `Heavy duty cut-out placed on ${hit.line.Attributes?.Circuit_Name
             ?? "the feeder"}`
-          : "Heavy duty cut-out placed on the mains trench \u2014 give it a "
+          : "Heavy duty cut-out placed on the mains trench — give it a "
             + "circuit in its editor, then Auto Build LV Network runs the "
             + "cable out to it and puts a feeder end point on it.");
         setTimeout(() => setStatus(""), hit ? 4000 : 9000);
@@ -13281,8 +13323,8 @@ export default function GISCanvasPage() {
          a metre up the road leaves the cables terminating at the
          breech and the box standing beside the work. Snapped to the
          nearest vertex of the run it landed on when one is within a
-         few metres \u2014 vertices are where runs meet and where joints
-         are planned \u2014 and left exactly where it was clicked
+         few metres — vertices are where runs meet and where joints
+         are planned — and left exactly where it was clicked
          otherwise, mid-span being a legitimate place to break a run. */
       if (hit) {
         const g2 = hit.line.Geometry || [];
@@ -13332,14 +13374,14 @@ export default function GISCanvasPage() {
           angle = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
         }
       } else if (!note) {
-        note = " \u2014 not on a trench or a cable, so nothing will route "
+        note = " — not on a trench or a cable, so nothing will route "
           + "through it yet";
       }
       const count = features.filter((f) => f.Feature_Role === "linkbox").length + 1;
       /* ── A link box on a run IS a feeder end point ──
 
-         The cable breaks here by definition \u2014 in through one face,
-         out through fuses \u2014 so the box takes the circuit of the run
+         The cable breaks here by definition — in through one face,
+         out through fuses — so the box takes the circuit of the run
          it lands on, the next sequence number, and the arriving cable,
          exactly as a hand-placed feeder point does. The trace stops at
          it, levels are computed to it, and the build adopts it rather
@@ -13352,7 +13394,7 @@ export default function GISCanvasPage() {
       /* Its place on the run, not a count of what exists.
 
          This was max-plus-one, so a box put on the cable just past the
-         POC \u2014 the first stop there is \u2014 came out A10 on a circuit
+         POC — the first stop there is — came out A10 on a circuit
          with nine points, and the drawing read A0, A10, A2, A3. The
          number means position; the count only agrees with it if every
          point is placed in order outward and none is ever added in the
@@ -13393,7 +13435,7 @@ export default function GISCanvasPage() {
            themselves A2 is a schedule nobody can read. */
         if (ins.writes.length) await bulkUpdateFeatures(projectId, ins.writes);
         await load(projectId);
-        setStatus(`Link Box ${count} (${ways} way) placed${note} \u2014 set its `
+        setStatus(`Link Box ${count} (${ways} way) placed${note} — set its `
           + "fuses in the editor"
           + (seq != null
             ? `. It is ${ins.label} on the run`
@@ -13409,8 +13451,8 @@ export default function GISCanvasPage() {
 
     /* ── A feeder end point is one circuit's ──
 
-       It marks a break in a circuit's cable \u2014 a link box, a planned
-       joint, a stop the router would not have made \u2014 so it has to
+       It marks a break in a circuit's cable — a link box, a planned
+       joint, a stop the router would not have made — so it has to
        know whose cable it is on, and the cable under the click says.
        A click in open ground has no circuit to offer and is refused
        plainly rather than guessed at: a point that belongs to no
@@ -13422,7 +13464,7 @@ export default function GISCanvasPage() {
          cannot say whose the point is. */
       if (hit && hit.line.Attributes?.Circuit_ID == null) hit = null;
       if (!hit) {
-        setError("A feeder end point goes on a circuit's cable \u2014 click on "
+        setError("A feeder end point goes on a circuit's cable — click on "
           + "the run it belongs to.");
         return;
       }
@@ -13430,7 +13472,7 @@ export default function GISCanvasPage() {
       const cid = hit.line.Attributes.Circuit_ID;
       const letter = hit.line.Attributes?.Circuit_Letter
         || String.fromCharCode(64 + Number(cid));
-      /* Its place on the run. This was max-plus-one too \u2014 the same
+      /* Its place on the run. This was max-plus-one too — the same
          fault as the link box, on the same field, in the function
          below the one that had it. A break put in the middle of a run
          is numbered where it stands and the stops beyond it move up.
@@ -13469,7 +13511,7 @@ export default function GISCanvasPage() {
         if (ins.writes.length) await bulkUpdateFeatures(projectId, ins.writes);
         await load(projectId);
         setStatus(`${label} placed on ${hit.line.Attributes?.Circuit_Name
-          ?? `circuit ${cid}`} \u2014 the trace now stops here`
+          ?? `circuit ${cid}`} — the trace now stops here`
           + (ins.writes.length
             ? `, and ${ins.writes.length} point(s) beyond it moved up.`
             : "."));
@@ -13517,7 +13559,7 @@ export default function GISCanvasPage() {
             if (d) angle = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
           }
         } else {
-          note = " \u2014 not on an HV run yet, draw the circuit through it later";
+          note = " — not on an HV run yet, draw the circuit through it later";
         }
       }
       const count = features.filter((f) => f.Feature_Role === role).length + 1;
@@ -13594,10 +13636,10 @@ export default function GISCanvasPage() {
       }
     } else {
       note = toTrench
-        ? " \u2014 not on a trench yet, draw one through it to join the network"
+        ? " — not on a trench yet, draw one through it to join the network"
         : isValve
-          ? " \u2014 not on a main, so it is drawn square to the screen. Turn it in the editor."
-          : " \u2014 not on a main yet, draw the main through it later";
+          ? " — not on a main, so it is drawn square to the screen. Turn it in the editor."
+          : " — not on a main yet, draw the main through it later";
     }
 
     const count = features.filter((f) => f.Feature_Role === role).length + 1;
@@ -13615,7 +13657,7 @@ export default function GISCanvasPage() {
 
              Left blank rather than given a name somebody has to notice
              is wrong. It fell through to the POC branch and came out
-             called "Electric POC 2", which is not merely unhelpful \u2014 it
+             called "Electric POC 2", which is not merely unhelpful — it
              is the name of a different kind of thing. */
           : role === "msdb" ? ""
             /* Numbered like the others once there can be several. The
@@ -13807,7 +13849,7 @@ export default function GISCanvasPage() {
     const spec = JOINT_KINDS[kind];
     if (!spec) { setError(`No such joint kind: ${kind}`); return; }
 
-    /* Middle of the view, then snapped onto the nearest LV feeder \u2014 the
+    /* Middle of the view, then snapped onto the nearest LV feeder — the
        same gesture as + POC, one button rather than a button and a mode. */
     const cx = (canvasRef.current?.clientWidth ?? 800) / 2;
     const cy = (canvasRef.current?.clientHeight ?? 500) / 2;
@@ -13830,7 +13872,7 @@ export default function GISCanvasPage() {
 
     /* The circuit comes from the cable it lands on. A joint belongs to
        one network's cables, and guessing would put it on whichever
-       circuit happened to be first \u2014 the same fault placeNode had with
+       circuit happened to be first — the same fault placeNode had with
        utilities[0]. Null where it landed on nothing, which is honest:
        the joint is placed and can be dragged onto a main. */
     let circuitId = null;
@@ -13839,7 +13881,7 @@ export default function GISCanvasPage() {
       circuitId = best.line.Attributes?.Circuit_ID ?? null;
       note = ` on ${best.line.Label ?? "the feeder"}`;
     } else {
-      note = " \u2014 not on an LV feeder yet, drag it onto one so the "
+      note = " — not on an LV feeder yet, drag it onto one so the "
         + "levels check can read it";
     }
 
@@ -13939,7 +13981,7 @@ export default function GISCanvasPage() {
       ? `\n\nOne part of ${plan.stuck[0].count} meters cannot be divided further, `
         + "which is why the counts are not closer."
       : "";
-    if (!window.confirm(`Split ${pick.c.name} \u2014 ${why}.\n\n${plan.circuits} circuits `
+    if (!window.confirm(`Split ${pick.c.name} — ${why}.\n\n${plan.circuits} circuits `
       + `of about ${plan.target} meters each:\n${lines.join("\n")}${stuck}\n\n`
       + "The first keeps its name and way; each of the others becomes a new "
       + "circuit on its own LV way. Run Build LV Network afterwards.")) return;
@@ -13972,7 +14014,7 @@ export default function GISCanvasPage() {
      and scale bar are set aside. What is stored is the linework in grid
      metres.
 
-     A drawing with no link yet opens the matching straight away \u2014 the
+     A drawing with no link yet opens the matching straight away — the
      tile cannot be placed until it is matched, and a tile that imports
      and then appears nowhere reads as a failed import. */
   async function importOsTile(file) {
@@ -13999,7 +14041,7 @@ export default function GISCanvasPage() {
 
      Before any fit, the tile is put where it can be seen: its centre at
      the middle of the screen, unturned, at the plan's own scale. That
-     placement is only for pointing at \u2014 every OS click snaps to a real
+     placement is only for pointing at — every OS click snaps to a real
      corner of the linework and takes that corner's TRUE easting and
      northing, so where the tile happened to be drawn does not enter the
      fit.
@@ -14047,7 +14089,7 @@ export default function GISCanvasPage() {
       }
     }
     if (!best) {
-      setStatus("Click on a corner of the OS linework \u2014 the point snaps to the nearest one.");
+      setStatus("Click on a corner of the OS linework — the point snaps to the nearest one.");
       setTimeout(() => setStatus(""), 5000);
       return;
     }
@@ -14084,7 +14126,7 @@ export default function GISCanvasPage() {
     const origins = lvOrigins(features);
     const sub = origins[0] || null;
     if (!sub) {
-      setError("Place a substation, or an electric POC \u2014 a circuit has to "
+      setError("Place a substation, or an electric POC — a circuit has to "
         + "feed back to one of them.");
       return false;
     }
@@ -14116,10 +14158,10 @@ export default function GISCanvasPage() {
 
     if (!eligible.length) {
       setError(selfLay.length === 1
-        ? "That meter is a self-lay electric supply \u2014 somebody else connects "
+        ? "That meter is a self-lay electric supply — somebody else connects "
           + "it, so it does not go on one of our circuits."
         : `All ${selfLay.length} of those meters are self-lay electric supplies `
-          + "\u2014 somebody else connects them, so they do not go on our circuits.");
+          + "— somebody else connects them, so they do not go on our circuits.");
       return false;
     }
     /* Named where there are few enough to name. "3 left out" is a
@@ -14130,7 +14172,7 @@ export default function GISCanvasPage() {
         .filter((x) => x != null);
       setStatus(`${selfLay.length} self-lay supply(s) left off`
         + (plots.length && plots.length <= 8 ? `: plot ${plots.join(", ")}` : "")
-        + " \u2014 somebody else connects them.");
+        + " — somebody else connects them.");
       setTimeout(() => setStatus(""), 8000);
     }
     meters = eligible;
@@ -14154,7 +14196,7 @@ export default function GISCanvasPage() {
     const existing = joinId == null ? null
       : circuitChoices(features).find((c) => Number(c.id) === Number(joinId));
     if (joinId != null && !existing) {
-      setError("That circuit no longer exists \u2014 it may have been deleted.");
+      setError("That circuit no longer exists — it may have been deleted.");
       return false;
     }
 
@@ -14167,7 +14209,7 @@ export default function GISCanvasPage() {
        The circuit's origin is a design decision, and linking is the
        moment it is made: the LV way is booked on it, the circuit's A0
        stands on it, and the build routes back to it. Written onto the
-       members as Circuit_Origin_ID \u2014 the fact the build reads first,
+       members as Circuit_Origin_ID — the fact the build reads first,
        before the substation rule and before nearest-along-the-trench.
 
        A circuit already named keeps its POC unless the dialog says
@@ -14189,9 +14231,9 @@ export default function GISCanvasPage() {
         : null;
       if (!chosen) {
         setError(wanted != null
-          ? "The POC that circuit names is no longer on the drawing \u2014 "
+          ? "The POC that circuit names is no longer on the drawing — "
             + "pick which one feeds it."
-          : "This drawing has more than one electric origin \u2014 say which "
+          : "This drawing has more than one electric origin — say which "
             + "one feeds the circuit (the Fed from box).");
         return false;
       }
@@ -14228,7 +14270,7 @@ export default function GISCanvasPage() {
 
     setBusy("circuit");
     try {
-      /* The new members \u2014 and, where the POC is being named or
+      /* The new members — and, where the POC is being named or
          changed, every existing member too, so the circuit says one
          thing about who feeds it. */
       const rows = meters.map((m) => ({
@@ -14282,7 +14324,7 @@ export default function GISCanvasPage() {
         + (originWrite != null
           ? ` of ${origin.Label || (origin.Feature_Role === "substation"
             ? "the substation" : "the POC")}` : "")
-        + (way.over ? ` \u2014 ~${way.amps} A exceeds the ${way.fuse} A fuse` : "")
+        + (way.over ? ` — ~${way.amps} A exceeds the ${way.fuse} A fuse` : "")
       );
       setTimeout(() => setStatus(""), 10000);
       return true;
@@ -14292,8 +14334,8 @@ export default function GISCanvasPage() {
 
   /* A circuit's cable colour, set from the Circuit Report.
 
-     Written to the circuit's own origin \u2014 its named POC where it has
-     one, the first origin otherwise \u2014 and stripped from every other
+     Written to the circuit's own origin — its named POC where it has
+     one, the first origin otherwise — and stripped from every other
      origin in the same breath, because the readers merge first-wins
      and a stale copy on an earlier origin would shadow the choice.
      Null puts the circuit back on the palette. Immediate, unlike the
@@ -14359,8 +14401,8 @@ export default function GISCanvasPage() {
       const cname = members[0].Attributes?.Circuit_Name || `Circuit ${circuitId}`;
       setStatus(origin
         ? `${cname} is fed from ${origin.Label || (origin.Feature_Role === "substation"
-          ? "the substation" : "the POC")} \u2014 run Build LV Network to re-route it`
-        : `${cname} names no POC \u2014 the next build picks the nearest along the trench`);
+          ? "the substation" : "the POC")} — run Build LV Network to re-route it`
+        : `${cname} names no POC — the next build picks the nearest along the trench`);
       setTimeout(() => setStatus(""), 10000);
       setError("");
     } catch (e) { setError(e.message); }
@@ -14372,7 +14414,7 @@ export default function GISCanvasPage() {
      The remedial move a 4 way exists for: losses too high, so the run
      is broken at a box and the load split across its fused outputs.
      Which plots hang off which output is a design decision, lassoed
-     like circuit membership and written the same way \u2014 Link_Box_ID
+     like circuit membership and written the same way — Link_Box_ID
      and Link_Way on the meters. The routing only changes when Build
      LV Network runs again, and the status says so.
 
@@ -14380,7 +14422,7 @@ export default function GISCanvasPage() {
      a share of ITS circuit, and quietly moving a meter between
      circuits here would reassign without freeing the old way on the
      board. Lassoed meters from other circuits are counted out loud
-     and left alone. Re-lassoing overwrites \u2014 the newest statement of
+     and left alone. Re-lassoing overwrites — the newest statement of
      where a plot connects is the one that stands. */
   async function finishLinkWayAssign(ring) {
     const armed = linkWayAssign;
@@ -14402,7 +14444,7 @@ export default function GISCanvasPage() {
        This refused outright where the box had no circuit yet: "place it
        on the cable, or rebuild, then lasso". Which meant a network had
        to be built before the box could be assigned, and built again
-       afterwards to route through it \u2014 the first build laying a design
+       afterwards to route through it — the first build laying a design
        nobody wanted, purely so the box had a cable to be clicked onto.
 
        A box has no circuit of its own. It is on the circuit of the
@@ -14437,14 +14479,14 @@ export default function GISCanvasPage() {
       .filter((x) => x != null)
       .map(Number))];
     if (claimed == null && inRing.length > 1) {
-      setError("That outline covers plots on more than one circuit \u2014 an "
+      setError("That outline covers plots on more than one circuit — an "
         + "output feeds a share of ONE circuit, so lasso the plots of the "
         + "circuit this box is on.");
       return;
     }
     const cid = claimed ?? inRing[0] ?? null;
     if (cid == null) {
-      setError("Nothing in that outline is on a circuit yet \u2014 link the "
+      setError("Nothing in that outline is on a circuit yet — link the "
         + "plots to a circuit first, then lasso them onto an output.");
       return;
     }
@@ -14453,7 +14495,7 @@ export default function GISCanvasPage() {
     const foreign = meters.length - mine.length;
     if (!mine.length) {
       setError(`Nothing in that outline is on ${box.Attributes?.Circuit_Name
-        ?? "the box's circuit"} \u2014 an output feeds a share of its own circuit.`);
+        ?? "the box's circuit"} — an output feeds a share of its own circuit.`);
       return;
     }
     setBusy("circuit");
@@ -14491,9 +14533,9 @@ export default function GISCanvasPage() {
         + `output ${armed.way}`
         + (foreign ? ` \u00b7 ${foreign} on other circuits left alone` : "")
         + (claimed == null
-          ? " \u2014 the box is on that circuit now. Build LV Network lays the"
+          ? " — the box is on that circuit now. Build LV Network lays the"
             + " input and each output"
-          : " \u2014 run Build LV Network to re-route")
+          : " — run Build LV Network to re-route")
         /* Said, not done silently. A box quietly changing circuits is
            the kind of thing somebody finds three drawings later. */
         + (stale
@@ -14506,7 +14548,7 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
-  /* Moving meters between outputs from the Circuit Report \u2014 the same
+  /* Moving meters between outputs from the Circuit Report — the same
      write the lasso makes, from a couple of clicks instead of an
      outline. Null takes them off a box entirely, back onto the
      origin's routing at the next build. */
@@ -14520,7 +14562,7 @@ export default function GISCanvasPage() {
       const wrong = rows.filter((m) =>
         Number(m.Attributes?.Circuit_ID) !== Number(box?.Attributes?.Circuit_ID));
       if (!box || wrong.length) {
-        setError("An output feeds a share of its own circuit \u2014 those meters "
+        setError("An output feeds a share of its own circuit — those meters "
           + "are on another one.");
         return;
       }
@@ -14535,7 +14577,7 @@ export default function GISCanvasPage() {
       })));
       await load(projectId);
       setStatus(target
-        ? `${rows.length} meter(s) onto output ${target.way} \u2014 run Build LV `
+        ? `${rows.length} meter(s) onto output ${target.way} — run Build LV `
           + "Network to re-route"
         : `${rows.length} meter(s) back on the origin's routing at the next build`);
       setTimeout(() => setStatus(""), 9000);
@@ -14550,7 +14592,7 @@ export default function GISCanvasPage() {
     setLinkWayAssign({ boxId, way });
     setTool("circuit");
     setSelected([]); setDraft([]);
-    setStatus(`Draw round the plots for output ${way} \u2014 Escape to stop`);
+    setStatus(`Draw round the plots for output ${way} — Escape to stop`);
     setTimeout(() => setStatus(""), 8000);
   }
   async function clearLinkWay(boxId, way) {
@@ -14565,7 +14607,7 @@ export default function GISCanvasPage() {
         Attributes: { ...m.Attributes, Link_Box_ID: null, Link_Way: null },
       })));
       await load(projectId);
-      setStatus(`Output ${way} cleared \u2014 ${held.length} meter(s) back on the `
+      setStatus(`Output ${way} cleared — ${held.length} meter(s) back on the `
         + "origin's routing at the next build");
       setTimeout(() => setStatus(""), 8000);
     } catch (e) { setError(e.message); }
@@ -14589,7 +14631,7 @@ export default function GISCanvasPage() {
        substation would refuse the same drawing one step earlier. */
     const sub = lvOrigin(features);
     if (!sub) {
-      setError("Place a substation, or an electric POC \u2014 a circuit has to "
+      setError("Place a substation, or an electric POC — a circuit has to "
         + "feed back to one of them.");
       return;
     }
@@ -14662,7 +14704,7 @@ export default function GISCanvasPage() {
     const pick = circuitPick;
     if (!pick) return;
     /* A new circuit on a multi-origin drawing has to say who feeds it
-       before the button works \u2014 kept open with the reason, rather
+       before the button works — kept open with the reason, rather
        than closed and errored. A join inherits the circuit's own POC
        where the box is left on "keep". */
     if (joinId == null && lvOrigins(features).length > 1 && !pick.origin) {
@@ -14704,7 +14746,7 @@ export default function GISCanvasPage() {
     const how = `picked from the report${skipped
       ? `, ${skipped} already on a circuit skipped` : ""}`;
     if (lvOrigins(features).length > 1 || circuitChoices(features).length) {
-      /* Including the ones waiting for a first member \u2014 see
+      /* Including the ones waiting for a first member — see
          circuitChoices. Offering only membered circuits meant a
          designer who had just made one had to make a second. */
       const onDrawing = circuitChoices(features);
@@ -14728,14 +14770,14 @@ export default function GISCanvasPage() {
      run arriving at the node, recorded a second time because that is
      where the volt drop sum reads it. Two records of one fact that can
      be edited apart is precisely the drift this whole class of fault
-     comes from \u2014 a section saying 300 and its node saying 95, with the
+     comes from — a section saying 300 and its node saying 95, with the
      trace quietly reporting the design nobody is building.
 
      So the node mirrors the run: the system size from the system size,
      the override from the override, including clearing the override when
      it is taken off the run. Writing only the overridden field was what
      left A1 reading 300 through Manual_VD_Cable_Size_ID while its
-     VD_Cable_Size_ID still said 95 \u2014 true for whichever field the reader
+     VD_Cable_Size_ID still said 95 — true for whichever field the reader
      happened to look at, and the node editor looked at the other one. */
   async function carryCableToNode(edited, srcFeatures) {
     const src = srcFeatures || features;
@@ -14752,9 +14794,9 @@ export default function GISCanvasPage() {
     if (!nodes.length) {
       /* Said out loud rather than passed over. A run whose end is more
          than SPAN_REACH_M from any node feeds nothing, and the trace
-         will go on using whatever that node already held \u2014 which looks
+         will go on using whatever that node already held — which looks
          identical to the edit having worked. */
-      setStatus("No span node within reach of this run \u2014 the trace still "
+      setStatus("No span node within reach of this run — the trace still "
         + "reads the node's own cable");
       setTimeout(() => setStatus(""), 9000);
       return;
@@ -14790,7 +14832,7 @@ export default function GISCanvasPage() {
         ?.Attributes?.Span_Label ?? "the span node");
       const shown = sizeNameOf(wantManual ?? wantSystem);
       setStatus(`${labels.join(", ")} now read${labels.length === 1 ? "s" : ""} `
-        + `${shown || "no cable"} \u2014 that is the figure the trace uses`);
+        + `${shown || "no cable"} — that is the figure the trace uses`);
       setTimeout(() => setStatus(""), 8000);
     } catch (e) { setError(e.message); await load(projectId); }
   }
@@ -14829,7 +14871,7 @@ export default function GISCanvasPage() {
        circuit.
 
        This required a Circuit_ID, which a cable gets when the build
-       routes it \u2014 so a run the build did not claim fed nothing, and the
+       routes it — so a run the build did not claim fed nothing, and the
        node at its end kept "not set" against it. The same fault as the
        levels report and nodeFedBy had, in the third place it reads a
        field the build fills in.
@@ -14843,7 +14885,7 @@ export default function GISCanvasPage() {
       /* Either size: a cable set by hand is the one that will be
          pulled, so it is the one the node has to carry. Reading only
          the calculated size meant an overridden run left its node on
-         the size the build had chosen \u2014 and the volt drop was then
+         the size the build had chosen — and the volt drop was then
          worked out on a cable nobody is laying. */
       && sizeIdFor(f, "electric", "manual") != null);
 
@@ -14893,7 +14935,7 @@ export default function GISCanvasPage() {
     /* Every node a run has spoken for, changed or not.
 
        `updates` only holds the nodes that differ, so it cannot say
-       which nodes a run ends at and already agrees with \u2014 and the
+       which nodes a run ends at and already agrees with — and the
        through pass below must leave those alone. A node a cable ends at
        belongs to that cable whatever else runs over it. */
     const claimed = new Set();
@@ -14903,7 +14945,7 @@ export default function GISCanvasPage() {
     const mirror = (node, line) => {
       const want = sizeIdFor(line, "electric", "manual");
 
-      /* What this node will hold once the passes are done \u2014 the
+      /* What this node will hold once the passes are done — the
          clearing pass may already have emptied it.
 
          Reading the original feature here compared against the service
@@ -14921,7 +14963,7 @@ export default function GISCanvasPage() {
          overridden run ended up with Manual_VD_Cable_Size_ID = 300 and
          VD_Cable_Size_ID still 95. Every reader that takes manual-then-
          system saw 300 and the one place that read the system field
-         alone \u2014 the span node editor \u2014 saw 95, on the same node, at the
+         alone — the span node editor — saw 95, on the same node, at the
          same moment. Neither was wrong about the field it read.
 
          The node mirrors the run in both, including clearing the
@@ -14969,8 +15011,8 @@ export default function GISCanvasPage() {
        trunk ENDS there and every output STARTS there. Three runs
        claimed one box, the last processed won, and the box came back
        carrying an output's 185 when its input is 300. Nothing else on
-       the drawing says 185 at that point \u2014 not the system size, not
-       the manual one \u2014 so the number appeared from nowhere.
+       the drawing says 185 at that point — not the system size, not
+       the manual one — so the number appeared from nowhere.
 
        A node takes the cable of the run that ARRIVES at it. A run
        leaving it is the next length of cable and has its own node
@@ -14987,7 +15029,7 @@ export default function GISCanvasPage() {
 
        The build already states the pairing. It labels each section it
        lays after the point that section runs to, so cable B1 feeds
-       point B1 \u2014 no inference, and no two points to choose between.
+       point B1 — no inference, and no two points to choose between.
 
        The geometric rule stays for anything unlabelled: a cable drawn
        by hand carries no section label and has only its ends to go
@@ -15030,7 +15072,7 @@ export default function GISCanvasPage() {
        Place Span Nodes marks every junction of mains; a circuit's run
        only breaks where the circuit itself divides. At a junction where
        this circuit carries straight on and another turns off, the run
-       is one section over the node and nothing ends there \u2014 so the
+       is one section over the node and nothing ends there — so the
        pass above never reaches it, and it read "not set" with a sized
        cable running over it. That was most of the empty nodes on a
        drawing with more than one circuit.
@@ -15062,7 +15104,7 @@ export default function GISCanvasPage() {
     if (!updates.size) {
       if (stillUnset.length) {
         setStatus(`${stillUnset.length} span node(s) have no cable reaching `
-          + "them \u2014 no sized run ends within "
+          + "them — no sized run ends within "
           + `${SPAN_REACH_M} m of the node or passes through it`);
         setTimeout(() => setStatus(""), 9000);
         return;
@@ -15082,7 +15124,7 @@ export default function GISCanvasPage() {
 
        This printed VD_Cable_Size_ID, the system field. Where the run
        carries an override the update writes the *manual* field and
-       leaves the system one alone \u2014 so the dialog named the old
+       leaves the system one alone — so the dialog named the old
        calculated size while writing the new one. Changing a cable from
        95 to 300 produced a dialog offering to set the node to 95, which
        reads as the sync undoing the edit. It was not: the write was
@@ -15118,7 +15160,7 @@ export default function GISCanvasPage() {
         await bulkUpdateFeatures(projectId, rows.slice(i, i + 100));
       }
       await load(projectId);
-      setStatus(`${rows.length} span node cable(s) updated \u2014 re-run the trace to see it`);
+      setStatus(`${rows.length} span node cable(s) updated — re-run the trace to see it`);
       setTimeout(() => setStatus(""), 9000);
       setError("");
     } catch (e) { setError(e.message); }
@@ -15188,7 +15230,7 @@ export default function GISCanvasPage() {
 
        Repaired here rather than left to a re-lay, because re-laying
        replaces cable that is correct in order to fix a vertex that is
-       missing \u2014 and on a drawing already called off, the cable is the
+       missing — and on a drawing already called off, the cable is the
        thing not to touch.
 
        Silent, and only where something actually changes. On a drawing
@@ -15256,7 +15298,7 @@ export default function GISCanvasPage() {
 
        It is wrong for one this app placed itself. When the bottle end
        moved to the end of the tail, the plan put a new one 3 m along
-       and the old one at the take-off matched nothing \u2014 so it stayed,
+       and the old one at the take-off matched nothing — so it stayed,
        sitting under the service joint, and the drawing had two bottle
        ends on every leg with the wrong one where anybody was looking.
 
@@ -15318,8 +15360,8 @@ export default function GISCanvasPage() {
        again, and the second run works on a drawing the first has not
        finished changing.
 
-       Counted across the whole job \u2014 the joints added, the ones
-       reclassified, the ones removed and the connections recorded \u2014
+       Counted across the whole job — the joints added, the ones
+       reclassified, the ones removed and the connections recorded —
        because a bar that reaches the end and then sits there while more
        work happens is worse than no bar at all. */
     const total = add.length + update.length + staleMine.length + 1;
@@ -15340,7 +15382,7 @@ export default function GISCanvasPage() {
           Attributes: attrsFor(j),
         });
         done += 1;
-        step(`Placing joints \u2014 ${done} of ${add.length}`);
+        step(`Placing joints — ${done} of ${add.length}`);
       }
       if (update.length) {
         const rows = update.map((u) => ({
@@ -15375,7 +15417,7 @@ export default function GISCanvasPage() {
          between two cables it had just laid.
 
          Read here, from the drawing as it now stands, which is the one
-         moment it is exactly what the build laid \u2014 nothing dragged
+         moment it is exactly what the build laid — nothing dragged
          since, no stale geometry. Inferring the same thing later, off a
          drawing somebody has been editing, is the guess this whole area
          has been bitten by; doing it at the moment of placement is not.
@@ -15437,7 +15479,7 @@ export default function GISCanvasPage() {
      the same shape.
 
      So: the trench's own geometry, end to end. Not a walk, not a
-     shortest path \u2014 the whole of the one trench that was right-clicked
+     shortest path — the whole of the one trench that was right-clicked
      and nothing beyond it.
 
      What it does NOT do is decide anything else. No circuit, no cable
@@ -15508,7 +15550,7 @@ export default function GISCanvasPage() {
       });
       await load(projectId);
       setStatus(`${t.Label ?? typeKey} laid along `
-        + `${trench.Label ?? "the trench"} \u2014 ${lineLength(g).toFixed(1)} m`);
+        + `${trench.Label ?? "the trench"} — ${lineLength(g).toFixed(1)} m`);
       setTimeout(() => setStatus(""), 5000);
     } catch (e) { setError(e.message); }
   }
@@ -15581,7 +15623,7 @@ export default function GISCanvasPage() {
       await recordAction("Route POC to substation",
         existing, [...(made?.Feature_ID ? [made] : [])]);
       await load(projectId);
-      setStatus(`Supply routed \u2014 ${r.metres} m from `
+      setStatus(`Supply routed — ${r.metres} m from `
         + `${r.poc.Label || "POC"} to ${r.substation.Label || "the substation"}`);
       setTimeout(() => setStatus(""), 9000);
       setError("");
@@ -15603,7 +15645,7 @@ export default function GISCanvasPage() {
       .find((d) => Number(d.Project_Developer_ID) === Number(id))?.label ?? `developer ${id}`;
 
     if (!plan.label.length && !plan.split.length && !plan.clear.length) {
-      setStatus(`Nothing to change \u2014 ${plan.untouched} feature(s) already right, `
+      setStatus(`Nothing to change — ${plan.untouched} feature(s) already right, `
         + `${plan.shared} shared.`);
       setTimeout(() => setStatus(""), 8000);
       return;
@@ -15746,7 +15788,7 @@ export default function GISCanvasPage() {
         await createCircuitFromMeters(g.meters.map((m) => m.Feature_ID));
       }
       setGroupPlan(null);
-      setStatus(`${plan.groups.length} circuits created \u2014 ${plan.sizes.join(", ")}`);
+      setStatus(`${plan.groups.length} circuits created — ${plan.sizes.join(", ")}`);
       setTimeout(() => setStatus(""), 10000);
       setError("");
     } catch (e) { setError(e.message); }
@@ -15816,7 +15858,7 @@ export default function GISCanvasPage() {
   /* Put back an origin node that has been deleted.
 
      Place Span Nodes does this too, but it also renumbers every span on
-     the drawing \u2014 a large change to undo one deletion, and one nobody
+     the drawing — a large change to undo one deletion, and one nobody
      will risk on a drawing they have finished. This does the origins
      and nothing else.
 
@@ -15869,7 +15911,7 @@ export default function GISCanvasPage() {
       await load(projectId);
       setStatus(made
         ? `${made} origin node(s) placed`
-        : "Every origin is already there \u2014 nothing to put back");
+        : "Every origin is already there — nothing to put back");
       setTimeout(() => setStatus(""), 6000);
       setError("");
     } catch (e) { setError(e.message); }
@@ -15955,7 +15997,7 @@ export default function GISCanvasPage() {
           + `${splitPlan.pieces} section(s) at the nodes on them. `
           + "Each section keeps the surface, build status and everything "
           + "else the trench carried."
-        : "\n\nNo trench needs cutting \u2014 every node already sits at the end "
+        : "\n\nNo trench needs cutting — every node already sits at the end "
           + "of one.")
     )) return;
 
@@ -15982,7 +16024,7 @@ export default function GISCanvasPage() {
 
          E0, G0 and W0 are what a levels check counts from and what a
          call-off names a run against, but nothing had ever written them
-         onto the plant \u2014 the labels existed only in the code, so the
+         onto the plant — the labels existed only in the code, so the
          drawing showed a substation and a gas POC with no origin marked
          and the first junction reading A1 as though it were the start.
 
@@ -15995,7 +16037,7 @@ export default function GISCanvasPage() {
 
          Labelling the substation put "E0" on the drawing and satisfied
          a reader, but every trace looks for a feature with the span
-         node role and Span_Seq 0 \u2014 so the levels check reported
+         node role and Span_Seq 0 — so the levels check reported
          "Circuit 1: no origin node" while E0 sat plainly on screen.
          The label is a name; the node is the thing the network is
          measured from.
@@ -16004,7 +16046,7 @@ export default function GISCanvasPage() {
          the circuit so a site with two substations has an origin for
          each. */
       for (const [key, origin] of originsOf(world)) {
-        /* The key identifies the origin and may name the POC \u2014 "gas:2"
+        /* The key identifies the origin and may name the POC — "gas:2"
            for a second feed. The layer is on the entry. */
         const layer = origin.layer ?? key;
         const f = origin.feature;
@@ -16013,8 +16055,8 @@ export default function GISCanvasPage() {
 
         /* One node, shared by every circuit.
 
-           They are the same point on the ground \u2014 the substation the
-           whole network is measured from \u2014 so one per circuit would be
+           They are the same point on the ground — the substation the
+           whole network is measured from — so one per circuit would be
            four copies stacked on one spot, four things to keep in step
            for no gain. No Circuit_ID on it: naming one would make it
            that circuit's origin and leave the rest without. */
@@ -16091,7 +16133,7 @@ export default function GISCanvasPage() {
            recover: at one metre it was not matched, so re-placing added
            a second node beside it and left the drifted one behind. Five
            is wide enough to reclaim a node somebody moved and narrow
-           enough not to claim its neighbour \u2014 span nodes sit at
+           enough not to claim its neighbour — span nodes sit at
            junctions and ends, which are not five metres apart.
 
            Nearest first, so where two are in range the closer one is
@@ -16175,7 +16217,7 @@ export default function GISCanvasPage() {
 
          A spare keeps whatever it was called last time. This run
          renumbers the nodes it claimed by distance along the trenches,
-         starting again at A1 \u2014 so a spare holding A8 collides with the
+         starting again at A1 — so a spare holding A8 collides with the
          A8 this run has just issued to a different point.
 
          Which is not hypothetical: project 11 has two nodes called A8
@@ -16291,7 +16333,7 @@ export default function GISCanvasPage() {
           ? `, ${cutTrenches} trench(es) cut into ${cutPieces} section(s)` : "")
         + ` \u00b7 ${plan.servicesIgnored} service trench(es) ignored`
         + (plan.plant ? `, plant is ${plan.plant.label}` : "")
-        + (stopped ? " \u2014 run it again to carry on where it stopped." : ""));
+        + (stopped ? " — run it again to carry on where it stopped." : ""));
       setTimeout(() => setStatus(""), stopped ? 12000 : 10000);
       /* Said as an error, not folded into the status above.
 
@@ -16300,7 +16342,7 @@ export default function GISCanvasPage() {
          and a status line clears itself after ten seconds. */
       setError(clashing.length
         ? `${clashing.join(", ")} ${clashing.length === 1 ? "is" : "are"} now `
-          + `the name of two nodes \u2014 one this run placed and one left `
+          + `the name of two nodes — one this run placed and one left `
           + `alone from before. Delete the spare, or rename it, before `
           + `raising a call-off that names a run.`
         : "");
@@ -16475,7 +16517,7 @@ export default function GISCanvasPage() {
 
            Stored in GIS_Data, which is jsonb and was carrying nothing.
            A column per joint would be a migration for every question
-           the work instruction ever gains \u2014 the same argument
+           the work instruction ever gains — the same argument
            Field_Submission.Payload makes for the form itself. */
         GIS_Data: (() => {
           /* Assigned to `traced` below as well as returned, so the
@@ -16494,7 +16536,7 @@ export default function GISCanvasPage() {
 
              This call-off connects some of the plots on a feeder. The
              ones past them are not being built yet, but the feeder is
-             drawn all the way to them \u2014 so the cable just laid ends in
+             drawn all the way to them — so the cable just laid ends in
              mid-air and has to be sealed until somebody comes back.
 
              Five metres past the last plot connected, along the feeder.
@@ -16540,7 +16582,7 @@ export default function GISCanvasPage() {
 
           /* Which plots each cable serves, by the service that tees
              into it. A meter belongs to the feeder its own service
-             reaches \u2014 the service carries the plot number and its end
+             reaches — the service carries the plot number and its end
              sits on the main. A meter beside a cable that does not feed
              it is not on it. */
           const servicesOf = new Map();
@@ -16688,7 +16730,7 @@ export default function GISCanvasPage() {
             reaches the plot beyond it and the seal becomes a straight
             joint.
 
-            Failure is said and not thrown \u2014 a call-off already written
+            Failure is said and not thrown — a call-off already written
             must not be lost because a joint could not be drawn. */
         try {
           for (const seal of (traced?.seals ?? [])) {
@@ -16715,7 +16757,7 @@ export default function GISCanvasPage() {
             });
           }
         } catch {
-          setStatus("Call-off raised \u2014 a temporary bottle end could not be "
+          setStatus("Call-off raised — a temporary bottle end could not be "
             + "placed. Check the end of each feeder before the gang goes out.");
         }
 
@@ -16779,7 +16821,7 @@ export default function GISCanvasPage() {
                 submissionId: created.Submission_ID, dataUrl,
               });
               if (planWhy) {
-                setStatus("Call-off raised \u2014 the as-laid drawing was taken "
+                setStatus("Call-off raised — the as-laid drawing was taken "
                   + `without the site plan behind it, because ${planWhy}. `
                   + "Fix that and use Re-take drawing on the call-off.");
                 setTimeout(() => setStatus(""), 20000);
@@ -16787,7 +16829,7 @@ export default function GISCanvasPage() {
             }
           }
         } catch {
-          setStatus("Call-off raised \u2014 the as-laid drawing could not be "
+          setStatus("Call-off raised — the as-laid drawing could not be "
             + "saved. It can be taken again from the call-off.");
         }
       }
@@ -16815,7 +16857,7 @@ export default function GISCanvasPage() {
     const workType = (lookups?.workTypes || [])
       .find((w) => w.Selection_Mode === "Span");
     if (!workType) {
-      setError("No work type with a Span selection mode \u2014 check Admin.");
+      setError("No work type with a Span selection mode — check Admin.");
       return;
     }
 
@@ -16944,7 +16986,7 @@ export default function GISCanvasPage() {
         Ground_Unmade: raised.Ground_Unmade || null,
         Line_Level_Required: raised.Line_Level_Required || null,
       });
-      setStatus(`Mains call-off #${raised.Submission_ID} raised \u2014 `
+      setStatus(`Mains call-off #${raised.Submission_ID} raised — `
         + `${raised.spans} span(s), ${raised.totalM} m`);
       setTimeout(() => setStatus(""), 12000);
       setRaised(null);
@@ -17245,7 +17287,7 @@ export default function GISCanvasPage() {
        Worked out here rather than stored, so it follows the drawing: a
        cable added to a trench widens it without anybody remembering to
        revise a number. The diameters come off the features where they
-       carry one \u2014 gas and water hold a size, cable does not, and a
+       carry one — gas and water hold a size, cable does not, and a
        nominal width is used for those and said to be nominal. */
     const njug = trenchSize((res.contents || []).map((c) => {
       const size = String(c.feature?.Attributes?.Size ?? "");
@@ -17379,9 +17421,9 @@ export default function GISCanvasPage() {
         const more = worst.length > 5 ? ` and ${worst.length - 5} more` : "";
         notes.push(kind === "service"
           ? `${rows.length} meters are ${range} from the nearest trench, `
-            + `over the ${w.limit} m service limit \u2014 ${shown}${more}`
+            + `over the ${w.limit} m service limit — ${shown}${more}`
           : `${rows.length} meters are ${range} from the substation along the `
-            + `trench, over the ${w.limit} m limit \u2014 ${shown}${more}`);
+            + `trench, over the ${w.limit} m limit — ${shown}${more}`);
       }
     }
 
@@ -17444,7 +17486,7 @@ export default function GISCanvasPage() {
        enough to feed it. Saying which saves someone drawing more trench
        where the problem is the distance. */
     setError(plan.unreachable.length
-      ? `${plan.unreachable.length} meter(s) left out \u2014 no trench within `
+      ? `${plan.unreachable.length} meter(s) left out — no trench within `
         + `10 m to service them, or no route under ${plan.maxRunM} m from the substation.`
       : "");
   }
@@ -17670,7 +17712,7 @@ export default function GISCanvasPage() {
       setFeatures(fresh.features || []);
 
       setStatus(`${rows.length} meter(s) moved to ${target.name}`
-        + (built ? " \u2014 rebuilding the network\u2026" : ""));
+        + (built ? " — rebuilding the network\u2026" : ""));
 
       if (built) {
         setBusy("");
@@ -17698,7 +17740,7 @@ export default function GISCanvasPage() {
        a termination; both name their circuit the same way a meter
        does. Unassigning meters alone left them still naming it, so the
        circuit came straight back the moment anything read the drawing
-       again \u2014 which is what "I can no longer delete circuits" looks
+       again — which is what "I can no longer delete circuits" looks
        like once the report has been taught that a board is a member. */
     const held = features.filter((f) =>
       (f.Feature_Role === "msdb" || f.Feature_Role === "hdcutout") && mine(f));
@@ -17748,13 +17790,13 @@ export default function GISCanvasPage() {
       `Delete ${circuit.name}?\n\n`
       + `${feeders.length} feeder cable(s) and ${nodes.length} span node(s) deleted\n`
       + `${joints.length} joint(s) deleted\n`
-      + `${meters.length} meter(s) unassigned \u2014 the meters, services and trenches stay`
+      + `${meters.length} meter(s) unassigned — the meters, services and trenches stay`
       + (held.length
         ? `\n${held.length} board(s) and cut-out(s) taken off the circuit `
-          + "\u2014 they stay on the drawing, with their flats"
+          + "— they stay on the drawing, with their flats"
         : "")
       + (shared
-        ? `\n\n${shared} joint(s) recorded against two circuits are left in place \u2014 `
+        ? `\n\n${shared} joint(s) recorded against two circuits are left in place — `
           + "run Place Feeder Joints to replace them."
         : "")
     )) return;
@@ -17810,7 +17852,7 @@ export default function GISCanvasPage() {
         for (let i = 0; i < gone.length; i += 100) {
           const from = i + 1;
           const to = Math.min(i + 100, gone.length);
-          say(`Removing cables, nodes and joints \u2014 ${to} of ${gone.length}`);
+          say(`Removing cables, nodes and joints — ${to} of ${gone.length}`);
           await deleteFeatures(projectId, gone.slice(i, i + 100));
         }
       }
@@ -17838,7 +17880,7 @@ export default function GISCanvasPage() {
       step += 1;
       say("Reloading the drawing");
       await load(projectId);
-      setStatus(`${circuit.name} deleted \u2014 ${feeders.length} cable(s), `
+      setStatus(`${circuit.name} deleted — ${feeders.length} cable(s), `
         + `${nodes.length} node(s), ${joints.length} joint(s) removed, `
         + `${meters.length} meter(s) unassigned`);
       setTimeout(() => setStatus(""), 7000);
@@ -17863,7 +17905,7 @@ export default function GISCanvasPage() {
      The status of the trench it grows out of: the tail is dug in the
      same visit, by the same gang, in the same hole. Starting every tail
      at Planned meant a leg whose ground was closed was held back by the
-     1.5 m of it this app had just drawn \u2014 the cable could not go Live
+     1.5 m of it this app had just drawn — the cable could not go Live
      over a trench that existed only because the cable did.
 
      Read from the trench at the point the tail leaves, which is the
@@ -17893,7 +17935,7 @@ export default function GISCanvasPage() {
 
        Neither is reported by the build: the plot is simply not there as
        far as it is concerned. That is how "why is there no cable
-       between node 2 and node 5" came to be a question \u2014 three plots
+       between node 2 and node 5" came to be a question — three plots
        past node 5 had no circuit, and the trench joining them was
        perfectly good.
 
@@ -17939,7 +17981,7 @@ export default function GISCanvasPage() {
               + `${say(blockers.noService)}.`
             : "",
           "Build LV Network lays cable to the plots a circuit owns, along the"
-            + " trenches that are drawn \u2014 it cannot reach these. Flats fed from"
+            + " trenches that are drawn — it cannot reach these. Flats fed from"
             + " an MSDB are not counted; their tails are on the board.",
         ].filter(Boolean).join(" "),
       );
@@ -17988,7 +18030,7 @@ export default function GISCanvasPage() {
        The build routes to METERS: it scans for them, attaches each to
        the nearest node on the dig, and sizes cable by what it finds. A
        board's flats are not features, so the build did not know they
-       existed \u2014 no cable was routed to a board and no stop was placed
+       existed — no cable was routed to a board and no stop was placed
        at it.
 
        Added here, at the one place the build's view of the drawing is
@@ -18003,7 +18045,7 @@ export default function GISCanvasPage() {
       configs: lookups?.propertyConfigs || [],
       propertyTypes: lookups?.propertyTypes || [],
       consumption: lookups?.houseTypeConsumption || [],
-      /* And the landlord supplies on each board \u2014 see the note at the
+      /* And the landlord supplies on each board — see the note at the
          levels. A build told only about flats routes a cable sized for
          the dwellings and leaves the lift off it. */
       nrsList,
@@ -18013,15 +18055,15 @@ export default function GISCanvasPage() {
     const circuits = circuitsFrom(src);
     /* A substation, or an electric POC on the mains trench. On a
        connection to an existing network there is no new transformer,
-       and the POC is where the site's electricity comes from \u2014 the
+       and the POC is where the site's electricity comes from — the
        rule is in feeder.js so the guard and the router cannot disagree
        about what counts as an origin. */
     if (!lvOrigin(src)) {
       return setError("Place a substation, or an electric POC on the mains "
-        + "trench \u2014 feeders route back to one of them.");
+        + "trench — feeders route back to one of them.");
     }
     if (!circuits.length) {
-      return setError("No circuits defined yet \u2014 use Link to Circuit first.");
+      return setError("No circuits defined yet — use Link to Circuit first.");
     }
 
     /* Generated is the discriminator, not the type: a rebuild must
@@ -18045,7 +18087,7 @@ export default function GISCanvasPage() {
 
        The removal above is scoped to the electric layer, which is right
        for cables. A tail trench is on the trench layer, so it survived
-       every rebuild and another was dug beside it \u2014 two "B8 tail"
+       every rebuild and another was dug beside it — two "B8 tail"
        lengths in one place after two runs, and one more on each.
 
        Identified by Tail_M, not by Generated alone: Generated on the
@@ -18093,8 +18135,8 @@ export default function GISCanvasPage() {
 
            This was the build's own copy of the membership walk, and it
            was the copy circuitMembership's comment warns about: it
-           gathered seeds only, so a supply that answers by meter \u2014 a
-           pumping station, any non-residential load \u2014 was invisible
+           gathered seeds only, so a supply that answers by meter — a
+           pumping station, any non-residential load — was invisible
            to the router, and Build LV Network ran no cable to it while
            the circuit report happily listed it. Recurring fault 27,
            found on real ground. The shared walk gathers both sets, and
@@ -18109,7 +18151,7 @@ export default function GISCanvasPage() {
            outputs: the unassigned plots from the origin, a trunk to
            the box sized for everything its outputs serve, and each
            output routed from the box to its own plots. One part, the
-           whole circuit from the origin, everywhere else \u2014
+           whole circuit from the origin, everywhere else —
            circuitBuildParts is feederSections with a label on until
            an assignment exists. */
         /* ── Board-to-board links on this circuit ──
@@ -18176,7 +18218,7 @@ export default function GISCanvasPage() {
              cannot put back, and this is the release to find out
              whether anything else wanted it. */
         });
-        /* A part that cannot route says so with its name on \u2014 output 2
+        /* A part that cannot route says so with its name on — output 2
            refused does not stop output 1 building. Only a circuit with
            nothing buildable at all is skipped whole. */
         for (const pt of parts.filter((x) => x.error)) {
@@ -18186,7 +18228,7 @@ export default function GISCanvasPage() {
         const sections = good.flatMap((x) => x.sections);
         if (!sections.length) {
           if (!parts.some((x) => x.error)) {
-            failed.push(`${c.name}: nothing to route \u2014 its meters reach the network but no run leads back to the substation`);
+            failed.push(`${c.name}: nothing to route — its meters reach the network but no run leads back to the substation`);
           }
           continue;
         }
@@ -18208,12 +18250,12 @@ export default function GISCanvasPage() {
           }
         }
         /* The circuit's origin answers from the part that routed from
-           it \u2014 the origin part where one exists, the trunk otherwise;
+           it — the origin part where one exists, the trunk otherwise;
            way parts are rooted at the box and know nothing of POCs. */
         /* Each section remembers which output laid it, so the run it
            becomes can wear the output's colour and a schedule can say
            whose cable it is. Origin and trunk sections carry nothing,
-           deliberately \u2014 they are the circuit's own. */
+           deliberately — they are the circuit's own. */
         for (const pt of good) {
           if (pt.way == null) continue;
           for (const sec of pt.sections) {
@@ -18252,7 +18294,7 @@ export default function GISCanvasPage() {
            creates one, but a circuit made before that did, or one whose
            node has been deleted, would have none — so the build makes
            sure rather than assuming. */
-        /* This circuit's own origin \u2014 on a two-POC site the model chose
+        /* This circuit's own origin — on a two-POC site the model chose
            it (named, substation, or nearest along the trench), and the
            circuit's A0 goes where its own feed begins, not where the
            site's first origin happens to stand. */
@@ -18264,7 +18306,7 @@ export default function GISCanvasPage() {
            it: A1 is the node closest to the substation, and everything
            A1 feeds is numbered before anything on another branch. */
         /* Per part, because each part has its own model and its own
-           walk \u2014 then concatenated in build order (origin, trunk,
+           walk — then concatenated in build order (origin, trunk,
            ways) and deduped by position, so the trunk's far end and
            the ways' roots, all standing on the one link box, mark it
            once. The box itself is a manual point the maintenance
@@ -18304,8 +18346,8 @@ export default function GISCanvasPage() {
              Every other part's root is already a stop by the time it is
              walked: a link box is marked by the trunk arriving at it,
              and the origin is the origin. Nothing arrives at the far
-             side of a board-to-board link \u2014 that is the whole point of
-             it \u2014 so its root was marked by nobody and the board had no
+             side of a board-to-board link — that is the whole point of
+             it — so its root was marked by nobody and the board had no
              feeder point, no figure, and no levels for its flats.
 
              Marked here, at the node the walk begins from. */
@@ -18321,7 +18363,7 @@ export default function GISCanvasPage() {
              part is the same NODE the end-of-line pass found. On a part
              rooted at a board it is not: the walk has its own node
              numbering, so the two land a metre apart and both are kept
-             \u2014 two feeder end points at the end of one cable, B4 and B5,
+             — two feeder end points at the end of one cable, B4 and B5,
              0.88 m apart on the reported drawing.
 
              By position as well, at the distance somebody would call
@@ -18360,7 +18402,7 @@ export default function GISCanvasPage() {
                drawing showed B4 and B5 on top of each other.
 
                By distance instead. Two stops within two and a half
-               metres of one another on one circuit is not a design \u2014
+               metres of one another on one circuit is not a design —
                a span is tens of metres, and the fittings this numbers
                are metres apart at their closest. */
             if (walked.some((w) => Math.hypot(w.point[0] - m.point[0],
@@ -18375,7 +18417,7 @@ export default function GISCanvasPage() {
              from — without writing them onto a part that is also read
              for its own. */
           sections,
-          /* How many parts this circuit was laid in \u2014 one where there
+          /* How many parts this circuit was laid in — one where there
              is no box, trunk plus outputs where there is. Reported at
              the end, because it is the fact that decides everything
              else about the routing and numbering. */
@@ -18415,7 +18457,7 @@ export default function GISCanvasPage() {
          A build lays the smallest cable that could do the job and the
          volt drop check is what says where that is not enough. Starting
          from a scope default meant a site whose default was set larger
-         began oversized everywhere, and the check could never say so \u2014
+         began oversized everywhere, and the check could never say so —
          it only reports cable that is too small.
 
          defaultFeederCable is the minimum: the highest impedance LV
@@ -18437,7 +18479,7 @@ export default function GISCanvasPage() {
 
          There were two of these. The one above the confirm has the
          mains test on it and is what the question counts; this one,
-         which is what actually deletes, had lost it \u2014 so the box said
+         which is what actually deletes, had lost it — so the box said
          "this redraws 12 existing feeder cable(s)" and the build then
          deleted every generated electric feature on the drawing,
          services included.
@@ -18453,19 +18495,19 @@ export default function GISCanvasPage() {
       /* What somebody chose by hand, kept across the rebuild.
 
          A rebuild deletes the generated mains and lays them again, so
-         an override went with them \u2014 every manually set pipe size lost
+         an override went with them — every manually set pipe size lost
          on every build, silently, which is the one thing a rebuild must
          not do. The calculated size is the build's to replace; the
          override is not.
 
-         Remembered by where the run ARRIVES, per circuit \u2014 not by id,
+         Remembered by where the run ARRIVES, per circuit — not by id,
          because the new features are new rows, and not by geometry,
          because the geometry is exactly what a rebuild changes. It was
          keyed on every vertex of the old run, two decimal places, and
          put back only on a new run laid along exactly the same points:
          a plot added breaks the run somewhere new, a trench nudged
          moves an interior vertex, and either way the key changed and
-         the hand-set size was silently back on the default \u2014 lost on
+         the hand-set size was silently back on the default — lost on
          every build, on any drawing being worked on. The arrival is the
          feeder end point the run feeds, which stands on a trench
          junction the interior of the run can change around. The keying
@@ -18519,7 +18561,7 @@ export default function GISCanvasPage() {
                  time. A run that now breaks somewhere new arrives
                  somewhere new and starts on the default, which is the
                  honest answer for a length whose load has just changed
-                 \u2014 while the length still arriving where it did keeps
+                 — while the length still arriving where it did keeps
                  the size, however its interior was redrawn. */
               ...(carried != null ? { Manual_VD_Cable_Size_ID: carried } : {}),
               /* How far this run carries on past the last take-off,
@@ -18562,7 +18604,7 @@ export default function GISCanvasPage() {
         /* ── Feeder End Points: the cable's own junctions ──
 
            Span nodes are facts about the dig and the build no longer
-           touches them at all \u2014 no adoption, no renumbering, no cable.
+           touches them at all — no adoption, no renumbering, no cable.
            They keep the site-wide numbers Place Span Nodes gave them
            and wear the trench's colour.
 
@@ -18572,7 +18614,7 @@ export default function GISCanvasPage() {
            sequence outward from the origin, and the cable of the run
            arriving at it. Two circuits through one trench junction are
            two feeder points at one location, each with its own figures
-           \u2014 which is what one span node could never honestly hold, and
+           — which is what one span node could never honestly hold, and
            where the pass-through and tie-break patches came from.
 
            Generated points are the build's: deleted and remade each
@@ -18580,11 +18622,11 @@ export default function GISCanvasPage() {
            same way run overrides are carried by geometry. A point
            somebody placed by hand (no Generated flag) is adopted where
            it stands on a planned position, and sequenced after the walk
-           where it does not \u2014 it is a break somebody chose, and the
+           where it does not — it is a break somebody chose, and the
            trace stops there. */
         /* Link boxes ride in the same list: they carry the same span
            fields, are never Generated, and so are adopted where they
-           stand, sequenced with the walk, never deleted by a build \u2014
+           stand, sequenced with the walk, never deleted by a build —
            including one placed in open ground before any cable reached
            it, which is where the stray duplicate came from.
 
@@ -18605,7 +18647,7 @@ export default function GISCanvasPage() {
         }
 
         /* The cable arriving at a point: the section whose far end is
-           it. Which is also how a run's carried size is found \u2014 the
+           it. Which is also how a run's carried size is found — the
            arrival is the key, so the section reaching this point brings
            whatever was set on the run that reached it last time. */
         const arriving = (pt) => {
@@ -18705,7 +18747,7 @@ export default function GISCanvasPage() {
 
          The trace reads a node's cable, not the run's, so a build that
          laid cables and left the nodes alone produced a network that
-         could not be checked \u2014 and it was a separate menu item nobody
+         could not be checked — and it was a separate menu item nobody
          had reason to know they had to press. It belongs to the build,
          because it is part of having built. */
       /* Against the drawing as it now is. `features` in this closure is
@@ -18713,7 +18755,7 @@ export default function GISCanvasPage() {
          ones just deleted and its nodes still carry the numbering the
          renumber pass just replaced. Syncing from that found the old
          cables at the old sizes, decided nothing had changed, and wrote
-         nothing \u2014 so the sync the build "included" never ran, and the
+         nothing — so the sync the build "included" never ran, and the
          nodes had to be done from the menu afterwards. Where it did
          find a difference it would have written the pre-build
          attributes back over the renumbered ones.
@@ -18757,7 +18799,7 @@ export default function GISCanvasPage() {
          it was reported nowhere. When a box came back numbered C10 on a
          drawing whose meters were plainly assigned to it, four rounds
          went into inferring from exported drawings whether the box had
-         been seen at all \u2014 a question the build could have answered in
+         been seen at all — a question the build could have answered in
          four words as it finished.
 
          **Anything that changes the shape of the answer should say so
@@ -18766,8 +18808,8 @@ export default function GISCanvasPage() {
       /* ── Did the boards get their cable ──
 
          A board is routed to because its flats are load on the network.
-         Several things have to be true for that \u2014 a circuit named, flats
-         ticked, the board within reach of the dig \u2014 and when it does not
+         Several things have to be true for that — a circuit named, flats
+         ticked, the board within reach of the dig — and when it does not
          happen the build says nothing and the drawing simply has no
          cable to it.
 
@@ -18804,7 +18846,7 @@ export default function GISCanvasPage() {
           && ln.Attributes?.VD_Cable_Size_ID != null
           && (ln.Geometry || []).some((q) => Array.isArray(q)
             && Math.hypot(q[0] - at[0], q[1] - at[1]) <= 2));
-        if (!reached) return `${name}: not reached \u2014 is it on the trench?`;
+        if (!reached) return `${name}: not reached — is it on the trench?`;
         /* And whether the load arrived with it. `attachedFlats` is what
            the routing actually put on the dig for this board, so a zero
            here is the difference between "a cable runs to it" and "it
@@ -18828,18 +18870,18 @@ export default function GISCanvasPage() {
             + (boardSaid.length ? ` (${boardSaid.join("; ")})` : "")
           : "")
         + (partsSaid > planned.length
-          ? `, ${partsSaid} part(s) \u2014 link box trunk and outputs`
+          ? `, ${partsSaid} part(s) — link box trunk and outputs`
           : ", no link box in the routing")
         + (ranOn
           ? `, ${ranOn} run(s) carried to the end of the dig`
           : ", no run had main laid past its last plot")
         + (jointsMade ? `, ${jointsMade} joint(s)` : "")
-        /* Feeder points are the build's own now \u2014 made, not hunted \u2014
+        /* Feeder points are the build's own now — made, not hunted —
            so there is nothing missing to report. Span nodes are the
            dig's and the build no longer touches them. */
         + (fepsMade ? `, ${fepsMade} feeder point(s)` : "")
         + (renumbered ? `, ${renumbered} resequenced` : "")
-        /* Which POC fed which circuit, and by which rule \u2014 ALWAYS on a
+        /* Which POC fed which circuit, and by which rule — ALWAYS on a
            multi-origin drawing, not only when a rule guessed. "Both
            cables from the same POC" was reported with every meter
            correctly named in the database, and the status had nothing
@@ -18848,8 +18890,8 @@ export default function GISCanvasPage() {
            if it says "named" and the drawing disagrees, the cables on
            screen are not this build's; if it names one POC twice, the
            model is wrong and says how; if it says nothing at all, the
-           deployed model predates origin rules \u2014 which is also worth
-           knowing, and is what "(rule unknown \u2014 old model)" means. */
+           deployed model predates origin rules — which is also worth
+           knowing, and is what "(rule unknown — old model)" means. */
         + (lvOrigins(features).length > 1
           ? planned.map((x) => `; ${x.circuit.name} \u2190 ${x.origin
             ? (x.origin.Label || (x.origin.Feature_Role === "substation"
@@ -18857,13 +18899,13 @@ export default function GISCanvasPage() {
             : "?"} (${{ named: "named", only: "its own network",
               nearest: "nearest along the trench",
               first: "first origin" }[x.originBy]
-              || "rule unknown \u2014 old model"})`).join("")
+              || "rule unknown — old model"})`).join("")
           : "")
         + (startCable
           ? `, on ${cableName(startCable)}`
           : ", no LV cable in the catalogue to default to")
         + (links.length ? `, ${links.length} link(s) recorded` : "")
-        + (stranded.length ? ` \u2014 ${stranded.length} meter(s) not on the trench network` : ""));
+        + (stranded.length ? ` — ${stranded.length} meter(s) not on the trench network` : ""));
       setTimeout(() => setStatus(""), 14000);
     } catch (e) { setError(e.message); await load(projectId); }
     finally { setBusy(""); setProgress(null); }
@@ -18916,7 +18958,7 @@ export default function GISCanvasPage() {
       + "1. Lay the gas main along the mains trench\n"
       + (meters
         ? `2. Run service pipe to ${meters} gas meter(s)`
-        : "2. Services \u2014 skipped, no gas meters are placed yet")
+        : "2. Services — skipped, no gas meters are placed yet")
       + "\n\nExisting generated gas mains are replaced. Services already "
       + "laid are left alone."
     )) return;
@@ -18975,7 +19017,7 @@ export default function GISCanvasPage() {
   /* Gas at 39.5 MJ/m³ gross, so 24 kW is 2.19 m³/h.
 
      Gross rather than net, and worth saying because the two differ by
-     17% \u2014 which at the square of flow is about 37% of the pressure
+     17% — which at the square of flow is about 37% of the pressure
      drop. Net (33.6) would read as the more conservative choice; gross
      is what the meter and the operator quote. */
   const kwToM3h = (kw) => (Number(kw) || 0) * 3600 / 39500;
@@ -18987,13 +19029,13 @@ export default function GISCanvasPage() {
       /* The features to measure. Passed in when a suggestion has just
          been applied, because setFeatures has not landed yet and
          reading state here would measure the network as it was before
-         the change \u2014 which then reports the same failure again. */
+         the change — which then reports the same failure again. */
       const src = srcFeatures || features;
       /* A site can be fed from more than one side, and the networks do
          not meet. Measured from the POC that feeds each one.
 
          Taking the first would report one network and silently leave
-         the rest unmeasured \u2014 the worst of the three possible answers,
+         the rest unmeasured — the worst of the three possible answers,
          because the panel would look like a full check.
 
          gasMainRuns walks from the POCs it finds, so the runs already
@@ -19013,7 +19055,7 @@ export default function GISCanvasPage() {
       const poc = pocs[0];
       const sourceMBar = Number(poc.Attributes?.Output_Pressure_mBar);
       if (!(sourceMBar > 0)) {
-        setError("Set the gas POC's output pressure before running the check \u2014 "
+        setError("Set the gas POC's output pressure before running the check — "
           + "right-click it and fill in Output pressure (mbar).");
         return;
       }
@@ -19047,7 +19089,7 @@ export default function GISCanvasPage() {
            is on the plot, not on the meter, and a service with no load
            is skipped before it can add to a node. So every run came
            back at 0 kW, every flow at 0 m3/h, and every length sized to
-           the smallest pipe in the table \u2014 which is why the bore read
+           the smallest pipe in the table — which is why the bore read
            52.0 the whole way down.
 
            The gas build passes this. The check has to pass the same
@@ -19126,7 +19168,7 @@ export default function GISCanvasPage() {
              label can be read; the anchor is the point on the dig it
              was placed at. Matching on the marker meant a moved node
              was no longer near the end of its run, so the report showed
-             a dash where a node plainly exists \u2014 and it showed more of
+             a dash where a node plainly exists — and it showed more of
              them the more the drawing had been tidied. */
           const a = f.Attributes?.Span_Anchor;
           const q = (Array.isArray(a) && a.length === 2 ? a : (f.Geometry || [])[0]);
@@ -19141,7 +19183,7 @@ export default function GISCanvasPage() {
 
          The minimum and the amber band were read here and the rest were
          left to their defaults, so changing the tee allowance, the
-         efficiency or the temperature in Admin did nothing at all \u2014
+         efficiency or the temperature in Admin did nothing at all —
          the fields were there and the answer never moved.
 
          Gathered into one object and passed on, so a setting added to
@@ -19162,7 +19204,7 @@ export default function GISCanvasPage() {
          wrong one for a check: it meant the levels check re-sized the
          network from scratch every time and never looked at the pipe.
          So changing a size by hand, or pressing Make change, moved
-         nothing at all \u2014 the next run computed the same size again and
+         nothing at all — the next run computed the same size again and
          reported the same pressures.
 
          Read off the features on the run, falling back to the computed
@@ -19172,7 +19214,7 @@ export default function GISCanvasPage() {
 
          Kept apart from the size lookup: that one skips a length with
          no size on it, which is right for reading a bore and wrong for
-         reading a name \u2014 an unsized main still has a label and still
+         reading a name — an unsized main still has a label and still
          needs a row in the report. */
       /* Where a run's midpoint falls, for matching by proximity. */
       const midOf = (pts = []) => {
@@ -19200,7 +19242,7 @@ export default function GISCanvasPage() {
         /* Containment first, proximity second.
 
            Matching a run to the pipe drawn along it by containment is
-           exact when it works and silent when it does not \u2014 a
+           exact when it works and silent when it does not — a
            millimetre of difference anywhere along a hundred metres and
            the answer is simply nothing, with no error and no clue. That
            has cost five rounds of guessing on one missing figure.
@@ -19225,7 +19267,7 @@ export default function GISCanvasPage() {
           /* The run lies on the main, not the main on the run.
 
              The build draws a main END_EXTEND_M past its last node so
-             the end cap has pipe to sit on \u2014 so the main is longer than
+             the end cap has pipe to sit on — so the main is longer than
              the run it was laid along, and asking whether every point
              of the main sits on the run failed on that overhang. Every
              time, on every capped length.
@@ -19243,7 +19285,7 @@ export default function GISCanvasPage() {
 
       /* One matcher, used for the size as well as the name and the
          flow. Two ways of deciding which pipe a run is drawn as is two
-         ways for them to disagree \u2014 which is how the report came to
+         ways for them to disagree — which is how the report came to
          show one length's size against another length's label. */
       const sizeOnDrawing = (pts) => {
         const f = mainOnRun(pts);
@@ -19265,15 +19307,15 @@ export default function GISCanvasPage() {
           const onRun = mainOnRun(r.pts);
           return {
           ...r,
-          /* The gas main length label \u2014 G1, G2 \u2014 which is what a
+          /* The gas main length label — G1, G2 — which is what a
              length of main is called. Not a node: the nodes are G0 and
              the A-numbers. */
           /* The name the drawing gives this length, not a fresh count.
 
              The build labels each main G1, G2 as it lays it; the report
              numbered its own runs from one again. On a site where the
-             two orders differ \u2014 which they do the moment a network is
-             built from more than one POC \u2014 the same pipe was G12 on the
+             two orders differ — which they do the moment a network is
+             built from more than one POC — the same pipe was G12 on the
              canvas and G16 on the report, and neither could be checked
              against the other.
 
@@ -19282,14 +19324,14 @@ export default function GISCanvasPage() {
           /* The drawing's own name, made unique across the site.
 
              Each network is built from its own POC and labels its mains
-             G1, G2 from one \u2014 so two networks both have a G13 and a
+             G1, G2 from one — so two networks both have a G13 and a
              G16, and the report listed each twice with no way to tell
              them apart. The second and later get a letter, the same way
              a second origin does. */
           /* The feature this run is drawn as, found once and used for
              both its name and its flow. It was looked up for the label
              and separately for the flow, and when the label was
-             reworked the flow's copy went with it \u2014 so featureId was
+             reworked the flow's copy went with it — so featureId was
              never set, the map was always empty, and Q never appeared
              on any pipe. */
           featureId: onRun?.Feature_ID ?? null,
@@ -19305,7 +19347,7 @@ export default function GISCanvasPage() {
 
              A gas main is drawn END_EXTEND_M past its last node so the
              end cap has pipe to sit on. The run's final point is
-             therefore about 1.5m beyond the span node it ends at \u2014
+             therefore about 1.5m beyond the span node it ends at —
              exactly the tolerance this searched within, so the label
              was found or missed on rounding and several runs showed a
              dash where a node plainly exists.
@@ -19347,7 +19389,7 @@ export default function GISCanvasPage() {
            how many supplies that is.
 
            Read off the run rather than recomputed. Doing the lookup
-           again here got it wrong \u2014 it asked the table for a `kw`
+           again here got it wrong — it asked the table for a `kw`
            field that does not exist, so every flow came back zero and
            every pressure stayed at the POC's. The build already applies
            the factor per node against what is beyond that node, which
@@ -19386,14 +19428,14 @@ export default function GISCanvasPage() {
            a changed network from a moved label. */
         /* The mode is part of what was measured. Without it, switching
            the menu left the previous result on screen looking current
-           \u2014 the figures for the other mode, presented as though they
+           — the figures for the other mode, presented as though they
            were these. */
         measuredFingerprint: `${sizeMode.gas ?? "manual"}\n${fingerprintOf(src)}`,
         /* Flow per length of main, keyed by the feature it is drawn as.
 
            On the result rather than in state of its own. Held
            separately it was set here and cleared by the staleness
-           effect on the very next render \u2014 the check runs against the
+           effect on the very next render — the check runs against the
            features it was handed, which after a rebuild are not yet the
            ones in state, so the fingerprints differed and everything
            not attached to the result was wiped. The pressures survived
@@ -19408,7 +19450,7 @@ export default function GISCanvasPage() {
 
          The flow is shown on a main by matching the run the check
          measured to the feature it is drawn as. When that match fails
-         the label simply omits Q \u2014 no error, nothing to see \u2014 and
+         the label simply omits Q — no error, nothing to see — and
          every attempt to find the fault has been a guess. This reports
          how many matched, so the next question is answerable rather
          than another round of looking. */
@@ -19417,7 +19459,7 @@ export default function GISCanvasPage() {
         const total = (result.legs || []).length;
         if (matched < total) {
           setStatus(`${matched} of ${total} lengths of main matched to a pipe `
-            + "on the drawing \u2014 the rest show no Q");
+            + "on the drawing — the rest show no Q");
           setTimeout(() => setStatus(""), 9000);
         }
       }
@@ -19427,7 +19469,7 @@ export default function GISCanvasPage() {
          network on a site fed from two looks like a full check, and the
          unmeasured half is the half nobody looks at. */
       if (pocs.length > 1) {
-        setError(`${pocs.length} gas POCs on this drawing \u2014 these levels are `
+        setError(`${pocs.length} gas POCs on this drawing — these levels are `
           + `for the network fed from ${poc.Label || "the first"}. `
           + "The others are not measured yet.");
       }
@@ -19506,7 +19548,7 @@ export default function GISCanvasPage() {
 
       const fresh = await listGis(projectId);
       setFeatures(fresh.features || []);
-      setStatus(`${sug.runId} is now ${sug.sizeLabel} \u2014 re-running the levels check`);
+      setStatus(`${sug.runId} is now ${sug.sizeLabel} — re-running the levels check`);
       setTimeout(() => setStatus(""), 6000);
       setError("");
       await runGasLevelsCheck({ srcFeatures: fresh.features || [] });
@@ -19536,7 +19578,7 @@ export default function GISCanvasPage() {
       && f.Attributes?.Line_Type === mainType?.Type_Key);
 
     /* The POC this length is fed from. With more than one on the
-       drawing the nearest is the one to walk towards \u2014 the networks do
+       drawing the nearest is the one to walk towards — the networks do
        not meet, so the nearest is the only one reachable. */
     const pocs = features.filter((f) => f.Feature_Role === "poc"
       && f.Layer_Key === "gas" && (f.Geometry || []).length);
@@ -19561,7 +19603,7 @@ export default function GISCanvasPage() {
       /* Nothing to do is worth saying only where the walk failed: a
          chain that could not be followed is a fact about the drawing,
          and silence would read as "everything upstream is fine". */
-      if (!reachedPoc && why) setStatus(`Upstream not checked \u2014 ${why}`);
+      if (!reachedPoc && why) setStatus(`Upstream not checked — ${why}`);
       return;
     }
 
@@ -19626,7 +19668,7 @@ export default function GISCanvasPage() {
      deleting it would take away work outside the polygon somebody drew.
      Points are inside if they are inside.
 
-     Locked classes are skipped, as they are everywhere else \u2014 a lock
+     Locked classes are skipped, as they are everywhere else — a lock
      is a statement that something is not to be moved or removed, and a
      lasso is not an exception to it. */
   async function deleteInsidePolygon(ring) {
@@ -19643,7 +19685,7 @@ export default function GISCanvasPage() {
     setTool("select");
 
     if (!inside.length) {
-      setError("Nothing inside that outline \u2014 a feature counts only where "
+      setError("Nothing inside that outline — a feature counts only where "
         + "the whole of it is within.");
       return;
     }
@@ -19658,7 +19700,7 @@ export default function GISCanvasPage() {
     }
     const summary = [...byKind.entries()]
       .sort((a, b) => b[1] - a[1])
-      .map(([k, n]) => `${n} \u00d7 ${k}`)
+      .map(([k, n]) => `${n} × ${k}`)
       .join("\n");
 
     /* A seed inside the outline takes its service with it, even the
@@ -19692,7 +19734,7 @@ export default function GISCanvasPage() {
       `Delete ${inside.length} object(s) inside the outline?\n\n${summary}`
       + (spilt
         ? `\n\nPlus the service belonging to plots inside it: ${spilt}`
-          + " \u2014 some of it outside the outline."
+          + " — some of it outside the outline."
         : "")
     )) return;
 
@@ -19717,7 +19759,7 @@ export default function GISCanvasPage() {
   /* Lay one utility's services into trenches that are already drawn.
 
      Auto Service draws the dig and lays everything in it. This does the
-     second half only, for the utility whose menu it was chosen from \u2014
+     second half only, for the utility whose menu it was chosen from —
      because the three are rarely designed together, and a water run
      should not quietly add gas pipe to plots nobody has thought about
      yet. */
@@ -19732,8 +19774,8 @@ export default function GISCanvasPage() {
   /* Laying gas service pipe places the tees that go with it.
 
      Inside a wrapper rather than at the call sites, because there are
-     several \u2014 the gas menu, Lay All Services, Build the Whole Design
-     \u2014 and a fitting placed by two of them is a fitting missing from
+     several — the gas menu, Lay All Services, Build the Whole Design
+     — and a fitting placed by two of them is a fitting missing from
      the third. Whoever lays the pipe gets the tees.
 
      Read back fresh, because the pipe was written a moment ago and the
@@ -19746,7 +19788,7 @@ export default function GISCanvasPage() {
 
      Gas has done this since top tees arrived. Electric never did, so
      Auto Lay Service Cable left every service touching its main with nothing
-     marking the connection \u2014 and the only way to get the joints was to
+     marking the connection — and the only way to get the joints was to
      know that Place Feeder Joints, several items down the same menu,
      would put them in. Nothing said so, and a service with no joint is
      a take-off schedule short one fitting per plot.
@@ -19757,7 +19799,7 @@ export default function GISCanvasPage() {
      find the same nodes missing that the lay has just fixed.
 
      Silent, and swallowed. This is the tail of somebody's Auto Lay
-     Services, not a run of its own \u2014 a second status line reporting a
+     Services, not a run of its own — a second status line reporting a
      count they did not ask for reads as something having gone wrong,
      and a failure here must not lose the cables that were laid.
      Place Feeder Joints on the menu says its piece properly. */
@@ -19774,7 +19816,7 @@ export default function GISCanvasPage() {
            A service joint is planned from the feeder model, which is
            built from the circuits and the routed feeders. Lay services
            before Link to Circuit and Build LV Network and there is no
-           model to hang one on, so placeFeederJoints refuses \u2014 and
+           model to hang one on, so placeFeederJoints refuses — and
            `silent` suppressed the reason along with the chatter.
 
            The result was Auto Lay Service Cable finishing with no joints and
@@ -19792,13 +19834,13 @@ export default function GISCanvasPage() {
             : "Link the plots to a circuit and run Build LV Network first, "
               + "then Place Feeder Joints marks where each service leaves "
               + "its main.";
-          /* Not `made.length` \u2014 that belongs to autoLayServices and is
+          /* Not `made.length` — that belongs to autoLayServices and is
              not in scope here. Reading it would have thrown inside the
              catch below, which would have swallowed it, and the symptom
              would have been the joints silently not appearing: the very
              thing this message exists to explain. checkscope caught it
              before it shipped. */
-          setStatus("Services laid \u2014 no service joints placed. " + why);
+          setStatus("Services laid — no service joints placed. " + why);
           setTimeout(() => setStatus(""), 12000);
         }
       }
@@ -19825,7 +19867,7 @@ export default function GISCanvasPage() {
       if (error) { setError(error); return; }
       if (!cables.length) {
         setError(skipped.length
-          ? `Nothing to lay \u2014 ${skipSummary(skipped)}`
+          ? `Nothing to lay — ${skipSummary(skipped)}`
           : `Every service trench already carries ${utility}.`);
         return;
       }
@@ -19943,7 +19985,7 @@ export default function GISCanvasPage() {
          take-off and a task for a gang.
 
          It was left to Place Feeder Joints, which plans from the feeder
-         model \u2014 so it needed circuits linked and the LV network built,
+         model — so it needed circuits linked and the LV network built,
          and a service laid before either had a cable running to a main
          with nothing marking where they met. Laying the cable is the
          moment the joint exists; nothing else has to have happened
@@ -19953,7 +19995,7 @@ export default function GISCanvasPage() {
          ferrule, and both are placed by their own routines.
 
          Not where one is already there. A drawing where the joint was
-         placed by hand, or by an earlier run, keeps the one it has \u2014
+         placed by hand, or by an earlier run, keeps the one it has —
          re-laying a cable must not leave two fittings at one point. */
       if (utility === "electric") {
         const already = world.filter((f) => f.Feature_Role === "joint"
@@ -20040,7 +20082,7 @@ export default function GISCanvasPage() {
 
          Only Auto Place Feeder Joints recorded what a fitting holds, so
          laying services AFTERWARDS left every existing joint holding a
-         stale list \u2014 and re-laying them replaced the cables with new
+         stale list — and re-laying them replaced the cables with new
          rows, leaving the joints naming ids that no longer exist. A
          fitting that names a deleted cable moves nothing, and one that
          names a REPLACED cable is worse: the id can be reused.
@@ -20051,7 +20093,7 @@ export default function GISCanvasPage() {
 
          Only the build's own joints. One placed by hand holds what
          somebody said it holds, and an automatic pass is not entitled
-         to a view about that \u2014 except to drop an id that is no longer
+         to a view about that — except to drop an id that is no longer
          on the drawing at all, which is not an opinion. */
       const after = fresh.features || [];
       const alive = new Set(after.map((f) => Number(f.Feature_ID)));
@@ -20093,7 +20135,7 @@ export default function GISCanvasPage() {
 
       setStatus(`${made.length} ${utility} service(s) laid`
         + (holdRows.length ? ` \u00b7 ${holdRows.length} joint(s) updated` : "")
-        + (bare ? " \u00b7 no cable size \u2014 set Service cable on the design's "
+        + (bare ? " \u00b7 no cable size — set Service cable on the design's "
           + "electric scope, or the levels count the service as nothing" : "")
         /* Said, because it is a fitting on the take-off and work for a
            gang. Zero where they were all already there, which is the
@@ -20146,7 +20188,7 @@ export default function GISCanvasPage() {
        fails invisibly — the features exist, the drawing looks empty. */
     const mainType = newMainTypeFor(lineTypes, "gas");
     if (!mainType) {
-      return setError("No gas mains line type is configured \u2014 add one in "
+      return setError("No gas mains line type is configured — add one in "
         + "Admin \u203a GIS Styles before building.");
     }
 
@@ -20170,7 +20212,7 @@ export default function GISCanvasPage() {
     const utilityId = gasLayer?.Utility_ID;
     if (utilityId == null) {
       return setError("The gas layer has no utility set, so there is no design or "
-        + "agreement to check it against \u2014 set it in Admin \u203a GIS Styles.");
+        + "agreement to check it against — set it in Admin \u203a GIS Styles.");
     }
 
     /* The outline design for gas. scopeDefaults is the project's scope
@@ -20179,7 +20221,7 @@ export default function GISCanvasPage() {
        everywhere else in the app, so it means it here too. */
     const design = scopeDefaults.find((sc) => Number(sc.Utility_ID) === Number(utilityId));
     if (!design) {
-      return setError("This project has no gas design \u2014 add gas on the Outline "
+      return setError("This project has no gas design — add gas on the Outline "
         + "Designs tab before laying a main.");
     }
 
@@ -20197,7 +20239,7 @@ export default function GISCanvasPage() {
       return setError(`Couldn\u2019t check the gas asset value agreement: ${e.message}`);
     }
     if (!agreement) {
-      return setError("No gas asset value agreement on this project \u2014 the main is "
+      return setError("No gas asset value agreement on this project — the main is "
         + "adopted work, so it is drawn once there is an agreement to adopt it "
         + "under. Add one on the Asset Value tab.");
     }
@@ -20242,7 +20284,7 @@ export default function GISCanvasPage() {
          The alternative sizes each length to the load it carries, which
          produces a network that is right on capacity and says nothing
          about pressure. Starting small makes the levels check the one
-         place that judges the design \u2014 and it is how a designer works:
+         place that judges the design — and it is how a designer works:
          lay it, check it, upsize what fails. */
       minimumSize: true,
       plotById: (id) => plotList.find((p) => p.plot_id === id),
@@ -20250,14 +20292,14 @@ export default function GISCanvasPage() {
     });
     if (plan.error) return setError(plan.error);
     if (!plan.runs.length) {
-      return setError("Nothing to lay \u2014 the POC is on the network but no "
+      return setError("Nothing to lay — the POC is on the network but no "
         + "mains trench leads away from it.");
     }
 
     /* A network that failed while another succeeded.
 
        The merge builds what it can and reports the rest, so one bad
-       network no longer stops the good one \u2014 but it was reported into
+       network no longer stops the good one — but it was reported into
        a field nobody read. The build appeared to work and half the site
        stayed empty, which is the worst of the three possible outcomes.
 
@@ -20297,7 +20339,7 @@ export default function GISCanvasPage() {
        services, which is neither of the two states they chose
        between. */
     if (!silent && !window.confirm(
-      `Lay ${plan.runs.length} run(s) of gas main \u2014 ${plan.totalM} m `
+      `Lay ${plan.runs.length} run(s) of gas main — ${plan.totalM} m `
       + `to ${plan.services} service trench(es), ${plan.meters} gas meter(s)?`
       /* The stub past each end is in that total, so it is named. A
          quantity that grew since the last build with nothing on the
@@ -20316,7 +20358,7 @@ export default function GISCanvasPage() {
           + `\nSized by ${plan.sizeRules} pipe rule(s)`
           + (plan.operatorRules
             ? `, ${plan.operatorRules} set for this project\u2019s operator,`
-            : " \u2014 the standard rules, none for this project\u2019s operator \u2014")
+            : " — the standard rules, none for this project\u2019s operator —")
           + ` and ${plan.diversityRules} diversity rule(s).`
         : "")
       /* ── What was allowed for that is not on the drawing ──
@@ -20336,7 +20378,7 @@ export default function GISCanvasPage() {
             .map((a) => `  ${a.label ?? "a node"}: `
               + `${a.supplies ? `${a.supplies} plot(s), ` : ""}${a.kw} kW`)
             .join("\n")
-          + "\n\nThose plots are not built and are not on the bill \u2014 "
+          + "\n\nThose plots are not built and are not on the bill — "
           + "the pipe carrying them is."
         : "")
       /* An allowance on a node the main cannot reach. Sized for
@@ -20360,7 +20402,7 @@ export default function GISCanvasPage() {
           + `${plan.overDiverse.length} point(s).` : "")
       + (plan.diversityInversions?.length
         ? `\n\n${plan.diversityInversions.length} diversity rule(s) diversify less `
-          + "at a higher supply count than at a lower one \u2014 check the table." : "")
+          + "at a higher supply count than at a lower one — check the table." : "")
       + (old.length ? `\n\nThis redraws ${old.length} existing gas main(s).` : "")
       /* Said before it happens, not after. The two are different kinds
          of gap — one is trench nobody joined up, the other is trench
@@ -20394,7 +20436,7 @@ export default function GISCanvasPage() {
       /* What somebody chose by hand, kept across the rebuild.
 
          A rebuild deletes the generated mains and lays them again, so
-         an override went with them \u2014 every manually set pipe size lost
+         an override went with them — every manually set pipe size lost
          on every build, silently, which is the one thing a rebuild must
          not do. The calculated size is the build's to replace; the
          override is not.
@@ -20466,7 +20508,7 @@ export default function GISCanvasPage() {
 
                Last, so it wins: the calculated block above writes Size
                from the system pipe, and an override placed before it
-               would have its label overwritten \u2014 the drawing would then
+               would have its label overwritten — the drawing would then
                show the size the build chose while the feature carried
                the one somebody set. */
             ...(() => {
@@ -20532,28 +20574,28 @@ export default function GISCanvasPage() {
           ? ` (${plan.extendedM} m of it past ${plan.endCaps} capped end(s))` : "")
         + `, ${plan.services} service trench(es), ${plan.meters} gas meter(s)`
         + (plan.sized
-          ? ` \u2014 ${plan.bySize.map((b) => `${b.label}: ${b.metres} m`).join(", ")}`
+          ? ` — ${plan.bySize.map((b) => `${b.label}: ${b.metres} m`).join(", ")}`
             + ` at ${plan.kw} kW diversified`
           : "")
         + (links.length ? `, ${links.length} link(s) recorded` : "")
         + (plan.noLoad?.length
-          ? ` \u2014 ${plan.noLoad.length} gas meter(s) with no plot load` : "")
+          ? ` — ${plan.noLoad.length} gas meter(s) with no plot load` : "")
         + (plan.oversized?.length
-          ? ` \u2014 ${plan.oversized.length} run(s) over the largest configured pipe` : "")
+          ? ` — ${plan.oversized.length} run(s) over the largest configured pipe` : "")
         /* What got no pipe, and why. A build that quietly covers most
            of a site reads as a build that worked. */
         + (plan.unservedM
-          ? ` \u2014 ${plan.unservedM} m of mains trench with no gas beyond it` : "")
+          ? ` — ${plan.unservedM} m of mains trench with no gas beyond it` : "")
         + (plan.unreachable.length
-          ? ` \u2014 ${plan.unreachable.length} mains trench(es) not joined to the POC: `
+          ? ` — ${plan.unreachable.length} mains trench(es) not joined to the POC: `
             + plan.unreachable.slice(0, 3).map((u) => u.label).join(", ")
             + (plan.unreachable.length > 3 ? "\u2026" : "")
           : "")
         + (plan.unattachedServices.length
-          ? ` \u2014 ${plan.unattachedServices.length} service trench(es) reach a meter `
+          ? ` — ${plan.unattachedServices.length} service trench(es) reach a meter `
             + "but not the main" : "")
         + (plan.strandedMeters.length
-          ? ` \u2014 ${plan.strandedMeters.length} gas meter(s) on no service trench` : ""));
+          ? ` — ${plan.strandedMeters.length} gas meter(s) on no service trench` : ""));
       setTimeout(() => setStatus(""), 14000);
 
       /* The fittings that go with the pipe just laid.
@@ -20564,7 +20606,7 @@ export default function GISCanvasPage() {
          Whole Gas Network, and a tee placed by three of them is a tee
          missing from the fourth.
 
-         Read back fresh \u2014 the mains were written a moment ago \u2014 and
+         Read back fresh — the mains were written a moment ago — and
          quietly, because the status line above has already had its say
          about the build. A tee that cannot be placed is not a reason to
          report the main as failed; the backfill button will pick it up.
@@ -20577,7 +20619,7 @@ export default function GISCanvasPage() {
         await placeTopTees({ silent: true, srcFeatures: after, only: "junction" });
         /* And the reducers, because the build is where the sizes come
            from: every step down on the drawing was decided a moment
-           ago. Read back again \u2014 the tees above have just been
+           ago. Read back again — the tees above have just been
            written and this walks the same drawing. */
         const withTees = (await listGis(projectId)).features || [];
         await placeReducers({ silent: true, srcFeatures: withTees });
@@ -20618,7 +20660,7 @@ export default function GISCanvasPage() {
 
     const mainType = newMainTypeFor(lineTypes, "water");
     if (!mainType) {
-      return setError("No water mains line type is configured \u2014 add one in "
+      return setError("No water mains line type is configured — add one in "
         + "Admin \u203a GIS Styles before building.");
     }
 
@@ -20637,12 +20679,12 @@ export default function GISCanvasPage() {
     const utilityId = waterLayer?.Utility_ID;
     if (utilityId == null) {
       return setError("The water layer has no utility set, so there is no design or "
-        + "agreement to check it against \u2014 set it in Admin \u203a GIS Styles.");
+        + "agreement to check it against — set it in Admin \u203a GIS Styles.");
     }
 
     const design = scopeDefaults.find((sc) => Number(sc.Utility_ID) === Number(utilityId));
     if (!design) {
-      return setError("This project has no water outline design \u2014 add water on the "
+      return setError("This project has no water outline design — add water on the "
         + "Outline Designs tab before laying a main.");
     }
 
@@ -20661,7 +20703,7 @@ export default function GISCanvasPage() {
          Value tab to add one; this sends them to the agreement types,
          which is where the problem actually is. */
       return setError("No agreement type called \u201cWater NAV Clean\u201d is "
-        + "configured, so there is nothing to check against \u2014 add it in "
+        + "configured, so there is nothing to check against — add it in "
         + "Admin \u203a AV Agreement Type.");
     }
 
@@ -20676,7 +20718,7 @@ export default function GISCanvasPage() {
       return setError(`Couldn\u2019t check the water asset value agreement: ${e.message}`);
     }
     if (!agreement) {
-      return setError("This project has no Water NAV Clean asset value agreement \u2014 "
+      return setError("This project has no Water NAV Clean asset value agreement — "
         + "the clean water main is adopted work, so it is drawn once there is an "
         + "agreement to adopt it under. Add one on the Asset Value tab.");
     }
@@ -20737,7 +20779,7 @@ export default function GISCanvasPage() {
     });
     if (plan.error) return setError(plan.error);
     if (!plan.runs.length) {
-      return setError("Nothing to lay \u2014 the POC is on the network but no "
+      return setError("Nothing to lay — the POC is on the network but no "
         + "mains trench leads away from it.");
     }
 
@@ -20749,7 +20791,7 @@ export default function GISCanvasPage() {
       && isMainType(f.Attributes?.Line_Type, lineTypes));
 
     if (!window.confirm(
-      `Lay ${plan.runs.length} run(s) of water main \u2014 ${plan.totalM} m `
+      `Lay ${plan.runs.length} run(s) of water main — ${plan.totalM} m `
       + `to ${plan.meters} water meter(s)?`
       + `\n\n${plan.bySize.map((b) => `${b.label}: ${b.metres} m`).join("\n")}`
       /* Which rules these sizes came from. A figure somebody disagrees
@@ -20757,7 +20799,7 @@ export default function GISCanvasPage() {
       + `\n\nSized by ${plan.sizeRules} rule(s)`
       + (plan.operatorRules
         ? `, ${plan.operatorRules} of them set for this project\u2019s operator.`
-        : " \u2014 the standard rules, none set for this project\u2019s operator.")
+        : " — the standard rules, none set for this project\u2019s operator.")
       + (old.length ? `\n\nThis redraws ${old.length} existing water main(s).` : "")
       /* Said before anything is drawn. A run carrying more than the
          table allows is a design question, and finding it in a status
@@ -20765,7 +20807,7 @@ export default function GISCanvasPage() {
       + (plan.oversized.length
         ? `\n\n${plan.oversized.length} run(s) feed more than ${plan.largest.max} `
           + `meters, which is the most ${plan.largest.label} will carry. They will be `
-          + "drawn with no size set \u2014 add a larger pipe in Admin \u203a Water "
+          + "drawn with no size set — add a larger pipe in Admin \u203a Water "
           + "Pipe Sizes." : "")
       + (plan.unservedM
         ? `\n\n${plan.unservedM} m of mains trench has no water service beyond it `
@@ -20780,7 +20822,7 @@ export default function GISCanvasPage() {
       /* What somebody chose by hand, kept across the rebuild.
 
          A rebuild deletes the generated mains and lays them again, so
-         an override went with them \u2014 every manually set pipe size lost
+         an override went with them — every manually set pipe size lost
          on every build, silently, which is the one thing a rebuild must
          not do. The calculated size is the build's to replace; the
          override is not.
@@ -20811,7 +20853,7 @@ export default function GISCanvasPage() {
             /* Stated rather than left to withDefaultStatus, which would
                say the same thing: a generated pipe is work this build
                is proposing, and `planned` is a fact about it worth
-               carrying explicitly \u2014 the fault this line closes had the
+               carrying explicitly — the fault this line closes had the
                build laying the INCUMBENT'S type, from which the default
                read `existing` and the drawing showed a pipe this job
                had supposedly done nothing to. */
@@ -20820,7 +20862,7 @@ export default function GISCanvasPage() {
 
                The id is what the editor edits and what a schedule can
                join on; Size is what every existing display already
-               reads \u2014 trench contents labels a pipe with it. Written
+               reads — trench contents labels a pipe with it. Written
                together here and together in the editor, so there is one
                place either of them changes and they cannot drift into
                naming different pipes.
@@ -20904,7 +20946,7 @@ export default function GISCanvasPage() {
          Where the symbol comes from: the style cascade, by the washout
          ROLE, which is what makes its size and visibility something set
          in Admin \u203a GIS Styles rather than a number in this file. No
-         colour is written here either \u2014 with none set on the role's own
+         colour is written here either — with none set on the role's own
          style row the cascade falls through to the water layer, so the
          disc comes out the colour of the main it terminates and the two
          change together. */
@@ -20970,16 +21012,16 @@ export default function GISCanvasPage() {
         + (looped ? `, ${looped} of them ring main sized as one` : "")
         + (valveCount ? `, ${valveCount} service valve(s)` : "")
         + (washCount ? `, ${washCount} wash out(s)` : "")
-        + `, ${plan.meters} water meter(s) \u2014 `
+        + `, ${plan.meters} water meter(s) — `
         + plan.bySize.map((b) => `${b.label} ${b.metres} m`).join(", ")
         + (plan.oversized.length
-          ? ` \u2014 ${plan.oversized.length} run(s) over ${plan.largest.label} capacity` : "")
+          ? ` — ${plan.oversized.length} run(s) over ${plan.largest.label} capacity` : "")
         + (plan.unservedM
-          ? ` \u2014 ${plan.unservedM} m of mains trench with no water beyond it` : "")
+          ? ` — ${plan.unservedM} m of mains trench with no water beyond it` : "")
         + (plan.unreachable.length
-          ? ` \u2014 ${plan.unreachable.length} mains trench(es) not joined to the POC` : "")
+          ? ` — ${plan.unreachable.length} mains trench(es) not joined to the POC` : "")
         + (plan.strandedMeters.length
-          ? ` \u2014 ${plan.strandedMeters.length} water meter(s) on no service trench` : ""));
+          ? ` — ${plan.strandedMeters.length} water meter(s) on no service trench` : ""));
       setTimeout(() => setStatus(""), 14000);
     } catch (e) { setError(e.message); await load(projectId); }
     finally { setBusy(""); setProgress(null); }
@@ -21101,7 +21143,7 @@ export default function GISCanvasPage() {
       await load(projectId);
 
       setSelected(made?.Feature_ID ? [made.Feature_ID] : []);
-      setStatus("Line broken in two \u2014 the far half is selected");
+      setStatus("Line broken in two — the far half is selected");
       setTimeout(() => setStatus(""), 5000);
       setError("");
       /* ── The two halves, named ──
@@ -21221,8 +21263,8 @@ export default function GISCanvasPage() {
       await load(projectId);
       setSvcCheck(null);
       setStatus(teed.size
-        ? `Nodes added to ${teed.size} mains trench(es) \u2014 run the check again to confirm`
-        : "Nothing to add \u2014 they already have nodes.");
+        ? `Nodes added to ${teed.size} mains trench(es) — run the check again to confirm`
+        : "Nothing to add — they already have nodes.");
       setTimeout(() => setStatus(""), 8000);
       setError("");
     } catch (e) { setError(e.message); await load(projectId); }
@@ -21457,14 +21499,14 @@ export default function GISCanvasPage() {
     setError("");
     window.alert(describeOutcome(results)
       + (skips.length
-        ? `\n\nLeft out:\n${skips.map((x) => `   ${x.utility} \u2014 ${x.why}`).join("\n")}`
+        ? `\n\nLeft out:\n${skips.map((x) => `   ${x.utility} — ${x.why}`).join("\n")}`
         : ""));
   }
 
   const isServiceLine = (f) => /service/i.test(String(f.Attributes?.Line_Type ?? ""));
 
   /* Whether the drawing has any gas service at all, to tell "none drawn
-     yet" from "drawn but joined to nothing" \u2014 two different jobs for
+     yet" from "drawn but joined to nothing" — two different jobs for
      whoever is reading the message. */
   const gasServicesOn = (world) => world.some((f) => f.Feature_Type === "line"
     && isServiceLine(f) && f.Layer_Key === "gas");
@@ -21526,7 +21568,7 @@ export default function GISCanvasPage() {
     });
 
     if (!plan.mains.length) {
-      setError(`No mains to build \u2014 ${plan.skips.map((x) => x.why).join("; ")}.`);
+      setError(`No mains to build — ${plan.skips.map((x) => x.why).join("; ")}.`);
       return;
     }
 
@@ -21707,7 +21749,7 @@ export default function GISCanvasPage() {
         setError(gasServicesOn(world)
           ? "No gas service reaches a gas main and no main divides, so there is "
             + "nothing to tee."
-          : "No gas pipe on the drawing yet \u2014 lay the mains and services first.");
+          : "No gas pipe on the drawing yet — lay the mains and services first.");
       }
       return 0;
     }
@@ -21726,7 +21768,7 @@ export default function GISCanvasPage() {
         + `${wanted.filter((t) => t.kind === "junction").length} where a main divides.`)
       + (unjoined.length
         ? `\n\n${unjoined.length} gas service(s) do not reach a main and get none `
-          + "\u2014 worth looking at, since a service joined to nothing is a plot "
+          + "— worth looking at, since a service joined to nothing is a plot "
           + "that cannot be connected."
         : "")
       + (orphans.length
@@ -21746,7 +21788,7 @@ export default function GISCanvasPage() {
             Feature_Role: "hvtt",
             Geometry: [t.at],
             /* Named for what it serves where that is known, and for
-               the span node it stands at where it is not \u2014 "Tee A7" is
+               the span node it stands at where it is not — "Tee A7" is
                what somebody would say out loud about a junction, and a
                bare number is not findable on a drawing. */
             Label: t.kind === "junction"
@@ -21789,7 +21831,7 @@ export default function GISCanvasPage() {
 
        `silent` means "do not talk to me": no confirm, no status line, no
        error where there is nothing to do. It was also skipping the
-       reload, which is not a message \u2014 it is how what was just written
+       reload, which is not a message — it is how what was just written
        reaches the screen.
 
        So the tees the gas build placed were in the database and absent
@@ -21828,11 +21870,11 @@ export default function GISCanvasPage() {
 
     if (!plan.hasServiceTrenchType) {
       setError("No service trench type is configured, so there is nothing to "
-        + "draw the service trenches with \u2014 set one in Admin \u203a GIS Styles.");
+        + "draw the service trenches with — set one in Admin \u203a GIS Styles.");
       return;
     }
     if (!plan.worthRunning) {
-      setError(`Nothing to build \u2014 ${plan.skips.map((x) => x.why).join("; ")}.`);
+      setError(`Nothing to build — ${plan.skips.map((x) => x.why).join("; ")}.`);
       return;
     }
 
@@ -21977,7 +22019,7 @@ export default function GISCanvasPage() {
     const outcome = (stopped ? "Stopped part way through.\n\n" : "")
       + describeOutcome(results)
       + (plan.skips.length
-        ? `\n\nLeft out:\n${plan.skips.map((x) => `   ${x.utility} \u2014 ${x.why}`).join("\n")}`
+        ? `\n\nLeft out:\n${plan.skips.map((x) => `   ${x.utility} — ${x.why}`).join("\n")}`
         : "");
     window.alert(outcome);
     setError("");
@@ -22008,9 +22050,9 @@ export default function GISCanvasPage() {
 
        `features` is React state, captured when this run started. It
        catches up only after a run finishes and the component
-       re-renders, so a run begun before that \u2014 a second press, or the
+       re-renders, so a run begun before that — a second press, or the
        whole-design sequence starting from a closure taken a moment
-       earlier \u2014 sees a drawing with none of the first run's work in
+       earlier — sees a drawing with none of the first run's work in
        it. Every plot then reads as unserved and the lot is dug again.
 
        That is how a drawing came to carry two service trenches per
@@ -22078,8 +22120,8 @@ export default function GISCanvasPage() {
          Unless it carries a Seed_Feature_ID. That stamp is written by
          this run and by nothing else: it says "this dig was laid for
          that plot". A service trench dug by the DEVELOPER is written
-         with Build_Status `existing` \u2014 no excavation to charge, the
-         laying still ours \u2014 and on an ordinary site that is nearly
+         with Build_Status `existing` — no excavation to charge, the
+         laying still ours — and on an ordinary site that is nearly
          every service trench on the drawing.
 
          So the exclusion was hiding our own work from us. `isServed`
@@ -22245,8 +22287,8 @@ export default function GISCanvasPage() {
       const mine = stampedTo(sd);
       /* ── Every dig stamped to this seed, not the first one found ──
 
-         A seed with two trenches stamped to it \u2014 which a duplicated
-         run leaves behind \u2014 was judged on whichever `find` happened to
+         A seed with two trenches stamped to it — which a duplicated
+         run leaves behind — was judged on whichever `find` happened to
          return first. Where that was the stale one, the seed was
          reported moved and the pair re-laid; the new dig matched, but
          the stale one was still there to be found first next time, so
@@ -22272,7 +22314,7 @@ export default function GISCanvasPage() {
          automatic route was wrong: round a tree, along an easement, the
          way the gang will actually dig it. The staleness test compares
          a dig against the route the planner WOULD take, so a hand-drawn
-         one never matches \u2014 and re-laying it would delete the drawing
+         one never matches — and re-laying it would delete the drawing
          and put the wrong route back, which is the one outcome nobody
          would want from a button called Auto Service.
 
@@ -22300,8 +22342,8 @@ export default function GISCanvasPage() {
         if (drawn.length > 1) {
           /* NOT through `mismatched`: that list is what gets re-laid,
              and a seed in it is taken out of `serviced` and planned
-             again. The plot here is properly served \u2014 one of its digs
-             is right \u2014 so the copies are deleted and the seed is left
+             again. The plot here is properly served — one of its digs
+             is right — so the copies are deleted and the seed is left
              alone. Putting them in `mismatched` would delete the copies
              and then dig a fresh one, which is a longer way round to
              the same duplicate. */
@@ -22578,7 +22620,7 @@ export default function GISCanvasPage() {
     });
     if (!plans.length && !refill.length && !teeGeom.size) {
       /* Every reason, grouped — see skipSummary. */
-      setError(`Nothing to do \u2014 ${skipped.length} seed(s) skipped: ${skipSummary(skipped)}.`);
+      setError(`Nothing to do — ${skipped.length} seed(s) skipped: ${skipSummary(skipped)}.`);
       return;
     }
 
@@ -22629,7 +22671,7 @@ export default function GISCanvasPage() {
 
            A service trench is dug by the developer and laid in by us.
            It is in the ground before this job starts, so it is not
-           excavated and not billed \u2014 which is exactly what `existing`
+           excavated and not billed — which is exactly what `existing`
            already means everywhere else: no dig, no machine setup, and
            off the bill of materials.
 
@@ -22699,7 +22741,7 @@ export default function GISCanvasPage() {
         /* `foot` is the tee: the point on the main the plan dug from.
            Named by the planner rather than dug out of the trench
            geometry, which is an array of points and has no `geometry`
-           field \u2014 reading one would have left this quietly finding
+           field — reading one would have left this quietly finding
            nothing and the feature looking as though it did not work. */
         const joins = plan.foot ? circuitAtTee(world, plan.foot) : null;
 
@@ -22732,7 +22774,7 @@ export default function GISCanvasPage() {
                  eventually.
 
                  Never over an existing answer. This meter is being
-                 created, so there is nothing to overwrite here \u2014 but
+                 created, so there is nothing to overwrite here — but
                  the rule is stated because the same reasoning applied
                  to an existing meter would be a silent reassignment,
                  and the next person to reach for this should know the
@@ -22795,7 +22837,7 @@ export default function GISCanvasPage() {
 
                  From the catalogue where the size is in it, so the bill
                  itemises it and the levels check can read its bore. The
-                 label goes on regardless \u2014 a drawing that says 25mm is
+                 label goes on regardless — a drawing that says 25mm is
                  better than one that says nothing, even where the
                  catalogue has no row to point at. */
               ...(c.utility.layer_key === "gas"
@@ -22932,7 +22974,7 @@ export default function GISCanvasPage() {
            failure. */
         + (trenchesOnly
           ? `Auto service: ${trenchCount} service trench(es), ${meterCount} meter(s)`
-            + " \u2014 lay the pipes and cables from each utility menu"
+            + " — lay the pipes and cables from each utility menu"
           : `Auto service: ${trenchCount} trench(es), ${meterCount} meter(s), `
             + `${cableCount} service(s)`)
         + (refilled ? `, ${refilled} put back into an existing trench` : "")
@@ -22977,12 +23019,12 @@ export default function GISCanvasPage() {
         + ((() => {
           const old = plans.filter((x) => !x.boundary).length;
           return old
-            ? ` \u2014 ${old} plot(s) have no boundary point, so the dig ran to `
+            ? ` — ${old} plot(s) have no boundary point, so the dig ran to `
               + "their furthest meter"
             : "";
         })())
-        + (selected.length ? " \u2014 selected plot only" : "")
-        + (stopped ? " \u2014 run it again to carry on where it stopped." : "")
+        + (selected.length ? " — selected plot only" : "")
+        + (stopped ? " — run it again to carry on where it stopped." : "")
       );
       setTimeout(() => setStatus(""), stopped ? 12000 : 8000);
     } catch (e) { setError(e.message); await load(projectId); }
@@ -23049,7 +23091,7 @@ export default function GISCanvasPage() {
   /* ── The colour of the output a leg belongs to ──
 
      The outputs are coloured on the drawing, and the sheet listing them
-     was uniformly white \u2014 so matching a row to the run it describes
+     was uniformly white — so matching a row to the run it describes
      meant reading the heading above it and remembering. A tint carries
      the same fact the canvas already carries.
 
@@ -23105,7 +23147,7 @@ export default function GISCanvasPage() {
        C6, C7 reads down the page as one run when it is two.
 
        The trunk first, because everything hangs off it, then the
-       outputs in their own order, and node order inside each \u2014 the
+       outputs in their own order, and node order inside each — the
        existing sort, applied within a part instead of across the lot. */
     const byNode = (a, b) => {
       const [al, an] = nodeOrder(a.leg.from);
@@ -23316,7 +23358,7 @@ export default function GISCanvasPage() {
     setPrintOpen(true);
 
     if (added.length || !labelsWere) {
-      setStatus("Set up for issue \u2014 trench, plot seeds, span nodes and "
+      setStatus("Set up for issue — trench, plot seeds, span nodes and "
         + "feeder end points off"
         + (wanted.length ? `; ${wanted.join(" and ")} labels on` : "")
         + ". The layer menu puts any of it back.");
@@ -23333,9 +23375,9 @@ export default function GISCanvasPage() {
      drawing from the one they were looking at.
 
      R12, one metre to one drawing unit, layers per utility and type,
-     labels on their own -TEXT layers. What it does not carry \u2014 blocks
+     labels on their own -TEXT layers. What it does not carry — blocks
      for symbols, and a national grid position unless the project's
-     origin is a real easting and northing \u2014 is written in dxf.js
+     origin is a real easting and northing — is written in dxf.js
      beside the code that decides it. */
   async function exportDxf() {
     if (!projectId) return;
@@ -23376,7 +23418,7 @@ export default function GISCanvasPage() {
       a.download = name;
       a.click();
       URL.revokeObjectURL(url);
-      setStatus(`${visible.length} feature(s) exported as ${name} \u2014 `
+      setStatus(`${visible.length} feature(s) exported as ${name} — `
         + "one drawing unit is one metre"
         + (map.length ? `, ${map.length} layer rule(s) applied`
           : ", layer names from the drawing"));
@@ -23411,7 +23453,7 @@ export default function GISCanvasPage() {
     const rows = tracePlan.map(({ leg: l }) => ({
       /* Which length of cable this leg belongs to. A spreadsheet cannot
          carry the panel's section headings, so the same fact rides in a
-         column \u2014 and a filter on it gives an output's design on its
+         column — and a filter on it gives an output's design on its
          own, which is what the headings are for. Blank on a circuit
          with no link box, where there is only one answer. */
       Part: l.part === "trunk" ? `Input to ${l.boxLabel || "link box"}`
@@ -23447,8 +23489,8 @@ export default function GISCanvasPage() {
           ? Number(l.service.lengthM.toFixed(1)) : null,
         /* ── Why the three columns after this are blank ──
 
-           A blank is honest \u2014 a service that drops nothing and one
-           nobody has specified must not read alike \u2014 but it says
+           A blank is honest — a service that drops nothing and one
+           nobody has specified must not read alike — but it says
            nothing about which of the two it is, and a reader has no way
            to tell a finished sheet from an unfinished catalogue.
 
@@ -23461,7 +23503,7 @@ export default function GISCanvasPage() {
            in. */
         "Service cable": l.service
           ? `${l.service.cableName ?? "not set"}`
-            + (l.service.missingSpec ? " \u2014 no figures in the catalogue" : "")
+            + (l.service.missingSpec ? " — no figures in the catalogue" : "")
           : null,
         "Service ohms": l.service && !l.service.missingSpec
           ? Number(l.service.ohms.toFixed(4)) : null,
@@ -23546,7 +23588,7 @@ export default function GISCanvasPage() {
         cableById: ctx.cableById, transformer: ctx.transformer,
         /* The feeding network's share too. The voltage arriving at a
            point is what is actually there, and a volt lost on the
-           DNO's side of the POC is lost just the same \u2014 leaving it out
+           DNO's side of the POC is lost just the same — leaving it out
            reported a voltage higher than the one a meter would see. */
         startPct: ctx.startPct ?? 0,
         voltageV: startV, settings: ctx.settings,
@@ -23596,7 +23638,7 @@ export default function GISCanvasPage() {
 
        This read part.model.metersAt[leg.endIdx]: the meters attached AT
        the leg's end node. But the model attaches a meter at ITS OWN end
-       of the service spur \u2014 the cut-out \u2014 never at the feeder point
+       of the service spur — the cut-out — never at the feeder point
        on the main, so the lookup was empty for every leg on every
        drawing and the Service and At-cut-out columns have been blank
        since they were added: blank-because-unmeasured and
@@ -23606,7 +23648,7 @@ export default function GISCanvasPage() {
        A leg serves the meters whose service tees off ITS stretch of
        main. So: the leg's chain is walked back from its end to the
        previous stop; each attached meter is followed down its service
-       edges to the foot \u2014 the mains node its spur leaves from \u2014 and
+       edges to the foot — the mains node its spur leaves from — and
        claimed by the leg whose chain holds that foot. A meter standing
        directly on the main has no service edge and is its own foot. */
     const stopIdxSet = new Set((part.stops || []).map((x) => x.index));
@@ -23664,7 +23706,7 @@ export default function GISCanvasPage() {
            out blank on a project whose catalogue was complete.
 
            It reads as "the cable has no figures" and it means "there is
-           no cable" \u2014 the same words for a catalogue somebody has not
+           no cable" — the same words for a catalogue somebody has not
            filled in and a field this never looked at. Two projects were
            diagnosed as bad data on the strength of it, and the data was
            fine.
@@ -23690,7 +23732,7 @@ export default function GISCanvasPage() {
 
            The worst is what the leg has to pass on, and it was the only
            one kept. So one meter in a leg carried a number and the rest
-           carried nothing \u2014 and on a drawing a missing figure reads as a
+           carried nothing — and on a drawing a missing figure reads as a
            good figure. Two plots on one street, one labelled and one
            blank, and the blank one looks better when it may be worse.
 
@@ -23702,7 +23744,7 @@ export default function GISCanvasPage() {
            Every meter on a leg was given the leg's own figure, which is
            measured at the leg's END. So a plot teeing in thirty metres
            earlier was charged the whole leg, and the only thing telling
-           two plots apart was the length of their services \u2014 which is
+           two plots apart was the length of their services — which is
            how a plot upstream with a longer service came out worse than
            one downstream with a shorter one. Reported exactly that way.
 
@@ -23758,7 +23800,7 @@ export default function GISCanvasPage() {
         plotId: r.plotId,
         missingSpec: !!r.missingSpec,
         /* This plot's own tee where it is known, and the leg's end
-           where it is not \u2014 which is the leg's own figure, and the
+           where it is not — which is the leg's own figure, and the
            conservative answer. */
         ohms: (r.mainOhms != null ? r.mainOhms : (Number(leg.vd?.ohms) || 0)) + r.ohms,
         pct: (r.mainPct != null ? r.mainPct : (Number(leg.vd?.pct) || 0)) + r.pct,
@@ -23792,7 +23834,7 @@ export default function GISCanvasPage() {
          costed from the point's old size.
 
          Which is the whole of "I changed the cable and nothing
-         happened" \u2014 the one number a designer sets by hand was the one
+         happened" — the one number a designer sets by hand was the one
          number this could not see.
 
          The sync writes both fields, so both are compared. */
@@ -23844,7 +23886,7 @@ export default function GISCanvasPage() {
       configs: lookups?.propertyConfigs || [],
       propertyTypes: lookups?.propertyTypes || [],
       consumption: lookups?.houseTypeConsumption || [],
-      /* And the landlord supplies on each board \u2014 see the note at the
+      /* And the landlord supplies on each board — see the note at the
          levels. A build told only about flats routes a cable sized for
          the dwellings and leaves the lift off it. */
       nrsList,
@@ -23870,7 +23912,7 @@ export default function GISCanvasPage() {
          electric origin node anywhere, which Build LV Network places. */
       if (!origin) {
         failed.push(`${c.name}: no origin node on the substation or POC `
-          + "\u2014 run Build LV Network, which places it");
+          + "— run Build LV Network, which places it");
         continue;
       }
       /* ── In parts, along the cable ──
@@ -23956,7 +23998,7 @@ export default function GISCanvasPage() {
         /* What a plot connection is charged as (0187). This object is
            built three times in this file and the field was added to one
            of them, so the canvas labels moved and the levels check
-           report did not \u2014 the same shape of miss as startPct. */
+           report did not — the same shape of miss as startPct. */
         jointEquivM: Number(lookups.vdSettings[0].Joint_Equivalent_M) || 0,
       } : {}) };
       /* Where each output begins.
@@ -23992,7 +24034,7 @@ export default function GISCanvasPage() {
       }
 
       for (const part of parts) {
-        /* This circuit's own origin, where the model knows it \u2014 a
+        /* This circuit's own origin, where the model knows it — a
            site fed from two POCs has two, each with its own declared
            impedance and upstream drop, and reading the first POC's
            figures against the second POC's circuit is two networks'
@@ -24068,7 +24110,7 @@ export default function GISCanvasPage() {
       hasVd,
       /* Named for what the network is actually fed from. It said "the
          substation" whatever was there, so a POC-fed check reported
-         itself as measured from something not on the drawing \u2014 and the
+         itself as measured from something not on the drawing — and the
          warning underneath, telling somebody to set a transformer,
          agreed with the heading and not with the site. */
       from: lvOrigins(src).length > 1
@@ -24096,10 +24138,10 @@ export default function GISCanvasPage() {
         boxLabel: p.box?.Label ?? p.box?.Attributes?.Span_Label ?? null,
         /* The id as well as the name. Two boxes on a site can share a
            label, and anything looking one up by name would take the
-           first \u2014 the report's colours are keyed on the box, and a
+           first — the report's colours are keyed on the box, and a
            colour from the wrong box is worse than none. */
         boxId: p.box?.Feature_ID ?? null,
-        /* `Way_Fuse_A` is a map of way number to rating \u2014 the A is
+        /* `Way_Fuse_A` is a map of way number to rating — the A is
            AMPS, not a way letter. Reading it as `Way_Fuse_` plus a
            letter built from the way number handed output 1 the whole
            map, and the heading rendered "[object Object] A" to a
@@ -24144,7 +24186,7 @@ export default function GISCanvasPage() {
        comparing the new figures against the old drawing and declaring
        itself out of date the moment it finished. */
     setTraceAt({ features: src, lookups });
-    setError(failed.length ? `Not checked \u2014 ${failed.join(" \u00B7 ")}` : "");
+    setError(failed.length ? `Not checked — ${failed.join(" \u00B7 ")}` : "");
   }
 
   /* The trace, optionally over a drawing just read back and from a node
@@ -24194,10 +24236,10 @@ export default function GISCanvasPage() {
 
     if (cables.length) {
       /* The same origin the other trace uses. This one is the single
-         node trace, and it had its own copy of the lookup \u2014 so fixing
+         node trace, and it had its own copy of the lookup — so fixing
          the circuit trace alone would have left a POC-fed network still
          reporting cable-only figures from here. */
-      /* The origin the walk actually started from \u2014 on a two-POC site
+      /* The origin the walk actually started from — on a two-POC site
          the model rooted itself at this node's own network's origin,
          and the site's first POC may be the other one. */
       const station = r.model?.origin || lvOrigin(src);
@@ -24284,7 +24326,7 @@ export default function GISCanvasPage() {
       await load(projectId);
       setSelected([survivor.Feature_ID]);
       setError("");
-      setStatus(`${used.length} lines joined into one \u2014 ${lineLength(geometry).toFixed(1)} m`);
+      setStatus(`${used.length} lines joined into one — ${lineLength(geometry).toFixed(1)} m`);
       setTimeout(() => setStatus(""), 5000);
     } catch (e) { setError(e.message); await load(projectId); }
     finally { setBusy(""); }
@@ -24311,11 +24353,11 @@ export default function GISCanvasPage() {
        On the run, and on the span node it feeds, because the volt drop
        sum reads it from the node. This panel used to REFUSE a bulk
        cable edit for that reason, which sent somebody to open forty
-       editors instead \u2014 where the drift is just as possible and nobody
+       editors instead — where the drift is just as possible and nobody
        is watching for it.
 
        `syncNodeCables` is the routine behind "N nodes out of step with
-       their cables \u2014 fix", and it pairs every cable with the node it
+       their cables — fix", and it pairs every cable with the node it
        feeds. Run here, from the drawing as just saved rather than from
        state that has not caught up, so the two move together in one
        action.
@@ -24345,7 +24387,7 @@ export default function GISCanvasPage() {
   /* The draft, for the same reason: the key listener is bound once per
      change of `features`, and a line being drawn changes on every
      click. Read through the closure, Backspace undid a vertex that was
-     placed several clicks ago \u2014 or nothing at all, if the draft was
+     placed several clicks ago — or nothing at all, if the draft was
      empty when the listener was bound. */
   const liveDraft = useRef([]);
   liveDraft.current = draft;
@@ -24431,7 +24473,7 @@ export default function GISCanvasPage() {
 
          While a line is being drawn, Backspace takes back the last
          vertex. That handler used to sit below the delete-selection
-         one, which reads Backspace too \u2014 and with nothing selected it
+         one, which reads Backspace too — and with nothing selected it
          `return`s, which leaves the whole listener. So Backspace did
          nothing at all mid-draw, which is precisely when nothing is
          selected.
@@ -24455,7 +24497,7 @@ export default function GISCanvasPage() {
 
          Where hands already go for it. `removeSelected` is the same
          path the button uses, so the plot-marker warning and the
-         service cascade are asked exactly as they are on a click \u2014 a
+         service cascade are asked exactly as they are on a click — a
          keyboard shortcut that skipped either would delete a service
          nobody picked.
 
@@ -24465,7 +24507,7 @@ export default function GISCanvasPage() {
          key is Backspace and reaching for it is the same gesture.
 
          Nothing happens with nothing selected, and `preventDefault`
-         only where something will \u2014 Backspace on a page with no
+         only where something will — Backspace on a page with no
          selection is the browser's Back on some setups, and swallowing
          it silently would be its own surprise. */
       if (!typing && (e.key === "Delete" || e.key === "Backspace")) {
@@ -24474,7 +24516,7 @@ export default function GISCanvasPage() {
            This listener is bound once per change of `features`, so
            everything it closes over is as it was then. That is already
            true of the Escape handlers below and mostly survives because
-           a drawing reloads often \u2014 but a selection changes on every
+           a drawing reloads often — but a selection changes on every
            click, and deleting whatever was selected the last time the
            drawing loaded is the worst possible way to be wrong about
            this.
@@ -24499,7 +24541,7 @@ export default function GISCanvasPage() {
       }
       if (e.key === "Escape" && servesFor) {
         setServesFor(null); setSnapHit(null);
-        setStatus("Linking stopped \u2014 the trench still serves no plot");
+        setStatus("Linking stopped — the trench still serves no plot");
         setTimeout(() => setStatus(""), 5000);
         return;
       }
@@ -24554,7 +24596,7 @@ export default function GISCanvasPage() {
      "2607.002 — Cedar Trees" twice, with nothing to say which is which. */
   const projectLabel = (p) =>
     `${p.Display_Ref ?? p.Project_Ref} Rev ${p.Revision ?? 0}`
-    + ` \u2014 ${p.Site_Name || "Unnamed site"}`;
+    + ` — ${p.Site_Name || "Unnamed site"}`;
 
   const shownProjects = q
     ? projects.filter((p) => projectLabel(p).toLowerCase().includes(q))
@@ -24795,7 +24837,7 @@ export default function GISCanvasPage() {
                           Import reads a DXF tile already on the
                           National Grid; Align ties the calibrated plan
                           to it by matched points. The plan and anything
-                          drawn on it never move \u2014 the tile is placed to
+                          drawn on it never move — the tile is placed to
                           meet them. */}
                       <MenuItem label="Import OS Tile…"
                         hint="DXF from your OS supplier"
@@ -24846,7 +24888,7 @@ export default function GISCanvasPage() {
                             return (
                               <MenuItem key={d.Project_Developer_ID}
                                 label={on ? `Drawing ${d.label}\u2026` : `Draw ${d.label} Area`}
-                                hint={drawn ? "An area is already drawn \u2014 this adds another"
+                                hint={drawn ? "An area is already drawn — this adds another"
                                   : "Outline the ground that is theirs"}
                                 active={on}
                                 onClick={() => {
@@ -24959,7 +25001,7 @@ export default function GISCanvasPage() {
                            cable does not go.
 
                            The same rule the flats have in both
-                           directions \u2014 a plot on a board is not offered
+                           directions — a plot on a board is not offered
                            to Place Plots, and a plot with a seed is not
                            offered to a board. This is the half that was
                            missing. */
@@ -25068,18 +25110,18 @@ export default function GISCanvasPage() {
                           of the drawing away with you. */}
                       <div className="gm-sep" />
                       {/* Beside Download, because both are ways of taking
-                          the drawing off the screen \u2014 one as data, one
+                          the drawing off the screen — one as data, one
                           as paper. */}
                       <MenuItem label={"Print to Scale\u2026"}
                         hint="A4 to A0, at a scale a rule can check"
                         disabled={!projectId}
                         onClick={openPrintToScale} />
                       <MenuItem label={"Export to AutoCAD (DXF)"}
-                        hint={"The geometry as CAD \u2014 one unit to the metre, layered by utility. What is shown is what is exported"}
+                        hint={"The geometry as CAD — one unit to the metre, layered by utility. What is shown is what is exported"}
                         disabled={!projectId}
                         onClick={exportDxf} />
                       <MenuItem label={busy === "download" ? "Saving\u2026" : "Download Drawing"}
-                        hint={"The drawing as JSON \u2014 for sending on when something needs looking at"}
+                        hint={"The drawing as JSON — for sending on when something needs looking at"}
                         disabled={!projectId || !!busy}
                         onClick={downloadDrawing} />
                     </Menu>
@@ -25236,7 +25278,7 @@ export default function GISCanvasPage() {
                                 everything on it between them. */}
                             {/* The A marker on every plot's property
                                 boundary point. Its own row, because it
-                                belongs to no utility \u2014 hiding it should
+                                belongs to no utility — hiding it should
                                 not mean hiding the plots, and isolating a
                                 utility should not take it away. */}
                             <MenuLayer label="Property Boundary Points"
@@ -25371,8 +25413,8 @@ export default function GISCanvasPage() {
                             active={isLocked}
                             keepOpen
                             hint={isLocked
-                              ? "Locked \u2014 cannot be moved"
-                              : "Unlocked \u2014 can be moved"}
+                              ? "Locked — cannot be moved"
+                              : "Unlocked — can be moved"}
                             onClick={() => setLockedClasses((x) =>
                               toggleClassLock(x, l.Layer_Key))} />
                         );
@@ -25381,7 +25423,7 @@ export default function GISCanvasPage() {
                       {/* Locked line types, listed here too.
 
                           They are locked from the right-click menu, where
-                          the thing being locked is under the cursor \u2014 but
+                          the thing being locked is under the cursor — but
                           this menu showed layers only, so a locked line
                           type refused every drag with a message naming a
                           key ("lt:trench_main") that appeared nowhere on
@@ -25409,7 +25451,7 @@ export default function GISCanvasPage() {
                                 label={`\uD83D\uDD12  ${t.label}`}
                                 active
                                 keepOpen
-                                hint={"Locked \u2014 cannot be moved"}
+                                hint={"Locked — cannot be moved"}
                                 onClick={() => setLockedClasses((x) =>
                                   toggleClassLock(x, t.key))} />
                             ))}
@@ -25761,10 +25803,10 @@ export default function GISCanvasPage() {
                              different places and "unavailable" without a
                              reason is a dead end. */
                           hint={!hasTrench
-                            ? "No trench drawn yet \u2014 the cables are routed along it"
+                            ? "No trench drawn yet — the cables are routed along it"
                             : circuitsFrom(features).length
                               ? "Routes each circuit's cables along the trenches"
-                              : "No circuits yet \u2014 draw round the plot seeds with Link to "
+                              : "No circuits yet — draw round the plot seeds with Link to "
                                 + "Circuit first, and this becomes available"}
                           disabled={busy === "feeder" || !hasTrench
                             || !circuitsFrom(features).length}
@@ -25819,7 +25861,7 @@ export default function GISCanvasPage() {
                              lit this one up while the breech was the
                              thing waiting for a click. */
                           active={jointFor === "straight"}
-                          hint={"Click where it goes \u2014 the cable says ON LINE, and breaks there"}
+                          hint={"Click where it goes — the cable says ON LINE, and breaks there"}
                           disabled={!!busy || !projectId}
                           onClick={() => {
                             setJointFor(jointFor === "straight" ? null : "straight");
@@ -25855,7 +25897,7 @@ export default function GISCanvasPage() {
                                status line is where every other armed
                                mode says what it wants. */
                             setStatus(on
-                              ? "Placing a breech joint \u2014 click an end, a "
+                              ? "Placing a breech joint — click an end, a "
                                 + "corner or the middle of an LV feeder cable. "
                                 + "Esc to stop."
                               : "");
@@ -25880,7 +25922,7 @@ export default function GISCanvasPage() {
                           ? "Working\u2026" : "Auto Place Feeder Joints"} indent
                           hint={circuitsFrom(features).length
                             ? "Breech where a feeder divides, service where a service leaves it, straight where the cable changes, bottle end where it stops"
-                            : "No circuits yet \u2014 the joints are read off the routed "
+                            : "No circuits yet — the joints are read off the routed "
                               + "network, so the network has to be built first"}
                           disabled={!!busy || !circuitsFrom(features).length}
                           onClick={() => withUndo("Place Feeder Joints", () => placeFeederJoints())} />
@@ -25918,7 +25960,7 @@ export default function GISCanvasPage() {
                         /* Says that the rings appear, so a ringed meter
                            reads as "already spoken for" rather than as
                            the drawing having changed under you. */
-                        hint={"Draw round the plot seeds it serves \u2014 meters already on a circuit are ringed"}
+                        hint={"Draw round the plot seeds it serves — meters already on a circuit are ringed"}
                         onClick={() => {
                           setTool(tool === "circuit" ? "select" : "circuit");
                           setSelected([]); setDraft([]);
@@ -25946,7 +25988,7 @@ export default function GISCanvasPage() {
                       <MenuItem label={traceFrom ? "Click the line\u2026 (Esc to stop)" : "Trace from a Point"}
                         active={!!traceFrom}
                         hint={hasTrench
-                          ? "Click a cable, joint, meter or node \u2014 upstream, downstream or both"
+                          ? "Click a cable, joint, meter or node — upstream, downstream or both"
                           : "Nothing drawn yet to trace"}
                         disabled={!projectId || !hasTrench}
                         onClick={() => {
@@ -25978,7 +26020,7 @@ export default function GISCanvasPage() {
                       <MenuItem label="Circuit Report"
                         hint={lvOrigin(features)
                           ? "Meters by feeder, with distances from the origin"
-                          : "Place a substation or an electric POC first \u2014 the "
+                          : "Place a substation or an electric POC first — the "
                             + "report measures every circuit from one"}
                         disabled={!lvOrigin(features)}
                         onClick={() => setReportOpen(true)} />
@@ -26001,7 +26043,7 @@ export default function GISCanvasPage() {
                       <MenuItem label="Aptus Calc Sheet"
                         hint={lvOrigin(features)
                           ? "Volt drop and loop impedance, laid out for submission"
-                          : "Place a substation or an electric POC first \u2014 every "
+                          : "Place a substation or an electric POC first — every "
                             + "row is measured from one"}
                         disabled={!lvOrigin(features)}
                         onClick={() => setCalcSheetOpen(true)} />
@@ -26050,7 +26092,7 @@ export default function GISCanvasPage() {
 
                           Everything below it is a part of this. Hiding
                           it takes them all with it, including anything
-                          currently shown on its own \u2014 so it belongs
+                          currently shown on its own — so it belongs
                           above the list it governs rather than at the
                           foot of it.
 
@@ -26118,7 +26160,7 @@ export default function GISCanvasPage() {
                           They were at the top, above every layer. What a
                           label switch does only makes sense once you can
                           see the list of what is on the drawing, so it
-                          reads better under it \u2014 and it is a different
+                          reads better under it — and it is a different
                           kind of switch from the rest: the layers say
                           what is drawn, this says how much is written on
                           it. */}
@@ -26263,23 +26305,23 @@ export default function GISCanvasPage() {
 
                           {/* The fittings that go with the pipe.
 
-                              Both run themselves \u2014 the top tees after
+                              Both run themselves — the top tees after
                               the gas services are laid, the main tees
-                              after the gas network is built \u2014 so these
+                              after the gas network is built — so these
                               are for drawings made before that existed
                               and for picking up after pipe drawn by
                               hand. Kept apart because they are
                               backfilled at different times: the mains
                               go in long before the plots are served. */}
                           {/* Every utility can be traced, and each from
-                              its own menu \u2014 which is how the trace knows
+                              its own menu — which is how the trace knows
                               whether "the pipe" means gas or water
                               without being told. */}
                           <MenuItem label={traceFrom?.layerKey === key
                             ? "Click the line\u2026 (Esc to stop)" : "Trace from a Point"}
                             active={traceFrom?.layerKey === key}
                             hint={hasTrench
-                              ? "Follow the network from a point \u2014 upstream, downstream or both"
+                              ? "Follow the network from a point — upstream, downstream or both"
                               : "Nothing drawn yet to trace"}
                             disabled={!projectId || !hasTrench}
                             onClick={() => {
@@ -26311,7 +26353,7 @@ export default function GISCanvasPage() {
                           {key === "gas" && (
                             <MenuItem
                               label={busy === "gasnet" ? "Building\u2026" : "Build Gas Network"}
-                              hint={"Mains only \u2014 lays gas main from the POC along mains trench that has a gas service to a meter beyond it. Needs a gas design and a gas asset value agreement"}
+                              hint={"Mains only — lays gas main from the POC along mains trench that has a gas service to a meter beyond it. Needs a gas design and a gas asset value agreement"}
                               disabled={!projectId || !!busy}
                               onClick={() => withUndo("Build Gas Network", () => buildGasNetwork())} />
                           )}
@@ -26334,11 +26376,11 @@ export default function GISCanvasPage() {
                               in, rather than making them go back to the
                               Drawing menu for it. Same handler, so a
                               sheet started here is set up exactly as one
-                              started there \u2014 two buttons that print
+                              started there — two buttons that print
                               differently would be worse than one button
                               in an awkward place. */}
                           <MenuItem label={"Print to Scale\u2026"}
-                            hint={"Sets the drawing up for issue first \u2014 trench, plot seeds, span nodes and feeder end points off, mains and service labels on"}
+                            hint={"Sets the drawing up for issue first — trench, plot seeds, span nodes and feeder end points off, mains and service labels on"}
                             disabled={!projectId}
                             onClick={openPrintToScale} />
                           <div className="gm-sep" />
@@ -26393,7 +26435,7 @@ export default function GISCanvasPage() {
                               Whether the drawing is readable is a
                               question somebody asks while working on one
                               utility, and the answer used to be in the
-                              Layers menu \u2014 a different menu from the one
+                              Layers menu — a different menu from the one
                               they are in. The same switch, offered where
                               it is wanted. */}
                           <MenuLabels kinds={LABEL_KINDS}
@@ -26542,7 +26584,7 @@ export default function GISCanvasPage() {
                         Build All Mains and Lay All Services. Asked
                         for: this menu is where the design is read and
                         reported on, and the four of them ran it
-                        instead \u2014 each one doing at a stroke what the
+                        instead — each one doing at a stroke what the
                         utility menus do a utility at a time.
 
                         The routines are still in this file and still
@@ -26555,7 +26597,7 @@ export default function GISCanvasPage() {
                         take them out. */}
 
                     {/* A call-off is a report on what is to be laid, not
-                        a change to the drawing \u2014 it belongs with the
+                        a change to the drawing — it belongs with the
                         other things that read the design rather than in
                         the menu for digging. */}
                     <MenuItem label="New Mains Call-off"
@@ -26794,7 +26836,7 @@ export default function GISCanvasPage() {
                          thing. The tooltip spells it out for anyone who
                          wants the full answer. */
                       title={"Find by plot number, span code, label, or what a thing is"
-                        + " \u2014 34, A12, substation, service trench (Ctrl/Cmd + F)"}
+                        + " — 34, A12, substation, service trench (Ctrl/Cmd + F)"}
                       onFocus={() => setFindFocus(true)}
                       onBlur={() => setFindFocus(false)}
                       onChange={(e) => setFindQ(e.target.value)}
@@ -27031,7 +27073,7 @@ export default function GISCanvasPage() {
 
                  The design decision this dialog exists to capture on a
                  two-POC site. "Keep the circuit's own" is the default
-                 for joining \u2014 adding plots to Circuit 2 must not
+                 for joining — adding plots to Circuit 2 must not
                  quietly move Circuit 2 to another POC because a box was
                  left on its first value. A new circuit has to say. */
               <div className="cpick-origin">
@@ -27102,7 +27144,7 @@ export default function GISCanvasPage() {
               </button>
               {/* Named for what it will do, so the button and the choice
                   above it cannot say different things. Disabled only
-                  before a choice is made \u2014 the "fed from" rule is
+                  before a choice is made — the "fed from" rule is
                   answered on press, with its reason, rather than by a
                   button that will not move and does not say why. */}
               <button className="btn accent" disabled={circuitPick.target == null}
@@ -27135,7 +27177,7 @@ export default function GISCanvasPage() {
             Three questions, and only the first is a click. What is
             being followed comes from the menu it was started from, and
             both it and the direction can be changed here without
-            starting again \u2014 "actually, show me the trench" is the same
+            starting again — "actually, show me the trench" is the same
             question about the same point.
 
             Small and out of the way rather than a modal: the answer is
@@ -27145,8 +27187,8 @@ export default function GISCanvasPage() {
             ── Only once a trace is running ──
 
             Setting one UP is a different moment: the three things that
-            are not yet known \u2014 what to follow, which way, and which
-            cable where several share the point \u2014 are one decision, and
+            are not yet known — what to follow, which way, and which
+            cable where several share the point — are one decision, and
             they were split between this panel and a separate modal, so
             starting a trace meant answering in two places with the
             drawing in between. That question is asked once, in one
@@ -27171,7 +27213,7 @@ export default function GISCanvasPage() {
           {/* ── The panel reports; the dialog asks ──
 
               These same two rows were here as well, so finishing a
-              trace put the questions back on screen \u2014 which reads as
+              trace put the questions back on screen — which reads as
               the dialog reopening rather than as a result. One place
               answers each: the dialog decides what to follow, this says
               what was found, and Change reopens the dialog at the same
@@ -27256,7 +27298,7 @@ export default function GISCanvasPage() {
               </div>
 
               {/* Which way. A trench is fed from nowhere, so upstream
-                  and downstream are not questions it can answer \u2014
+                  and downstream are not questions it can answer —
                   greyed with the reason rather than hidden, because a
                   control that disappears looks like a fault. */}
               <div className="gt-p-row">
@@ -27283,7 +27325,7 @@ export default function GISCanvasPage() {
                 <>
                   <p className="hint">
                     {opts.length > 1
-                      ? `${opts.length} cables run through that point \u2014 which one?`
+                      ? `${opts.length} cables run through that point — which one?`
                       : opts.length === 1 ? "Following this cable:"
                         : "Nothing of that kind at that point."}
                   </p>
@@ -27346,7 +27388,7 @@ export default function GISCanvasPage() {
             or two circuits share a trench, and the separation on screen
             is display offset rather than distance. The nearest is a
             coin toss, and a joint on the wrong cable breaks the wrong
-            run \u2014 which is the fault this area kept producing.
+            run — which is the fault this area kept producing.
 
             Named by what tells them apart ON SCREEN: the colour the
             designer is looking at, the circuit, the output, the length.
@@ -27427,7 +27469,7 @@ export default function GISCanvasPage() {
             <p className="hint">
               {breakAsk.canBreak
                 ? `Placing a breech joint on ${breakAsk.label}.`
-                : `${breakAsk.label} ends at this point \u2014 there is nothing `
+                : `${breakAsk.label} ends at this point — there is nothing `
                   + "to cut, so the joint holds the end as it is."}
             </p>
             <div className="cpick-list">
@@ -27550,7 +27592,7 @@ export default function GISCanvasPage() {
                selection you cannot see is not an answer. */
             zoomTo(ids);
             setTrenchCheck(null);
-            setStatus(`${ids.length} trench(es) selected \u2014 drag an end onto the network to join it`);
+            setStatus(`${ids.length} trench(es) selected — drag an end onto the network to join it`);
             setTimeout(() => setStatus(""), 8000);
           }}
           onClose={() => setTrenchCheck(null)}
@@ -27591,7 +27633,7 @@ export default function GISCanvasPage() {
              is. Null until a check has run, which the panel says. */
           /* ── The board's level is the STOP's, not the board's ──
 
-             `elecLevelsAt` is keyed on the stop a leg ends at \u2014 the
+             `elecLevelsAt` is keyed on the stop a leg ends at — the
              feeder point the build places at the board. The board is a
              different feature at the same place, so looking it up by
              the board's own id found nothing and every flat showed a
@@ -27622,7 +27664,7 @@ export default function GISCanvasPage() {
               try {
                 await updateFeature(projectId, lineId, { Attributes: A });
                 await load(projectId);
-                setStatus("Unlinked \u2014 Auto Service will dig to that plot again.");
+                setStatus("Unlinked — Auto Service will dig to that plot again.");
                 setTimeout(() => setStatus(""), 6000);
               } catch (e) { setError(e.message); }
               return;
@@ -27646,14 +27688,14 @@ export default function GISCanvasPage() {
             /* The saved drawing, then the one node this run feeds.
 
                carryCableToNode reads the drawing, and the save that just
-               happened has not reached state yet \u2014 so without the
+               happened has not reached state yet — so without the
                reload it pushes the size the cable had before the edit.
 
                This used to call syncNodeCables, which is the whole-
                drawing reconciliation behind the menu item: it walks
                every electric line in the project and rewrites every node
                that disagrees with the run feeding it. Hung off a single
-               cable save, that turned one edit into a site-wide sweep \u2014
+               cable save, that turned one edit into a site-wide sweep —
                so changing the cable at the substation also "corrected"
                nodes that had drifted for unrelated reasons, sometimes
                months earlier, and asked about all of them in one dialog.
@@ -27801,7 +27843,7 @@ export default function GISCanvasPage() {
           project={project}
           busy={!!busy}
           /* The block load and the tick box, written back to the leg
-             they belong to \u2014 two named attributes, not the whole
+             they belong to — two named attributes, not the whole
              Attributes object, so a save cannot overwrite whatever the
              build wrote while the sheet was open. */
           onSave={async (changes) => {
@@ -27926,7 +27968,7 @@ export default function GISCanvasPage() {
             <p className="os-align-step">
               {align.pending
                 ? "Now click the same place on the OS linework. It snaps to the nearest corner."
-                : `Click a point on the plan \u2014 pair ${align.pairs.length + 1}. `
+                : `Click a point on the plan — pair ${align.pairs.length + 1}. `
                   + "Use things that exist today: kerb corners, junctions, existing buildings."}
             </p>
             {align.pairs.length > 0 && (
@@ -28047,7 +28089,7 @@ export default function GISCanvasPage() {
 
                    Asked for. A label is often dragged clear of its
                    cable to be read, which puts it over empty ground or
-                   over some other feature \u2014 so a right-click on it
+                   over some other feature — so a right-click on it
                    found nothing, or found the wrong thing. The label
                    knows which feature it belongs to, so it is asked
                    first, the same way a left-click that drags it is:
@@ -28057,7 +28099,7 @@ export default function GISCanvasPage() {
                    Straight into the editor rather than the menu, as
                    asked: the only thing to do with a label's feature
                    from its label is look at it. Selected too, so the
-                   cable goes blue and its labels go solid blue \u2014 which
+                   cable goes blue and its labels go solid blue — which
                    shows which cable the editor is open on. */
                 const lab = !drawing && !placing ? labelUnder(px, py) : null;
                 const owner = lab ? features.find((x) => x.Feature_ID === lab.id) : null;
@@ -28112,14 +28154,14 @@ export default function GISCanvasPage() {
                            ?? st.colour`: the link box output's colour
                            where it has one, the circuit's otherwise.
                            The swatch read only the style, so three
-                           cables on one route \u2014 which is exactly when
-                           this dialog opens \u2014 came up as three
+                           cables on one route — which is exactly when
+                           this dialog opens — came up as three
                            identical amber squares, and the one thing
                            that told them apart on screen was missing
                            from the list asking which you meant. */
                         /* A stop on an output wears the output's
                            colour on the drawing, so the swatch beside
-                           it has to as well \u2014 it showed amber for a
+                           it has to as well — it showed amber for a
                            point drawn pink, on a dialog whose whole job
                            is telling apart things lying on top of each
                            other. Same rule the canvas uses, from
@@ -28151,7 +28193,7 @@ export default function GISCanvasPage() {
                       <span className="gp-name">
                         {featureName(f, lineTypes,
                           /* Only a joint is asked, because only a joint
-                             can be told apart by who it feeds \u2014 and
+                             can be told apart by who it feeds — and
                              the answer costs a pass over every service
                              on the drawing, which is not worth paying
                              for a plot or a length of main. */
@@ -28245,7 +28287,7 @@ export default function GISCanvasPage() {
                 <span>
                   {traceOver.size
                     ? `${traceOver.size} node(s) outside tolerance`
-                    : "Levels checked \u2014 all within tolerance"}
+                    : "Levels checked — all within tolerance"}
                 </span>
                 <button onClick={() => setTraceOpen(true)}>Show figures</button>
                 <button onClick={() => { setTrace(null); setScenario(null); }}>Clear</button>
@@ -28426,9 +28468,9 @@ export default function GISCanvasPage() {
                       {` \u00b7 ${inspect.dig.machine}`}
                       {` at ${inspect.dig.baseRateM3Hr} m\u00b3/hr`}
                       {inspect.dig.depthFactor !== 1
-                        ? `, \u00d7${inspect.dig.depthFactor} for depth` : ""}
+                        ? `, ×${inspect.dig.depthFactor} for depth` : ""}
                       {inspect.dig.surfaceFactor !== 1
-                        ? `, \u00d7${inspect.dig.surfaceFactor} for ${inspect.dig.surfaceLabel}`
+                        ? `, ×${inspect.dig.surfaceFactor} for ${inspect.dig.surfaceLabel}`
                         : ""}
                       {/* Which surface was assumed, where none is set.
                           The multiplier between a verge and a 3/4
@@ -28436,7 +28478,7 @@ export default function GISCanvasPage() {
                           trench with the question unanswered is the one
                           worth saying something about. */}
                       {inspect.dig.surfaceAssumed
-                        ? " \u2014 no surface set, estimated as unmade ground" : ""}
+                        ? " — no surface set, estimated as unmade ground" : ""}
                     </span>
                     <span className="gco-dig-basis">{inspect.dig.basis}</span>
                   </div>
@@ -28462,7 +28504,7 @@ export default function GISCanvasPage() {
                     </div>
                     {u.items.map((it) => (
                       <div className="gco-span" key={it.feature.Feature_ID}>
-                        <span className="ins-label">{it.label ?? "\u2014"}</span>
+                        <span className="ins-label">{it.label ?? "—"}</span>
                         <span className="gco-m">{it.withinM} m</span>
                         {/* How much of the trench it takes up. A cable
                             running the whole length and one that stops
@@ -28833,7 +28875,7 @@ export default function GISCanvasPage() {
                            had agreed the meaning of would be worse than
                            one that visibly does not work. */
                         onClick={() => setError(
-                          "Accepting a penalty is not built yet \u2014 "
+                          "Accepting a penalty is not built yet — "
                           + "add more plots, or raise this from the "
                           + "call-off form instead.",
                         )}>
@@ -28856,7 +28898,7 @@ export default function GISCanvasPage() {
                       plots and the supply.
 
                       Shown per plot rather than as a total, since a
-                      gang works plot by plot \u2014 and the same joint
+                      gang works plot by plot — and the same joint
                       appearing against three plots is the truth about
                       how the network divides, not a repetition to be
                       tidied away. */}
@@ -29060,7 +29102,7 @@ export default function GISCanvasPage() {
                                  the droplet are in front of them. */
                               return inIt.map((c) => {
                                 const size = c.count > 1
-                                  ? `${c.count} \u00d7 ${c.label}` : c.label;
+                                  ? `${c.count} × ${c.label}` : c.label;
                                 return c.icon ? `${c.icon} ${size}` : size;
                               }).join("  \u00b7  ");
                             })()}
@@ -29082,7 +29124,7 @@ export default function GISCanvasPage() {
 
                 {callOff?.overlaps?.length > 0 && (
                   <p className="gco-warn">
-                    {`${callOff.overlaps.join(", ")} named twice \u2014 `}
+                    {`${callOff.overlaps.join(", ")} named twice — `}
                     counted twice, as asked.
                   </p>
                 )}
@@ -29120,7 +29162,7 @@ export default function GISCanvasPage() {
                         e.target.value ? Number(e.target.value) : null,
                       )}>
                       <option value="">
-                        {`Default \u2014 ${digRates.find((r) => r.Is_Default)?.Label
+                        {`Default — ${digRates.find((r) => r.Is_Default)?.Label
                           ?? "as the rates assume"}`}
                       </option>
                       {digRates.filter((r) => r.Is_Active !== false).map((r) => (
@@ -29147,7 +29189,7 @@ export default function GISCanvasPage() {
                     which is the order somebody works in. */}
                 <p className="gco-hint">
                   {pick
-                    ? `From ${spanNodeLabel(pick) ?? "\u2014"} \u2014 `
+                    ? `From ${spanNodeLabel(pick) ?? "—"} — `
                       + "click the node it runs to"
                     : ranges.length
                       ? "Click another span node to add another run or "
@@ -29410,8 +29452,8 @@ export default function GISCanvasPage() {
                   <div style={{ overflow: "auto", padding: "10px 18px 18px",
                     background: "#fff" }}>
                     {/* Our own SVG string, from our own module. Feature
-                        labels DO reach it \u2014 somebody's own text, typed on
-                        the drawing \u2014 and sectionSvg escapes every one of
+                        labels DO reach it — somebody's own text, typed on
+                        the drawing — and sectionSvg escapes every one of
                         them for exactly that reason. Anything added to
                         that module which writes drawing text must escape
                         it too. */}
@@ -29436,8 +29478,8 @@ export default function GISCanvasPage() {
                         number that gets built to. */}
                     {/* Worked to another surface's figures by a decision
                         of this business rather than by the guidance.
-                        Said quietly and without alarm \u2014 it is not a
-                        guess \u2014 but said, because the column used is not
+                        Said quietly and without alarm — it is not a
+                        guess — but said, because the column used is not
                         the one the surface is called. */}
                     {sectionOf.model.surfacePolicy && (
                       <p className="hint">
@@ -29529,7 +29571,7 @@ export default function GISCanvasPage() {
 
                         Inside the line branch, not after it. A trench IS
                         a line, so it takes this branch and never reached
-                        a later one \u2014 the items were written into a
+                        a later one — the items were written into a
                         `Feature_Type === "line" && isTrenchType(...)`
                         arm that nothing could ever match, because the
                         plain line test above it had already won.
@@ -29872,7 +29914,7 @@ export default function GISCanvasPage() {
             {/* Closing the table puts the table away, not the answer.
 
                 The pressures beside the nodes are the useful half of a
-                levels check \u2014 they are read while moving pipe around,
+                levels check — they are read while moving pipe around,
                 which is exactly when the table is in the way. Clearing
                 them on close meant closing the panel undid the check. */}
             <button className="gl-x" onClick={() => setGasLevelsPanel(false)}>&times;</button>
@@ -29883,7 +29925,7 @@ export default function GISCanvasPage() {
                 <tr>
                   {/* The main length, then the two ends it runs
                       between. "Main" rather than "Run" because G1 is a
-                      length of gas main, not a node \u2014 the nodes are
+                      length of gas main, not a node — the nodes are
                       G0 and the A-numbers. */}
                   <th>Main</th><th>From</th><th>To</th>
                   {/* The size a pipe is called and ordered by, not its
@@ -29923,8 +29965,8 @@ export default function GISCanvasPage() {
                       if (pts.length) zoomToPoints(pts);
                     }}>
                     <td>{l.id}</td>
-                    <td>{l.from ?? "\u2014"}</td>
-                    <td>{l.to ?? "\u2014"}</td>
+                    <td>{l.from ?? "—"}</td>
+                    <td>{l.to ?? "—"}</td>
                     <td className="num" title={[
                       `${l.boreMM.toFixed(1)}mm bore`,
                       l.overCapacity
@@ -29950,7 +29992,7 @@ export default function GISCanvasPage() {
                         Calling toFixed on it crashed the whole canvas,
                         which is a worse answer than saying nothing. */}
                     <td className="num">
-                      {l.at == null ? "\u2014" : l.at.toFixed(2)}
+                      {l.at == null ? "—" : l.at.toFixed(2)}
                     </td>
                   </tr>
                   );
@@ -29961,7 +30003,7 @@ export default function GISCanvasPage() {
               <p className="gl-note">
                 {`${gasLevelsResult.unreached.length} node`}
                 {gasLevelsResult.unreached.length === 1 ? "" : "s"}
-                {" not reached from the POC \u2014 a length of main drawn but "}
+                {" not reached from the POC — a length of main drawn but "}
                 not joined to the rest.
               </p>
             )}
@@ -29977,7 +30019,7 @@ export default function GISCanvasPage() {
               <p className="gl-pass">
                 {`\u2713 Every node holds above ${gasLevelsResult.minMBar} mbar `}
                 {Number.isFinite(gasLevelsResult.lowest?.[1])
-                  ? ` \u2014 lowest is ${gasLevelsResult.lowest[1].toFixed(2)} mbar` : ""}
+                  ? ` — lowest is ${gasLevelsResult.lowest[1].toFixed(2)} mbar` : ""}
                 {gasLevelsResult.lowestLabel ? ` at ${gasLevelsResult.lowestLabel}` : ""}.
               </p>
             )}
@@ -29994,7 +30036,7 @@ export default function GISCanvasPage() {
                     <p className="gl-note">
                       {gasLevelsResult.advice.clearsAll
                         ? "These changes together bring it inside the limit:"
-                        : "These help but do not clear it \u2014 the design needs "
+                        : "These help but do not clear it — the design needs "
                           + "looking at rather than resizing:"}
                     </p>
                     <ul className="gl-fixes">
@@ -30178,8 +30220,8 @@ export default function GISCanvasPage() {
 
                     This was a paragraph of running text with the
                     controls scattered after it. The paragraph said
-                    things that matter \u2014 stranded meters, an assumed
-                    voltage \u2014 but they were mixed in with a leg count and
+                    things that matter — stranded meters, an assumed
+                    voltage — but they were mixed in with a leg count and
                     a title, so the warnings read as part of the
                     furniture and nobody saw them.
 
@@ -30303,7 +30345,7 @@ export default function GISCanvasPage() {
                       <span className="gt-stranded"
                         title={"Not within reach of the trench network, so left out of "
                           + "every figure here. Usually a meter placed before the dig "
-                          + "reaches it \u2014 run the service to it and re-run.\n\n"
+                          + "reaches it — run the service to it and re-run.\n\n"
                           + trace.stranded.map((m) => m.label || `Feature ${m.id}`).join("\n")}>
                         {trace.stranded.length} meter
                         {trace.stranded.length === 1 ? "" : "s"} not on the network
@@ -30327,7 +30369,7 @@ export default function GISCanvasPage() {
                           ? `${cablesOutOfStep[0].Attributes?.Span_Label
                             ?? cablesOutOfStep[0].Label ?? "A node"} is out of step with its cable`
                           : `${cablesOutOfStep.length} nodes out of step with their cables`}
-                        {" \u2014 fix"}
+                        {" — fix"}
                       </button>
                     )}
                     {(cutoutAtMeter.why?.noService || cutoutAtMeter.why?.noSpec) && (
@@ -30438,6 +30480,19 @@ export default function GISCanvasPage() {
                         <>
                           <th className="num" title="Phase current at the end of this leg">A</th>
                           <th className="num" title="Loop impedance from the origin">&#937;</th>
+                          {/* ── Fault current ──
+
+                              Phase volts over the loop impedance beside
+                              it: what a fault to neutral here would
+                              draw, and what a cut-out fuse has to clear.
+                              Next to the impedance it comes from, so the
+                              two read as one fact. Falls at the end of
+                              line, which is where a fuse is slowest \u2014
+                              the figure worth looking at. */}
+                          <th className="num"
+                            title="Fault current to neutral: phase volts over the loop impedance">
+                            PSCC
+                          </th>
                           <th className={vdBasis === "own" ? "num" : "num vd-cum"}
                             title={vdBasis === "own"
                               ? "Volt drop from the origin node, this design only"
@@ -30453,7 +30508,7 @@ export default function GISCanvasPage() {
                               where it was not. The node figure stops
                               where the main turns off to the plot; the
                               service column is the worst tail beyond
-                              it; at cut-out is their sum \u2014 the number
+                              it; at cut-out is their sum — the number
                               the limit is judged at. Blank where no
                               service is drawn or specified, for the
                               export's reason: contributes-nothing and
@@ -30495,7 +30550,13 @@ export default function GISCanvasPage() {
                           && l.part !== (tracePlan[at - 1]?.leg?.part) && (
                           <tr className="gt-sect"
                             style={wayTint(l) ? { background: wayTint(l) } : undefined}>
-                            <td colSpan={12}>
+                            {/* The whole width: 14 columns with the volt
+                                drop shown (V, Leg, Cable, Length, Dist,
+                                Term, A, Ω, PSCC, %VD, SVC M, SVC%,
+                                cut-out, and the Show button), 6 without.
+                                It read a flat 12, which was already a
+                                column short before PSCC was added. */}
+                            <td colSpan={trace.hasVd ? 14 : 6}>
                               {/* A swatch on the heading as well, at full
                                   strength: the tint on the rows is too
                                   pale to name a colour by, and this is
@@ -30523,7 +30584,7 @@ export default function GISCanvasPage() {
                           : (wayTint(l) ? { background: wayTint(l) } : undefined)}>
                         {trace.hasVd && (
                           <td className="num gt-v">
-                            {l.volts != null ? `${l.volts.toFixed(1)} V` : "\u2014"}
+                            {l.volts != null ? `${l.volts.toFixed(1)} V` : "—"}
                           </td>
                         )}
                         <td>
@@ -30568,7 +30629,7 @@ export default function GISCanvasPage() {
                              and telling somebody to set one sends them
                              looking for a substation they deliberately
                              have not got. */
-                          <td colSpan={5} className="num vd-gap"
+                          <td colSpan={6} className="num vd-gap"
                             title={l.vd.missingTransformer
                               ? NO_SOURCE_NOTE
                               : "Set a cable on every span node along this route"}>
@@ -30579,6 +30640,10 @@ export default function GISCanvasPage() {
                             <td className="num">{l.vd.amps.toFixed(1)}</td>
                             <td className={l.vd.overOhms ? "num vd-over" : "num"}>
                               {l.vd.ohms.toFixed(3)}
+                            </td>
+                            <td className="num" title="Fault current to neutral at this node">
+                              {l.vd.faultAmps != null
+                                ? `${Math.round(l.vd.faultAmps)} A` : ""}
                             </td>
                             {/* The over-limit mark stays on the
                                 cumulative figure whichever number is
@@ -30597,14 +30662,14 @@ export default function GISCanvasPage() {
                             <td className="num"
                               title="The worst tail's drawn length">
                               {l.service?.lengthM != null
-                                ? `${l.service.lengthM.toFixed(1)} m` : "\u2014"}
+                                ? `${l.service.lengthM.toFixed(1)} m` : "—"}
                             </td>
                             {/* ── Judged against its own allowance ──
 
                                 The tail against the service limit; the
                                 cut-out against mains PLUS service,
                                 because that is the whole journey's
-                                allowance \u2014 a node at 6.3% with a
+                                allowance — a node at 6.3% with a
                                 0.07% tail is inside a 5+2 scheme, and
                                 painting it red against 5 alone judged
                                 the whole journey by half its
@@ -30623,7 +30688,7 @@ export default function GISCanvasPage() {
                                 ? "No service drawn or specified to this node"
                                 : undefined}>
                               {l.service && !l.service.missingSpec
-                                ? l.service.pct.toFixed(2) : "\u2014"}
+                                ? l.service.pct.toFixed(2) : "—"}
                             </td>
                             <td className={(() => {
                               const main = Number(
@@ -30636,7 +30701,7 @@ export default function GISCanvasPage() {
                                 ? "num vd-over strong" : "num strong";
                             })()}>
                               {l.atCutout && !l.service?.missingSpec
-                                ? l.atCutout.pct.toFixed(2) : "\u2014"}
+                                ? l.atCutout.pct.toFixed(2) : "—"}
                             </td>
                           </>
                         ))}
@@ -30670,7 +30735,12 @@ export default function GISCanvasPage() {
                         {trace.legs.reduce((t, l) => t + l.distribution, 0)}
                       </td>
                       <td className="num">{trace.totalMeters}</td>
-                      {trace.hasVd && <td colSpan={3} className="num vd-note">
+                      {/* Fills what is left of the row: 3 + length +
+                          dist + term + this + the Show column = 14,
+                          the header's own width. It read 3, which left
+                          the totals row three columns short of the
+                          table it totals. */}
+                      {trace.hasVd && <td colSpan={7} className="num vd-note">
                         limits {trace.limits.maxLoopOhms}&#937; / {trace.limits.maxVoltDropPct}%
                         {trace.limits.maxServiceVoltDropPct != null
                           ? ` (+${trace.limits.maxServiceVoltDropPct}% service at the cut-out)`
@@ -30686,7 +30756,7 @@ export default function GISCanvasPage() {
                     Export and Schematic were beside the title, competing
                     with the controls that decide what is being read.
                     They act on the whole check rather than on any part
-                    of it, so they belong after it \u2014 which is also where
+                    of it, so they belong after it — which is also where
                     somebody is when they have finished reading. */}
                 <div className="gt-foot">
                   <button className="btn ghost"
@@ -30877,7 +30947,7 @@ export default function GISCanvasPage() {
                       {typeOf(snapHit.lineType)?.Label ?? snapHit.lineType ?? "another object"}
                       {" "}&middot; drawing {typeOf(lineType)?.Label ?? lineType}
                       {snapHit.kind === "end" && snapHit.lineType !== lineType
-                        && " \u2014 different type, so no join"}
+                        && " — different type, so no join"}
                     </span>
                   )
                 )}
@@ -30961,7 +31031,7 @@ const CSS = `
 /* The tool buttons, and nothing else.
 
    The line type picker sat inside this, so the group had to grow to
-   hold it \u2014 and with the border wrapping both, "Draw line" broke onto
+   hold it — and with the border wrapping both, "Draw line" broke onto
    two lines to make room. The picker is a separate control that follows
    the tools rather than part of them. */
 /* The call-off-only banner, where the drawing tools would be. */
@@ -30993,7 +31063,7 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
    concerned, so it ran a text selection across whatever UI the pointer
    passed over. Click near a joint and the picker opens under the
    cursor already highlighted end to end, every label green, as though
-   the app had done something. Nothing was wrong \u2014 it just looked
+   the app had done something. Nothing was wrong — it just looked
    broken, which for a drawing tool is the same thing.
 
    Suppressed on the canvas and on the overlays that sit over it. NOT
@@ -31404,7 +31474,7 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 /* The levels report fills the pane rather than a 300px column.
 
    Every row is a leg with a from, a to, a voltage and a cable, and at
-   300px the cable name wrapped onto its own line \u2014 so a circuit of
+   300px the cable name wrapped onto its own line — so a circuit of
    twenty legs read as forty rows of half-sentences. Given the width it
    is a table.
 
@@ -31415,7 +31485,7 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 
    A wizard owns the screen and makes a designer answer questions in the
    order it likes; this sits beside the drawing and says where things
-   have got to. Somebody who wants to work out of order still can \u2014 the
+   have got to. Somebody who wants to work out of order still can — the
    steps that matter are refused with a reason, and the rest are theirs
    to judge. */
 .gis-steps { position: absolute; left: 12px; top: 44px; z-index: 9; width: 330px;
@@ -31432,7 +31502,7 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gs-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .gs-hint { color: var(--muted); }
 .gs-detail { font-size: 11.5px; color: var(--muted); }
-/* Done recedes, the next one leads, and the rest are quiet \u2014 the eye
+/* Done recedes, the next one leads, and the rest are quiet — the eye
    should land on the one thing to do now. */
 .gs-done { opacity: .55; }
 .gs-now strong { color: var(--accent); }
@@ -31589,7 +31659,7 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
    they will not fit.
 
    No backticks in here. This stylesheet is a template literal, and one
-   in a comment ends the string \u2014 the build then fails somewhere else
+   in a comment ends the string — the build then fails somewhere else
    entirely, on the next line that happens to be invalid JavaScript. */
 .gt-p-b { flex: 1 1 auto; min-width: max-content; padding: 5px 9px;
   border-radius: 6px;

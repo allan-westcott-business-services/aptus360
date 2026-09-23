@@ -285,7 +285,11 @@ const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
     fail("a drawing with no feeders on it gets the same message as a "
       + "near-miss, so there is nothing to tell them apart by");
   }
-  if (!/not an LV feeder cable \\u2014 a joint goes on a feeder/.test(canvas)) {
+  /* Either form of the dash: "\u2014" and "—" are the same string once
+     the file is read, and this pinned the escape \u2014 so it went red when
+     a sweep turned the escapes in this file into the characters
+     themselves, about a message that had not changed. */
+  if (!/not an LV feeder cable (\\u2014|\u2014) a joint goes on a feeder/.test(canvas)) {
     fail("clicking a service or a trench does not say what was clicked, so "
       + "the wrong cable type reads as the tool not working");
   }
@@ -302,11 +306,11 @@ const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
    cable there" cannot tell a click two pixels wide of the line from a
    drawing with no feeders on it at all. */
 {
-  if (!/Placing a breech joint \\u2014 click an end/.test(canvas)) {
+  if (!/Placing a breech joint (\\u2014|\u2014) click an end/.test(canvas)) {
     fail("arming the breech says nothing on the status line, so the only "
       + "sign of the mode is a ring at the pointer");
   }
-  if (!/not an LV feeder cable \\u2014 a joint goes on a feeder/.test(canvas)) {
+  if (!/not an LV feeder cable (\\u2014|\u2014) a joint goes on a feeder/.test(canvas)) {
     fail("a click on the wrong kind of line does not say what it found");
   }
   if (!/This drawing has no LV feeder cables to joint yet/.test(canvas)) {

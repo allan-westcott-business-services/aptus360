@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
 import Select from "../../components/Select.jsx";
 import {
-  addHouseType, updateHouseType, retireHouseType, attachFloorPlan, floorPlanLink,
+  addHouseType, updateHouseType, retireHouseType,
+  attachFloorPlan, floorPlanLink, removeFloorPlan,
 } from "../../api/houseTypes.js";
 
 /* ── The development's plot breakdown ──
@@ -67,6 +68,16 @@ export default function PlotBreakdown({ projectId, rows, onChange, lookups, plot
       onChange(rows.map((x) => (x.House_Type_ID === r.House_Type_ID ? next : x)));
     });
   };
+  /* Confirmed by name: the plan is the one thing here that cannot be
+     got back from the app if it was the only copy. */
+  const detach = (r) => {
+    if (!window.confirm(`Remove ${r.File_Name || "the floor plan"} from the ${r.Name}?`)) return;
+    run(r.House_Type_ID, async () => {
+      const next = await removeFloorPlan(r.House_Type_ID);
+      onChange(rows.map((x) => (x.House_Type_ID === r.House_Type_ID ? next : x)));
+    });
+  };
+
   const view = (r) => run(r.House_Type_ID, async () => {
     const { url } = await floorPlanLink(r.House_Type_ID);
     if (url) window.open(url, "_blank", "noopener");
@@ -97,7 +108,7 @@ export default function PlotBreakdown({ projectId, rows, onChange, lookups, plot
               <Row key={r.House_Type_ID} r={r} busy={busy === r.House_Type_ID}
                 configs={configs} configLabel={configLabel} plots={plotCounts[r.House_Type_ID] || 0}
                 onSave={(patch) => save(r, patch)} onFile={() => pickFile(r)}
-                onView={() => view(r)} onRetire={() => retire(r)} />
+                onView={() => view(r)} onDetach={() => detach(r)} onRetire={() => retire(r)} />
             ))}
 
             {/* A new one, entered on the last line. */}
@@ -131,7 +142,7 @@ export default function PlotBreakdown({ projectId, rows, onChange, lookups, plot
 
 /* One house type. Fields save when left, and only when changed, so
    tabbing through a row writes nothing. */
-function Row({ r, busy, configs, configLabel, plots, onSave, onFile, onView, onRetire }) {
+function Row({ r, busy, configs, configLabel, plots, onSave, onFile, onView, onDetach, onRetire }) {
   const [name, setName] = useState(r.Name || "");
   const [code, setCode] = useState(r.Code || "");
   return (
@@ -155,7 +166,10 @@ function Row({ r, busy, configs, configLabel, plots, onSave, onFile, onView, onR
             <button type="button" className="pb-link" onClick={onView} title="Open the floor plan">
               {r.File_Name || "Floor plan"}
             </button>
-            <button type="button" className="pb-link pb-quiet" onClick={onFile}>replace</button>
+            <button type="button" className="pb-link pb-quiet" disabled={busy}
+              onClick={onFile}>replace</button>
+            <button type="button" className="pb-link pb-remove" disabled={busy}
+              onClick={onDetach} title="Remove the floor plan">remove</button>
           </>
         ) : (
           <button type="button" className="btn ghost sm" disabled={busy} onClick={onFile}>Attach</button>
@@ -184,6 +198,7 @@ const CSS = `
 .pb-link { border: 0; background: none; padding: 0; font: inherit; color: var(--accent);
   text-decoration: underline; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pb-quiet { color: var(--muted); font-size: 12px; }
+.pb-remove { color: #b91c1c; font-size: 12px; }
 .pb-x { border: 0; background: none; font-size: 20px; color: var(--muted); cursor: pointer; justify-self: center; }
 .pb-x:hover { color: #b91c1c; }
 .pb-error { color: #b91c1c; margin: 0 0 8px; font-size: 13px; }

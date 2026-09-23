@@ -120,6 +120,24 @@ export default withAuth(async function handler(req, context, user) {
       return json(data);
     }
 
+    /* ── Taking a floor plan off ──
+
+       The row forgets the plan first, then the file goes. That way
+       round, because a delete that fails after the row is cleared
+       leaves an unreferenced file — tidy-up — while the other way
+       round leaves a row pointing at a file that is gone, which is a
+       broken link somebody has to report. The house type itself stays;
+       only its plan is removed. */
+    if (req.method === "PATCH" && what === "detach" && Number.isFinite(id)) {
+      const r = await rowOf();
+      const { data, error } = await db.from("Project_House_Type")
+        .update({ Storage_Path: null, File_Name: null })
+        .eq("House_Type_ID", id).select(C).single();
+      if (error) throw error;
+      if (r.Storage_Path) await db.storage.from(BUCKET).remove([r.Storage_Path]);
+      return json(data);
+    }
+
     if (req.method === "POST") {
       const b = await req.json();
       const projectId = Number(b?.Project_ID);

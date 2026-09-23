@@ -8024,6 +8024,12 @@ characters is a hundred lines of prose and no rules at all.
      way back: only this row's folder. Replacing a plan removes the old
      file, after the row points at the new one.
 
+     A plan can be **attached, replaced or removed**. Removing clears
+     the row first and deletes the file second: a failed delete then
+     leaves an unreferenced file, which is tidy-up, where the other way
+     round leaves a row naming a file that is gone. Confirmed by name —
+     it may be the only copy — and the house type itself stays.
+
      **Retired, never deleted.** Plots point at a house type by id; one
      removed from the breakdown stays on the plots built as it, and the
      confirm says how many.

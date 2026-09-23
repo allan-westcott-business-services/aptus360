@@ -90,6 +90,33 @@ const photos = readFileSync("./src/api/connectionPhotos.js", "utf8");
   }
 }
 
+// 2b. A floor plan can be taken off, and the house type stays.
+{
+  /* Asked for beside add and replace. */
+  if (!/what === "detach"/.test(api)) fail("a floor plan cannot be removed");
+  else {
+    const at = api.indexOf('what === "detach"');
+    const block = api.slice(at, at + 900);
+    if (!/Storage_Path: null, File_Name: null/.test(block)) {
+      fail("removing a plan leaves the row still naming it");
+    }
+    /* The row forgets it FIRST, then the file goes: a failed delete
+       leaves an unreferenced file, which is tidy-up, where the other
+       way round leaves a row pointing at a file that is gone. */
+    if (!(block.indexOf(".update(") < block.indexOf(".remove(["))) {
+      fail("the file is deleted before the row stops naming it");
+    }
+    if (/Is_Active: false/.test(block)) {
+      fail("removing a floor plan retires the house type with it");
+    }
+  }
+  const panelBlock = panel.slice(panel.indexOf("const detach ="), panel.indexOf("const view ="));
+  if (!/window\.confirm/.test(panelBlock)) {
+    fail("a floor plan is deleted without confirming — it may be the only copy");
+  }
+  if (!/onClick=\{onDetach\}/.test(panel)) fail("there is no remove button beside replace");
+}
+
 // 3. Codes are unique, and said so in words.
 {
   if (!/The code \$\{clash\.Code\} is already the \$\{clash\.Name\}/.test(api)) {

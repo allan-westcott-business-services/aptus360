@@ -27,3 +27,6 @@ export async function attachFloorPlan(id, file) {
 }
 
 export const floorPlanLink = (id) => http.get(`/house-types?what=file&id=${id}`);
+
+/* Removes the plan, not the house type. */
+export const removeFloorPlan = (id) => http.patch(`/house-types?what=detach&id=${id}`, {});

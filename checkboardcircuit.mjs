@@ -692,6 +692,43 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
   }
 }
 
+/* ── The levels check must watch the POC ──
+
+   Reported: changing "volt drop already used upstream" did not change
+   the end-of-line volt drop. The check re-runs when `levelsKey`
+   changes, and the key listed every feature it watches — meters, span
+   nodes, feeder points, link boxes, joints — but NOT the point of
+   connection, which every figure is measured from. So the edit changed
+   nothing the check was watching and the old figures stood.
+
+   The same fault the link box had, one line above it in the same list.
+   All four of an origin's own numbers are in the key now. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("const levelsKey = useMemo");
+  /* To the end of the memo, not a fixed window. */
+  const end = canvas.indexOf("}, [features]);", at);
+  const key = at < 0 ? "" : canvas.slice(at, end > at ? end : at + 3000);
+  if (!key) fail("the levels key has moved");
+  else {
+    if (!/f\.Feature_Role === "poc"/.test(key)) {
+      fail("the levels check does not watch the POC, so changing the upstream "
+        + "volt drop, the declared impedance or the voltage leaves the old "
+        + "figures on the drawing");
+    }
+    for (const [attr, why] of [
+      ["Source_Volt_Drop_Pct", "the upstream volt drop"],
+      ["Source_Loop_Impedance_Ohm", "the declared loop impedance"],
+      ["VD_Transformer_Size_ID", "a substation's transformer"],
+      ["Output_V", "the working voltage"],
+    ]) {
+      if (!new RegExp(`a\\.${attr}`).test(key)) {
+        fail(`changing ${why} does not re-run the levels check`);
+      }
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "A circuit can be born on a spare way and membered by a board (flats-only designs build).");
 process.exit(bad ? 1 : 0);

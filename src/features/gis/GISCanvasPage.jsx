@@ -2121,12 +2121,30 @@ export default function GISCanvasPage() {
           || f.Feature_Role === "linkbox"
           /* A straight joint is a stop too, so moving one or changing
              the cable either side of it changes the figures. */
-          || f.Feature_Role === "joint");
+          || f.Feature_Role === "joint"
+          /* ── And the POC, which every figure is measured FROM ──
+
+             It was not watched at all. So changing "volt drop already
+             used upstream", or the declared loop impedance, or the
+             working voltage, changed nothing the check looks at, the
+             check did not re-run, and the levels went on reporting the
+             old figures. Reported as the upstream percentage having no
+             effect on the end-of-line volt drop.
+
+             The same fault as the link box above it, one line up, on
+             the feature the whole cascade starts from. */
+          || f.Feature_Role === "poc");
       if (!wanted) continue;
       k.push(f.Feature_ID, f.Feature_Role, f.Layer_Key, f.Geometry, f.Plot_ID,
         a.Line_Type, a.Circuit_ID, a.Span_Seq, a.Seed_Feature_ID,
         a.VD_Cable_Size_ID, a.Manual_VD_Cable_Size_ID,
-        a.Carries_LV, a.Carries_HV);
+        a.Carries_LV, a.Carries_HV,
+        /* What an origin contributes before the first metre of cable:
+           the upstream drop, the declared impedance, the transformer
+           behind a substation, and the voltage everything is a
+           proportion of. */
+        a.Source_Volt_Drop_Pct, a.Source_Loop_Impedance_Ohm,
+        a.VD_Transformer_Size_ID, a.Output_V);
     }
     return k;
   }, [features]);

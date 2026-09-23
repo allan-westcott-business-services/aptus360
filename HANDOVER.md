@@ -8183,6 +8183,31 @@ characters is a hundred lines of prose and no rules at all.
      check this month that described the source rather than what it
      does.
 
+190. **The levels check did not watch the POC.** Reported: changing
+     "volt drop already used upstream" did not change the end-of-line
+     volt drop.
+
+     The check re-runs when `levelsKey` changes. That key walks the
+     features and keeps the ones the figures depend on — meters, span
+     nodes, plots, feeder points, link boxes, straight joints — and the
+     POINT OF CONNECTION was not among them. So editing the upstream
+     drop changed nothing the key watched, the check did not re-run,
+     and the drawing kept the figures it already had. Nothing was wrong
+     with the arithmetic: it simply never ran again.
+
+     The same fault the link box had, recorded in a comment one line
+     above the gap. An origin's four numbers are in the key now:
+     `Source_Volt_Drop_Pct`, `Source_Loop_Impedance_Ohm`,
+     `VD_Transformer_Size_ID` and `Output_V` — the upstream drop, the
+     declared impedance, the transformer behind a substation, and the
+     voltage every percentage is a proportion of.
+
+     Worth stating as a rule: **a cache keyed on a list of features is
+     a list somebody has to remember to add to.** This is the second
+     time that list has been short, and the first time it was found by
+     a link box moving and keeping its old figures. Anything a levels
+     figure is computed FROM belongs in that key.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

@@ -545,6 +545,44 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
   }
 }
 
+/* ── The POC's circuit cable colours ──
+
+   Reported as missing from the POC editor. It was there, but only for
+   circuits that HAVE MEMBERS: a circuit started on a way and holding
+   nothing yet was not listed, so its cable colour could not be set
+   until meters were on it — which on a new drawing is exactly when
+   somebody wants to colour it.
+
+   The same `choices` list this file is about: membered circuits plus
+   one just born on a spare way. */
+{
+  const ed = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  const at = ed.indexOf('feature.Feature_Role === "poc" && (() => {');
+  const block = at < 0 ? "" : ed.slice(at, at + 2600);
+  if (!block) fail("the POC editor no longer offers circuit cable colours");
+  else {
+    if (!/\(choices\.length \? choices : circuits\)/.test(block)) {
+      fail("the POC lists only circuits that already have members, so a circuit "
+        + "just started cannot be coloured");
+    }
+    /* With two POCs, a circuit whose origin cannot yet be told is
+       listed on both rather than on neither. */
+    if (!/origin == null \|\| Number\(origin\) === Number\(feature\.Feature_ID\)/.test(block)) {
+      fail("a circuit with no meter yet to say which POC feeds it is listed on "
+        + "neither, so its colour cannot be set anywhere");
+    }
+    /* Nothing to list is SAID. An empty space reads as a missing
+       feature, which is how this was reported. */
+    if (!/Once a circuit is drawn from this point of connection/.test(block)) {
+      fail("a POC with no circuits yet shows nothing at all, which reads as the "
+        + "colour control being missing");
+    }
+    if (!/setCircuitColour\(c\.id, e\.target\.value\)/.test(block)) {
+      fail("the swatch does not set the circuit's colour");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "A circuit can be born on a spare way and membered by a board (flats-only designs build).");
 process.exit(bad ? 1 : 0);

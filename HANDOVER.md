@@ -8075,6 +8075,33 @@ characters is a hundred lines of prose and no rules at all.
      — the migrations still missing (0138, 0163, 0198, 0208, 0210, 0221,
      0222) are where the next one is.
 
+186. **The POC's circuit cable colours were there, and invisible.**
+     Asked for as a new feature: change the colour of the cable
+     connected to a point of connection. The board exists — "Circuit
+     cable colours", one swatch per circuit, written to the origin's
+     `Circuit_Colours` — but it listed only circuits that HAVE MEMBERS,
+     and returned nothing at all when there were none.
+
+     So on a drawing where the cables are drawn but no meters are on
+     them yet, or where a circuit has just been started on a spare way,
+     the board was empty and therefore absent. Which is precisely when
+     somebody wants to colour a circuit.
+
+     Three changes, no new machinery: it lists `choices` (membered
+     circuits plus one just born on a spare way) rather than
+     `circuits`; with more than one POC, a circuit whose origin cannot
+     yet be told — no meter on it to say — is listed on BOTH rather
+     than neither, since colouring from the wrong board writes the same
+     colour to the same circuit while not being able to colour it at all
+     is the fault; and a POC with nothing to list says "Once a circuit
+     is drawn from this point of connection, its cable colour can be set
+     here" instead of showing empty space.
+
+     Worth naming the shape: a control that hides itself when it has
+     nothing to show is indistinguishable from a control that does not
+     exist. That is the second report of this kind in a week — the
+     portal's section tabs hid themselves at one section.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

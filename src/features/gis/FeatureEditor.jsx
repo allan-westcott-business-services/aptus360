@@ -58,7 +58,7 @@ export default function FeatureEditor({
      landlord supplies from. Defaulted: the editor is opened from
      several places, and a board that silently offered no supplies
      would read as a project with none rather than as a missing prop.
-     Without the default it was worse than that \u2014 `nrsList` was used
+     Without the default it was worse than that — `nrsList` was used
      and never declared, so opening any MSDB threw. */
   nrsList = [],
   /* Arms the "click the plot this serves" mode, or clears the link
@@ -99,7 +99,7 @@ export default function FeatureEditor({
   onDisconnectCable, onConnectCable,
   /* The board's own level from the last levels check, and the cable its
      tails are run in. Both come from the canvas, which is where the
-     check and the catalogue live \u2014 the editor works out what each flat
+     check and the catalogue live — the editor works out what each flat
      sees, not what the network does. */
   levelsAt = null, msdbTailCable = null,
 }) {
@@ -167,7 +167,7 @@ export default function FeatureEditor({
 
      Read only, and worked out rather than stored: adding a cable to a
      trench widens it, and a figure somebody typed once would go stale
-     the moment the drawing changed. NJUG spacing, ordinary case \u2014 see
+     the moment the drawing changed. NJUG spacing, ordinary case — see
      trenchSize.js for what that assumes and where to change it. */
   /* What is routed along this trench, as sizes.
 
@@ -187,7 +187,7 @@ export default function FeatureEditor({
       serviceTrenchTypes,
       isTrench: (x) => x.Feature_Type === "line"
         && isTrenchType(x.Attributes?.Line_Type, lineTypes),
-      /* The size, which is what somebody wants \u2014 a cable's label is
+      /* The size, which is what somebody wants — a cable's label is
          its circuit and way, which says which run it is and nothing
          about what was laid. */
       labelOf: (x) => {
@@ -234,7 +234,7 @@ export default function FeatureEditor({
        one stretch of main are three separate cables that happen to be
        the same size, and "63mm, 63mm, 63mm" looks like the list is
        broken rather than like three services. Grouped, it says what is
-       actually there \u2014 3 x 63mm.
+       actually there — 3 x 63mm.
 
        Grouped after the utility is resolved, not before: a 63mm water
        service and a 63mm gas service are not the same thing however
@@ -257,7 +257,7 @@ export default function FeatureEditor({
            size fields look their utility up by key, and "Electric" is a
            label somebody could rename. */
         layerKey: c.utility,
-        label: c.label || "\u2014",
+        label: c.label || "—",
         icon: known?.icon ?? "\u25CF",
         utility: known?.name ?? name,
         withinM: c.withinM,
@@ -270,8 +270,8 @@ export default function FeatureEditor({
            came up empty on a trench with two HV cables in it.
 
            Read off the feature while it is still in hand. `utility`
-           above is the DISPLAY name \u2014 "Electric", which somebody can
-           rename \u2014 so the test uses the layer key, for the same reason
+           above is the DISPLAY name — "Electric", which somebody can
+           rename — so the test uses the layer key, for the same reason
            `layerKey` exists at all. */
         kind: c.utility === "electric"
           ? `electric:${/hv/i.test(String(c.feature?.Attributes?.Line_Type ?? ""))
@@ -301,7 +301,7 @@ export default function FeatureEditor({
 
        Electric is not like that. An HV route and an LV main share a
        trench as two separate cables, and folding them together reported
-       "3 x HV Cable" for a trench holding two HV and one LV \u2014 the count
+       "3 x HV Cable" for a trench holding two HV and one LV — the count
        was of everything electric and the name was of whichever covered
        most of it. Right total, wrong thing named, and the two together
        read as a cable that is not there.
@@ -411,13 +411,13 @@ export default function FeatureEditor({
          The dig is skipped for an existing trench, because a hole
          somebody else opened is not dug twice. The LAYING was kept, on
          the reasoning that a pipe goes in whether or not this job made
-         the trench \u2014 which is right for a NEW run through an old
+         the trench — which is right for a NEW run through an old
          route.
 
          It is wrong for a run that is itself already in the ground. An
          existing trench holding an existing cable was charged an hour
-         to lay a cable that is lying there, and the bill \u2014 which drops
-         existing features altogether \u2014 said nothing of the sort.
+         to lay a cable that is lying there, and the bill — which drops
+         existing features altogether — said nothing of the sort.
 
          So each content answers for itself, which is also what makes
          the reuse case still work: the new cable in the old trench is
@@ -439,13 +439,13 @@ export default function FeatureEditor({
      Gas_Pipe_Size is a table of sizing rules, not a catalogue: 63mm
      appears once per capacity band and again for each operator with its
      own ceiling. Listed as they come, the picker showed "63mm PE" five
-     times over with nothing to tell the rows apart \u2014 five identical
+     times over with nothing to tell the rows apart — five identical
      choices is worse than one, because it makes somebody wonder which
      is right.
 
      Grouped by bore, which is what a pipe size is. The id kept is the
      first rule for that bore; nothing outside this field reads it, and
-     the bore \u2014 which the levels check does read \u2014 is the same
+     the bore — which the levels check does read — is the same
      whichever rule it came from.
 
      Low pressure only, matching the assumption the build makes; nothing
@@ -472,7 +472,7 @@ export default function FeatureEditor({
   /* Which option is showing, matched on bore rather than on the id.
 
      The picker keeps one rule per bore and the build stores whichever
-     rule the load happened to select \u2014 the same 63mm pipe, a different
+     rule the load happened to select — the same 63mm pipe, a different
      row. Comparing ids meant the stored value matched no option, so the
      browser fell back to the first one and every built main read "Sized
      by the build" however it had been sized. */
@@ -480,7 +480,7 @@ export default function FeatureEditor({
 
      The picker keeps one row per bore and the build stores whichever
      rule its load selected, so comparing ids directly matches nothing
-     \u2014 which is what made every built main read as unsized. */
+     — which is what made every built main read as unsized. */
   const gasOptionFor = (id) => {
     if (id == null) return "";
     const stored = (lookups?.gasPipeSizes || [])
@@ -656,7 +656,7 @@ export default function FeatureEditor({
      decides whether the way is viable, with the load and meter count
      behind it. */
   /* The board's default. Each way's own rating is read per row through
-     `fuseForWay`, which falls back to this \u2014 see the Fuse column. */
+     `fuseForWay`, which falls back to this — see the Fuse column. */
   const wayFuse = Number(feature.Attributes?.Way_Fuse_A ?? SUB_DEFAULTS.Way_Fuse_A) || 0;
   const outputV = Number(feature.Attributes?.Output_V ?? SUB_DEFAULTS.Output_V) || 400;
   const rating = Number(feature.Attributes?.Rating_kVA ?? 0) || 0;
@@ -776,16 +776,16 @@ export default function FeatureEditor({
      laid in cable rated for a higher one, and the catalogue is where
      that judgement belongs rather than here. */
   /* HV cable is Voltage_Rating_ID 2. Nothing else belongs on an HV
-     run's list \u2014 not LV mains, not services, not earth. */
+     run's list — not LV mains, not services, not earth. */
   const cableVoltageIds = f.Attributes?.Line_Type === "elec_hv" ? [2] : null;
 
-  /* Which output of which box this feature is on, if any \u2014 read the
+  /* Which output of which box this feature is on, if any — read the
      way the drawing reads it, not by a second rule written here. */
   /* ── What to call a cable in a list ──
 
      `#46157` is a database row number. It is not on the drawing, it is
      not on any sheet, and somebody reading a joint's connections has no
-     way to tell which of two cables it is \u2014 which is the whole
+     way to tell which of two cables it is — which is the whole
      question the list exists to answer.
 
      So: what the drawing calls it, then what kind it is, then which
@@ -833,17 +833,17 @@ export default function FeatureEditor({
 
   /* Worked out once for the panel: the load, every flat's level, and the
      worst of them. `levelsAt` is the board's own figure from the levels
-     check \u2014 absent until one has been run, and the rows say so rather
+     check — absent until one has been run, and the rows say so rather
      than reporting a tail as though it were a whole level. */
   /* Every flat on the Plots tab, which ones this board serves, and what
      each of those sees. Read from the DRAFT, not the saved feature: the
      panel edits `f`, and reading `feature` here made every change
-     invisible \u2014 Add flat appeared to do nothing at all. */
+     invisible — Add flat appeared to do nothing at all. */
   /* ── A plot already placed as a seed is not on offer ──
 
      A seed is a plot on the ground with its own service; a flat is fed
      from this board's tails. The same plot cannot be both, and offering
-     it here after it has been placed lets somebody allocate it twice \u2014
+     it here after it has been placed lets somebody allocate it twice —
      the load counted once at the seed and once on the board, metres
      apart on the drawing.
 
@@ -854,7 +854,7 @@ export default function FeatureEditor({
     const mine = new Set((f.Attributes?.MSDB_Plot_IDs || []).map(Number));
     const taken = plotsAsSeeds(allFeatures);
     /* `feature`, not the draft: the draft holds only what can be
-       edited \u2014 Label, Layer_Key, Attributes \u2014 and has no Feature_ID at
+       edited — Label, Layer_Key, Attributes — and has no Feature_ID at
        all. `f.Feature_ID` was undefined, so this board was never
        excluded from the boards its own flats are taken off. Masked
        here by the `mine` test above it, which keeps its own picks
@@ -864,7 +864,7 @@ export default function FeatureEditor({
     return flatsFromPlots({
       plotList: (plotList || []).filter((p) => mine.has(Number(p.plot_id))
         || (!taken.has(Number(p.plot_id)) && !onOther.has(Number(p.plot_id)))),
-    /* `propertyConfigs` is what the lookups call it \u2014 the same list the
+    /* `propertyConfigs` is what the lookups call it — the same list the
        Plots tab is given. A guess with a fallback would have worked and
        hidden which one was real. */
     configs: lookups?.propertyConfigs || [],
@@ -874,8 +874,8 @@ export default function FeatureEditor({
 
   /* ── And the landlord supplies ──
 
-     A block's landlord supply \u2014 stair lighting, lift, door entry,
-     pumps \u2014 is fed from this board, off this riser, metered in this
+     A block's landlord supply — stair lighting, lift, door entry,
+     pumps — is fed from this board, off this riser, metered in this
      cupboard. It is not a dwelling, so it is not in the plot list at
      all; it is a non-residential supply with a stated kVA.
 
@@ -884,8 +884,8 @@ export default function FeatureEditor({
      that could claim any supply would let a retail unit onto a
      domestic riser by mistake.
 
-     Appended to the flats, so everything downstream \u2014 the served
-     list, the load, the levels, the assumed meters \u2014 sees one list of
+     Appended to the flats, so everything downstream — the served
+     list, the load, the levels, the assumed meters — sees one list of
      rows and needed no second path through any of it. */
   const msdbRows = useMemo(() => {
     const mine = new Set((f.Attributes?.MSDB_NRS_IDs || []).map(Number));
@@ -908,7 +908,7 @@ export default function FeatureEditor({
      Both read from the features rather than held on the board: a copy
      of a circuit's name would go stale the moment somebody renamed
      it. */
-  /* `circuits` above already lists them \u2014 a second call would be a
+  /* `circuits` above already lists them — a second call would be a
      second answer to one question, and they would disagree the first
      time either was filtered. */
   const msdbBox = useMemo(() => {
@@ -959,7 +959,7 @@ export default function FeatureEditor({
         <select id="fe-fedfrom" value={named != null ? String(named) : ""}
           onChange={(e) => onSetCircuitOrigin(cid,
             e.target.value === "" ? null : Number(e.target.value))}>
-          <option value="">{"Not set \u2014 the build picks the nearest POC"}</option>
+          <option value="">{"Not set — the build picks the nearest POC"}</option>
           {origins.map((o) => (
             <option key={o.Feature_ID} value={String(o.Feature_ID)}>
               {o.Label || (o.Feature_Role === "substation"
@@ -1008,7 +1008,7 @@ export default function FeatureEditor({
      A circuit belongs to the origin whose way carries it, or to the
      one its members name. Offering every circuit on the drawing let a
      board be put on a circuit fed from a substation it is not
-     connected to \u2014 two facts on one board contradicting each other,
+     connected to — two facts on one board contradicting each other,
      with nothing to say which was meant.
 
      With no substation chosen there is nothing to narrow by, so the
@@ -1030,7 +1030,7 @@ export default function FeatureEditor({
        what this list means, so it has to be answered first.
 
        The circuit already SET stays listed whatever else is true, or a
-       board saved before this \u2014 or one whose feed has been cleared \u2014
+       board saved before this — or one whose feed has been cleared —
        would show blank and read as having lost its circuit. */
     const mineNow = f.Attributes?.Circuit_ID;
     if (originId == null) {
@@ -1058,7 +1058,7 @@ export default function FeatureEditor({
   /* ── Which way of the substation feeds this board ──
 
      Read off the origin's `Way_Circuits` map, the one place that says
-     which way carries which circuit \u2014 a copy held on the board would
+     which way carries which circuit — a copy held on the board would
      go stale the moment somebody moved the circuit to another way in
      the substation's editor.
 
@@ -1125,7 +1125,7 @@ export default function FeatureEditor({
      sizing this for them would be sizing it for load that never travels
      it.
 
-     The load beyond it is `ampsThrough` on the stop's own figure \u2014 what
+     The load beyond it is `ampsThrough` on the stop's own figure — what
      the levels check found still travelling past this point, which is
      the downstream load and nothing else. Converted back to kVA at the
      scheme's voltage, because that is what the drop is worked out
@@ -1134,7 +1134,7 @@ export default function FeatureEditor({
 
      This used to work the figure out here: its own load, its own cable,
      its own arithmetic. It could be made to AGREE with the cascade and
-     never guaranteed to \u2014 and for a while it did not, the panel saying
+     never guaranteed to — and for a while it did not, the panel saying
      0.17% while the stop beyond read 0.10%.
 
      The cascade charges the run down as the first metres of the leg
@@ -1143,7 +1143,7 @@ export default function FeatureEditor({
      drawing cannot drift.
 
      Null where the levels have not run, or where nothing leaves the
-     board \u2014 a board at the end of a circuit has no outgoing cable and
+     board — a board at the end of a circuit has no outgoing cable and
      no figure for one. */
   const msdbOut = useMemo(() => {
     if (levelsAt?.leavingPct == null) return null;
@@ -1171,7 +1171,7 @@ export default function FeatureEditor({
 
      So what this panel works out is kept. The model reads it, sizes the
      cable to the board by it, and falls back to a per-dwelling default
-     only where nobody has costed the board \u2014 a board that has not been
+     only where nobody has costed the board — a board that has not been
      costed still has flats, and counting them as nothing would size its
      cable for nobody. */
   useEffect(() => {
@@ -1204,7 +1204,7 @@ export default function FeatureEditor({
     return [t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ");
   }, [lookups]);
 
-  /* One menu rule for all three cable dropdowns \u2014 see cableMenu.js.
+  /* One menu rule for all three cable dropdowns — see cableMenu.js.
      The mains editor, the service editor and Edit by kind each had a
      copy of the naming and the filtering, agreeing by accident and
      differing everywhere they had been corrected once. */
@@ -1219,7 +1219,7 @@ export default function FeatureEditor({
        HV sizes carry no such rating: the catalogue holds Triplex 11KV,
        3 Core HV and Triplex 20KV at Voltage_Rating_ID 2, and every one
        of them was being dropped by this gate rather than by the voltage
-       filter \u2014 so the panel reported no HV cable in a catalogue that
+       filter — so the panel reported no HV cable in a catalogue that
        has three.
 
        The person is choosing explicitly here, not asking the build to
@@ -1292,7 +1292,7 @@ export default function FeatureEditor({
        two things the feature exists to keep apart. */
     : feature.Feature_Role === "feederpoint" ? "Feeder end point"
     /* Ways in the header, because "Link box" alone leaves the one
-       question a reader has \u2014 how many fused outputs \u2014 to a field
+       question a reader has — how many fused outputs — to a field
        further down. */
     : feature.Feature_Role === "linkbox"
       ? `Link box (${Number(feature.Attributes?.Link_Ways) === 4 ? "4" : "2"} way)`
@@ -1446,7 +1446,7 @@ export default function FeatureEditor({
             <h3>{kind}</h3>
             {/* No point count and no length. The count is a fact about
                 the geometry rather than about the dig, and the length
-                is a field of its own on a trench \u2014 said twice, it was
+                is a field of its own on a trench — said twice, it was
                 two places to read the same number from. */}
             {plot && <p className="fe-sub">plot {plot.plot_number}</p>}
             {/* ── The feature's own id ──
@@ -1561,7 +1561,7 @@ export default function FeatureEditor({
                   e.target.value === "" ? null : Number(e.target.value))} />
               <p className="hint">
                 {f.Attributes.Source_Volt_Drop_Pct == null
-                  ? "A site on an existing network does not start at zero \u2014 the "
+                  ? "A site on an existing network does not start at zero — the "
                     + "DNO\u2019s cable has already spent some of the permitted drop "
                     + "before it reaches here. Left blank, the check measures from "
                     + "this point as though nothing had."
@@ -1592,8 +1592,8 @@ export default function FeatureEditor({
                 origin, the way it has always ridden on the substation:
                 one write, drifting with nothing. On a drawing with more
                 than one POC the board lists only the circuits this one
-                feeds \u2014 the other POC's circuits are its own board's
-                business \u2014 and on a one-origin drawing it lists them
+                feeds — the other POC's circuits are its own board's
+                business — and on a one-origin drawing it lists them
                 all. The swatch resolves through the same module the
                 canvas draws with, so it cannot show one colour while
                 the cables show another. Held in the draft and written
@@ -1605,9 +1605,37 @@ export default function FeatureEditor({
                   && Number(x.Attributes?.Circuit_ID) === Number(cid))
                 .map((x) => x.Attributes?.Circuit_Origin_ID)
                 .find((x) => x != null) ?? null;
-              const mine = circuits.filter((c) => !many
-                || Number(namedOf(c.id)) === Number(feature.Feature_ID));
-              if (!mine.length) return null;
+              /* ── Every circuit that could be this POC's ──
+
+                 `choices` rather than `circuits`: a circuit started on a
+                 way and holding nothing yet has no members, so it was
+                 not listed and its colour could not be set until meters
+                 were on it. Reported as the colour control being
+                 missing.
+
+                 And with more than one POC, a circuit whose origin
+                 cannot be told — no meter on it yet to say — is listed
+                 on both rather than on neither. Colouring it from the
+                 wrong board writes the same colour to the same circuit;
+                 not being able to colour it at all is the fault. */
+              const mine = (choices.length ? choices : circuits).filter((c) => {
+                if (!many) return true;
+                const origin = namedOf(c.id);
+                return origin == null || Number(origin) === Number(feature.Feature_ID);
+              });
+              if (!mine.length) {
+                /* Said, not hidden. An empty space here reads as a
+                   missing feature; this says what it is waiting for. */
+                return (
+                  <div className="fld">
+                    <label>Circuit cable colours</label>
+                    <p className="hint">
+                      Once a circuit is drawn from this point of connection, its
+                      cable colour can be set here.
+                    </p>
+                  </div>
+                );
+              }
               return (
                 <div className="fld">
                   <label>Circuit cable colours</label>
@@ -1637,7 +1665,7 @@ export default function FeatureEditor({
 
                A 2 way is one input and one fused output; a 4 way, one
                input and three. The ratings on offer are the box's own
-               catalogue \u2014 200, 315, 400, 630 A \u2014 listed here and
+               catalogue — 200, 315, 400, 630 A — listed here and
                nowhere else, so a new rating is one edit. Switching a
                4 way down to 2 keeps way 1's fuse and simply stops
                showing 2 and 3: nothing is deleted, so switching back
@@ -1660,7 +1688,7 @@ export default function FeatureEditor({
               </div>
               {Array.from({ length: ways === 4 ? 3 : 1 }, (_, i) => i + 1).map((w) => {
                 /* What this output already serves, read off the meters
-                   the lasso wrote \u2014 the same place the build reads. */
+                   the lasso wrote — the same place the build reads. */
                 const held = (allFeatures || []).filter((m) =>
                   m.Feature_Role === "meter"
                   && Number(m.Attributes?.Link_Box_ID) === Number(feature.Feature_ID)
@@ -1796,9 +1824,9 @@ export default function FeatureEditor({
                           {w === "in" ? "Input" : `Output ${w}`}:{" "}
                           {here.length === 0 ? "—"
                             : here.map((c) => {
-                              /* The size first \u2014 a link box schedule
+                              /* The size first — a link box schedule
                                  exists to say what cable is on each
-                                 fuse \u2014 then whose circuit it is. The
+                                 fuse — then whose circuit it is. The
                                  override wins over the calculated
                                  size, as it does everywhere. */
                               const sid = sizeIdFor(c.line, "electric", "manual")
@@ -1855,7 +1883,7 @@ export default function FeatureEditor({
               </select>
               <p className="hint">
                 {!gasPipeChoices.length
-                  ? "No low pressure gas pipe sizes yet \u2014 add them in Admin \u203a Gas Pipe Sizes."
+                  ? "No low pressure gas pipe sizes yet — add them in Admin \u203a Gas Pipe Sizes."
                   : f.Attributes.Gas_Pipe_Size_ID == null
                     ? "The main this sits on has no size, so nothing was copied onto the fitting."
                     : "Taken from the main it is clamped to. Change it here to override."}
@@ -1920,7 +1948,7 @@ export default function FeatureEditor({
               building.
 
               Bedrooms and a distance are all a row is ASKED for.
-              Everything else is derived \u2014 the load from the consumption
+              Everything else is derived — the load from the consumption
               table, the level from the board's own figure plus the
               tail. A row that cannot be derived says so rather than
               showing a zero, because a zero here reads as a flat that
@@ -1931,7 +1959,7 @@ export default function FeatureEditor({
 
                   What it is called is the first thing somebody wants to
                   set and the first thing they read, so it sits above the
-                  rest rather than below the table \u2014 the shared Label
+                  rest rather than below the table — the shared Label
                   field is at the foot of the panel, past forty flats.
 
                   The same `Label` the rest of the editor writes, not a
@@ -1981,7 +2009,7 @@ export default function FeatureEditor({
                 </div>
                 {/* No heat source here. It is set against the PLOT on
                     the Plots tab, along with everything else about the
-                    dwelling \u2014 asking again on the board would be a
+                    dwelling — asking again on the board would be a
                     second answer to a question already answered, and a
                     block where two flats are heated differently could
                     not be described by one field on the board at all. */}
@@ -2008,7 +2036,7 @@ export default function FeatureEditor({
                   works in.
 
                   Only substations the board can actually be reached
-                  from along the trenches \u2014 see msdbOrigins. */}
+                  from along the trenches — see msdbOrigins. */}
               <div className="fe-row fe-msdb-supply">
                 <div className="fld fe-msdb-from">
                   <label htmlFor="fe-msdb-origin">Fed from</label>
@@ -2040,7 +2068,7 @@ export default function FeatureEditor({
                       <option key={origin.Feature_ID} value={origin.Feature_ID}>
                         {origin.Label || (origin.Feature_Role === "substation"
                           ? "Substation" : `POC #${origin.Feature_ID}`)}
-                        {reachable ? "" : " \u2014 no longer reachable"}
+                        {reachable ? "" : " — no longer reachable"}
                       </option>
                     ))}
                   </select>
@@ -2058,7 +2086,7 @@ export default function FeatureEditor({
                     way is allocated when the circuit is created, and
                     the substation's editor is where it is moved. So it
                     is read off the origin's way map and shown, which is
-                    what somebody standing at the board wants to know \u2014
+                    what somebody standing at the board wants to know —
                     which fuse to pull.
 
                     A link box OUTPUT is a different thing, still asked
@@ -2070,7 +2098,7 @@ export default function FeatureEditor({
                       ? <span className="fe-msdb-none">
                           {f.Attributes?.Circuit_ID == null
                             ? "No circuit set"
-                            : "Not allocated \u2014 the build takes a way"}
+                            : "Not allocated — the build takes a way"}
                         </span>
                       : <strong>{msdbWayNo}</strong>}
                   </div>
@@ -2121,14 +2149,14 @@ export default function FeatureEditor({
                       } }));
                     }}>
                     <option value="">Not set</option>
-                    {/* Only the circuits the chosen substation feeds \u2014
+                    {/* Only the circuits the chosen substation feeds —
                         see msdbCircuits. A board on a circuit fed from
                         somewhere it is not connected to is two facts
                         on one board contradicting each other. */}
                     {msdbCircuits.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
-                        {c.wayOnly ? ` \u2014 new, on LV way ${c.way}` : ""}
+                        {c.wayOnly ? ` — new, on LV way ${c.way}` : ""}
                       </option>
                     ))}
                   </select>
@@ -2170,7 +2198,7 @@ export default function FeatureEditor({
                 {/* ── The circuit's letter, and the isolate button ──
 
                     The letter is how the circuit is named on the
-                    drawing \u2014 the cable labels read way then letter \u2014
+                    drawing — the cable labels read way then letter —
                     so it belongs beside the name it belongs to rather
                     than in a strip further down. Isolating is the thing
                     somebody does WITH the circuit they have just
@@ -2236,7 +2264,7 @@ export default function FeatureEditor({
                   <label htmlFor="fe-msdb-riser">Previous floor to MSDB (m)</label>
                   {/* The drawing stops at the boundary. A board on the
                       fourth floor is fifteen metres further on, up a
-                      riser nobody has drawn and nobody can \u2014 and that
+                      riser nobody has drawn and nobody can — and that
                       cable drops volts like any other. Left out, every
                       flat in the block reads better than it is, by the
                       same amount, in the same direction. */}
@@ -2348,8 +2376,8 @@ export default function FeatureEditor({
                 <strong>Flats</strong>
                 <span className="hint">
                   {msdbServed.length} of {msdbRows.length} on this board
-                  {/* Every flat has a meter. It is not drawn \u2014 that is
-                      what this object exists to avoid \u2014 but a meter is
+                  {/* Every flat has a meter. It is not drawn — that is
+                      what this object exists to avoid — but a meter is
                       how the application knows a load exists, so the
                       flats ARE meters, assumed rather than placed, on
                       the board's circuit. Said here so nobody wonders
@@ -2390,7 +2418,7 @@ export default function FeatureEditor({
                          and their own distance maps) or a board would
                          serve plot 7 because supply 7 was ticked.
 
-                         `isNrs` is the only branch \u2014 everything else
+                         `isNrs` is the only branch — everything else
                          about the row is the same, which is why the
                          list is one list. */
                       const isNrs = flat.nrsId != null;
@@ -2485,7 +2513,7 @@ export default function FeatureEditor({
                         {msdbTotals.count === 1 ? "" : "s"}</strong></td>
                       <td className="num"><strong>{msdbTotals.kva.toFixed(1)} kVA</strong></td>
                       <td className="num">
-                        {msdbWorst ? `${msdbWorst.pct.toFixed(2)}% worst` : "\u2014"}
+                        {msdbWorst ? `${msdbWorst.pct.toFixed(2)}% worst` : "—"}
                       </td>
                     </tr>
                   </tfoot>
@@ -2547,13 +2575,13 @@ export default function FeatureEditor({
                 <div className="fe-joint-held">
                   <span className="hint">
                     {/* In braces: an escape written straight into JSX
-                        TEXT renders as the characters \\u2014 rather than
+                        TEXT renders as the characters \— rather than
                         as a dash. Fault 34, in a new place. */}
                     {jointCables(feature).length
                       ? `Joined to ${jointCables(feature).length} cable`
                         + `${jointCables(feature).length === 1 ? "" : "s"}`
-                        + " \u2014 they move with it"
-                      : "Nothing joined to this fitting yet \u2014 connect what it holds"}
+                        + " — they move with it"
+                      : "Nothing joined to this fitting yet — connect what it holds"}
                   </span>
                   {jointCables(feature).map((id) => {
                     const c = (allFeatures || []).find((x) =>
@@ -2561,7 +2589,7 @@ export default function FeatureEditor({
                     return (
                       <div className="fe-held-row" key={id}>
                         <span className="fe-held-name">
-                          {c ? cableName(c) : `#${id} \u2014 no longer on the drawing`}
+                          {c ? cableName(c) : `#${id} — no longer on the drawing`}
                         </span>
                         <button type="button" className="btn sm"
                           title="Release this cable. It stays where it is, and stops moving with the joint."
@@ -2635,12 +2663,12 @@ export default function FeatureEditor({
                       <em className="fe-joint-soft">
                         {servicesAt(feature, allFeatures || []).length} service
                         {servicesAt(feature, allFeatures || []).length === 1 ? "" : "s"}
-                        {" here \u2014 none says which plot it feeds"}
+                        {" here — none says which plot it feeds"}
                       </em>
                     )
                   : <em>{feature.Attributes?.Joint_Type === "service"
                       ? "no service cable reaches this point"
-                      : "no plots \u2014 this joins the feeder to itself"}</em>}
+                      : "no plots — this joins the feeder to itself"}</em>}
               </div>
             </div>
           )}
@@ -2687,7 +2715,7 @@ export default function FeatureEditor({
               meter, not only from the box: the thing in front of you is
               what raised the question. Which output this is on comes
               from the same stamps the build and the lasso write, and
-              from the plot's meter for a service \u2014 wayOf, so this panel
+              from the plot's meter for a service — wayOf, so this panel
               and the drawing cannot disagree about whose it is. */}
           {onIsolateWay && ownWay && (
             <div className="fe-circuit">
@@ -2711,7 +2739,7 @@ export default function FeatureEditor({
               because on any other drawing there is nothing to decide.
               A fact about the CIRCUIT, offered here because the meter
               (or point, or run) in front of you is how you name the
-              circuit \u2014 changing it rewrites every member, and the
+              circuit — changing it rewrites every member, and the
               hint says the rebuild is what makes it take on the
               drawing. "The build decides" is the honest name for the
               unset state: nearest along the trench, said in the build
@@ -2736,7 +2764,7 @@ export default function FeatureEditor({
                     onChange={(e) => onSetCircuitOrigin(cid,
                       e.target.value === "" ? null : Number(e.target.value))}>
                     <option value="">
-                      {"Not set \u2014 the build picks the nearest POC"}
+                      {"Not set — the build picks the nearest POC"}
                     </option>
                     {lvOrigins(allFeatures).map((o) => (
                       <option key={o.Feature_ID} value={String(o.Feature_ID)}>
@@ -2775,8 +2803,8 @@ export default function FeatureEditor({
 
                   It was shown read-only, on the grounds that somebody
                   should be able to see what a line is. In practice the
-                  drawing already says so \u2014 by colour, by style, by the
-                  menu it was drawn from \u2014 and a field that can only be
+                  drawing already says so — by colour, by style, by the
+                  menu it was drawn from — and a field that can only be
                   read is a row of the panel spent saying what is
                   already on screen. Removed at the user's direction;
                   the type itself is unchanged and still decides the
@@ -3135,7 +3163,7 @@ export default function FeatureEditor({
 
           {(feature.Feature_Role === "spannode" || feature.Feature_Role === "feederpoint"
             /* A box on a run is that circuit's feeder end point, so it
-               has a place in the sequence like any other stop \u2014 and no
+               has a place in the sequence like any other stop — and no
                way of showing it. The read-only branch only: a box in
                open ground has no circuit yet, and offering to name it
                would be offering a code that means nothing until a
@@ -3153,7 +3181,7 @@ export default function FeatureEditor({
                   <p className="hint">
                     Point {f.Attributes.Span_Seq} on {f.Attributes.Circuit_Name}
                     {Number(f.Attributes.Span_Seq) === 0
-                      ? " \u2014 the origin, at the substation."
+                      ? " — the origin, at the substation."
                       : ", numbered from the substation."}
                     {" "}Not editable: the number is its place in the sequence.
                   </p>
@@ -3236,9 +3264,9 @@ export default function FeatureEditor({
                     <strong>{cableLabel(eff)}</strong>
                     {man != null
                       ? (sys != null && String(sys) !== String(man)
-                        ? " \u2014 set by hand, overriding the calculated size below"
-                        : " \u2014 set by hand")
-                      : " \u2014 as calculated"}
+                        ? " — set by hand, overriding the calculated size below"
+                        : " — set by hand")
+                      : " — as calculated"}
                   </p>
                 );
               })()}
@@ -3263,7 +3291,7 @@ export default function FeatureEditor({
                   )}
                   {/* The same list the service editor offers, rather
                       than the raw catalogue: this one showed every row
-                      in it \u2014 HV cores, earth, pilot, 20 kV triplex \u2014
+                      in it — HV cores, earth, pilot, 20 kV triplex —
                       in unsorted catalogue order, for a designer
                       choosing an LV main. */}
                   {cableChoices.list.map((c) => {
@@ -3389,7 +3417,7 @@ export default function FeatureEditor({
               {hvFeed}
               {hvCompany != null && hvCompany > 0 && (
                 ` A cable fault on this leg takes ${hvCompany} other`
-                + ` substation${hvCompany === 1 ? "" : "s"} with it \u2014 the`
+                + ` substation${hvCompany === 1 ? "" : "s"} with it — the`
                 + " way's breaker at the primary clears it, not the ring"
                 + " switches.")}
             </p>
@@ -3478,13 +3506,13 @@ export default function FeatureEditor({
                   {choices.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
-                      {c.wayOnly ? ` \u2014 new, on LV way ${c.way}` : ""}
+                      {c.wayOnly ? ` — new, on LV way ${c.way}` : ""}
                     </option>
                   ))}
                 </select>
                 <p className="hint">
                   {f.Attributes.On_Cable_ID != null
-                    ? "Spliced into this circuit\u2019s feeder \u2014 the cable runs "
+                    ? "Spliced into this circuit\u2019s feeder — the cable runs "
                       + "through it, so it ends no run and takes no point."
                     : "On the dig, with no cable through it yet. Build LV Network "
                       + "runs this circuit\u2019s cable out to it and puts a feeder "
@@ -3577,7 +3605,7 @@ export default function FeatureEditor({
                   is where the network starts from, and every span node
                   pressure is this less what the pipe to it costs.
 
-                  Only on gas \u2014 electricity has no equivalent, and an
+                  Only on gas — electricity has no equivalent, and an
                   empty pressure box on an electric POC is a question
                   with no answer. */}
               {f.Layer_Key === "gas" && (
@@ -3631,7 +3659,7 @@ export default function FeatureEditor({
                       {cutOffCircuits.length === 1
                         ? `Way ${cutOffCircuits[0].way} carries ${cutOffCircuits[0].name}`
                         : `${cutOffCircuits.length} ways past this carry circuits`}
-                      {" \u2014 move "}
+                      {" — move "}
                       {cutOffCircuits.length === 1 ? "it" : "them"}
                       {" to a lower way first, or it will be fed by nothing."}
                     </p>
@@ -3757,7 +3785,7 @@ export default function FeatureEditor({
                                 is saved the circuit does not exist
                                 anywhere. */}
                             <button type="button" className="fe-free"
-                              title={"Start a circuit on this way \u2014 for a block "
+                              title={"Start a circuit on this way — for a block "
                                 + "of flats on an MSDB, which has no seeds to lasso"}
                               onClick={() => {
                                 /* One number for the id, the name and
@@ -4029,10 +4057,10 @@ export default function FeatureEditor({
                   overridden. The plan is flat and the run is not: a
                   duct that rises and falls, a trench dug round an
                   obstruction, slack the drawing cannot show. Length_m
-                  is the one attribute every reader honours \u2014 the
+                  is the one attribute every reader honours — the
                   levels check, the circuit report distances, the gas
                   bill's metres and the service tails all scale this
-                  line to it \u2014 while the geometry, and everything that
+                  line to it — while the geometry, and everything that
                   means nearness rather than length, stays as drawn. */}
               <div className="fe-row">
                 <div className="fld">
@@ -4061,7 +4089,7 @@ export default function FeatureEditor({
               <p className="hint">
                 {f.Attributes.Measured_Length_m == null
                   ? "Every calculation measures this line off the drawing. Enter "
-                    + "the real run \u2014 risers, ducts, slack \u2014 and the levels, "
+                    + "the real run — risers, ducts, slack — and the levels, "
                     + "distances and tails use that figure instead, scaled along "
                     + "the line. The drawing itself does not move."
                   : `Calculations read ${Number(f.Attributes.Measured_Length_m).toFixed(1)} m `
@@ -4071,8 +4099,8 @@ export default function FeatureEditor({
 
               {/* ── Which way of a link box this cable is on ──
 
-                  The box's output dots are symbolic \u2014 drawn in screen
-                  space, scaling with zoom \u2014 while the box is one point
+                  The box's output dots are symbolic — drawn in screen
+                  space, scaling with zoom — while the box is one point
                   in the world and every cable ends at that point. So
                   the way is a fact of the CONNECTION, stated here on
                   the cable: input, or output 1\u20133, matching the numbers
@@ -4116,7 +4144,7 @@ export default function FeatureEditor({
                           value={stale || !cur ? "" : String(cur.way)}
                           onChange={(ev) => setConn(e.key, e.box, ev.target.value)}>
                           {/* "Not set", which is what every other unset
-                              option in this panel says \u2014 the POC
+                              option in this panel says — the POC
                               picker, the circuit picker, the two joint
                               pickers. "Not said" was the odd one out,
                               and a phrase used once is one somebody has
@@ -4265,7 +4293,7 @@ export default function FeatureEditor({
                            The span node fed by this run carries the
                            cable the trace reads, so the two have to move
                            together. But pushing here read the drawing as
-                           it was before this edit was saved \u2014 the node
+                           it was before this edit was saved — the node
                            was given the old size, or nothing changed at
                            all. It goes out on save instead. */
                         setCableChanged(true);
@@ -4283,7 +4311,7 @@ export default function FeatureEditor({
                       {/* The cable and nothing else. The material and
                           the missing-figures warning were on every
                           option and turned a list of sizes into a list
-                          of sentences \u2014 both are below, about the one
+                          of sentences — both are below, about the one
                           actually chosen. */}
                       {cableChoices.list.map((c) => (
                         <option key={c.Cable_Size_ID} value={c.Cable_Size_ID}>
@@ -4306,7 +4334,7 @@ export default function FeatureEditor({
                       return (
                         <p className={usable ? "hint" : "fe-warn"}>
                           {c.Material ? `${c.Material}. ` : ""}
-                          {usable ? "" : "No impedance or volt drop figures \u2014 "
+                          {usable ? "" : "No impedance or volt drop figures — "
                             + "a levels check cannot compute a drop for this cable."}
                         </p>
                       );
@@ -4314,8 +4342,8 @@ export default function FeatureEditor({
                     {cableChoices.filtered ? (
                       <p className="hint">
                         {cableUsage === "service"
-                          ? "Service cables with a rating \u2014 set by Usage and Rating A on the cable type."
-                          : "Mains cables with a rating \u2014 set by Usage and Rating A on the cable type."}
+                          ? "Service cables with a rating — set by Usage and Rating A on the cable type."
+                          : "Mains cables with a rating — set by Usage and Rating A on the cable type."}
                       </p>
                     ) : (
                       <p className="hint">
@@ -4366,10 +4394,10 @@ export default function FeatureEditor({
                     <label htmlFor="fe-gas-pipe">Manually set</label>
                     {/* A list, not a box to type in. The build writes a
                         Gas_Pipe_Size_ID and the levels check reads that
-                        row's bore \u2014 a size typed as free text is a label
+                        row's bore — a size typed as free text is a label
                         nothing can look up, so the pressure calculation
                         would be left guessing at the pipe. */}
-                    {/* Writes the override, never the system size \u2014
+                    {/* Writes the override, never the system size —
                         that is the build's to set, and overwriting it
                         here is what lost it before. */}
                     <select id="fe-gas-pipe"
@@ -4469,8 +4497,8 @@ export default function FeatureEditor({
                         setAttr("Manual_Water_Pipe_Size_ID")(id);
                         /* Size follows the choice rather than being a
                            second field to keep in step. Everything that
-                           already shows a pipe reads Size \u2014 trench
-                           contents labels one with it \u2014 so the two are
+                           already shows a pipe reads Size — trench
+                           contents labels one with it — so the two are
                            written together, here and in the build, and
                            there is nowhere for them to drift apart. */
                         setAttr("Size")(row
@@ -4531,7 +4559,7 @@ export default function FeatureEditor({
                           : "for any operator");
                       }
                       if (f.Attributes.Meters != null) {
-                        bits.push(`\u2014 feeds ${f.Attributes.Meters} plot(s) beyond this length`);
+                        bits.push(`— feeds ${f.Attributes.Meters} plot(s) beyond this length`);
                       }
                       return bits.length ? <p className="hint">{bits.join(" ")}</p> : null;
                     })()}
@@ -4582,8 +4610,8 @@ export default function FeatureEditor({
               </div>
               {(f.Attributes.Way || f.Attributes.Circuit) && (
                 <p className="fe-derived">
-                  Way <strong>{f.Attributes.Way ?? "\u2014"}</strong>,
-                  circuit <strong>{f.Attributes.Circuit ?? "\u2014"}</strong>
+                  Way <strong>{f.Attributes.Way ?? "—"}</strong>,
+                  circuit <strong>{f.Attributes.Circuit ?? "—"}</strong>
                   <span> &mdash; set by tracing, not edited here</span>
                 </p>
               )}
@@ -4599,7 +4627,7 @@ export default function FeatureEditor({
           )}
 
           {/* A meter has no Status dropdown of its own, so its siting
-              sits with its reference \u2014 the two facts somebody records
+              sits with its reference — the two facts somebody records
               about a meter when they know where it went. */}
           {isMeter && sitingField}
 
@@ -4741,18 +4769,18 @@ export default function FeatureEditor({
                   what someone checks a selection against. */}
               {needsPump && pump && (
                 <div className="fe-derived fe-pump">
-                  <div><span>Make</span><strong>{pump.Make || "\u2014"}</strong></div>
-                  <div><span>Model</span><strong>{pump.Model || "\u2014"}</strong></div>
+                  <div><span>Make</span><strong>{pump.Make || "—"}</strong></div>
+                  <div><span>Model</span><strong>{pump.Model || "—"}</strong></div>
                   {pump.Model_Reference && pump.Model_Reference !== pump.Model && (
                     <div><span>Reference</span><strong>{pump.Model_Reference}</strong></div>
                   )}
-                  <div><span>MCS register</span><strong>{pump.Register_Number || "\u2014"}</strong></div>
+                  <div><span>MCS register</span><strong>{pump.Register_Number || "—"}</strong></div>
                   <div>
                     <span>Rated power</span>
                     <strong>
                       {pump.Rated_Power_kVA != null
                         ? `${Number(pump.Rated_Power_kVA)} kVA`
-                        : "\u2014"}
+                        : "—"}
                     </strong>
                   </div>
                 </div>
@@ -4778,10 +4806,10 @@ export default function FeatureEditor({
                             with no unit chosen and a plot with no heating
                             source at all are different jobs. */}
                         {plot?.kva_source === "no heat pump"
-                          ? "No load \u2014 choose a heat pump model"
+                          ? "No load — choose a heat pump model"
                           : plot?.kva_source === "no gas base"
-                            ? "No load \u2014 no gas figure for this house type"
-                            : "No load \u2014 set a heating source, or enter one on the Plots tab"}
+                            ? "No load — no gas figure for this house type"
+                            : "No load — set a heating source, or enter one on the Plots tab"}
                       </span>
                     : <>
                         <strong>{Number(plot.kva_load).toFixed(1)} kVA</strong>
@@ -4812,7 +4840,7 @@ export default function FeatureEditor({
               Shown, not offered behind a button: it is what the width
               and depth are worked out from, so a reader looking at
               1.26m wants to see the three things that made it 1.26m.
-              Sizes only \u2014 lengths, shares and what runs past belong to
+              Sizes only — lengths, shares and what runs past belong to
               the inspect panel, and repeating them here would be a
               second version of that panel in a smaller box. */}
           {isTrench && !!trenchContents.length && (
@@ -4870,11 +4898,11 @@ export default function FeatureEditor({
                            fields that can be read the same way.
 
                            Where an HV route names no size the label
-                           falls back to "HV Cable" \u2014 which is the
+                           falls back to "HV Cable" — which is the
                            drawing being unspecific, not this panel. */
                         /* Every type in it, each with its count. One
                            type reads "2 x HV Cable"; two read
-                           "1 x 3c WAVE 185, 1 x 3c WAVE 95" \u2014 which is
+                           "1 x 3c WAVE 185, 1 x 3c WAVE 95" — which is
                            what is in the ground, rather than more of
                            whichever covers most of it. */
                         value={c
@@ -4923,7 +4951,7 @@ export default function FeatureEditor({
 
               These were inside "In this trench", which draws only where
               something is laid in it. A trench with nothing in it yet is
-              still a trench somebody surfaces, programmes and digs \u2014 and
+              still a trench somebody surfaces, programmes and digs — and
               on a fresh dig, which is exactly when the stage is set,
               the whole group vanished.
 
@@ -4975,10 +5003,10 @@ export default function FeatureEditor({
                         removed or as-built; a cable is planned, as-laid
                         or live. Offering the whole list let a trench be
                         set Live and a cable be set As-Built, neither of
-                        which means anything \u2014 and `statusesFor` has
+                        which means anything — and `statusesFor` has
                         answered this question all along. */}
                     {/* `statusChoices` is the same list, already worked
-                        out at the top of this file \u2014 and it also greys
+                        out at the top of this file — and it also greys
                         out a stage a trench underneath will not allow
                         yet. Using it rather than calling for the raw
                         set keeps this select and the two below saying
@@ -5051,7 +5079,7 @@ export default function FeatureEditor({
                     than as a warning: it is a missing answer, not a
                     fault. */}
                 {trenchEstimate.surfaceAssumed
-                  ? " No surface set \u2014 estimated as unmade ground." : ""}
+                  ? " No surface set — estimated as unmade ground." : ""}
                 <em className="fe-dig-basis">{trenchEstimate.basis}</em>
               </p>
             </div>
@@ -5063,8 +5091,8 @@ export default function FeatureEditor({
               against a tall empty box. */}
           {/* A length of trench, not anything on the trench layer.
 
-              A span node carries Layer_Key "trench" \u2014 it belongs to the
-              dig \u2014 so isTrenchFeature says yes to it, and the tickboxes
+              A span node carries Layer_Key "trench" — it belongs to the
+              dig — so isTrenchFeature says yes to it, and the tickboxes
               appeared on a node where they mean nothing. What a trench
               carries is a fact about a length, so the question is asked
               only of a line. */}
@@ -5078,7 +5106,7 @@ export default function FeatureEditor({
                   Ticked here so a build knows not to walk it.
 
                   Nothing ticked means everything, which is what a
-                  trench drawn before this existed says \u2014 and what
+                  trench drawn before this existed says — and what
                   somebody means by not answering. */}
               <div className="fld fe-carries">
                 <label>Carries</label>
@@ -5090,7 +5118,7 @@ export default function FeatureEditor({
                         onChange={(e) => {
                           /* The first tick writes all four, so the
                              trench states its whole answer rather
-                             than one flag against three silences \u2014
+                             than one flag against three silences —
                              which would read as "carries only this"
                              the moment anything was unticked. */
                           const now = TRENCH_CARRIES.reduce((o, x) => ({
@@ -5163,7 +5191,7 @@ export default function FeatureEditor({
                `fe-row` is the class this panel already uses for two
                fields that belong together; its children take equal
                width. Stacking them worked and read as two unrelated
-               questions \u2014 what stage this length is at, and where it
+               questions — what stage this length is at, and where it
                sits, are answered in the same breath. */
             <div className="fe-row">
             <div className="fld">
@@ -5263,14 +5291,14 @@ const CSS = `
 /* ── The board's panel, half as wide again ──
 
    630px against the base 420. A board carries more per row than
-   anything else in this editor \u2014 a length and the level it produces,
-   a circuit and its letter and a button \u2014 and at the base width every
+   anything else in this editor — a length and the level it produces,
+   a circuit and its letter and a button — and at the base width every
    one of those rows wrapped its labels onto two lines.
 
    Named fe-msdb-panel, NOT fe-board: that name was already taken, by
    the substation's way table, which is display: grid. Giving the panel
    that class made the panel a grid too, so .fe's flex column stopped
-   applying \u2014 the body could not scroll and the footer was carried out
+   applying — the body could not scroll and the footer was carried out
    of the white box with the Delete, Cancel and Save buttons on it.
 
    Nothing failed loudly. The panel still rendered, the DOM was still
@@ -5317,7 +5345,7 @@ const CSS = `
    between two of them.
 
    It was a field in the same row as Surface and Length, so four
-   tickboxes had to stack vertically inside one column's width \u2014 which
+   tickboxes had to stack vertically inside one column's width — which
    pushed the row to four lines tall and left the controls beside it
    floating against a tall empty box.
 

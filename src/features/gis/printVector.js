@@ -64,7 +64,7 @@ const MAX_W_MM = 1.6;
    The screen draws a point with the symbol its style cascade resolves:
    a meter is a square, a joint a circle, a bottle end its three bars,
    and a DNO that draws meters as hexagons gets hexagons. The sheet drew
-   a shape looked up from a table of roles kept here \u2014 so a service
+   a shape looked up from a table of roles kept here — so a service
    valve, which has no row in it, printed as a filled disc where the
    screen showed a bar across the main, and a style that changed a
    symbol changed the screen and nothing else.
@@ -85,11 +85,11 @@ const SYMBOL_FALLBACK_MM = 1.6;
    Two kinds of style, and the difference matters here in a way it
    does not on screen:
 
-     to scale    a real size in ground metres \u2014 multiplied by the page
+     to scale    a real size in ground metres — multiplied by the page
                  scale, so a 0.9 m chamber is 1.8 mm at 1:500 and half
                  that at 1:1000, which is what "to scale" means
 
-     fixed       a size in SCREEN pixels \u2014 a screen measurement, so it
+     fixed       a size in SCREEN pixels — a screen measurement, so it
                  is converted at MM_PER_PX like every width on the sheet
 
    The clamps Min_Symbol_Px and Max_Symbol_Px are pixels by their own
@@ -117,8 +117,8 @@ function symbolRadiusMm(style = {}, k) {
 
 /* A canvas-shaped sink that keeps the path instead of painting it.
 
-   `symbolPath` speaks the 2D context's language \u2014 beginPath, moveTo,
-   rect, arc \u2014 and this answers to the same names, recording points in
+   `symbolPath` speaks the 2D context's language — beginPath, moveTo,
+   rect, arc — and this answers to the same names, recording points in
    millimetres about the symbol's own centre. Arcs become twelve-sided
    rings, which at 1.5 mm on paper is a circle to any eye and to most
    printers.
@@ -221,8 +221,8 @@ export function pageDrawList(features = [], tile, {
   overlays = [],
   gridLink = null,
   /* Size id to the cable's name, from the caller's own catalogue. A
-     sheet given none labels a cable as it always did \u2014 by its tag
-     alone \u2014 rather than inventing a second source for the name. */
+     sheet given none labels a cable as it always did — by its tag
+     alone — rather than inventing a second source for the name. */
   cableName = null,
   layers = [],
   styles = [],
@@ -251,7 +251,7 @@ export function pageDrawList(features = [], tile, {
 
      The operator standard travels too. An operator-scoped rule is the
      strongest claim in the cascade, so a drawing being worked to one
-     looked one way on screen and another on paper \u2014 the sheet quietly
+     looked one way on screen and another on paper — the sheet quietly
      fell back to the base styles, which is the wrong drawing to hand
      to that operator's inspector. */
   const styleOf = (f) => {
@@ -270,7 +270,7 @@ export function pageDrawList(features = [], tile, {
      Through the same link the screen uses. Thin and dark: the map is
      the reference, not the design. The reseller's furniture layers
      stay hidden as they are on screen; the copyright line is not
-     furniture and prints \u2014 OS licensing expects it on the sheet. */
+     furniture and prints — OS licensing expects it on the sheet. */
   if (gridLink) {
     for (const o of overlays || []) {
       if (!o?.Visible) continue;
@@ -308,6 +308,17 @@ export function pageDrawList(features = [], tile, {
      so the sheet can read them itself — and over EVERY feature rather
      than this tile's, so a cable split across two sheets is in the
      same lane on both. A caller that already has the plan passes it. */
+  /* A POC's supply route takes the colour set on its POC — read from
+     the features, as the screen reads it. */
+  const pocColours = new Map();
+  for (const f of features) {
+    if (f.Feature_Role === "poc" && f.Attributes?.Route_Colour) {
+      pocColours.set(Number(f.Feature_ID), f.Attributes.Route_Colour);
+    }
+  }
+  const routeColour = (f) => (f.Attributes?.Poc_Route
+    ? pocColours.get(Number(f.Attributes?.Poc_Route_Poc_ID)) ?? null : null);
+
   const plan = feederPlan ?? feederRenderPlan(features, {
     chosenColours: (() => {
       const chosen = {};
@@ -351,12 +362,13 @@ export function pageDrawList(features = [], tile, {
     out.push({
       kind: f.Feature_Type === "polygon" ? "polygon" : "polyline",
       pts,
-      /* The circuit's colour where the plan has one, as on screen;
-         the style cascade otherwise. */
-      colour: fp?.colour ?? ap.colour ?? lt?.Colour ?? "#64748b",
+      /* The circuit's colour where the plan has one; a POC's supply
+         route the colour set on its POC; the style cascade otherwise.
+         The same order as the screen. */
+      colour: fp?.colour ?? routeColour(f) ?? ap.colour ?? lt?.Colour ?? "#64748b",
       widthMm: widthMm(ap.widthPx ?? lt?.Width_px),
-      /* A dash is a fact about the line type \u2014 an existing main is
-         dashed because it is not ours \u2014 so it survives onto paper. In
+      /* A dash is a fact about the line type — an existing main is
+         dashed because it is not ours — so it survives onto paper. In
          millimetres, or a 9 px dash would be a different length on
          every sheet size. */
       dashMm: (st.Dashed || lt?.Dashed)
@@ -754,7 +766,7 @@ export function pageDrawList(features = [], tile, {
        White, to be read against a disc filled with the main's colour,
        and sized from the symbol's own radius so shrinking a wash out in
        the style editor shrinks its letters with it. A symbol too small
-       to hold them legibly goes without, as on screen \u2014 the shape and
+       to hold them legibly goes without, as on screen — the shape and
        the colour still say which fitting it is. */
     const glyph = SYMBOL_TEXT[sym];
     if (glyph && rMm >= 0.9) {
@@ -786,15 +798,15 @@ export function pageDrawList(features = [], tile, {
       /* ── The labels the screen would write, and only those ──
 
          The canvas never writes a generic label against a meter, a
-         span node or a feeder point \u2014 a meter's name is answered on
-         selection, and the nodes' codes are a drawing of their own \u2014
+         span node or a feeder point — a meter's name is answered on
+         selection, and the nodes' codes are a drawing of their own —
          so a sheet that wrote them carried a column of "Water Meter
          19" down every street that the screen had never shown anyone.
          The rest answer to the same switches the screen answers to:
          the master Labels layer and the per-kind switches, through the
          one rule in labelKinds.js, so a joint's name obeys the Joint
          labels switch on paper exactly as it does on screen. Selection
-         is the one part of the screen's rule with no meaning here \u2014
+         is the one part of the screen's rule with no meaning here —
          nothing on a sheet is selected. */
       if (role === "meter" || role === "spannode" || role === "feederpoint") {
         continue;
@@ -835,7 +847,7 @@ export function pageDrawList(features = [], tile, {
       /* ── A main and a service say what they are ──
 
          The sheet labelled points and skipped every line, so a drawing
-         went out with its pipes and cables anonymous \u2014 the one drawing
+         went out with its pipes and cables anonymous — the one drawing
          somebody digs from, and which main was which had to be counted
          back from the POC. The screen has always tagged them, behind
          the Mains labels and Service labels switches, and those
@@ -843,7 +855,7 @@ export function pageDrawList(features = [], tile, {
          switch on.
 
          Composed by lineLabel.js, the rule the screen composes with,
-         and set half way ALONG the run rather than at a vertex \u2014 the
+         and set half way ALONG the run rather than at a vertex — the
          middle of a vertex list is only the middle of the cable when
          the vertices happen to be evenly spaced, which a tee makes sure
          they are not. */
@@ -909,8 +921,8 @@ export function pageDrawList(features = [], tile, {
            circuits share a trench their labels sit a few millimetres
            apart with nothing to say which belongs to which. Reported
            off an issued PDF. Each label now sits on a pale plate of
-           the colour its cable prints in \u2014 the feeder plan's circuit
-           colour where there is one, the style's otherwise \u2014 so a
+           the colour its cable prints in — the feeder plan's circuit
+           colour where there is one, the style's otherwise — so a
            magenta cable's label is on pale magenta.
 
            Pale, not the colour itself: the text stays dark and must

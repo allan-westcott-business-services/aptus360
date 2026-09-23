@@ -2766,6 +2766,34 @@ export default function GISCanvasPage() {
      drawing order), and the report's setter strips a colour from the
      other origins when it writes one, so a duplicate is a passing
      state rather than a fight. */
+  /* ── The colour of a POC's supply route ──
+
+     An HV run from a point of connection to the substation is not a
+     circuit: it carries no meters, so the circuit colours never reach
+     it and it draws in the HV line type's red. Asked for on the POC
+     editor — "change the colour of the cable connected to it".
+
+     Kept on the POC, not on the cable: the route is generated, so
+     re-running the POC route builder replaces the cable and a colour
+     written on it would go with it. On the POC it survives, and the
+     rebuilt cable finds it again by naming its POC. */
+  const pocRouteColours = useMemo(() => {
+    const out = new Map();
+    for (const f of features) {
+      if (f.Feature_Role === "poc" && f.Attributes?.Route_Colour) {
+        out.set(Number(f.Feature_ID), f.Attributes.Route_Colour);
+      }
+    }
+    return out;
+  }, [features]);
+
+  /* The colour a route is drawn in, or null for anything that is not
+     one. Read where the line is stroked and where its label's plate is
+     tinted, so the two cannot disagree. */
+  const routeColourOf = useCallback((f) => (f.Attributes?.Poc_Route
+    ? pocRouteColours.get(Number(f.Attributes?.Poc_Route_Poc_ID)) ?? null
+    : null), [pocRouteColours]);
+
   const chosenCircuitColours = useMemo(() => {
     const out = {};
     for (const o of lvOrigins(features)) {
@@ -6080,7 +6108,10 @@ export default function GISCanvasPage() {
         ctx.beginPath();
         line.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
         if (f.Feature_Type === "polygon") ctx.closePath();
-        ctx.strokeStyle = on ? "#1d4ed8" : (fp?.colour ?? st.colour);
+        /* A POC's supply route takes the colour set on its POC; a
+           feeder main its circuit's; everything else its style's. */
+        ctx.strokeStyle = on ? "#1d4ed8"
+          : (fp?.colour ?? routeColourOf(f) ?? st.colour);
         ctx.lineWidth = on ? st.widthPx + 1.5 : st.widthPx;
         ctx.setLineDash(st.dash);
         ctx.lineCap = "round";
@@ -6740,7 +6771,8 @@ export default function GISCanvasPage() {
 
                Unselected, the plate is its circuit's colour paled, as
                on the printed sheet. */
-            const plateColour = on ? "#1d4ed8" : (fp?.colour ?? st.colour);
+            const plateColour = on ? "#1d4ed8"
+              : (fp?.colour ?? routeColourOf(f) ?? st.colour);
             ctx.fillStyle = on
               ? "#1d4ed8"
               : own ? tint(plateColour, LABEL_PLATE_TINT) : "rgba(255,255,255,.92)";
@@ -8045,7 +8077,7 @@ export default function GISCanvasPage() {
     }
   }, [visible, selected, view, toPx, printFrame, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, jointFor, traceRun, tracedM, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, tool, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset, slpSet, slpNrsSet, layers,
     /* OS tiles and the matching session: a change to either is a redraw. */
-    overlayDrawn, align, activeLink]);
+    overlayDrawn, align, activeLink, routeColourOf]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;

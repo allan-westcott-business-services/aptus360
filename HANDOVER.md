@@ -8102,6 +8102,37 @@ characters is a hundred lines of prose and no rules at all.
      exist. That is the second report of this kind in a week — the
      portal's section tabs hid themselves at one section.
 
+187. **A POC's supply cable has its own colour.** Reported: setting a
+     circuit colour on POC 51033 left the cable leaving it unchanged.
+     It would: that cable is `elec_hv` with `Poc_Route`, a supply route
+     from the POC to the substation and back out to POC 51034. It
+     carries no meters, so it is not a circuit and the circuit colours
+     never reach it — it draws in the HV line type's red.
+
+     The POC editor now has **Supply cable colour**, shown only where
+     such a route exists, with a way back to the HV colour.
+
+     **The colour is kept on the POC, not on the cable.** The route is
+     `Generated: true` — Route from POC replaces it — so a colour
+     written on the cable would be lost the next time that ran. On the
+     POC it survives, and the rebuilt cable finds it again by naming
+     its POC in `Poc_Route_Poc_ID`.
+
+     Resolved in one order everywhere: selection blue, then the
+     circuit's colour, then the route's, then the style's. Three places
+     read it — the cable on screen, its label's plate, and the printed
+     sheet — and the check counts the canvas's two, because one alone
+     leaves a green cable with an amber label.
+
+     **Two of my own checks broke on this**, both pinning an exact line
+     rather than the rule: `checkosalign` matched the draw's dependency
+     list literally, and `checkprintsymbols` matched the whole
+     plate-colour expression. Both now test the rule — the names are
+     present in the deps; the plate resolves selection, then circuit,
+     then whatever else. That is the same fault as the character-window
+     slices in 160, in a new form: a check that describes the code
+     rather than what it does fails on every honest edit.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

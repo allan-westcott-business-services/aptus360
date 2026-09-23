@@ -72,13 +72,13 @@ const items = (features, more = {}) =>
   const named = text.filter((t) => t === "MSDB 1").length;
   if (named === 0) fail("a board prints without its name");
   if (named > 1) {
-    fail(`a board's name is printed ${named} times \u2014 the board branch writes `
+    fail(`a board's name is printed ${named} times — the board branch writes `
       + "it and so does the label pass, a millimetre apart");
   }
 
   const filled = out.filter((i) => i.kind === "paths" && i.fill);
   if (!filled.some((i) => String(i.colour).toLowerCase() === "#ffffff")) {
-    fail("a board is not filled white \u2014 it printed as a solid dark block "
+    fail("a board is not filled white — it printed as a solid dark block "
       + "where the screen shows an outlined square");
   }
   if (filled.some((i) => String(i.colour).toLowerCase() === "#334155")) {
@@ -93,13 +93,13 @@ const items = (features, more = {}) =>
   })]);
   const paths = out.filter((i) => i.kind === "paths");
   if (paths.length < 2) {
-    fail("a heavy duty cut-out draws as one shape \u2014 the screen draws a "
+    fail("a heavy duty cut-out draws as one shape — the screen draws a "
       + "white body with two fuse ways in it, and no entry in the symbol "
       + "cascade can produce that");
   }
   if (!paths.some((i) => i.fill && String(i.colour).toLowerCase() === "#ffffff")) {
     fail("a cut-out is not filled white, so the cable shows through the body "
-      + "it runs into \u2014 and when the fill rule was corrected it printed as "
+      + "it runs into — and when the fill rule was corrected it printed as "
       + "a solid slate square instead");
   }
   const ways = paths.find((i) => !i.fill);
@@ -115,7 +115,7 @@ const items = (features, more = {}) =>
     const paths = out.filter((i) => i.kind === "paths");
     if (!paths.length) { fail(`a ${role} draws nothing`); continue; }
     if (!paths.some((i) => i.fill)) {
-      fail(`a ${role} prints hollow \u2014 the screen fills it, and a sheet that `
+      fail(`a ${role} prints hollow — the screen fills it, and a sheet that `
         + "draws a fitting differently from the drawing it came from is a "
         + "sheet somebody has to learn to read twice");
     }
@@ -141,7 +141,7 @@ const items = (features, more = {}) =>
   const bare = lineLabelText(cable, { lineTypes });
   if (bare !== "2D") {
     fail(`with no catalogue and no size a cable reads "${bare}", wanted the `
-      + "tag \u2014 a blank label reads as a cable nobody has looked at rather "
+      + "tag — a blank label reads as a cable nobody has looked at rather "
       + "than one whose size is not set");
   }
 
@@ -160,7 +160,7 @@ const items = (features, more = {}) =>
       + `"${named.replace(/\n/g, " / ")}"`);
   }
   if (!named.includes("3c Wave 185")) {
-    fail(`a cable reads "${named.replace(/\n/g, " / ")}" \u2014 one letter is not a `
+    fail(`a cable reads "${named.replace(/\n/g, " / ")}" — one letter is not a `
       + "label on a drawing somebody digs from");
   }
   if (!/100\.0 m/.test(named)) fail("a cable does not say how long it is");
@@ -203,7 +203,7 @@ const items = (features, more = {}) =>
     }
     if (!/: tag \|\| ""/.test(block)) {
       fail("the canvas drops the tag entirely, so a run with no size set has "
-        + "a blank label \u2014 which reads as a cable nobody has looked at");
+        + "a blank label — which reads as a cable nobody has looked at");
     }
   }
 }
@@ -231,7 +231,7 @@ const items = (features, more = {}) =>
   else {
     if (!/ctx\.fillText\(f\.Label/.test(board)) {
       fail("a board draws no name on the canvas, so there is nothing to move "
-        + "\u2014 and the sheet writes one, which is the two disagreeing");
+        + "— and the sheet writes one, which is the two disagreeing");
     }
     if (!/labelHits\.current\.push/.test(board)) {
       fail("a board's name cannot be grabbed");
@@ -270,7 +270,7 @@ const items = (features, more = {}) =>
   }
   /* DB stays: it is the symbol, not a label. */
   if (!quiet.some((i) => i.kind === "text" && i.text === "DB")) {
-    fail("the letters inside a board vanish with the Labels layer \u2014 they are "
+    fail("the letters inside a board vanish with the Labels layer — they are "
       + "the symbol, not a label");
   }
 }
@@ -298,7 +298,7 @@ const items = (features, more = {}) =>
      `joint` — so a row for it would turn every joint on the drawing
      green too. */
   if (of(other)?.colour === BOTTLE_END_COLOUR) {
-    fail("every joint went green with the bottle end \u2014 the colour belongs to "
+    fail("every joint went green with the bottle end — the colour belongs to "
       + "the fitting, not to the role it shares with the others");
   }
 
@@ -320,7 +320,7 @@ const items = (features, more = {}) =>
   const without = items([board]).length;
   const with_ = items([board, assumed]).length;
   if (with_ !== without) {
-    fail("an assumed meter is drawn on the sheet \u2014 they are invented per flat "
+    fail("an assumed meter is drawn on the sheet — they are invented per flat "
       + "behind a board, all at the board's own anchor, and the canvas draws "
       + "none of them");
   }
@@ -360,12 +360,12 @@ const items = (features, more = {}) =>
   if (!pa || !pb) fail("a feeder cable does not print");
   else {
     if (pa.colour !== "#e90cd6" || pb.colour !== "#0ae5f5") {
-      fail(`feeders print ${pa.colour} and ${pb.colour} \u2014 their circuits are `
+      fail(`feeders print ${pa.colour} and ${pb.colour} — their circuits are `
         + "magenta and cyan, and the sheet must say which is which");
     }
     const gap = Math.abs(pa.pts[0][1] - pb.pts[0][1]);
     if (gap < 1 || gap > 3) {
-      fail(`two cables in one trench print ${gap.toFixed(2)} mm apart \u2014 wanted a `
+      fail(`two cables in one trench print ${gap.toFixed(2)} mm apart — wanted a `
         + "couple of millimetres, readable and not splayed");
     }
   }
@@ -398,7 +398,7 @@ const items = (features, more = {}) =>
   const words = out.filter((i) => i.kind === "text" && i.id === 201);
   if (!words.length) fail("the cable prints no label");
   else if (!words.every((i) => i.plate === tint("#0ae5f5", PLATE_TINT))) {
-    fail("a cable label is not on a plate of its CIRCUIT's colour \u2014 the "
+    fail("a cable label is not on a plate of its CIRCUIT's colour — the "
       + "feeder plan's colour is the one the cable prints in");
   }
 
@@ -419,7 +419,7 @@ const items = (features, more = {}) =>
 // 11. The canvas tints the same way, from the same place.
 {
   /* The canvas already put a tint behind cable labels, but from the
-     STYLE colour \u2014 the layer's amber for every electric cable \u2014 so a
+     STYLE colour — the layer's amber for every electric cable — so a
      magenta circuit's label and a cyan one's sat on the same pale
      amber. It reads the feeder plan's colour now, at the strength the
      sheet uses, so a label reads alike on screen and on paper. */
@@ -432,15 +432,19 @@ const items = (features, more = {}) =>
   if (!/export const PLATE_TINT = LABEL_PLATE_TINT;/.test(pv)) {
     fail("the sheet's plate strength is its own number rather than the shared one");
   }
-  if (!/const plateColour = on \? "#1d4ed8" : \(fp\?\.colour \?\? st\.colour\);/.test(canvas)) {
+  /* The plate follows the line: selection first, then the circuit
+     colour, then whatever else the line takes. Matched on that ORDER
+     rather than on one exact line — a POC route colour was later added
+     to the same fallback and broke the literal match. */
+  if (!/const plateColour = on \? "#1d4ed8"\s*\n?\s*: \(fp\?\.colour \?\?/.test(canvas)) {
     fail("the canvas plate is not tinted from the circuit colour the line is "
-      + "drawn in \u2014 every electric label sits on the same pale amber");
+      + "drawn in — every electric label sits on the same pale amber");
   }
   if (!/tint\(plateColour, LABEL_PLATE_TINT\)/.test(canvas)) {
     fail("the canvas plate uses a different strength from the sheet's");
   }
   /* Selected: SOLID selection blue with white text, not a pale tint
-     \u2014 asked for, so the picked cable's labels stand out from the
+     — asked for, so the picked cable's labels stand out from the
      pale plates around them. */
   if (!/ctx\.fillStyle = on\s*\n\s*\? "#1d4ed8"/.test(canvas)) {
     fail("a selected cable's labels are not solid blue");
@@ -484,7 +488,7 @@ const items = (features, more = {}) =>
      a label cannot drag but refuse a right-click or the reverse. */
   const copies = (canvas.match(/const PAD = 6;/g) || []).length;
   if (copies !== 1) {
-    fail(`the label hit test exists ${copies} times \u2014 the drag and the `
+    fail(`the label hit test exists ${copies} times — the drag and the `
       + "right-click would drift apart");
   }
   if (!/const lab = labelUnder\(px, py\);/.test(canvas)) {

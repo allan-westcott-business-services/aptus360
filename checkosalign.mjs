@@ -183,7 +183,11 @@ const dxf = ({ scale = 1, layerFurniture = true, e0 = 340451, n0 = 551520 } = {}
   if (!/pts: pl\.pts\.map\(\(en\) => \(\{ c: toCanvas\(activeLink, en\), g: en \}\)\)/.test(canvas)) {
     fail("the tile is not drawn through the link");
   }
-  if (!/overlayDrawn, align, activeLink\]\);/.test(canvas)) {
+  /* All three named in the draw's dependencies, in whatever company:
+     this pinned the exact line and broke when another value was added
+     beside them. */
+  const deps = (canvas.match(/^\s*overlayDrawn, align, activeLink[^\n]*\]\);/m) || [""])[0];
+  if (!deps) {
     fail("the draw does not repaint when the tile or the match changes");
   }
   if (!/gridLink \? \(\s*\n\s*<span className="hud-grid"/.test(canvas)) {

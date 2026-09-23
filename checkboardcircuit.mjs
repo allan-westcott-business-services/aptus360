@@ -138,7 +138,7 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
     fail("the lasso's gap-filling rule has changed, which was not intended");
   }
   if (nextCircuitNumber(gappy) !== 4) {
-    fail("with circuits 2 and 3 in use the newborn is not Circuit 4 \u2014 "
+    fail("with circuits 2 and 3 in use the newborn is not Circuit 4 — "
       + "the gap rule would call it Circuit 1 and list it underneath them");
   }
 
@@ -259,7 +259,7 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
 
    Reported: "I can no longer delete circuits." The report groups by
    drawn METERS, so a circuit whose members are boards and cut-outs
-   did not appear in it at all \u2014 and the report is the only place a
+   did not appear in it at all — and the report is the only place a
    circuit is deleted, so it could not be deleted either.
 
    Same shape as the levels check before it: `circuitsFrom` was taught
@@ -317,14 +317,14 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
 /* ── A circuit made by hand is somewhere to move meters TO ──
 
    Reported: "+ New circuit" on a spare way makes Circuit 1, and the
-   Circuit Report offers no way to assign meters to it \u2014 only "assign
+   Circuit Report offers no way to assign meters to it — only "assign
    to a NEW circuit". The report grouped by membership, so a circuit
    holding nothing was invisible; and the report is the one place a
    meter is moved onto a circuit, so the circuit somebody had just
    made was the only one they could not use.
 
    `circuitChoices` already unions way-only circuits for the editor's
-   pickers. This is the same union for the report \u2014 the fourth reader
+   pickers. This is the same union for the report — the fourth reader
    this session taught what another already knew. */
 {
   nid = 1;
@@ -415,7 +415,7 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
 
    Reported with a drawing: three bottle ends on Circuit 1 sitting on
    Circuit 1's OTHER side of the site, at the exact positions of three
-   MSDBs fed from a different substation \u2014 one of them on top of
+   MSDBs fed from a different substation — one of them on top of
    Circuit 4's own bottle end.
 
    `planJoints` builds its own model of each circuit and never passed
@@ -580,6 +580,54 @@ const meter = (cid, plotId) => ({ Feature_ID: nid++, Feature_Type: "point",
     if (!/setCircuitColour\(c\.id, e\.target\.value\)/.test(block)) {
       fail("the swatch does not set the circuit's colour");
     }
+  }
+}
+
+/* ── A POC's supply cable ──
+
+   Reported: setting a circuit colour on a POC left the cable leaving it
+   unchanged. That cable is an HV run to the substation — Poc_Route,
+   carrying no meters — so the circuit colours never reach it.
+
+   Its colour lives on the POC, not on the cable: the route is generated
+   by Route from POC, and a colour on the cable would be lost the next
+   time that ran. */
+{
+  const ed = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const pv = readFileSync("./src/features/gis/printVector.js", "utf8");
+
+  if (!/setAttr\("Route_Colour"\)\(e\.target\.value\)/.test(ed)) {
+    fail("a POC's supply cable colour cannot be set");
+  }
+  /* Offered only where such a route exists: a POC feeding only LV has
+     no supply cable to colour. */
+  if (!/x\.Attributes\?\.Poc_Route\s*\n\s*&& Number\(x\.Attributes\?\.Poc_Route_Poc_ID\) === Number\(feature\.Feature_ID\)/.test(ed)) {
+    fail("the supply cable colour is offered on POCs that have no route");
+  }
+  if (!/use the HV colour/.test(ed)) {
+    fail("a colour once set cannot be cleared back to the HV line type's own");
+  }
+  /* Drawn in that colour, on screen and on the sheet, in the same
+     order: circuit first, then route, then the style. */
+  /* On the canvas it must reach BOTH the stroke and the label's plate:
+     one of the two alone leaves a green cable with an amber label. */
+  const hits = (canvas.match(/fp\?\.colour \?\? routeColourOf\(f\)/g) || []).length;
+  if (hits < 2) {
+    fail(`the canvas draws a POC's route colour in ${hits} of the two places it is `
+      + "resolved — the cable and its label's plate");
+  }
+  if (!/fp\?\.colour \?\? routeColour\(f\)/.test(pv)) {
+    fail("the sheet does not draw a POC's route in the colour set on its POC");
+  }
+  if (!/f\.Attributes\?\.Poc_Route\s*\n?\s*\?\s*pocRouteColours\.get/.test(canvas)) {
+    fail("the route colour is looked up by something other than the cable's own POC");
+  }
+  /* On the POC, never on the cable — the route is regenerated. */
+  if (/Route_Colour/.test(canvas.slice(canvas.indexOf("Poc_Route_Poc_ID: r.poc.Feature_ID") - 600,
+    canvas.indexOf("Poc_Route_Poc_ID: r.poc.Feature_ID") + 600))) {
+    fail("the route builder writes a colour onto the cable, which the next rebuild "
+      + "would lose");
   }
 }
 

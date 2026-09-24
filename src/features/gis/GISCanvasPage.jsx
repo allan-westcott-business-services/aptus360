@@ -187,7 +187,7 @@ import {
   isMainFeature, isMainType, LIVE_COLOUR, DEAD_COLOUR, UNSET_COLOUR,
   LIVE_BAND_M,
   isOffSite, withDefaultStatus, blocksLive, needsGround, isServiceFeature,
-  newMainTypeFor,
+  newMainTypeFor, isExistingLineType,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import { carryLine, carryPoint, claimedByAnother } from "./carryContents.js";
@@ -312,6 +312,16 @@ const LEVEL_OPTS_KEY = "aptus.levels.options";
    zoomed past what the plan can tell you.
 
    The floor is unchanged. */
+/* ── How much white a label's plate keeps around its words ──
+
+   Two pixels either side was what a one-line label had, and it read as
+   the text sitting ON an edge rather than on a plate: at the sizes
+   these are drawn, two pixels is less than the gap between two
+   characters. Five and three give the words room without the plate
+   becoming a box that hides the drawing under it. */
+const LABEL_PAD_X = 5;
+const LABEL_PAD_Y = 3;
+
 const MAX_SCALE = 200;
 const MIN_SCALE = 0.05;
 
@@ -7998,7 +8008,8 @@ export default function GISCanvasPage() {
           /* A backing plate, because a figure over a trench or a
              building line is unreadable on its own. */
           ctx.fillStyle = "rgba(255,255,255,.88)";
-          ctx.fillRect(x - 2, y - h / 2, w + 4, h);
+          ctx.fillRect(x - LABEL_PAD_X, y - h / 2 - LABEL_PAD_Y,
+            w + LABEL_PAD_X * 2, h + LABEL_PAD_Y * 2);
           ctx.fillStyle = bad ? "#b91c1c" : "#334155";
           ctx.fillText(text, x, y);
           ctx.textAlign = "center";
@@ -8010,7 +8021,8 @@ export default function GISCanvasPage() {
           labelHits.current.push({
             id: f.Feature_ID, idx: null, kind: "pressure", anchor: g[0], txt: text,
             cx: x + w / 2, cy: y,
-            x: x - 2, y: y - h / 2, w: w + 4, h,
+            x: x - LABEL_PAD_X, y: y - h / 2 - LABEL_PAD_Y,
+            w: w + LABEL_PAD_X * 2, h: h + LABEL_PAD_Y * 2,
             spin: 0,
           });
         }
@@ -8155,8 +8167,14 @@ export default function GISCanvasPage() {
             ctx.restore();
           }
 
+          /* Sized to the lines actually drawn, with room around them.
+             This was a one-line plate — 14 px tall, whatever the label
+             said — so when the figures went onto two lines the second
+             line fell outside its own background and was unreadable
+             over a trench. Reported from a screenshot. */
           ctx.fillStyle = "rgba(255,255,255,.88)";
-          ctx.fillRect(x - 2, y - 7, w + 4, 14);
+          ctx.fillRect(x - LABEL_PAD_X, y - h / 2 - LABEL_PAD_Y,
+            w + LABEL_PAD_X * 2, h + LABEL_PAD_Y * 2);
           /* Red where either figure is outside its limit, matching the
              report's own cells. A node that fails is the thing somebody
              is looking for, and the two limits are checked together
@@ -8171,7 +8189,8 @@ export default function GISCanvasPage() {
           labelHits.current.push({
             id: f.Feature_ID, idx: null, kind: "levels", anchor: g[0], txt: text,
             cx: x + w / 2, cy: y,
-            x: x - 2, y: y - 7, w: w + 4, h: 14,
+            x: x - LABEL_PAD_X, y: y - h / 2 - LABEL_PAD_Y,
+            w: w + LABEL_PAD_X * 2, h: h + LABEL_PAD_Y * 2,
             spin: 0,
           });
         }
@@ -12854,7 +12873,22 @@ export default function GISCanvasPage() {
         const res = contentsOf(after, world, { lineTypes });
         const inside = (res?.ok ? res.contents : [])
           .filter((x) => x.Feature_Type === "line"
-            && statusOf(x) != null && statusOf(x) !== "planned");
+            && statusOf(x) != null && statusOf(x) !== "planned"
+            /* ── Not the incumbent's ──
+
+               Putting our trench back to Planned says this length is
+               work we have yet to do. Their main lying in the same
+               ground is not: it was there before we arrived and will be
+               there whatever we do, and marking it Planned claims we
+               are going to lay it.
+
+               This is where project 34's five incumbent lines marked
+               Planned came from — the default has always been Existing,
+               so nothing they drew set it; this cascade did, afterwards.
+
+               Their stage is theirs. Existing or To be Removed, and
+               neither of those is a thing a trench of ours decides. */
+            && !isExistingLineType(x.Attributes?.Line_Type));
 
         if (inside.length) {
           const rows = inside.map((x) => ({

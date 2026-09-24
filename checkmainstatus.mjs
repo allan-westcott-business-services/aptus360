@@ -638,6 +638,36 @@ const line = (type, status) => ({
   }
 }
 
+/* ── Nothing of ours decides the incumbent's stage ──
+
+   The default has always been Existing, and project 34 still held five
+   incumbent lines marked Planned. They did not arrive that way: putting
+   a trench of ours back to Planned cascaded to everything lying inside
+   it, and their main in the same road was inside it.
+
+   Their main was there before we arrived and will be there whatever we
+   do. Marking it Planned claims we are going to lay it — on the bill,
+   in the labour rows, and to whoever picks the drawing up next.
+
+   The as-built cascade the other way already skips existing ground
+   (trenchesUnder), which is why only this one needed saying. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf('statusOf(x) !== "planned"');
+  const block = at < 0 ? "" : canvas.slice(at, at + 1200);
+  if (!block) fail("the planned cascade has moved; re-anchor this rather than dropping it");
+  else if (!/!isExistingLineType\(x\.Attributes\?\.Line_Type\)/.test(block)) {
+    fail("putting a trench back to Planned still marks the incumbent's lines in "
+      + "the same ground as Planned — work we are claiming to do on somebody "
+      + "else's network");
+  }
+  const up = readFileSync("./src/features/gis/upstream.js", "utf8");
+  if (!/stage === "existing" \|\| stage === "remove" \|\| stage === "asbuilt"/.test(up)) {
+    fail("the as-built cascade no longer skips existing ground, so a live main "
+      + "marks the incumbent's trench as ours");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Main build status behaves (its own stages, live drawn apart).");
 process.exit(bad ? 1 : 0);

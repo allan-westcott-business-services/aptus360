@@ -8626,9 +8626,22 @@ characters is a hundred lines of prose and no rules at all.
      be chosen again and it cannot pass unnoticed. Choosing one of the
      two proper stages replaces it.
 
-     Nothing else needed changing: an incumbent already DEFAULTED to
-     Existing, and the bulk editor already refuses a status a feature's
-     own list does not contain.
+     The default was already Existing — checked, not assumed: an
+     incumbent trench and an incumbent main both default to `existing`,
+     and have since 0197. The bulk editor already refuses a status a
+     feature's own list does not contain.
+
+     **So where did project 34's five come from?** Putting a trench of
+     ours back to Planned cascades to everything lying inside it, and
+     the incumbent's main in the same road was inside it. Their main was
+     there before we arrived; marking it Planned claims we are going to
+     lay it. The cascade skips `_existing` lines now. The as-built
+     cascade the other way already skipped existing ground
+     (`trenchesUnder`), which is why only the one needed saying.
+
+     Worth the general point: a DEFAULT being right is not the same as a
+     value staying right. Everything that writes a stage later is
+     another place the rule has to hold.
 
 ## Decisions worth knowing
 

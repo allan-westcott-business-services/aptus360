@@ -8208,6 +8208,29 @@ characters is a hundred lines of prose and no rules at all.
      a link box moving and keeping its old figures. Anything a levels
      figure is computed FROM belongs in that key.
 
+191. **What you place, you see.** Asked for after a text note appeared
+     to do nothing. The annotation layer was switched off, so the note
+     landed and was not drawn — and an invisible result reads as a
+     failed save. (It was reported alongside a save error whose cause
+     is still open; this is the half that is settled.)
+
+     Arming any plant tool, and choosing any drawing tool, now switches
+     on whatever would hide the result: the LAYER, the ROLE, and the
+     layer-and-role pair — a feature is hidden if any one of its class
+     keys is hidden, so clearing one is not enough — plus the line
+     type's own key for a drawing tool.
+
+     An isolate is WIDENED, not dropped: somebody who isolated a class
+     and then placed something wants both, not the whole drawing back.
+
+     Done when the tool is armed rather than after the click, so the
+     layer is already on when the thing appears.
+
+     The general shape, third time this month: **a result nobody can
+     see is indistinguishable from a failure.** The POC colour board
+     hid itself when empty; the portal's tabs hid themselves at one
+     section; a note landed on a hidden layer.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

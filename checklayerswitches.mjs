@@ -184,6 +184,53 @@ const menus = readFileSync("./src/features/gis/GisMenus.jsx", "utf8");
   }
 }
 
+/* ── What you place, you see ──
+
+   Reported after a text note appeared to do nothing: the annotation
+   layer was switched off, the note landed, nothing was drawn, and an
+   invisible result reads as a failed save.
+
+   A feature is hidden if ANY of its class keys is hidden — the layer,
+   the role, or the two together — so clearing one is not enough. An
+   isolate is widened rather than dropped: somebody who isolated a class
+   and then placed something wants both, not the whole drawing back. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("const revealFor = useCallback");
+  const body = at < 0 ? "" : canvas.slice(at, canvas.indexOf("function placeNode", at));
+  if (!body) fail("nothing switches a layer on for what is being placed");
+  else {
+    for (const key of ["layerKey", "`role:${role}`", "`${layerKey}:role:${role}`"]) {
+      if (!body.includes(key)) {
+        fail(`placing does not clear ${key}, and a feature is hidden if any one of `
+          + "its keys is");
+      }
+    }
+    if (!/setShownOnly\(\(only\) => \(only\.length/.test(body)) {
+      fail("an isolate is left as it was, so the thing placed is still not drawn");
+    }
+    if (/setShownOnly\(\[\]\)|setSolo\(null\)/.test(body)) {
+      fail("placing drops an isolate entirely, putting the whole drawing back");
+    }
+  }
+  /* Armed, not after the click: the layer should already be on when the
+     thing appears. */
+  const pn = canvas.indexOf("setPlantPlace({ role, layerKey");
+  const call = canvas.indexOf("revealFor(role, layerKey)", pn);
+  if (call < 0 || call - pn > 200) {
+    fail("the layer is not switched on when the tool is armed");
+  }
+  /* A cable drawn into a hidden layer is as invisible as the note was. */
+  const da = canvas.indexOf("const drawAs = useCallback");
+  const daBody = da < 0 ? "" : canvas.slice(da, da + 900);
+  if (!/revealFor\(null, lt\.Layer_Key\)/.test(daBody)) {
+    fail("choosing a drawing tool does not switch its layer on");
+  }
+  if (!/k !== `lt:\$\{typeKey\}`/.test(daBody)) {
+    fail("a line type hidden by its own switch stays hidden while it is drawn");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The switches say what they govern; the picker says what things are.");
 process.exit(bad ? 1 : 0);

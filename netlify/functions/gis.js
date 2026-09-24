@@ -137,7 +137,24 @@ export default withAuth(async function handler(req, context) {
       const body = await req.json();
       const { data, error } = await db.from("GIS_Feature")
         .insert(pick({ ...body, Project_ID: Number(projectId) })).select(F).single();
-      if (error) throw error;
+      /* ── Say which case it was ──
+
+         `.single()` answers "cannot coerce the result to a single JSON
+         object" whenever a write returns no row, and that one sentence
+         covers several quite different faults: a role the table will
+         not take, a layer that does not exist, a row somebody else
+         deleted. Reported from use, on a text note, where it said
+         nothing anybody could act on.
+
+         The underlying message is kept and a plain one put in front of
+         it. */
+      if (error) {
+        throw new Error(/coerce the result to a single/i.test(error.message || "")
+          ? `The drawing would not take that ${body?.Feature_Role || "feature"}: `
+            + "nothing was written back. Check the role and the layer exist "
+            + `(Layer_Key "${body?.Layer_Key}"). ${error.message}`
+          : error.message);
+      }
       return json(data, 201);
     }
 
@@ -163,9 +180,21 @@ export default withAuth(async function handler(req, context) {
     }
 
     if (req.method === "PATCH" && id) {
+      const patch = pick(await req.json());
+      /* An update with nothing writable in it changes no rows, and
+         `.single()` then reports the same coercion error as a missing
+         row — two different faults wearing one message. */
+      if (!Object.keys(patch).length) {
+        return json({ error: "Nothing to save on that feature." }, 400);
+      }
       const { data, error } = await db.from("GIS_Feature")
-        .update(pick(await req.json())).eq("Feature_ID", id).select(F).single();
-      if (error) throw error;
+        .update(patch).eq("Feature_ID", id).select(F).single();
+      if (error) {
+        throw new Error(/coerce the result to a single/i.test(error.message || "")
+          ? `Feature ${id} was not updated — it may have been deleted, or belong `
+            + `to another project. ${error.message}`
+          : error.message);
+      }
       return json(data);
     }
 

@@ -12858,6 +12858,31 @@ export default function GISCanvasPage() {
      beside it. Both fall back to where you clicked, with the reason
      said out loud — the original lets you place one before the network
      exists and draw through it afterwards. */
+  /* ── Something placed has to be visible ──
+
+     Asked for after a text note appeared to do nothing: the annotation
+     layer was switched off, so the note landed and was not drawn, and
+     an invisible result reads as a failed save.
+
+     Every key that would hide the thing about to be placed is cleared:
+     its layer, its role, and the layer-and-role pair — a feature is
+     hidden if ANY of its keys is hidden, so taking one off is not
+     enough. An isolate is widened rather than dropped, since somebody
+     isolating a class and then placing something wants both, not the
+     whole drawing back.
+
+     Done when the tool is armed rather than after the click, so the
+     layer is already on when the thing appears. */
+  const revealFor = useCallback((role, layerKey) => {
+    const keys = [layerKey,
+      role && role !== "shape" ? `role:${role}` : null,
+      layerKey && role && role !== "shape" ? `${layerKey}:role:${role}` : null,
+    ].filter(Boolean);
+    setHidden((h) => h.filter((k) => !keys.includes(k)));
+    setShownOnly((only) => (only.length
+      ? [...new Set([...only, ...keys])] : only));
+  }, []);
+
   function placeNode(role, forLayer = null, extra = null) {
     if (!projectId) return;
     /* The layer is named by the caller where it matters.
@@ -12878,6 +12903,7 @@ export default function GISCanvasPage() {
        owns. So the menu arms a click and the click says where. Escape
        puts the button back. */
     setPlantPlace({ role, layerKey, ...(extra || {}) });
+    revealFor(role, layerKey);
     setTool("select");
     const what = role === "substation" ? "the substation"
       : role === "governor" ? "the governor"
@@ -21053,7 +21079,16 @@ export default function GISCanvasPage() {
     setTool("line");
     setSelected([]);
     setDraft([]);
-  }, []);
+    /* And the layer it will be drawn on, with its own line-type switch
+       — a cable drawn into a hidden layer is as invisible as a note
+       was, and reads the same way. The type key is its own class, so
+       hiding "LV feeder" alone hides it too. */
+    const lt = (lineTypes || []).find((t) => t.Type_Key === typeKey);
+    if (lt?.Layer_Key) revealFor(null, lt.Layer_Key);
+    setHidden((h) => h.filter((k) => k !== `lt:${typeKey}`));
+    setShownOnly((only) => (only.length
+      ? [...new Set([...only, `lt:${typeKey}`, lt?.Layer_Key].filter(Boolean))] : only));
+  }, [lineTypes, revealFor]);
 
   /* isDrawing, not drawing: `drawing` above already means "is any drawing
      tool active". Two different questions, and one name for both broke
@@ -30505,7 +30540,7 @@ export default function GISCanvasPage() {
                               draw, and what a cut-out fuse has to clear.
                               Next to the impedance it comes from, so the
                               two read as one fact. Falls at the end of
-                              line, which is where a fuse is slowest \u2014
+                              line, which is where a fuse is slowest —
                               the figure worth looking at. */}
                           <th className="num"
                             title="Fault current to neutral: phase volts over the loop impedance">

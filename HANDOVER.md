@@ -8519,6 +8519,46 @@ characters is a hundred lines of prose and no rules at all.
      fails on every honest restructure, while one that names the
      BEHAVIOUR survives it.
 
+198. **The ADMD box defaults to the drawing's own average.** The Plots
+     page already shows "1.88 kVA average per plot"; the Levels Check
+     form offered a constant 5.01, which belongs to no particular site.
+     It now offers the same figure the Plots page does — the kVA of
+     every plot that HAS one, over how many of those there are, so plots
+     with nothing set are left out of both halves rather than counted as
+     zero and dragging the average down.
+
+     Overtypable, and CLEARING the box puts it back to the average. The
+     stored value is `null` for "nobody has typed one", not a number:
+     otherwise a figure remembered from one project would be offered on
+     the next as though it belonged to it. The tooltip says which it is.
+
+     **Non-residential supplies were already right** and this confirms
+     it: only the PLOT lookup is overridden, and `nrsById` reads the NRS
+     table as always, so a pump keeps its own kVA whatever the ADMD box
+     says. The customer asked for that explicitly; `checkgroupallowance`
+     has held it since the switch was added.
+
+199. **An electric meter is filled with its circuit's colour.** Asked
+     for. Every LV feeder cable is already drawn in its circuit's colour
+     and the report ring matches it; the meters hanging off them were
+     all the layer's one colour, so on a drawing with several circuits
+     there was no way to see which board a house is fed from without
+     tracing its service back.
+
+     From `ringColours`, the same map the cables and the rings use, so
+     the three cannot disagree, keyed on the meter's own `Circuit_ID`.
+     On project 20 that is 41 meters orange and 44 magenta, each
+     matching its cable.
+
+     **Only where the circuit has a colour**, and **only on the electric
+     layer**: a meter on an uncoloured circuit, or one not yet on a
+     circuit, keeps the style's colour rather than turning grey, and a
+     gas or water meter is untouched. The style cascade still decides
+     the symbol and its size, so a DNO drawing meters as hexagons gets
+     hexagons in the circuit colour.
+
+     The self-lay cross is drawn after the fill and is unaffected.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

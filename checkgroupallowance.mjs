@@ -134,16 +134,36 @@ const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
      Asked for as a second switch, so the drawing can answer the
      workbook's question while people learn to trust it. */
 
-  if (!/label: "One ADMD per plot"[\s\S]{0,160}on: admdOn, setOn: setAdmdOn, val: admdKva, setVal: setAdmdKva/.test(canvas)) {
+  if (!/label: "One ADMD per plot"[\s\S]{0,200}on: admdOn, setOn: setAdmdOn, val: admdValue/.test(canvas)) {
     fail("the ADMD switch and figure are not on the form, or not bound to the "
       + "ADMD state");
+  }
+  /* ── The figure defaults to THIS site's average ──
+
+     Asked for: the Plots page shows "1.88 kVA average per plot", and
+     that is the figure the form should offer rather than a constant
+     belonging to no site. Overtypable, and clearing the box goes back
+     to the average. */
+  if (!/const admdValue = admdKva == null \? plotAvgKva : Number\(admdKva\) \|\| 0;/.test(canvas)) {
+    fail("the ADMD box does not fall back to the drawing's own average");
+  }
+  if (!/setVal: \(v\) => setAdmdKva\(v === "" \? null : v\)/.test(canvas)) {
+    fail("clearing the box cannot put it back to the average");
+  }
+  /* The same sum the Plots page makes: plots that HAVE a figure, over
+     how many of those there are. A plot with nothing set must not be
+     counted as zero and drag the average down. */
+  const avgAt = canvas.indexOf("const plotAvgKva = useMemo");
+  const avg = avgAt < 0 ? "" : canvas.slice(avgAt, avgAt + 500);
+  if (!/Number\.isFinite\(v\) && v > 0/.test(avg)) {
+    fail("plots with no load are averaged in as zero");
   }
   /* Wherever the plot's load is resolved: this was an inline
      `plotById` and is now `plotLoadById`, shared by every path that
      traces the drawing. */
   const at = canvas.indexOf("const plotLoadById = useCallback");
   const body = at < 0 ? "" : canvas.slice(at, at + 420);
-  if (!/admdOn \? \{ \.\.\.pl, kva_load: Number\(admdKva\) \|\| 0 \} : pl/.test(body)) {
+  if (!/admdOn \? \{ \.\.\.pl, kva_load: admdValue \} : pl/.test(body)) {
     fail("the switch does not reach the load each plot is counted at");
   }
   /* A meter pointing at a plot that is not there stays unknown rather
@@ -158,7 +178,7 @@ const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
   }
   /* Both settings in the key, or the form moves and the drawing does
      not. */
-  for (const name of ["admdOn", "admdKva"]) {
+  for (const name of ["admdOn", "admdValue"]) {
     if (!(canvas.match(/const k = \[[^\]]*\]/) || [""])[0].includes(name)) {
       fail(`changing ${name} leaves the old figures on the drawing`);
     }
@@ -277,8 +297,15 @@ const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
     }
   }
   /* Off by default on an instance that has never stored anything. */
-  if (!/groupOn: false, groupKva: 8, admdOn: false, admdKva: 5\.01, jointOn: false, jointM: 1\.5/.test(init)) {
-    fail("the defaults are not everything off at the workbook's figures");
+  if (!/groupOn: false, groupKva: 8, admdOn: false, admdKva: null, jointOn: false, jointM: 1\.5/.test(init)) {
+    fail("the defaults are not everything off, with the ADMD following the "
+      + "drawing rather than a constant");
+  }
+  /* Stored as null, not as a number: a figure remembered from another
+     project would otherwise be offered on this one as though it
+     belonged to it. */
+  if (!/p\.admdKva == null \|\| p\.admdKva === ""/.test(init)) {
+    fail("an unset ADMD is read back as a number, so it stops following the drawing");
   }
 }
 

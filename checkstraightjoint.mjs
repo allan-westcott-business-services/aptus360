@@ -308,6 +308,46 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
   }
 }
 
+/* ── An electric meter takes its circuit's colour ──
+
+   Asked for. Every LV feeder cable is drawn in its circuit's colour and
+   the report ring is the same colour; the meters hanging off them were
+   all the layer's one colour, so on a drawing with four circuits there
+   was no way to see which board a house is fed from without tracing its
+   service back. On project 20 that is 41 meters orange and 44 magenta,
+   matching their cables.
+
+   The same map the cables and rings use, so the three cannot disagree. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf('if (isMeter && f.Layer_Key === "electric")');
+  const body = at < 0 ? "" : canvas.slice(at, at + 400);
+  if (!body) fail("an electric meter is not coloured by its circuit");
+  else {
+    if (!/ringColours\.get\(Number\(cid\)\)/.test(body)) {
+      fail("the meter is coloured from its own map rather than the one the cables "
+        + "and rings use, so the three can disagree");
+    }
+    /* Only where the circuit HAS a colour: a meter on an uncoloured
+       circuit, or one not yet on a circuit, keeps the style's colour
+       rather than turning grey. */
+    if (!/if \(cc\) fill = cc;/.test(body)) {
+      fail("a meter whose circuit has no colour is painted with nothing");
+    }
+    /* Electric only: a gas or water meter has no circuit and must not
+       be recoloured by a stray Circuit_ID. */
+    if (!/f\.Layer_Key === "electric"/.test(body)) {
+      fail("meters on other utilities are recoloured too");
+    }
+  }
+  /* The colour map must be in the draw's dependencies, or recolouring a
+     circuit leaves its meters as they were. */
+  const deps = (canvas.match(/^\s*\}, \[visible, selected, view[^\]]*\]\);/m) || [""])[0];
+  if (!deps.includes("ringColours")) {
+    fail("changing a circuit's colour does not repaint its meters");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Straight joints behave (a stop on the run, one cable in and one out).");
 process.exit(bad ? 1 : 0);

@@ -1871,7 +1871,12 @@ export default function GISCanvasPage() {
      half-written entry must not stop the canvas opening. A missing or
      unreadable entry gives the defaults, which is everything off. */
   const [levelOpts, setLevelOpts] = useState(() => {
-    const def = { groupOn: false, groupKva: 8, admdOn: false, admdKva: 5.01, jointOn: false, jointM: 1.5 };
+    /* `admdKva: null` means "not set by anybody" — the figure then
+       follows the drawing's own average, which is what the Plots page
+       shows. A typed figure is kept as typed, for any project, until it
+       is cleared again. 5.01 was a constant that belonged to no
+       particular site. */
+    const def = { groupOn: false, groupKva: 8, admdOn: false, admdKva: null, jointOn: false, jointM: 1.5 };
     try {
       const raw = localStorage.getItem(LEVEL_OPTS_KEY);
       if (!raw) return def;
@@ -1882,7 +1887,9 @@ export default function GISCanvasPage() {
            than becoming NaN, which would silently make its allowance
            zero while its switch still read on. */
         groupKva: Number.isFinite(Number(p.groupKva)) ? Number(p.groupKva) : def.groupKva,
-        admdKva: Number.isFinite(Number(p.admdKva)) ? Number(p.admdKva) : def.admdKva,
+        admdKva: p.admdKva == null || p.admdKva === ""
+          ? null
+          : (Number.isFinite(Number(p.admdKva)) ? Number(p.admdKva) : null),
         jointM: Number.isFinite(Number(p.jointM)) ? Number(p.jointM) : def.jointM,
       };
     } catch {
@@ -1983,11 +1990,33 @@ export default function GISCanvasPage() {
   /* A plot's load: its own, or one figure for every plot when the form
      asks for it. Used by every path that traces the drawing, for the
      same reason as the settings above. */
+  /* ── The drawing's own average load per plot ──
+
+     The same sum the Plots page shows beside the totals: the kVA of
+     every plot that HAS one, over how many of those there are. Plots
+     with nothing set are left out of both halves rather than counted as
+     zero, which would drag the average down by however many are
+     unspecified.
+
+     It is the default for the ADMD box, so the figure offered belongs
+     to this site instead of being a constant. */
+  const plotAvgKva = useMemo(() => {
+    const known = (plotList || [])
+      .map((p) => Number(p.kva_load))
+      .filter((v) => Number.isFinite(v) && v > 0);
+    if (!known.length) return 0;
+    return Math.round((known.reduce((t, v) => t + v, 0) / known.length) * 100) / 100;
+  }, [plotList]);
+
+  /* What the ADMD actually is: the typed figure, or the drawing's
+     average where nobody has typed one. */
+  const admdValue = admdKva == null ? plotAvgKva : Number(admdKva) || 0;
+
   const plotLoadById = useCallback((id) => {
     const pl = plotList.find((x) => x.plot_id === id);
     if (!pl) return pl;
-    return admdOn ? { ...pl, kva_load: Number(admdKva) || 0 } : pl;
-  }, [plotList, admdOn, admdKva]);
+    return admdOn ? { ...pl, kva_load: admdValue } : pl;
+  }, [plotList, admdOn, admdValue]);
 
   const levelsByNode = useCallback((src) => {
     const circuits = circuitsFrom(src);
@@ -2248,7 +2277,7 @@ export default function GISCanvasPage() {
     groupOn, groupKva, jointOn, jointM]);
 
   const levelsKey = useMemo(() => {
-    const k = [groupOn, groupKva, admdOn, admdKva, jointOn, jointM];
+    const k = [groupOn, groupKva, admdOn, admdValue, jointOn, jointM];
     for (const f of features) {
       const a = f.Attributes || {};
       const line = f.Feature_Type === "line";
@@ -2293,7 +2322,7 @@ export default function GISCanvasPage() {
         a.VD_Transformer_Size_ID, a.Output_V);
     }
     return k;
-  }, [features, groupOn, groupKva, admdOn, admdKva, jointOn, jointM]);
+  }, [features, groupOn, groupKva, admdOn, admdValue, jointOn, jointM]);
 
   const [liveLevels, setLiveLevels] = useState(null);
   const levelsSeen = useRef(null);
@@ -5178,6 +5207,28 @@ export default function GISCanvasPage() {
              a code change. */
           const ps = pointStyle;
           fill = ps.colour ?? fill;
+
+          /* ── An electric meter takes its circuit's colour ──
+
+             Asked for. Every LV feeder cable is already drawn in its
+             circuit's colour, and the ring on a report is the same
+             colour; the meters hanging off them were all the layer's
+             one colour, so on a drawing with four circuits there was no
+             way to see which board a house is fed from without tracing
+             its service back.
+
+             The same map the cables and rings use (`ringColours`), so
+             the three cannot disagree, and keyed on the meter's own
+             `Circuit_ID` — written when the service is laid.
+
+             Only where the circuit HAS a colour: an electric meter on a
+             circuit nobody has coloured, or one not yet on a circuit at
+             all, keeps the style's colour rather than turning grey. */
+          if (isMeter && f.Layer_Key === "electric") {
+            const cid = f.Attributes?.Circuit_ID;
+            const cc = cid != null ? ringColours.get(Number(cid)) : null;
+            if (cc) fill = cc;
+          }
 
           /* ── A service valve ──
 
@@ -30561,9 +30612,15 @@ export default function GISCanvasPage() {
                             { key: "group", label: "Group allowance", unit: "kVA", step: 0.1,
                               on: groupOn, setOn: setGroupOn, val: groupKva, setVal: setGroupKva,
                               hint: "Added to every section that has customers" },
+                            /* Shows the drawing's own average until
+                               somebody types over it; clearing the box
+                               puts it back to the average. */
                             { key: "admd", label: "One ADMD per plot", unit: "kVA", step: 0.01,
-                              on: admdOn, setOn: setAdmdOn, val: admdKva, setVal: setAdmdKva,
-                              hint: "Count every plot at one figure instead of its own load" },
+                              on: admdOn, setOn: setAdmdOn, val: admdValue,
+                              setVal: (v) => setAdmdKva(v === "" ? null : v),
+                              hint: `Count every plot at one figure instead of its own load`
+                                + ` — this site averages ${plotAvgKva} kVA`
+                                + (admdKva == null ? "" : " (overtyped; clear the box to go back)") },
                             { key: "joint", label: "Joint allowance", unit: "m each", step: 0.1,
                               on: jointOn, setOn: setJointOn, val: jointM, setVal: setJointM,
                               hint: "Charge each plot connection as extra metres of the leg's own cable" },

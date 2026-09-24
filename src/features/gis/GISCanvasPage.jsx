@@ -1856,6 +1856,29 @@ export default function GISCanvasPage() {
   const [groupOn, setGroupOn] = useState(false);
   const [groupKva, setGroupKva] = useState(8);
 
+  /* ── One ADMD for every plot ──
+
+     The levels check adds up what each plot actually draws: its figure
+     comes from House_Type_Consumption, on bedrooms and heat source
+     together, so a 4 bed with a heat pump counts for more than a 2 bed
+     with a boiler. The verification workbook does not work that way \u2014
+     it multiplies a customer COUNT by one ADMD. On a mixed scheme the
+     two disagree however right both are.
+
+     This makes the drawing answer the workbook's question: every plot
+     taken at the same figure. Asked for so the app can be checked
+     against the sheet line by line while people learn to trust it.
+
+     It does NOT touch non-residential supplies. A pump brings its own
+     kVA and has no plot behind it to average away; the workbook counts
+     it separately too.
+
+     Off by default, and when it is on the drawing is deliberately not
+     telling the truth about a mixed scheme \u2014 which is why the panel
+     says so rather than only showing a tick. */
+  const [admdOn, setAdmdOn] = useState(false);
+  const [admdKva, setAdmdKva] = useState(5.01);
+
   const levelsByNode = useCallback((src) => {
     const circuits = circuitsFrom(src);
     const cables = lookups?.cableSizes || [];
@@ -1967,7 +1990,15 @@ export default function GISCanvasPage() {
 
       const parts = circuitTraceParts(src, origin.Feature_ID, {
         lineTypes, circuitId: c.id, msdbLinks,
-        plotById: (id) => plotList.find((pl) => pl.plot_id === id),
+        /* Every plot at one figure when the form asks for it, its own
+           otherwise. The plot is still looked up, so a meter pointing at
+           a plot that is not there stays unknown rather than becoming
+           an ADMD out of nowhere. */
+        plotById: (id) => {
+          const pl = plotList.find((x) => x.plot_id === id);
+          if (!pl) return pl;
+          return admdOn ? { ...pl, kva_load: Number(admdKva) || 0 } : pl;
+        },
         /* Non-residential supplies bring their own kVA, having no plot
            to hold one. Passed everywhere a feeder model is built, because
            buildFeederModel defaults nrsById to a function returning null
@@ -2117,14 +2148,14 @@ export default function GISCanvasPage() {
       }
     }
     return out.size ? out : null;
-  }, [lookups, lineTypes, plotList, cableAtNode,
+  }, [lookups, lineTypes, plotList, cableAtNode, admdOn, admdKva,
     /* The group allowance from the Levels Check form: change it and the
        figures must be worked out again, or the drawing keeps the ones
        it had — the fault the POC's own fields had. */
     groupOn, groupKva]);
 
   const levelsKey = useMemo(() => {
-    const k = [groupOn, groupKva];
+    const k = [groupOn, groupKva, admdOn, admdKva];
     for (const f of features) {
       const a = f.Attributes || {};
       const line = f.Feature_Type === "line";
@@ -2169,7 +2200,7 @@ export default function GISCanvasPage() {
         a.VD_Transformer_Size_ID, a.Output_V);
     }
     return k;
-  }, [features, groupOn, groupKva]);
+  }, [features, groupOn, groupKva, admdOn, admdKva]);
 
   const [liveLevels, setLiveLevels] = useState(null);
   const levelsSeen = useRef(null);
@@ -30461,6 +30492,39 @@ export default function GISCanvasPage() {
                           <span className="gt-h-unit">kVA</span>
                         </div>
                       )}
+                      {/* ── One ADMD for every plot ──
+
+                          The check adds up what each plot actually
+                          draws, from its bedrooms and heat source. The
+                          verification workbook multiplies a customer
+                          count by one figure. This asks the workbook's
+                          question instead, so the two can be compared
+                          line by line.
+
+                          Non-residential supplies keep their own kVA. */}
+                      {trace.hasVd && (
+                        <div className="gt-h-set gt-h-grpkva">
+                          <label className="gt-h-r"
+                            title="Take every plot at one figure, the way the verification sheet does, instead of its own load">
+                            <input type="checkbox" checked={admdOn}
+                              onChange={(e) => setAdmdOn(e.target.checked)} />
+                            One ADMD per plot
+                          </label>
+                          <input type="number" className="gt-h-num" min="0" step="0.01"
+                            value={admdKva} disabled={!admdOn}
+                            aria-label="ADMD kVA per plot"
+                            onChange={(e) => setAdmdKva(e.target.value)} />
+                          <span className="gt-h-unit">kVA</span>
+                        </div>
+                      )}
+                      {admdOn && (
+                        /* Said plainly. With this on, a mixed scheme's
+                           figures are not what the drawing would give;
+                           they are what the sheet would give. */
+                        <p className="gt-h-warn">
+                          Every plot counted at {Number(admdKva) || 0} kVA, not its own load.
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -31359,6 +31423,8 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   border: 1px solid var(--border); border-radius: 5px; }
 .gt-h-num:disabled { opacity: .45; }
 .gt-h-unit { font-size: 12px; color: var(--muted); }
+.gt-h-warn { margin: 4px 0 0; font-size: 12px; color: #92400e;
+  background: #fffbeb; border-radius: 6px; padding: 3px 7px; }
 .gt-h-r { display: flex; align-items: center; gap: 6px; font-size: 13px;
   cursor: pointer; white-space: nowrap; }
 .gt-h-over { font-size: 12.5px; color: var(--muted); }

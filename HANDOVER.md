@@ -8404,6 +8404,35 @@ characters is a hundred lines of prose and no rules at all.
      `blockKva` is now forwarded too, so a section feeding a school
      stops reading low.
 
+     **And a second switch: one ADMD for every plot.** Asked for next.
+     The levels check adds up what each plot ACTUALLY draws — its figure
+     comes from `House_Type_Consumption`, on bedrooms and heat source
+     together — while the workbook multiplies a customer COUNT by one
+     ADMD. On a mixed scheme the two disagree however right both are.
+     With this on, every plot is counted at the figure in the box (5.01
+     to start, the app's own default) and the drawing answers the
+     workbook's question. Asked for plainly: *"I want to be able to get
+     the GIS App as close to the levels of the workbook until I can
+     convince people to trust the GIS app."*
+
+     Non-residential supplies keep their own kVA: a pump has no plot
+     behind it to average away, and the workbook counts it separately.
+     A meter pointing at a plot that is not there stays unknown rather
+     than becoming an ADMD out of nowhere.
+
+     The panel SAYS so while it is on — "Every plot counted at 1.88 kVA,
+     not its own load" — because a drawing that is deliberately not
+     telling the truth about a mixed scheme should not look like one
+     that is. On project 34, both switches on gives 3.1620 against the
+     workbook's 3.1620; with real mixed loads and the group on, 3.1754.
+
+     **Three of my own checks broke on this**, all pinning exact text:
+     two matched the levels key's contents literally and failed when a
+     second setting joined it, and one matched the FIRST `}, [features
+     …]` in the file, which is a different memo entirely. They test
+     membership now. That is the fifth instance this month of a check
+     describing the code instead of what it does.
+
      **Two faults found by the checks while building it**, both mine:
      the allowance was charged to sections with NO customers (the
      workbook's `IF(K=0,0,B5)`), which would have put 8 kVA on a bare

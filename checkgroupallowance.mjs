@@ -98,12 +98,66 @@ const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
   /* The effect returns early when the key is unchanged. A setting that
      changes the ANSWER has to be in the key, or the form moves and the
      drawing does not — the fault the POC's own fields had. */
-  if (!/const k = \[groupOn, groupKva\];/.test(canvas)) {
-    fail("the group allowance is not in the levels key, so changing it leaves the "
-      + "old figures on the drawing");
+  /* Named in the key, in whatever company: this pinned the key's exact
+     contents and broke the moment a second setting joined it. */
+  const key = (canvas.match(/const k = \[[^\]]*\]/) || [""])[0];
+  /* Every `}, [features …]` in the file, not the first: the levels key
+     is not the only memo on `features`, and matching the first found
+     `[features, lineTypes]` and failed on a key that was perfectly
+     correct. */
+  const keyDeps = (canvas.match(/\}, \[features,[^\]]*\]\);/g) || []).join(" ");
+  for (const name of ["groupOn", "groupKva"]) {
+    if (!key.includes(name)) {
+      fail(`${name} is not in the levels key, so changing it leaves the old `
+        + "figures on the drawing");
+    }
+    if (!keyDeps.includes(name)) fail(`the key is not rebuilt when ${name} changes`);
   }
-  if (!/\}, \[features, groupOn, groupKva\]\);/.test(canvas)) {
-    fail("the key is not rebuilt when the allowance changes");
+}
+
+// 6. One ADMD for every plot.
+{
+  /* The levels check adds up what each plot actually draws — its
+     figure comes from House_Type_Consumption, on bedrooms and heat
+     source together. The verification workbook multiplies a customer
+     COUNT by one ADMD, so on a mixed scheme the two disagree however
+     right both are.
+
+     Asked for as a second switch, so the drawing can answer the
+     workbook's question while people learn to trust it. */
+  if (!/const \[admdOn, setAdmdOn\] = useState\(false\)/.test(canvas)) {
+    fail("there is no switch for one ADMD per plot, or it is on by default");
+  }
+  if (!/aria-label="ADMD kVA per plot"/.test(canvas)) {
+    fail("the ADMD figure cannot be typed in");
+  }
+  const at = canvas.indexOf("plotById: (id) => {");
+  const body = at < 0 ? "" : canvas.slice(at, at + 420);
+  if (!/admdOn \? \{ \.\.\.pl, kva_load: Number\(admdKva\) \|\| 0 \} : pl/.test(body)) {
+    fail("the switch does not reach the load each plot is counted at");
+  }
+  /* A meter pointing at a plot that is not there stays unknown rather
+     than becoming an ADMD out of nowhere. */
+  if (!/if \(!pl\) return pl;/.test(body)) {
+    fail("a missing plot is given an ADMD it has no basis for");
+  }
+  /* Non-residential supplies keep their own kVA: a pump has no plot
+     behind it to average away, and the workbook counts it separately. */
+  const ctx = canvas.slice(at, at + 1600);
+  if (/nrsById: \(\) => \(\{ kva_load/.test(ctx) || /nrsById[\s\S]{0,80}admdOn/.test(ctx)) {
+    fail("the ADMD is applied to non-residential supplies as well");
+  }
+  /* Both settings in the key, or the form moves and the drawing does
+     not. */
+  for (const name of ["admdOn", "admdKva"]) {
+    if (!(canvas.match(/const k = \[[^\]]*\]/) || [""])[0].includes(name)) {
+      fail(`changing ${name} leaves the old figures on the drawing`);
+    }
+  }
+  /* And it says what it is doing: with this on, a mixed scheme's
+     figures are the sheet's answer, not the drawing's. */
+  if (!/Every plot counted at \{Number\(admdKva\) \|\| 0\} kVA, not its own load/.test(canvas)) {
+    fail("nothing on the panel says the figures are no longer the drawing's own");
   }
 }
 

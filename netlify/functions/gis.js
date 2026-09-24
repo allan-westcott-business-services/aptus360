@@ -135,27 +135,47 @@ export default withAuth(async function handler(req, context) {
 
     if (req.method === "POST") {
       const body = await req.json();
-      const { data, error } = await db.from("GIS_Feature")
-        .insert(pick({ ...body, Project_ID: Number(projectId) })).select(F).single();
-      /* ── Say which case it was ──
+      const row = pick({ ...body, Project_ID: Number(projectId) });
 
-         `.single()` answers "cannot coerce the result to a single JSON
-         object" whenever a write returns no row, and that one sentence
-         covers several quite different faults: a role the table will
-         not take, a layer that does not exist, a row somebody else
-         deleted. Reported from use, on a text note, where it said
-         nothing anybody could act on.
+      /* ── The write matters; the row that comes back does not ──
 
-         The underlying message is kept and a plain one put in front of
-         it. */
-      if (error) {
-        throw new Error(/coerce the result to a single/i.test(error.message || "")
-          ? `The drawing would not take that ${body?.Feature_Role || "feature"}: `
-            + "nothing was written back. Check the role and the layer exist "
-            + `(Layer_Key "${body?.Layer_Key}"). ${error.message}`
-          : error.message);
+         This asked PostgREST for exactly one row back and treated
+         anything else as a failure. Reported on a text note: the save
+         answered "cannot coerce the result to a single JSON object",
+         and the same row inserted by hand in SQL went in without
+         complaint — so the insert was fine and only the REPRESENTATION
+         was missing.
+
+         Several things can do that, and none of them mean the feature
+         was not created. So: insert, take the row if it came back, and
+         where it did not, go and find it. A real refusal still throws,
+         because PostgREST reports those as errors rather than as an
+         empty result. */
+      const { data, error } = await db.from("GIS_Feature").insert(row).select(F);
+      if (error) throw error;
+      if (data?.length) return json(data[0], 201);
+
+      /* Nothing came back. Look for what was just written: this
+         project, the same layer, role and label, newest first. A second
+         identical feature made in the same instant could in principle
+         be picked instead — both are the caller's own, made from the
+         same request, so the id returned is still one of the two it
+         asked for. Better than failing on a row that exists. */
+      let q = db.from("GIS_Feature").select(F).eq("Project_ID", Number(projectId));
+      /* `.eq(col, null)` asks for the text "null" and matches nothing;
+         a plain shape has no role, and this is exactly the row that
+         would then be looked for and never found. */
+      for (const [col, val] of [["Layer_Key", row.Layer_Key], ["Feature_Role", row.Feature_Role]]) {
+        q = val == null ? q.is(col, null) : q.eq(col, val);
       }
-      return json(data, 201);
+      const { data: found, error: findErr } = await q
+        .order("Feature_ID", { ascending: false })
+        .limit(1);
+      if (findErr) throw findErr;
+      if (found?.length) return json(found[0], 201);
+
+      throw new Error(`The ${row.Feature_Role || "feature"} was not written to the `
+        + `drawing, and nothing came back to say why. Layer "${row.Layer_Key}".`);
     }
 
     /* Dragging produces a stream of positions. Sending the whole moved
@@ -181,21 +201,24 @@ export default withAuth(async function handler(req, context) {
 
     if (req.method === "PATCH" && id) {
       const patch = pick(await req.json());
-      /* An update with nothing writable in it changes no rows, and
-         `.single()` then reports the same coercion error as a missing
-         row — two different faults wearing one message. */
+      /* An update with nothing writable in it changes no rows, and the
+         representation is then empty for a reason that is not an
+         error. */
       if (!Object.keys(patch).length) {
         return json({ error: "Nothing to save on that feature." }, 400);
       }
       const { data, error } = await db.from("GIS_Feature")
-        .update(patch).eq("Feature_ID", id).select(F).single();
-      if (error) {
-        throw new Error(/coerce the result to a single/i.test(error.message || "")
-          ? `Feature ${id} was not updated — it may have been deleted, or belong `
-            + `to another project. ${error.message}`
-          : error.message);
-      }
-      return json(data);
+        .update(patch).eq("Feature_ID", id).select(F);
+      if (error) throw error;
+      if (data?.length) return json(data[0]);
+
+      /* Same rule as the insert: the write is what matters. If the row
+         is there, the update reached it and only the representation is
+         missing; if it is not, say so plainly. */
+      const { data: after } = await db.from("GIS_Feature").select(F).eq("Feature_ID", id);
+      if (after?.length) return json(after[0]);
+      throw new Error(`Feature ${id} is not on this drawing — it may have been `
+        + "deleted while it was open.");
     }
 
     if (req.method === "DELETE") {

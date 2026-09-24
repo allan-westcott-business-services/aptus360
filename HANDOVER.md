@@ -219,6 +219,7 @@ caught a fault that had already shipped at least once.
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
 | `node checkhousetypes.mjs` | A development's house types have names, codes, types and plans; plots pick them by code |
+| `node checkgiswrite.mjs` | A feature write stands on the write, not on the row that comes back |
 | `node checkplotranges.mjs` | Plots go in as ranges and numbers, a house type per row, and nothing overlaps |
 | `node checkplanscale.mjs` | A PDF's scale is worked in points; an image claims none |
 | `node checkosalign.mjs` | OS tiles read from the numbers, and a plan is tied to the grid without moving |
@@ -8230,6 +8231,37 @@ characters is a hundred lines of prose and no rules at all.
      see is indistinguishable from a failure.** The POC colour board
      hid itself when empty; the portal's tabs hid themselves at one
      section; a note landed on a hidden layer.
+
+192. **A feature write stands on the write, not on the row that comes
+     back.** Reported: saving a text note answered "cannot coerce the
+     result to a single JSON object". That is PostgREST's message for
+     "you asked for exactly one row and I have none".
+
+     What the database said, when asked directly: the `textnote` role is
+     allowed, the annotation layer exists, notes exist on other
+     projects, and **the same row inserted by hand in SQL went in
+     without complaint**. So the insert was fine; only the
+     REPRESENTATION was missing, and `.select(F).single()` turned that
+     into a failure.
+
+     Both writes now take the row when it comes back and, when it does
+     not, go and find it — the newest matching row for a create, the row
+     by id for a save. A genuine refusal still throws, because
+     PostgREST reports those as errors rather than as an empty result,
+     which is what makes the relaxation safe. Where the row really is
+     absent, the message says so in words instead of quoting the
+     driver.
+
+     The cause of the empty representation is still not known, and the
+     reporter could not reproduce it while somebody else had the
+     drawing open. This does not explain it — it removes the dependency
+     on it. If it recurs, the Network tab entry (URL, status, body) is
+     still what would settle it.
+
+     A `.eq(col, null)` in the first draft of the fallback asked for the
+     text "null" and matched nothing, which would have failed for a
+     plain shape — the one feature with no role. Fixed before it
+     shipped; the check holds it.
 
 ## Decisions worth knowing
 

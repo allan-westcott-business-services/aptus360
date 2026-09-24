@@ -1879,6 +1879,71 @@ export default function GISCanvasPage() {
   const [admdOn, setAdmdOn] = useState(false);
   const [admdKva, setAdmdKva] = useState(5.01);
 
+  /* ── The joint allowance, from the form ──
+
+     Cutting a main and jointing a service onto it puts resistance in
+     the run that undisturbed cable does not have, and the app charges
+     it as metres of the leg's own cable. The catalogue holds the figure
+     (`Electric_VD_Setting.Joint_Equivalent_M`) and on this customer's
+     instance it is 0, so nothing has been charged anywhere.
+
+     A switch here as well as the catalogue setting, for the same reason
+     as the other two: while the app is being checked against a workbook
+     that has no such idea, it wants turning on and off without changing
+     the figure for everybody. Off, the catalogue's own setting still
+     applies \u2014 this is an override, not a second place to configure. */
+  const [jointOn, setJointOn] = useState(false);
+  const [jointM, setJointM] = useState(1.5);
+
+  /* ── One set of volt-drop settings, for every path that needs them ──
+
+     This object was built THREE times in this file: once for the node
+     labels, once for the Levels Check table and its export, once for
+     the advanced check. The comment on the second copy already recorded
+     what that costs — the joint allowance was added to one of them and
+     "the canvas labels moved and the levels check report did not".
+
+     It happened again, immediately: the group allowance and the one-ADMD
+     switch went into the labels' copy, so the labels answered the form
+     and the table did not. Reported as a figure the export could not
+     explain.
+
+     So the object is made here, once, and the three read it. A setting
+     added to it reaches all three by construction rather than by
+     somebody remembering. */
+  const vdLimits = useMemo(() => {
+    const vs = lookups?.vdSettings?.[0];
+    return {
+      ...VD_DEFAULTS,
+      ...(vs ? {
+        unbalanced: !!vs.Unbalanced,
+        maxLoopOhms: Number(vs.Max_Loop_Ohms),
+        maxVoltDropPct: Number(vs.Max_Volt_Drop_Pct),
+        unbalancedConstant: Number(vs.Unbalanced_Constant),
+        distributedLoadFactor: Number(vs.Distributed_Load_Factor),
+        /* What a plot connection is charged as, in metres of its own
+           cable (0187). */
+        jointEquivM: Number(vs.Joint_Equivalent_M) || 0,
+      } : {}),
+      /* From the Levels Check form: a choice made per drawing while
+         checking it, not a catalogue fact. */
+      groupKva: groupOn ? Number(groupKva) || 0 : 0,
+      /* Overrides the catalogue while it is on, and leaves it alone
+         otherwise \u2014 so a drawing nobody has touched the form on reads
+         exactly as the catalogue says. */
+      ...(jointOn ? { jointEquivM: Number(jointM) || 0 } : {}),
+    };
+  }, [lookups, groupOn, groupKva, jointOn, jointM]);
+
+  /* A plot's load: its own, or one figure for every plot when the form
+     asks for it. Used by every path that traces the drawing, for the
+     same reason as the settings above. */
+  const plotLoadById = useCallback((id) => {
+    const pl = plotList.find((x) => x.plot_id === id);
+    if (!pl) return pl;
+    return admdOn ? { ...pl, kva_load: Number(admdKva) || 0 } : pl;
+  }, [plotList, admdOn, admdKva]);
+
   const levelsByNode = useCallback((src) => {
     const circuits = circuitsFrom(src);
     const cables = lookups?.cableSizes || [];
@@ -1891,20 +1956,7 @@ export default function GISCanvasPage() {
        source impedance at all, silently. */
     const station = lvOrigin(src);
     const vs = lookups?.vdSettings?.[0];
-    const limits = { ...VD_DEFAULTS, ...(vs ? {
-      unbalanced: !!vs.Unbalanced,
-      maxLoopOhms: Number(vs.Max_Loop_Ohms),
-      maxVoltDropPct: Number(vs.Max_Volt_Drop_Pct),
-      unbalancedConstant: Number(vs.Unbalanced_Constant),
-      distributedLoadFactor: Number(vs.Distributed_Load_Factor),
-      /* What a plot connection is charged as, in metres of its own
-         cable (0187). Absent on an instance that has not run it, and
-         zero then means the calculation as it was. */
-      jointEquivM: Number(vs.Joint_Equivalent_M) || 0,
-    } : {}) };
-    /* From the Levels Check form, not the catalogue: it is a choice
-       made per drawing while checking it. */
-    limits.groupKva = groupOn ? Number(groupKva) || 0 : 0;
+    const limits = vdLimits;
     const ctx = {
       cableById: (id) => cables.find((c) => String(c.Cable_Size_ID) === String(id)) || null,
       cableTypes: lookups?.cableTypes || [],
@@ -1994,11 +2046,7 @@ export default function GISCanvasPage() {
            otherwise. The plot is still looked up, so a meter pointing at
            a plot that is not there stays unknown rather than becoming
            an ADMD out of nowhere. */
-        plotById: (id) => {
-          const pl = plotList.find((x) => x.plot_id === id);
-          if (!pl) return pl;
-          return admdOn ? { ...pl, kva_load: Number(admdKva) || 0 } : pl;
-        },
+        plotById: plotLoadById,
         /* Non-residential supplies bring their own kVA, having no plot
            to hold one. Passed everywhere a feeder model is built, because
            buildFeederModel defaults nrsById to a function returning null
@@ -2152,10 +2200,10 @@ export default function GISCanvasPage() {
     /* The group allowance from the Levels Check form: change it and the
        figures must be worked out again, or the drawing keeps the ones
        it had — the fault the POC's own fields had. */
-    groupOn, groupKva]);
+    groupOn, groupKva, jointOn, jointM]);
 
   const levelsKey = useMemo(() => {
-    const k = [groupOn, groupKva, admdOn, admdKva];
+    const k = [groupOn, groupKva, admdOn, admdKva, jointOn, jointM];
     for (const f of features) {
       const a = f.Attributes || {};
       const line = f.Feature_Type === "line";
@@ -2200,7 +2248,7 @@ export default function GISCanvasPage() {
         a.VD_Transformer_Size_ID, a.Output_V);
     }
     return k;
-  }, [features, groupOn, groupKva, admdOn, admdKva]);
+  }, [features, groupOn, groupKva, admdOn, admdKva, jointOn, jointM]);
 
   const [liveLevels, setLiveLevels] = useState(null);
   const levelsSeen = useRef(null);
@@ -14097,7 +14145,7 @@ export default function GISCanvasPage() {
       const { seedIds, meterIds } = circuitMembership(features, c.id);
       const model = buildFeederModel(features, {
         lineTypes, seedIds, meterIds,
-        plotById: (id) => plotList.find((p) => p.plot_id === id),
+        plotById: plotLoadById,
         nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
         rootFeature: originNodeFor(features, c.id) || undefined,
       });
@@ -15432,7 +15480,7 @@ export default function GISCanvasPage() {
     const planned = planJoints(src, circuits, {
       lineTypes,
       missed,
-      plotById: (id) => plotList.find((p) => p.plot_id === id),
+      plotById: plotLoadById,
       nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
       /* For the drum rule: how much cable comes on one drum, per size.
          A size with none recorded places no drum joints. */
@@ -15912,7 +15960,7 @@ export default function GISCanvasPage() {
   function suggestGroups() {
     const plan = planCircuitGroups(features, {
       lineTypes,
-      plotById: (id) => plotList.find((p) => p.plot_id === id),
+      plotById: plotLoadById,
       nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
     });
     if (plan.error) { setError(plan.error); setGroupPlan(null); return; }
@@ -18341,7 +18389,7 @@ export default function GISCanvasPage() {
 
         const parts = circuitBuildParts(src, {
           lineTypes, circuitId: c.id, msdbLinks,
-          plotById: (id) => plotList.find((p) => p.plot_id === id),
+          plotById: plotLoadById,
           nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
           seedIds, meterIds,
           /* The circuit's named POC, read off the members in hand and
@@ -19247,7 +19295,7 @@ export default function GISCanvasPage() {
 
            The gas build passes this. The check has to pass the same
            thing or it is measuring a different network. */
-        plotById: (id) => plotList.find((p) => p.plot_id === id),
+        plotById: plotLoadById,
         nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
       });
 
@@ -20440,7 +20488,7 @@ export default function GISCanvasPage() {
          place that judges the design — and it is how a designer works:
          lay it, check it, upsize what fails. */
       minimumSize: true,
-      plotById: (id) => plotList.find((p) => p.plot_id === id),
+      plotById: plotLoadById,
       nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
     });
     if (plan.error) return setError(plan.error);
@@ -24095,7 +24143,7 @@ export default function GISCanvasPage() {
         /* The circuit being checked. The origin serves them all and so
            names none; without this the trace could not tell which. */
         circuitId: c.id,
-        plotById: (id) => plotList.find((p) => p.plot_id === id),
+        plotById: plotLoadById,
         nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
         stopAt,
       });
@@ -24151,18 +24199,7 @@ export default function GISCanvasPage() {
          referenced from the other function, and from the same lookup
          row, so the two cannot disagree about what "in tolerance"
          means. */
-      const limits = { ...VD_DEFAULTS, ...(lookups?.vdSettings?.[0] ? {
-        unbalanced: !!lookups.vdSettings[0].Unbalanced,
-        maxLoopOhms: Number(lookups.vdSettings[0].Max_Loop_Ohms),
-        maxVoltDropPct: Number(lookups.vdSettings[0].Max_Volt_Drop_Pct),
-        unbalancedConstant: Number(lookups.vdSettings[0].Unbalanced_Constant),
-        distributedLoadFactor: Number(lookups.vdSettings[0].Distributed_Load_Factor),
-        /* What a plot connection is charged as (0187). This object is
-           built three times in this file and the field was added to one
-           of them, so the canvas labels moved and the levels check
-           report did not — the same shape of miss as startPct. */
-        jointEquivM: Number(lookups.vdSettings[0].Joint_Equivalent_M) || 0,
-      } : {}) };
+      const limits = vdLimits;
       /* Where each output begins.
 
          An output's model is rooted at the box and starts from zero, so
@@ -24370,7 +24407,7 @@ export default function GISCanvasPage() {
 
     const r = spanTrace(src, node.Feature_ID, {
       lineTypes,
-      plotById: (id) => plotList.find((p) => p.plot_id === id),
+      plotById: plotLoadById,
       nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
       /* Tracing from the origin, which names no circuit because it
          serves them all: the only circuit is the one to take. With
@@ -24384,15 +24421,7 @@ export default function GISCanvasPage() {
        columns appear only when a cable catalogue exists — a table of
        dashes would suggest the figures are zero rather than unknown. */
     const cables = lookups?.cableSizes || [];
-    const settings = { ...VD_DEFAULTS, ...(lookups?.vdSettings?.[0] ? {
-      unbalanced: !!lookups.vdSettings[0].Unbalanced,
-      maxLoopOhms: Number(lookups.vdSettings[0].Max_Loop_Ohms),
-      maxVoltDropPct: Number(lookups.vdSettings[0].Max_Volt_Drop_Pct),
-      unbalancedConstant: Number(lookups.vdSettings[0].Unbalanced_Constant),
-      distributedLoadFactor: Number(lookups.vdSettings[0].Distributed_Load_Factor),
-      /* As above: the advanced check builds its own settings too. */
-      jointEquivM: Number(lookups.vdSettings[0].Joint_Equivalent_M) || 0,
-    } : {}) };
+    const settings = vdLimits;
 
     r.startId = node.Feature_ID;
 
@@ -27155,7 +27184,7 @@ export default function GISCanvasPage() {
           nrsList,
           nrsSubTypes: lookups?.nrsSubTypes || [],
         }), {
-          plotById: (id) => plotList.find((p) => p.plot_id === id),
+          plotById: plotLoadById,
           nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
           /* The same rule the crosses on the meters are drawn from, so
              the report and the drawing cannot disagree about who
@@ -30515,6 +30544,27 @@ export default function GISCanvasPage() {
                             aria-label="ADMD kVA per plot"
                             onChange={(e) => setAdmdKva(e.target.value)} />
                           <span className="gt-h-unit">kVA</span>
+                        </div>
+                      )}
+                      {/* ── The joint allowance ──
+
+                          Metres of the leg's own cable charged for each
+                          plot connection on it. The catalogue says 0 on
+                          this instance, and the verification workbook
+                          has no equivalent at all. */}
+                      {trace.hasVd && (
+                        <div className="gt-h-set gt-h-grpkva">
+                          <label className="gt-h-r"
+                            title="Charge each plot connection as extra metres of the leg's own cable">
+                            <input type="checkbox" checked={jointOn}
+                              onChange={(e) => setJointOn(e.target.checked)} />
+                            Joint allowance
+                          </label>
+                          <input type="number" className="gt-h-num" min="0" step="0.1"
+                            value={jointM} disabled={!jointOn}
+                            aria-label="Joint allowance metres"
+                            onChange={(e) => setJointM(e.target.value)} />
+                          <span className="gt-h-unit">m each</span>
                         </div>
                       )}
                       {admdOn && (

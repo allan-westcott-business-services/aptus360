@@ -88,7 +88,10 @@ const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
   if (!/aria-label="Group allowance kVA"/.test(canvas)) {
     fail("the number control is missing from the Levels Check form");
   }
-  if (!/limits\.groupKva = groupOn \? Number\(groupKva\) \|\| 0 : 0;/.test(canvas)) {
+  /* Reaches the calculation, however the settings object is built —
+     this pinned one assignment and went stale when the block became a
+     returned object. */
+  if (!/groupKva: groupOn \? Number\(groupKva\) \|\| 0 : 0/.test(canvas)) {
     fail("the form's setting does not reach the levels calculation");
   }
 }
@@ -131,7 +134,10 @@ const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
   if (!/aria-label="ADMD kVA per plot"/.test(canvas)) {
     fail("the ADMD figure cannot be typed in");
   }
-  const at = canvas.indexOf("plotById: (id) => {");
+  /* Wherever the plot's load is resolved: this was an inline
+     `plotById` and is now `plotLoadById`, shared by every path that
+     traces the drawing. */
+  const at = canvas.indexOf("const plotLoadById = useCallback");
   const body = at < 0 ? "" : canvas.slice(at, at + 420);
   if (!/admdOn \? \{ \.\.\.pl, kva_load: Number\(admdKva\) \|\| 0 \} : pl/.test(body)) {
     fail("the switch does not reach the load each plot is counted at");
@@ -143,8 +149,7 @@ const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
   }
   /* Non-residential supplies keep their own kVA: a pump has no plot
      behind it to average away, and the workbook counts it separately. */
-  const ctx = canvas.slice(at, at + 1600);
-  if (/nrsById: \(\) => \(\{ kva_load/.test(ctx) || /nrsById[\s\S]{0,80}admdOn/.test(ctx)) {
+  if (/nrsById[\s\S]{0,120}admdKva/.test(canvas)) {
     fail("the ADMD is applied to non-residential supplies as well");
   }
   /* Both settings in the key, or the form moves and the drawing does
@@ -158,6 +163,35 @@ const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
      figures are the sheet's answer, not the drawing's. */
   if (!/Every plot counted at \{Number\(admdKva\) \|\| 0\} kVA, not its own load/.test(canvas)) {
     fail("nothing on the panel says the figures are no longer the drawing's own");
+  }
+}
+
+// 7. The joint allowance, from the form.
+{
+  /* Metres of the leg's own cable charged for each plot connection.
+     The catalogue holds the figure and on this customer's instance it
+     is 0; the verification workbook has no equivalent. A switch so the
+     app can be compared with the sheet without changing the setting
+     for everybody. */
+  if (!/const \[jointOn, setJointOn\] = useState\(false\)/.test(canvas)) {
+    fail("there is no switch for the joint allowance, or it is on by default");
+  }
+  if (!/const \[jointM, setJointM\] = useState\(1\.5\)/.test(canvas)) {
+    fail("the joint allowance does not start at the 1.5 m asked for");
+  }
+  if (!/aria-label="Joint allowance metres"/.test(canvas)) {
+    fail("the metres cannot be typed in");
+  }
+  /* An OVERRIDE: off, the catalogue's own figure still applies, so a
+     drawing nobody has touched reads exactly as it did. */
+  if (!/\.\.\.\(jointOn \? \{ jointEquivM: Number\(jointM\) \|\| 0 \} : \{\}\)/.test(canvas)) {
+    fail("the switch replaces the catalogue's joint figure even when off, or does "
+      + "not reach the calculation when on");
+  }
+  for (const name of ["jointOn", "jointM"]) {
+    if (!(canvas.match(/const k = \[[^\]]*\]/) || [""])[0].includes(name)) {
+      fail(`changing ${name} leaves the old figures on the drawing`);
+    }
   }
 }
 

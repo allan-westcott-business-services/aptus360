@@ -8426,6 +8426,20 @@ characters is a hundred lines of prose and no rules at all.
      that is. On project 34, both switches on gives 3.1620 against the
      workbook's 3.1620; with real mixed loads and the group on, 3.1754.
 
+     **And a third switch: the joint allowance.** The app charges each
+     plot connection as metres of the leg's own cable
+     (`Electric_VD_Setting.Joint_Equivalent_M`); on this customer's
+     instance that setting is 0, and the workbook has no such idea at
+     all. The switch OVERRIDES the catalogue while it is on and leaves
+     it alone otherwise, so a drawing nobody has touched the form on
+     reads exactly as the catalogue says. 1.5 m to start, asked for.
+
+     With all three set the way the workbook works — ADMD 1.88, group 8,
+     joints off — project 34's route to B15 reads 3.1620 against the
+     workbook's 3.1620. With joints at 1.5 m it reads 3.2691, which is
+     the 3.27 the customer reported, though their catalogue figure is 0
+     and I could not reproduce that state from the files they sent.
+
      **Three of my own checks broke on this**, all pinning exact text:
      two matched the levels key's contents literally and failed when a
      second setting joined it, and one matched the FIRST `}, [features

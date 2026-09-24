@@ -142,8 +142,13 @@ const plotById = () => ({ kva_load: 5 });
 //    sites and not others. Counted rather than trusted.
 {
   const src = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-  const plots = [...src.matchAll(/plotById:\s*\(id\)/g)].length;
-  const nrs = [...src.matchAll(/nrsById:\s*\(id\)/g)].length;
+  /* Counted however they are passed. This matched `plotById: (id) =>`
+     only, so moving some call sites onto a shared `plotLoadById`
+     function — the same lookup, named once — read as call sites losing
+     their plots. The rule is that the two travel together, not that
+     either is written inline. */
+  const plots = [...src.matchAll(/plotById:/g)].length;
+  const nrs = [...src.matchAll(/nrsById:/g)].length;
   if (plots === 0) fail("found no plotById call sites - the check is looking in the wrong place");
   if (nrs !== plots) fail(`nrsById passed at ${nrs} call sites, plotById at ${plots}`);
 

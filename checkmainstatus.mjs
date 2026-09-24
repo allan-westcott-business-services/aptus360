@@ -14,7 +14,7 @@
    is what all of this exists to prevent. */
 import { readFileSync } from "node:fs";
 import {
-  BUILD_STATUSES, MAIN_STATUSES, statusesFor, isMainFeature, isLive,
+  BUILD_STATUSES, MAIN_STATUSES, statusesFor, statusOptions, isMainFeature, isLive,
   statusOf, statusLabel, statusColour, LIVE_COLOUR, DEAD_COLOUR, UNSET_COLOUR,
   isMainType,
 } from "./src/features/gis/buildStatus.js";
@@ -574,6 +574,67 @@ const line = (type, status) => ({
   }
   if (stages("trench_main") === stages("elec_hv")) {
     fail("a trench and a cable are offered the same stages");
+  }
+}
+
+/* ── The incumbent's network is Existing or coming out ──
+
+   Asked for: an existing trench should only ever be Existing or To be
+   Removed, never Planned or As-Laid. Nobody is planning to lay what is
+   already laid, and we did not lay it — marked either way it reads as
+   our work on the bill, in the labour rows, and to whoever picks the
+   drawing up next.
+
+   Applies to everything drawn with an `_existing` type, the incumbent's
+   mains as well as their trench: the two should not answer differently
+   about the same road. */
+{
+  const types = [
+    { Type_Key: "trench_main_existing", Layer_Key: "trench" },
+    { Type_Key: "elec_main_existing", Layer_Key: "electric" },
+    { Type_Key: "trench_main", Layer_Key: "trench" },
+    { Type_Key: "elec_main", Layer_Key: "electric" },
+  ];
+  const line = (t, st) => ({
+    Feature_Type: "line", Layer_Key: t.startsWith("trench") ? "trench" : "electric",
+    Attributes: { Line_Type: t, ...(st ? { Build_Status: st } : {}) },
+  });
+
+  for (const t of ["trench_main_existing", "elec_main_existing"]) {
+    const keys = statusesFor(line(t), types).map((s) => s.key);
+    if (keys.join() !== "existing,remove") {
+      fail(`${t} offers ${keys.join(", ")} — the incumbent's network is Existing `
+        + "or To be Removed, nothing else");
+    }
+  }
+  /* Ours is untouched. */
+  if (statusesFor(line("trench_main"), types).length !== 4) {
+    fail("our own trench lost stages it needs");
+  }
+  if (statusesFor(line("elec_main"), types).map((s) => s.key).join() !== "planned,aslaid,live") {
+    fail("our own main lost stages it needs");
+  }
+
+  /* ── And what is already marked wrongly stays visible ──
+
+     Drawings hold incumbent lines already set Planned — five on
+     project 34, which is the fault being fixed. Dropping the value
+     would leave the select blank, and a blank select reads as "nothing
+     set" rather than "set to something this line should not be". */
+  const opts = statusOptions(line("trench_main_existing", "planned"), types, []);
+  const stale = opts.find((o) => o.key === "planned");
+  if (!stale) {
+    fail("a line already marked Planned shows a blank status, which reads as "
+      + "nothing set");
+  } else if (!stale.disabled) {
+    fail("a line already marked Planned can be set Planned again");
+  }
+  if (opts.filter((o) => !o.disabled).map((o) => o.key).join() !== "existing,remove") {
+    fail("the two proper stages are not both offered beside the stale one");
+  }
+  /* A line set properly shows only the two. */
+  if (statusOptions(line("trench_main_existing", "existing"), types, []).length !== 2) {
+    fail("a correctly marked line is offered something extra");
   }
 }
 

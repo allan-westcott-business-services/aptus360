@@ -8582,6 +8582,54 @@ characters is a hundred lines of prose and no rules at all.
      was still correct; it names the constants now. Seventh instance this
      month of a check describing the code rather than the rule.
 
+201. **The node label's plate fits what it says.** Reported from a
+     screenshot: the white behind the figures looked too narrow. Two
+     faults in one.
+
+     **TWO blocks draw those figures** — one for span nodes, one for
+     feeder end points — and when the label went onto two lines (198)
+     only one plate was resized. The other still drew the one-line
+     plate, 14 px tall whatever the label said, so the second line sat
+     outside its own background and was unreadable over a trench. The
+     check counts both now rather than matching once.
+
+     **And the padding was two pixels**, which at these sizes is less
+     than the gap between two characters: it read as text on an edge
+     rather than on a plate. `LABEL_PAD_X` 5 and `LABEL_PAD_Y` 3, named
+     once, and the grab box grew with the plate so a label is still
+     grabbable by all of itself.
+
+     Checked by drawing it rather than by reading it: the before image
+     reproduces the reported screenshot exactly.
+
+202. **The incumbent's network is Existing or coming out.** Asked for:
+     an existing trench should only ever be Existing or To be Removed,
+     never Planned or As-Laid. Nobody is planning to lay what is already
+     laid, and we did not lay it — marked either way it reads as OUR
+     work on the bill, in the labour rows, and to whoever picks the
+     drawing up next.
+
+     `EXISTING_STATUSES` is the same two entries filtered out of the
+     trench list rather than copies, so the labels and colours cannot
+     drift from it. `statusesFor` asks the question FIRST, before main
+     and service, so it covers the incumbent's mains as well as their
+     trench — the two should not answer differently about the same road
+     — and a type added later as `<something>_existing` behaves without
+     anybody remembering this rule.
+
+     **What is already marked wrongly stays visible.** Project 34 holds
+     five incumbent lines set Planned, which is the fault being
+     reported. Dropping the value from the list would leave the select
+     BLANK, and a blank select reads as "nothing set" rather than "set
+     to something this line should not be". The stored value is kept at
+     the end of the list, labelled, disabled, with a reason — it cannot
+     be chosen again and it cannot pass unnoticed. Choosing one of the
+     two proper stages replaces it.
+
+     Nothing else needed changing: an incumbent already DEFAULTED to
+     Existing, and the bulk editor already refuses a status a feature's
+     own list does not contain.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

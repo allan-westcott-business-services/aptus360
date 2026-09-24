@@ -85,6 +85,23 @@ export const SERVICE_STATUSES = [
   { key: "live", label: "Live", colour: "#16a34a" },
 ];
 
+/* ── What somebody else already owns is only ever one of two things ──
+
+   The incumbent's trench and the incumbent's mains are in the road
+   before we arrive. They can be there, or they can be coming out; they
+   cannot be PLANNED, because nobody is planning to lay what is already
+   laid, and they cannot be AS-LAID by us, because we did not lay them.
+
+   Both of those were on the list a moment ago, and a length drawn to
+   show what the incumbent owns could be marked as our work — which
+   then reads as ours on the bill, in the labour rows and to whoever
+   picks the drawing up next.
+
+   The same two entries as the trench list rather than copies, so the
+   labels and the colours cannot drift apart from it. */
+export const EXISTING_STATUSES = BUILD_STATUSES
+  .filter((s) => s.key === "existing" || s.key === "remove");
+
 /* Whether a line is a service cable or pipe on a utility layer. */
 export function isServiceFeature(f, lineTypes = []) {
   if (!f || f.Feature_Type !== "line") return false;
@@ -105,6 +122,15 @@ export function isServiceFeature(f, lineTypes = []) {
    value from the wrong list, which is what keeping them apart is meant
    to prevent. */
 export function statusesFor(feature, lineTypes = []) {
+  /* Asked FIRST. An incumbent main is not matched by isMainFeature (its
+     key does not end `_main`), but its trench is not matched by
+     anything either, and both should offer the same two. Leading with
+     it also means a type added later as `<something>_existing` behaves
+     without anybody remembering this rule. */
+  if (feature?.Feature_Type === "line"
+    && isExistingLineType(feature?.Attributes?.Line_Type)) {
+    return EXISTING_STATUSES;
+  }
   if (isMainFeature(feature, lineTypes)) return MAIN_STATUSES;
   if (isServiceFeature(feature, lineTypes)) return SERVICE_STATUSES;
   return BUILD_STATUSES;
@@ -188,7 +214,7 @@ export function isMainFeature(f, lineTypes = []) {
      `elec_hv`, which is a main in every sense that matters here: it is
      a run of the network, it is laid in a trench, and it passes through
      the same stages. Without it an HV cable had no Build status control
-     at all \u2014 neither `isMain` nor `isService`, so neither editor branch
+     at all — neither `isMain` nor `isService`, so neither editor branch
      drew one.
 
      A service is the thing being excluded, and it says so directly. */
@@ -494,17 +520,17 @@ export const isExistingLineType = (typeKey) =>
 /* The line type a build lays a NEW main as, on a given layer.
 
    The builds found it with `/main/i.test(Type_Key)` and no more, and
-   `find` takes the first match in Sort_Order \u2014 which on water is
+   `find` takes the first match in Sort_Order — which on water is
    `water_main_existing`, sorted ahead of `water_main`. So Build Water
    Network laid the incumbent's type: drawn in the incumbent's grey,
    and defaulted by defaultStatusOf to `existing`, a pipe this job had
    supposedly done nothing to. Gas and electric only escaped because
-   their `_existing` types happen to sort AFTER the real ones \u2014 the
+   their `_existing` types happen to sort AFTER the real ones — the
    same fault, passing by luck of a sort order anybody can change in
    admin. Recurring fault 126's shape: a loose pattern over type keys.
 
    So the predicate says what it means: on this layer, a main, not a
-   service, and not the incumbent's \u2014 by key or by label, since a type
+   service, and not the incumbent's — by key or by label, since a type
    renamed in admin keeps its key. Lowest Sort_Order wins among what
    is left, which is stable and is the one the menus offer first. */
 export function newMainTypeFor(lineTypes = [], layerKey) {
@@ -625,14 +651,14 @@ export function withDefaultStatus(f, lineTypes = []) {
 
    The marker is a dash and a few words rather than a symbol: a select
    draws its options as plain text, so a glyph would have to carry the
-   whole explanation and "Live \u2014 dig the trench first" carries it
+   whole explanation and "Live — dig the trench first" carries it
    already. Browsers grey a disabled option on their own; this is the
    part they cannot supply. */
 export function statusOptions(feature, lineTypes = [], trenches = []) {
   /* Only what lies in a trench is held back by one.
 
      A trench is not in a trench. trenchesUnder matches a trench against
-     itself \u2014 a trench follows its own line perfectly \u2014 so a trench
+     itself — a trench follows its own line perfectly — so a trench
      still Planned came back as the thing holding itself back, and
      setting one As-Laid was refused on the grounds that it was Planned.
      Which it was, and which is what was being corrected.
@@ -646,7 +672,32 @@ export function statusOptions(feature, lineTypes = [], trenches = []) {
 
   const held = inGround ? blocksLive(trenches) : [];
 
-  return statusesFor(feature, lineTypes).map((s) => {
+  /* ── What is already on it, even if it is no longer offered ──
+
+     The incumbent's lines lost Planned and As-Laid the moment they got
+     their own two stages, and drawings hold lines already marked that
+     way — five on project 34 alone, which is the fault being fixed.
+     Dropping the value from the list would leave the select blank, and
+     a blank select reads as "nothing set" rather than "set to something
+     this line should not be".
+
+     So the stored value is kept, at the end, saying what it is and
+     disabled: it cannot be chosen again and it cannot be left
+     unnoticed. Choosing one of the two proper stages replaces it. */
+  const list = statusesFor(feature, lineTypes);
+  const has = feature?.Attributes?.Build_Status;
+  const stale = has && !list.some((s) => s.key === has)
+    ? [{
+      ...(ALL_STATUSES.find((s) => s.key === has) || { key: has, label: has, colour: "#94a3b8" }),
+      disabled: true,
+      why: "Not a stage the incumbent's network can be at. Choose Existing or "
+        + "To be Removed.",
+      stale: true,
+    }]
+    : [];
+
+  return [...list, ...stale].map((s) => {
+    if (s.stale) return s;
     if (!needsGround(s.key) || !held.length) return { ...s, disabled: false };
     return {
       ...s,
@@ -656,7 +707,7 @@ export function statusOptions(feature, lineTypes = [], trenches = []) {
          "2 trenches still Planned" says something is wrong and nothing
          about where, so every instance of this became a database query
          to find out which. The ids are on the features already. */
-      label: `${s.label} \u2014 ${held.length === 1
+      label: `${s.label} — ${held.length === 1
         ? `trench #${held[0].Feature_ID} still Planned`
         : `${held.length} trenches still Planned`}`,
       why: held.length === 1

@@ -8682,6 +8682,44 @@ characters is a hundred lines of prose and no rules at all.
      own list each decided the same question separately. One rule, asked
      everywhere, is the only version of this that holds.
 
+203. **A service carries what feeds it, and wears it.** Asked as two
+     things and they turned out to be one: the colour of a service and
+     its joints should follow the circuit set at the origin, or the LINK
+     BOX OUTPUT where a box feeds the plot — and, said plainly when the
+     first attempt inferred it, "service cables should know what circuit
+     they are connected to".
+
+     They did not. On project 20: 84 services, not one carrying a
+     circuit, a box or a way. Everything that needed to know found the
+     meter at the far end and asked that — a search per cable per
+     question, and a guess dressed as a lookup: it fails on a cable
+     drawn a metre short of its meter.
+
+     **Laid with it.** The planner already knows which meter each cable
+     is for (`c.meter`), so `supplyOf` copies `Circuit_ID`,
+     `Link_Box_ID` and `Link_Way` onto the cable as it is created.
+
+     **Moved with it.** Moving a meter to another output now moves its
+     service's stamp too. A plot on one output with its cable saying
+     another is two answers to one question, and the drawing would show
+     them in different colours — which is exactly the fault this was
+     asked to fix.
+
+     **Drawn from it**, in the same order as everything else: the
+     output's colour where a box feeds it, the circuit's otherwise. The
+     cable, its label's plate and the joints on it all read one map
+     (`serviceInk`), so they cannot disagree. A joint takes its
+     service's colour and falls back to its own circuit; a bottle end
+     keeps its green, being an earth symbol rather than a colour-coded
+     thing.
+
+     **Cables laid before this carry nothing**, and still draw
+     correctly: the meter search is the fallback. Re-running Auto Lay
+     Service Cable stamps them. A one-off backfill over every existing
+     service would be a few lines if it is wanted — not done, because
+     writing to every cable on every project is not something to do
+     unasked.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

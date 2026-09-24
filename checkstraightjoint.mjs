@@ -381,6 +381,117 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
   }
 }
 
+/* ── A service and its joints wear what feeds them ──
+
+   Asked for: the circuit's colour from the origin where no link box is
+   involved, the OUTPUT's colour where one feeds the plot — the same
+   rule the mains, the meters and the rings follow.
+
+   A service cable carries none of it: on project 20, 84 services and
+   not one with a Circuit_ID, a box or a way. What it has is a meter at
+   its far end, and the meter knows. So the colour is read off that
+   meter, and a joint takes it from the service it sits on. All 84
+   resolve: 43 on the circuit, 14 and 27 on the box's two outputs. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("const serviceInk = useMemo");
+  const body = at < 0 ? "" : canvas.slice(at, canvas.indexOf("}, [features, ringColours]);", at));
+  if (!body) fail("services and their joints are not coloured by what feeds them");
+  else {
+    /* ── Its own stamp first, the meter as fallback ──
+
+       A service now CARRIES what feeds it: its circuit, and the link
+       box output where a box does. Reading that is a lookup; searching
+       for the meter at its end is a guess dressed as one, and it fails
+       on a cable drawn a metre short. The search stays for every cable
+       laid before this, which is all of them on a drawing nobody has
+       re-laid. */
+    if (!/const own = wayColourOf\(svc, features\)/.test(body)) {
+      fail("a service's own link box output is ignored, so the colour is still "
+        + "inferred from the meter every time");
+    }
+    if (!/svc\.Attributes\?\.Circuit_ID != null/.test(body)) {
+      fail("a service's own circuit is ignored");
+    }
+    if (!/wayColourOf\(m, features\)/.test(body)) {
+      fail("the meter's link box output is not consulted, so a service on an "
+        + "output wears the circuit's colour");
+    }
+    if (!/ringColours\.get\(Number\(m\.Attributes\.Circuit_ID\)\)/.test(body)) {
+      fail("a service with no box does not fall back to its circuit's colour");
+    }
+    /* Two metres, the slack serviceFor allows between a meter and the
+       cable that feeds it. */
+    if (!/const AT_METER_M = 2;/.test(body)) {
+      fail("the meter at a service's end is matched with no slack, so a cable "
+        + "stopping at the wall finds nothing");
+    }
+    /* A joint takes its service's colour, and falls back to its own
+       circuit where it sits on nothing coloured. */
+    if (!/j\.Feature_Role !== "joint"/.test(body)) {
+      fail("joints are not coloured at all");
+    }
+  }
+  /* Read where the line is stroked, where its label's plate is tinted,
+     and where a joint's symbol is filled. */
+  for (const [what, re] of [
+    ["the service cable", /\?\? serviceInk\.get\(Number\(f\.Feature_ID\)\) \?\? st\.colour\);/],
+    ["a joint's symbol", /const ji = serviceInk\.get\(Number\(f\.Feature_ID\)\);/],
+  ]) {
+    if (!re.test(canvas)) fail(`${what} does not read the service colours`);
+  }
+  if ((canvas.match(/serviceInk\.get\(Number\(f\.Feature_ID\)\)/g) || []).length < 3) {
+    fail("the cable, its label's plate and the joint do not all read it, so they "
+      + "can disagree");
+  }
+  /* Worked out once per change, not per frame: 84 services against 85
+     meters is nothing once and something sixty times a second. */
+  if (!/const serviceInk = useMemo/.test(canvas)) {
+    fail("the service colours are worked out on every frame");
+  }
+}
+
+/* ── A service is laid carrying what feeds it ──
+
+   Asked for: "service cables should know what circuit they are
+   connected to". They carried nothing — 84 on project 20, not one with
+   a circuit, a box or a way — so everything that needed to know had to
+   find the meter at the far end and ask that.
+
+   The planner already knows which meter each cable is for. It is copied
+   onto the cable when it is laid, and moved with the meter when the
+   meter moves to another output: a plot on one output with its cable
+   saying another is two answers to one question, and the drawing would
+   show them in different colours. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/const supplyOf = \(meter\) =>/.test(canvas)) {
+    fail("there is no one place that says what feeds a meter");
+  }
+  for (const attr of ["Circuit_ID", "Link_Box_ID", "Link_Way"]) {
+    if (!new RegExp(`a\\.${attr} != null \\? \\{ ${attr}: a\\.${attr} \\}`).test(canvas)) {
+      fail(`a laid service does not carry ${attr}`);
+    }
+  }
+  if (!/\.\.\.supplyOf\(c\.meter\),/.test(canvas)) {
+    fail("Auto Lay Service Cable lays a cable that does not say what feeds it");
+  }
+  /* And moving a meter between outputs moves its cable's stamp. */
+  const at = canvas.indexOf("async function moveToLinkWay");
+  const move = at < 0 ? "" : canvas.slice(at, canvas.indexOf("function lassoLinkWay", at));
+  if (!/const cables = features\.filter/.test(move)) {
+    fail("moving a meter to another output leaves its service saying the old "
+      + "one, so the plot and its cable are drawn in different colours");
+  }
+  /* Both writes say the same thing: the meter's and the cable's. Two
+     occurrences, because one of them is the meter itself. */
+  const writes = (move.match(/Link_Way: target \? Number\(target\.way\) : null/g) || []).length;
+  if (writes < 2) {
+    fail(`the output is written ${writes} time(s); the meter and its cable both `
+      + "need it, or they disagree");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Straight joints behave (a stop on the run, one cable in and one out).");
 process.exit(bad ? 1 : 0);

@@ -3073,6 +3073,96 @@ export default function GISCanvasPage() {
     return out;
   }, [chosenCircuitColours, features]);
 
+  /* ── A service, and its joints, wear what feeds them ──
+
+     Asked for. A plot's service should carry the colour of the circuit
+     at the origin, or of the LINK BOX OUTPUT where a box feeds it — the
+     same rule the mains, the meters and the report rings already
+     follow.
+
+     A service cable carries nothing that says which: no Circuit_ID, no
+     box, no way (checked on project 20 — 84 services, not one of them
+     carrying any of the three). What it has is a meter at its far end,
+     and the meter knows. So the colour is read off that meter, and a
+     service joint takes it from the service it sits on.
+
+     Worked out once per change of the drawing or the colours rather
+     than per frame: 84 services against 85 meters is seven thousand
+     comparisons, which is nothing once and something sixty times a
+     second. */
+  /* What feeds a meter, in the three attributes a service should carry:
+     its circuit, and the link box output where a box serves it. Written
+     onto a service when it is laid and read when it is drawn, so the
+     cable and the meter can never disagree about who feeds them. */
+  const supplyOf = (meter) => {
+    const a = meter?.Attributes || {};
+    return {
+      ...(a.Circuit_ID != null ? { Circuit_ID: a.Circuit_ID } : {}),
+      ...(a.Link_Box_ID != null ? { Link_Box_ID: a.Link_Box_ID } : {}),
+      ...(a.Link_Way != null ? { Link_Way: a.Link_Way } : {}),
+    };
+  };
+
+  const serviceInk = useMemo(() => {
+    const ink = new Map();
+    const meters = features.filter((f) => f.Feature_Role === "meter"
+      && f.Layer_Key === "electric" && (f.Geometry || []).length);
+    if (!meters.length) return ink;
+
+    const inkOfMeter = (m) => wayColourOf(m, features)
+      ?? (m.Attributes?.Circuit_ID != null
+        ? ringColours.get(Number(m.Attributes.Circuit_ID)) ?? null : null);
+
+    /* Two metres of slack, the same as `serviceFor` allows: a meter is
+       drawn at the property and the cable stops at the wall. */
+    const AT_METER_M = 2;
+    const meterNear = (pt) => meters.find((m) => {
+      const q = m.Geometry[0];
+      return Math.hypot(q[0] - pt[0], q[1] - pt[1]) <= AT_METER_M;
+    }) || null;
+
+    const services = features.filter((f) => f.Feature_Type === "line"
+      && f.Attributes?.Line_Type === "elec_service" && (f.Geometry || []).length > 1);
+
+    for (const svc of services) {
+      /* Its own stamp first: a service laid since this change carries
+         its circuit and its output, and reading them is a lookup rather
+         than a search. The meter at its end is the fallback, for every
+         cable laid before — which is all of them on a drawing nobody
+         has re-laid. */
+      const own = wayColourOf(svc, features)
+        ?? (svc.Attributes?.Circuit_ID != null
+          ? ringColours.get(Number(svc.Attributes.Circuit_ID)) ?? null : null);
+      const g = svc.Geometry;
+      const m = own ? null : (meterNear(g[g.length - 1]) || meterNear(g[0]));
+      const c = own ?? (m ? inkOfMeter(m) : null);
+      if (c) ink.set(Number(svc.Feature_ID), c);
+    }
+
+    /* A joint on a service takes that service's colour. Matched by
+       position, which is how everything else on this drawing finds the
+       cable under a joint, and falling back to the joint's own circuit
+       where it sits on nothing coloured. */
+    const JOINT_TOL_M = 0.35;
+    for (const j of features) {
+      if (j.Feature_Role !== "joint" || j.Layer_Key !== "electric") continue;
+      const at = (j.Geometry || [])[0];
+      if (!at) continue;
+      let c = null;
+      for (const svc of services) {
+        const near = (svc.Geometry || []).some((q) =>
+          Math.hypot(q[0] - at[0], q[1] - at[1]) <= JOINT_TOL_M);
+        if (near) { c = ink.get(Number(svc.Feature_ID)) ?? null; if (c) break; }
+      }
+      if (!c && j.Attributes?.Circuit_ID != null) {
+        c = ringColours.get(Number(j.Attributes.Circuit_ID)) ?? null;
+      }
+      if (c) ink.set(Number(j.Feature_ID), c);
+    }
+    return ink;
+  }, [features, ringColours]);
+
+
   /* Which proposed group each meter is in, while a suggestion is on
      screen. Keyed by feature id because a proposal has no circuit to key
      on — that is the whole point of it being a proposal. */
@@ -5252,6 +5342,23 @@ export default function GISCanvasPage() {
              Only where the circuit HAS a colour: an electric meter on a
              circuit nobody has coloured, or one not yet on a circuit at
              all, keeps the style's colour rather than turning grey. */
+          /* ── A joint on a service wears what the service wears ──
+
+             Asked for with the services themselves: the joint that tees
+             a plot off is part of that plot's supply, and a joint in the
+             circuit's colour beside a cable in its output's colour says
+             the two belong to different things.
+
+             `serviceInk` holds both, worked out from the meter at the
+             service's end, so the joint and its cable cannot disagree.
+             A bottle end keeps its green below — it is an earth symbol,
+             not a colour-coded thing — and a joint on nothing coloured
+             keeps the style's colour. */
+          if (f.Feature_Role === "joint" && f.Layer_Key === "electric") {
+            const ji = serviceInk.get(Number(f.Feature_ID));
+            if (ji) fill = ji;
+          }
+
           if (isMeter && f.Layer_Key === "electric") {
             /* ── Fed from a link box output, it wears that output ──
 
@@ -6412,9 +6519,13 @@ export default function GISCanvasPage() {
         line.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
         if (f.Feature_Type === "polygon") ctx.closePath();
         /* A POC's supply route takes the colour set on its POC; a
-           feeder main its circuit's; everything else its style's. */
+           feeder main its circuit's; a service the colour of whatever
+           feeds the meter at its end — its link box output where a box
+           does, its circuit where none does; everything else its
+           style's. */
         ctx.strokeStyle = on ? "#1d4ed8"
-          : (fp?.colour ?? routeColourOf(f) ?? st.colour);
+          : (fp?.colour ?? routeColourOf(f)
+            ?? serviceInk.get(Number(f.Feature_ID)) ?? st.colour);
         ctx.lineWidth = on ? st.widthPx + 1.5 : st.widthPx;
         ctx.setLineDash(st.dash);
         ctx.lineCap = "round";
@@ -7075,7 +7186,8 @@ export default function GISCanvasPage() {
                Unselected, the plate is its circuit's colour paled, as
                on the printed sheet. */
             const plateColour = on ? "#1d4ed8"
-              : (fp?.colour ?? routeColourOf(f) ?? st.colour);
+              : (fp?.colour ?? routeColourOf(f)
+                ?? serviceInk.get(Number(f.Feature_ID)) ?? st.colour);
             ctx.fillStyle = on
               ? "#1d4ed8"
               : own ? tint(plateColour, LABEL_PLATE_TINT) : "rgba(255,255,255,.92)";
@@ -8445,7 +8557,7 @@ export default function GISCanvasPage() {
     }
   }, [visible, selected, view, toPx, printFrame, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, jointFor, traceRun, tracedM, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, tool, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset, slpSet, slpNrsSet, layers,
     /* OS tiles and the matching session: a change to either is a redraw. */
-    overlayDrawn, align, activeLink, routeColourOf, servicePointsShown]);
+    overlayDrawn, align, activeLink, routeColourOf, serviceInk, servicePointsShown]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -14950,12 +15062,44 @@ export default function GISCanvasPage() {
     }
     setBusy("circuit");
     try {
-      await bulkUpdateFeatures(projectId, rows.map((m) => ({
+      /* ── The service moves with its meter ──
+
+         A service carries which circuit and which output feeds it, so
+         a meter moved to another output and a cable left saying the old
+         one is two answers to one question — and the drawing would
+         show the plot in one colour and its cable in another.
+
+         Found by position, the same two metres of slack the laying
+         uses: a meter is drawn at the property and the cable stops at
+         the wall. */
+      const moved = rows.map((m) => ({
         Feature_ID: m.Feature_ID,
         Attributes: { ...m.Attributes,
           Link_Box_ID: target ? Number(target.boxId) : null,
           Link_Way: target ? Number(target.way) : null },
-      })));
+      }));
+
+      const AT_METER_M = 2;
+      const cables = features.filter((f) => f.Feature_Type === "line"
+        && /service/i.test(String(f.Attributes?.Line_Type ?? ""))
+        && (f.Geometry || []).length > 1
+        && rows.some((m) => {
+          const q = (m.Geometry || [])[0];
+          if (!q) return false;
+          const g = f.Geometry;
+          return [g[0], g[g.length - 1]].some((e) =>
+            Math.hypot(e[0] - q[0], e[1] - q[1]) <= AT_METER_M);
+        }));
+
+      await bulkUpdateFeatures(projectId, [
+        ...moved,
+        ...cables.map((f) => ({
+          Feature_ID: f.Feature_ID,
+          Attributes: { ...f.Attributes,
+            Link_Box_ID: target ? Number(target.boxId) : null,
+            Link_Way: target ? Number(target.way) : null },
+        })),
+      ]);
       await load(projectId);
       setStatus(target
         ? `${rows.length} meter(s) onto output ${target.way} — run Build LV `
@@ -20321,6 +20465,20 @@ export default function GISCanvasPage() {
             /* The scope defaults for this line type — size, and whatever
                else a new service of this utility starts with. */
             ...defaultsFor(type.Type_Key),
+            /* ── What feeds it, stated ──
+
+               A service carried nothing saying which circuit it was on,
+               or which output of a link box: 84 of them on project 20,
+               not one with any of the three. Everything that wanted to
+               know had to find the meter at its far end and ask that,
+               which is a guess dressed as a lookup — it fails on a
+               cable drawn a metre short, and it costs a search per
+               cable per question.
+
+               The planner already knows: `c.meter` is the meter this
+               cable was laid to. Copied here, where the fact is in
+               hand. */
+            ...supplyOf(c.meter),
           },
         });
         made.push(f);

@@ -231,6 +231,59 @@ const menus = readFileSync("./src/features/gis/GisMenus.jsx", "utf8");
   }
 }
 
+/* ── The two ends of a service, visible ──
+
+   Placing a plot seed names four things: the seed, the property
+   boundary point, the end of the service trench, and the meters. The
+   boundary point was drawn only on water's drawing — a lettered ring,
+   which is a water idea — and the trench end was drawn nowhere at all.
+   Both are positions every service is routed through, and neither could
+   be seen to be checked.
+
+   A small brown cross at each now, on every utility, belonging to the
+   service trench: they are the two ends of that dig, so they come and
+   go with it. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("const servicePointsShown = useMemo");
+  const gate = at < 0 ? "" : canvas.slice(at, at + 400);
+  if (!gate) fail("nothing draws the boundary point and the service trench end");
+  else {
+    if (!/hidden\.includes\("trench"\)/.test(gate)
+      || !/hidden\.includes\("lt:trench_service"\)/.test(gate)) {
+      fail("the marks do not follow the service trench, so hiding that dig leaves "
+        + "its two ends floating on the drawing");
+    }
+    /* Off the lighting drawing, like the boundary ring: a column has no
+       service. */
+    if (!/!lightingView/.test(gate)) {
+      fail("the marks appear on the lighting drawing, where there are no services");
+    }
+    /* Not gated on water, which is the fault being fixed. */
+    if (/isolatedAwayFromWater/.test(gate)) {
+      fail("the marks are still water-only, which is the fault reported");
+    }
+  }
+
+  const draw = canvas.indexOf("if (servicePointsShown) {");
+  const body = draw < 0 ? "" : canvas.slice(draw, draw + 1400);
+  for (const key of ["Boundary_At", "Trench_End_At"]) {
+    if (!body.includes(key)) fail(`the ${key} point is not marked`);
+  }
+  /* Plot seeds AND non-residential supplies: an NRS names the same two
+     points. */
+  if (!/f\.Feature_Role !== "plot" && f\.Feature_Role !== "nrs"/.test(body)) {
+    fail("a non-residential supply's boundary point and trench end are not marked");
+  }
+  /* A fixed size in pixels: a cross that grows with the zoom covers the
+     join it points at. */
+  if (!/const r = 4;/.test(body)) fail("the cross is not a fixed size on screen");
+  if (!/SERVICE_POINT_INK/.test(body)) fail("the cross is not drawn in the brown");
+  if (!/const SERVICE_POINT_INK = "#8b5a2b"/.test(canvas)) {
+    fail("the brown is not one named colour, so the two marks can drift apart");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The switches say what they govern; the picker says what things are.");
 process.exit(bad ? 1 : 0);

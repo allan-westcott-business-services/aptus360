@@ -8263,6 +8263,38 @@ characters is a hundred lines of prose and no rules at all.
      plain shape — the one feature with no role. Fixed before it
      shipped; the check holds it.
 
+193. **The two ends of a service are marked.** Placing a plot seed names
+     four things: the seed, the property BOUNDARY POINT, the END OF THE
+     SERVICE TRENCH, and the meters. The boundary point was drawn only
+     on water's drawing — a lettered ring, which is a water idea, gated
+     deliberately in 3313 — and the trench end was drawn nowhere at all,
+     on any utility. Both are real positions every service is routed
+     through, and neither could be seen to be checked or corrected.
+
+     Both now show as a **small brown cross** (`#8b5a2b`), on every
+     utility, for plot seeds and non-residential supplies alike — an
+     NRS names the same two points.
+
+     They belong to the **service trench**, not to the plots or to a
+     utility: they are the two ends of that dig, so they come and go
+     with it (`trench` and `lt:trench_service`). Off the lighting
+     drawing, like the boundary ring and for the same reason.
+
+     Fixed at 4 px arms rather than sized in metres: these are marks,
+     and one that grew with the zoom would cover the join it points at.
+     The water "A" ring is untouched — it says something the cross does
+     not, and the decision that put it on water only still stands.
+
+     On real drawings that is 170 marks on project 20 and 462 on project
+     27; every seed on both carries both points. No zoom threshold, so
+     they are visible whenever the service trench is — the boundary ring
+     has one (`boundaryStyle.minScale`) and a threshold here would
+     reproduce the reported fault at the zoom somebody happens to be at.
+
+     Canvas only. Not on the printed sheet, where the service trench is
+     drawn but these two marks would be new furniture nobody has asked
+     for.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

@@ -3329,6 +3329,29 @@ export default function GISCanvasPage() {
       && !isolatedAwayFromWater,
     [hidden, lightingView, boundaryStyle, isolatedAwayFromWater]);
 
+  /* ── The two points a service is measured between ──
+
+     A plot seed is placed by naming four things: the seed, the property
+     BOUNDARY POINT, the END OF THE SERVICE TRENCH, and the meters. The
+     boundary point was drawn only on water's drawing — a lettered ring,
+     which is a water idea — and the trench end was never drawn at all,
+     on any utility. Both are real positions every service is routed
+     through, and neither could be seen to be checked or corrected.
+
+     Both are marked now, on every utility, as a small brown cross.
+
+     They belong to the SERVICE TRENCH: that is the dig they are the two
+     ends of, so they come and go with it rather than with the plots or
+     with a utility. Off the lighting drawing, like the boundary ring
+     and for the same reason — a lighting column has no service. */
+  const servicePointsShown = useMemo(
+    () => !lightingView
+      && !hidden.includes("trench")
+      && !hidden.includes("lt:trench_service"),
+    [hidden, lightingView],
+  );
+  const SERVICE_POINT_INK = "#8b5a2b";
+
   /* How many of each class exist, so a toggle can say whether it will
      change anything before you click it. */
   /* ── A circuit's name, from its id ──
@@ -6930,6 +6953,38 @@ export default function GISCanvasPage() {
       }
     }
 
+    /* ── The boundary point and the end of the service trench ──
+
+       A small brown cross at each, on every utility, for every plot
+       seed and every non-residential supply that names them. Two
+       positions chosen when the seed was placed and, until now,
+       invisible on all but water.
+
+       Drawn at a fixed size in pixels: these are marks, not things with
+       a width on the ground, and a cross that grows with the zoom would
+       cover the very join it is pointing at. */
+    if (servicePointsShown) {
+      ctx.save();
+      ctx.strokeStyle = SERVICE_POINT_INK;
+      ctx.lineWidth = 1.6;
+      ctx.lineCap = "round";
+      for (const f of features) {
+        if (f.Feature_Role !== "plot" && f.Feature_Role !== "nrs") continue;
+        for (const key of ["Boundary_At", "Trench_End_At"]) {
+          const at = f.Attributes?.[key];
+          if (!Array.isArray(at) || at.length !== 2) continue;
+          const p = pxOf([Number(at[0]), Number(at[1])]);
+          if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+          const r = 4;
+          ctx.beginPath();
+          ctx.moveTo(p.x - r, p.y - r); ctx.lineTo(p.x + r, p.y + r);
+          ctx.moveTo(p.x + r, p.y - r); ctx.lineTo(p.x - r, p.y + r);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+
     /* Where the next click will land, and what it is latching onto.
 
        One marker for every kind of snap told you something was
@@ -8137,7 +8192,7 @@ export default function GISCanvasPage() {
     }
   }, [visible, selected, view, toPx, printFrame, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, jointFor, traceRun, tracedM, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, tool, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset, slpSet, slpNrsSet, layers,
     /* OS tiles and the matching session: a change to either is a redraw. */
-    overlayDrawn, align, activeLink, routeColourOf]);
+    overlayDrawn, align, activeLink, routeColourOf, servicePointsShown]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;

@@ -3,7 +3,7 @@ import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import {
   BUILD_STATUSES, MAIN_STATUSES, SERVICE_STATUSES,
-  isMainFeature, isServiceFeature, statusOptions, isExistingLineType,
+  isMainFeature, isServiceFeature, statusOptions, isExistingLineType, defaultStatusOf,
 } from "./buildStatus.js";
 import FutureAllowance from "./FutureAllowance.jsx";
 import { utilityById } from "../../lib/utilities.js";
@@ -5069,7 +5069,19 @@ export default function FeatureEditor({
                       question nobody had answered, when the answer for
                       a trench on a drawing is nearly always the same
                       one. */}
-                  <select id="fe-build" value={f.Attributes.Build_Status ?? "planned"}
+                  {/* Nothing stored falls back to what this KIND of line
+                      starts at, not to "planned". The literal was
+                      written when every trench started there; the
+                      incumbent's starts at Existing, so an existing
+                      trench with no status showed Planned — which is
+                      how this was reported, and which the select would
+                      then save if anything else on the editor was
+                      changed. defaultStatusOf is the same rule the
+                      drawing path and the cascade now ask. */}
+                  <select id="fe-build"
+                    value={f.Attributes.Build_Status
+                      ?? defaultStatusOf({ ...feature, Attributes: f.Attributes }, lineTypes)
+                      ?? ""}
                     /* Null rather than undefined for "not set".
                        undefined survives in state and then vanishes
                        when the row is serialised, so what is stored

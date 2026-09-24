@@ -8639,9 +8639,32 @@ characters is a hundred lines of prose and no rules at all.
      cascade the other way already skipped existing ground
      (`trenchesUnder`), which is why only the one needed saying.
 
-     Worth the general point: a DEFAULT being right is not the same as a
-     value staying right. Everything that writes a stage later is
-     another place the rule has to hold.
+     **And the drawing path stamped it too.** Reported next: a NEW
+     incumbent trench still arrived Planned, with its own editor
+     offering only Existing and To be Removed. The line-creation code
+     set `"planned"` outright for any trench — written before the
+     incumbent types existed, and true of every trench until they did.
+     It asks `defaultStatusOf` now.
+
+     **And a fourth: the editor's own select.** Reported again after
+     the third fix. `value={f.Attributes.Build_Status ?? "planned"}` —
+     so a trench with no status stored READ Planned whatever kind it
+     was, and would have saved it the next time anything on the editor
+     was changed. Plus a fifth, found by sweeping for the literal: an
+     offcut from splitting a trench fell back to "planned" where the
+     length it came from had no status.
+
+     All four now ask `defaultStatusOf`, and the check COUNTS the
+     remaining `?? "planned"` literals — one is legitimate (the
+     nearest-trench lookup for one of our own cables) and a second means
+     somebody has added a sixth place.
+
+     Worth the general point, and this is the fourth place it bit in one
+     change: a DEFAULT being right is not the same as a value staying
+     right. `defaultStatusOf` has been correct since 0197; a literal in
+     the drawing path, a cascade from a trench edit, and the editor's
+     own list each decided the same question separately. One rule, asked
+     everywhere, is the only version of this that holds.
 
 ## Decisions worth knowing
 

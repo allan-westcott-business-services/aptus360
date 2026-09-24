@@ -187,7 +187,7 @@ import {
   isMainFeature, isMainType, LIVE_COLOUR, DEAD_COLOUR, UNSET_COLOUR,
   LIVE_BAND_M,
   isOffSite, withDefaultStatus, blocksLive, needsGround, isServiceFeature,
-  newMainTypeFor, isExistingLineType,
+  newMainTypeFor, isExistingLineType, defaultStatusOf,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import { carryLine, carryPoint, claimedByAnother } from "./carryContents.js";
@@ -11708,16 +11708,30 @@ export default function GISCanvasPage() {
             Surface_Type: isTrenchType(lineType, lineTypes)
               ? surfaceFor(run.site, surface, surfaceTypes) : null,
             /* A trench somebody has just drawn is trench somebody
-               intends to dig. Planned is what that is called, and it is
-               true of every trench on a drawing until told otherwise —
-               so it is the default rather than a question.
+               intends to dig, and Planned is what that is called. It
+               matters to the estimate: leaving the status blank made
+               "nobody said" and "it is already there" look the same to
+               anyone reading the drawing. Only trenches — a cable has
+               no build status of its own here.
 
-               It matters to the estimate: an existing trench is laid
-               but not dug, and leaving the status blank made "nobody
-               said" and "it is already there" look the same to anyone
-               reading the drawing. Only trenches — a cable has no build
-               status of its own. */
-            Build_Status: isTrenchType(lineType, lineTypes) ? "planned" : undefined,
+               ── Except the incumbent's ──
+
+               This said "planned" outright, and the incumbent's trench
+               is a trench, so every one drawn arrived marked as work we
+               intend to do on somebody else's network. Reported from
+               use, with the editor offering only Existing and To be
+               Removed while the value itself read Planned.
+
+               `defaultStatusOf` has answered this since the existing
+               types were added: `planned` for ours, `existing` for
+               theirs. Asking it is one rule in one place rather than a
+               literal here that has to be remembered. */
+            Build_Status: isTrenchType(lineType, lineTypes)
+              ? defaultStatusOf({
+                Feature_Type: "line", Layer_Key: "trench",
+                Attributes: { Line_Type: lineType },
+              }, lineTypes)
+              : undefined,
             Site: run.site,
             /* ── Which circuit a hand-drawn cable is on ──
 
@@ -17501,12 +17515,18 @@ export default function GISCanvasPage() {
           Geometry: piece.geometry,
           Attributes: {
             ...trench.Attributes,
-            /* An offcut keeps what it had, or falls back to planned —
-               never to nothing. A length of trench with no status looks
-               the same as one somebody has said is already there, and
-               the estimate reads the difference: existing is laid but
-               not dug. */
-            Build_Status: piece.status ?? trench.Attributes?.Build_Status ?? "planned",
+            /* An offcut keeps what the length it came from had, and
+               where that had nothing, what a trench of its KIND starts
+               at — never nothing. A length of trench with no status
+               looks the same as one somebody has said is already there,
+               and the estimate reads the difference: existing is laid
+               but not dug.
+
+               The fallback was the literal "planned", which on a piece
+               cut from the incumbent's trench would have said we intend
+               to dig it. */
+            Build_Status: piece.status ?? trench.Attributes?.Build_Status
+              ?? defaultStatusOf(trench, lineTypes),
           },
         });
       }

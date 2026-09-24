@@ -14,7 +14,8 @@
    is what all of this exists to prevent. */
 import { readFileSync } from "node:fs";
 import {
-  BUILD_STATUSES, MAIN_STATUSES, statusesFor, statusOptions, isMainFeature, isLive,
+  BUILD_STATUSES, MAIN_STATUSES, statusesFor, statusOptions, defaultStatusOf,
+  isMainFeature, isLive,
   statusOf, statusLabel, statusColour, LIVE_COLOUR, DEAD_COLOUR, UNSET_COLOUR,
   isMainType,
 } from "./src/features/gis/buildStatus.js";
@@ -665,6 +666,75 @@ const line = (type, status) => ({
   if (!/stage === "existing" \|\| stage === "remove" \|\| stage === "asbuilt"/.test(up)) {
     fail("the as-built cascade no longer skips existing ground, so a live main "
       + "marks the incumbent's trench as ours");
+  }
+}
+
+/* ── A trench arrives at the right stage ──
+
+   Reported: a NEW incumbent trench was still placed as Planned, with
+   its own editor offering only Existing and To be Removed. The drawing
+   path stamped "planned" outright — written before the incumbent types
+   existed, and true of every trench until they did.
+
+   `defaultStatusOf` has answered this all along. One rule in one place
+   beats a literal that has to be remembered: it says `planned` for our
+   trench and `existing` for theirs. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (/Build_Status: isTrenchType\(lineType, lineTypes\) \? "planned" : undefined/.test(canvas)) {
+    fail("a drawn trench is stamped Planned whatever its type, so the "
+      + "incumbent's arrives as work we intend to do");
+  }
+  if (!/Build_Status: isTrenchType\(lineType, lineTypes\)\s*\n\s*\? defaultStatusOf\(/.test(canvas)) {
+    fail("the drawing path does not ask defaultStatusOf what stage a new trench "
+      + "is at");
+  }
+  /* And the rule itself, for every trench type there is. */
+  const types = ["trench_main", "trench_service", "trench_main_existing", "trench_service_existing"]
+    .map((k) => ({ Type_Key: k, Layer_Key: "trench" }));
+  for (const t of types) {
+    const got = defaultStatusOf(
+      { Feature_Type: "line", Layer_Key: "trench", Attributes: { Line_Type: t.Type_Key } }, types,
+    );
+    const want = t.Type_Key.endsWith("_existing") ? "existing" : "planned";
+    if (got !== want) fail(`a new ${t.Type_Key} starts at ${got}, not ${want}`);
+  }
+}
+
+/* ── Every place that decides a trench's stage asks the same rule ──
+
+   Reported three times in a row, each a different place deciding it
+   for itself while `defaultStatusOf` sat there answering correctly:
+
+     the drawing path       stamped "planned" on any trench;
+     the planned cascade    marked the incumbent's lines with ours;
+     the editor's select    fell back to "planned" when nothing stored,
+                            so an existing trench READ Planned and would
+                            have saved it on the next edit;
+     splitting a trench     gave an offcut "planned" where the length it
+                            came from had no status.
+
+   Counted, because the next one will be a fifth place. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+
+  if (/Build_Status: f\.Attributes\.Build_Status \?\? "planned"/.test(editor)
+    || /value=\{f\.Attributes\.Build_Status \?\? "planned"\}/.test(editor)) {
+    fail("the editor shows Planned for a trench with no status, whatever kind it "
+      + "is — and would save it on the next edit");
+  }
+  if (!/\?\? defaultStatusOf\(\{ \.\.\.feature, Attributes: f\.Attributes \}, lineTypes\)/.test(editor)) {
+    fail("the editor does not fall back to what this kind of line starts at");
+  }
+  if (/Build_Status: piece\.status \?\? trench\.Attributes\?\.Build_Status \?\? "planned"/.test(canvas)) {
+    fail("an offcut of the incumbent's trench falls back to Planned");
+  }
+  /* And nowhere left writing the literal as a default. */
+  const literals = (canvas.match(/\?\? "planned"/g) || []).length;
+  if (literals > 1) {
+    fail(`${literals} places still fall back to the literal "planned"; only the `
+      + "nearest-trench lookup for one of OUR cables should");
   }
 }
 

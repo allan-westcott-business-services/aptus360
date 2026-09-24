@@ -292,6 +292,11 @@ const BOUNDARY_INK = "#334155";
    enough not to cover the geometry underneath it. */
 const HANDLE_PX = 6;
 
+/* Where the Levels Check form's three settings are kept between
+   sessions. One key for the three, so they are written and read as one
+   thing. */
+const LEVEL_OPTS_KEY = "aptus.levels.options";
+
 export default function GISCanvasPage() {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
@@ -1847,21 +1852,61 @@ export default function GISCanvasPage() {
      section that has customers, at full weight beside the halved
      domestic load. The Aptus Calc Sheet has always applied it; the
      levels check never did, so the two disagreed by that much on every
-     leg \u2014 about half a percent over a six-leg route on project 34.
+     leg — about half a percent over a six-leg route on project 34.
 
      Switched OFF by default and 8 kVA when switched on, which is what
      the workbook uses. Off by default because turning it on raises the
      reported volt drop on every drawing, and that is a change somebody
      should make deliberately rather than find one morning. */
-  const [groupOn, setGroupOn] = useState(false);
-  const [groupKva, setGroupKva] = useState(8);
+  /* ── The three settings survive a refresh ──
+
+     They are how somebody has decided to check this design, not a
+     momentary choice: set them, reload, and they are still set. Kept
+     in the browser rather than on the project, because they belong to
+     the person doing the checking — one estimator comparing against a
+     workbook should not change what a colleague sees on the same
+     drawing.
+
+     Read once, guarded: private browsing refuses localStorage, and a
+     half-written entry must not stop the canvas opening. A missing or
+     unreadable entry gives the defaults, which is everything off. */
+  const [levelOpts, setLevelOpts] = useState(() => {
+    const def = { groupOn: false, groupKva: 8, admdOn: false, admdKva: 5.01, jointOn: false, jointM: 1.5 };
+    try {
+      const raw = localStorage.getItem(LEVEL_OPTS_KEY);
+      if (!raw) return def;
+      const p = JSON.parse(raw);
+      return {
+        groupOn: !!p.groupOn, admdOn: !!p.admdOn, jointOn: !!p.jointOn,
+        /* A figure that will not parse falls back to the default rather
+           than becoming NaN, which would silently make its allowance
+           zero while its switch still read on. */
+        groupKva: Number.isFinite(Number(p.groupKva)) ? Number(p.groupKva) : def.groupKva,
+        admdKva: Number.isFinite(Number(p.admdKva)) ? Number(p.admdKva) : def.admdKva,
+        jointM: Number.isFinite(Number(p.jointM)) ? Number(p.jointM) : def.jointM,
+      };
+    } catch {
+      return def;
+    }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(LEVEL_OPTS_KEY, JSON.stringify(levelOpts)); }
+    catch { /* private mode: the session still works, it just forgets */ }
+  }, [levelOpts]);
+
+  /* Named the way the rest of the file reads them, so the change is one
+     of storage and not of every use. */
+  const { groupOn, groupKva, admdOn, admdKva, jointOn, jointM } = levelOpts;
+  const setOpt = (k) => (v) => setLevelOpts((p) => ({ ...p, [k]: v }));
+  const setGroupOn = setOpt("groupOn");
+  const setGroupKva = setOpt("groupKva");
 
   /* ── One ADMD for every plot ──
 
      The levels check adds up what each plot actually draws: its figure
      comes from House_Type_Consumption, on bedrooms and heat source
      together, so a 4 bed with a heat pump counts for more than a 2 bed
-     with a boiler. The verification workbook does not work that way \u2014
+     with a boiler. The verification workbook does not work that way —
      it multiplies a customer COUNT by one ADMD. On a mixed scheme the
      two disagree however right both are.
 
@@ -1874,10 +1919,10 @@ export default function GISCanvasPage() {
      it separately too.
 
      Off by default, and when it is on the drawing is deliberately not
-     telling the truth about a mixed scheme \u2014 which is why the panel
+     telling the truth about a mixed scheme — which is why the panel
      says so rather than only showing a tick. */
-  const [admdOn, setAdmdOn] = useState(false);
-  const [admdKva, setAdmdKva] = useState(5.01);
+  const setAdmdOn = setOpt("admdOn");
+  const setAdmdKva = setOpt("admdKva");
 
   /* ── The joint allowance, from the form ──
 
@@ -1891,9 +1936,9 @@ export default function GISCanvasPage() {
      as the other two: while the app is being checked against a workbook
      that has no such idea, it wants turning on and off without changing
      the figure for everybody. Off, the catalogue's own setting still
-     applies \u2014 this is an override, not a second place to configure. */
-  const [jointOn, setJointOn] = useState(false);
-  const [jointM, setJointM] = useState(1.5);
+     applies — this is an override, not a second place to configure. */
+  const setJointOn = setOpt("jointOn");
+  const setJointM = setOpt("jointM");
 
   /* ── One set of volt-drop settings, for every path that needs them ──
 
@@ -1929,7 +1974,7 @@ export default function GISCanvasPage() {
          checking it, not a catalogue fact. */
       groupKva: groupOn ? Number(groupKva) || 0 : 0,
       /* Overrides the catalogue while it is on, and leaves it alone
-         otherwise \u2014 so a drawing nobody has touched the form on reads
+         otherwise — so a drawing nobody has touched the form on reads
          exactly as the catalogue says. */
       ...(jointOn ? { jointEquivM: Number(jointM) || 0 } : {}),
     };
@@ -30496,75 +30541,46 @@ export default function GISCanvasPage() {
                             ))}
                         </div>
                       )}
-                      {/* ── The small group diversity allowance ──
+                      {/* ── The three settings a check can be run with ──
 
-                          The verification workbook's B5: a lump of kVA
-                          added to every section that has customers, at
-                          full weight beside the halved domestic load.
-                          The calc sheet has always applied it and the
-                          levels check never did, so the two disagreed
-                          by that much on every leg.
+                          Stacked, in one group, driven by one list — they
+                          were three separate blocks that laid out side by
+                          side and had to be kept in step by hand.
 
-                          Off until somebody asks, because switching it
-                          on raises the volt drop on every route. */}
+                          Each is off until somebody asks. The group
+                          allowance is the verification workbook's B5, a
+                          lump on every section that has customers; ONE
+                          ADMD counts every plot at the same figure
+                          instead of its own load; the joint allowance
+                          charges each plot connection as metres of the
+                          leg's own cable, overriding the catalogue while
+                          it is on. */}
                       {trace.hasVd && (
-                        <div className="gt-h-set gt-h-grpkva">
-                          <label className="gt-h-r" title="The workbook's B5: added to every section that has customers">
-                            <input type="checkbox" checked={groupOn}
-                              onChange={(e) => setGroupOn(e.target.checked)} />
-                            Group allowance
-                          </label>
-                          <input type="number" className="gt-h-num" min="0" step="0.1"
-                            value={groupKva} disabled={!groupOn}
-                            aria-label="Group allowance kVA"
-                            onChange={(e) => setGroupKva(e.target.value)} />
-                          <span className="gt-h-unit">kVA</span>
-                        </div>
-                      )}
-                      {/* ── One ADMD for every plot ──
-
-                          The check adds up what each plot actually
-                          draws, from its bedrooms and heat source. The
-                          verification workbook multiplies a customer
-                          count by one figure. This asks the workbook's
-                          question instead, so the two can be compared
-                          line by line.
-
-                          Non-residential supplies keep their own kVA. */}
-                      {trace.hasVd && (
-                        <div className="gt-h-set gt-h-grpkva">
-                          <label className="gt-h-r"
-                            title="Take every plot at one figure, the way the verification sheet does, instead of its own load">
-                            <input type="checkbox" checked={admdOn}
-                              onChange={(e) => setAdmdOn(e.target.checked)} />
-                            One ADMD per plot
-                          </label>
-                          <input type="number" className="gt-h-num" min="0" step="0.01"
-                            value={admdKva} disabled={!admdOn}
-                            aria-label="ADMD kVA per plot"
-                            onChange={(e) => setAdmdKva(e.target.value)} />
-                          <span className="gt-h-unit">kVA</span>
-                        </div>
-                      )}
-                      {/* ── The joint allowance ──
-
-                          Metres of the leg's own cable charged for each
-                          plot connection on it. The catalogue says 0 on
-                          this instance, and the verification workbook
-                          has no equivalent at all. */}
-                      {trace.hasVd && (
-                        <div className="gt-h-set gt-h-grpkva">
-                          <label className="gt-h-r"
-                            title="Charge each plot connection as extra metres of the leg's own cable">
-                            <input type="checkbox" checked={jointOn}
-                              onChange={(e) => setJointOn(e.target.checked)} />
-                            Joint allowance
-                          </label>
-                          <input type="number" className="gt-h-num" min="0" step="0.1"
-                            value={jointM} disabled={!jointOn}
-                            aria-label="Joint allowance metres"
-                            onChange={(e) => setJointM(e.target.value)} />
-                          <span className="gt-h-unit">m each</span>
+                        <div className="gt-h-set gt-h-opts">
+                          {[
+                            { key: "group", label: "Group allowance", unit: "kVA", step: 0.1,
+                              on: groupOn, setOn: setGroupOn, val: groupKva, setVal: setGroupKva,
+                              hint: "Added to every section that has customers" },
+                            { key: "admd", label: "One ADMD per plot", unit: "kVA", step: 0.01,
+                              on: admdOn, setOn: setAdmdOn, val: admdKva, setVal: setAdmdKva,
+                              hint: "Count every plot at one figure instead of its own load" },
+                            { key: "joint", label: "Joint allowance", unit: "m each", step: 0.1,
+                              on: jointOn, setOn: setJointOn, val: jointM, setVal: setJointM,
+                              hint: "Charge each plot connection as extra metres of the leg's own cable" },
+                          ].map((o) => (
+                            <div key={o.key} className="gt-h-opt">
+                              <label className="gt-h-r" title={o.hint}>
+                                <input type="checkbox" checked={o.on}
+                                  onChange={(e) => o.setOn(e.target.checked)} />
+                                {o.label}
+                              </label>
+                              <input type="number" className="gt-h-num" min="0" step={o.step}
+                                value={o.val} disabled={!o.on}
+                                aria-label={`${o.label} ${o.unit}`}
+                                onChange={(e) => o.setVal(e.target.value)} />
+                              <span className="gt-h-unit">{o.unit}</span>
+                            </div>
+                          ))}
                         </div>
                       )}
                       {admdOn && (
@@ -31468,7 +31484,12 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 /* The group allowance sits on one line: a switch, a number and its
    unit. The number greys out rather than disappearing when the switch
    is off, so the figure it would use is still readable. */
-.gt-h-grpkva { flex-direction: row; align-items: center; gap: 6px; margin-top: 4px; }
+.gt-h-opts { gap: 4px; margin-top: 4px; }
+/* One line each, stacked: a switch, its figure, its unit. The figure
+   greys out rather than disappearing when the switch is off, so what it
+   would use stays readable. */
+.gt-h-opt { display: flex; align-items: center; gap: 6px; }
+.gt-h-opt .gt-h-r { flex: 1; }
 .gt-h-num { width: 64px; padding: 2px 4px; font: inherit; font-size: 12px;
   border: 1px solid var(--border); border-radius: 5px; }
 .gt-h-num:disabled { opacity: .45; }

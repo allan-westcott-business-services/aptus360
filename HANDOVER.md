@@ -8490,6 +8490,35 @@ characters is a hundred lines of prose and no rules at all.
          method, now switchable.
        - The starting volt drop, above.
 
+197. **The three Levels Check settings stack, and survive a refresh.**
+     Asked for. They were three separate blocks in the header that laid
+     out side by side and had to be kept in step by hand; they are one
+     stacked group now, driven by one list, so a fourth would be three
+     lines rather than a fourth copy.
+
+     **Kept in the browser** (`aptus.levels.options`), not on the
+     project: they are how a PERSON has decided to check a design, and
+     one estimator comparing against a workbook should not change what a
+     colleague sees on the same drawing. Read once at start-up, written
+     whenever they change.
+
+     Guarded at both ends, because this is the kind of thing that
+     silently ruins a morning: private browsing refuses localStorage, so
+     the write is in a try; a half-written entry would otherwise throw
+     during render and the canvas would not open at all, so the read
+     falls back to the defaults; and a figure that will not parse falls
+     back rather than becoming NaN — which would make its allowance
+     zero while its switch still read ON, a setting that lies about
+     itself.
+
+     **Five of my own assertions went stale on this one change**: four
+     pinned `useState` calls that became one stored object, and three
+     pinned aria-labels that became composed strings. They test the
+     binding and the defaults now. Sixth instance this month; the
+     pattern is always the same — a check that names the code's SHAPE
+     fails on every honest restructure, while one that names the
+     BEHAVIOUR survives it.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

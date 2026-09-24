@@ -80,14 +80,18 @@ const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
 
 // 4. The form: a switch and a number.
 {
-  if (!/const \[groupOn, setGroupOn\] = useState\(false\)/.test(canvas)) {
-    fail("the allowance is not switchable from the form, or is on by default");
+  /* The six names the form works with, however they are held — this
+     pinned six useState calls and went stale when they became one
+     stored object. Their defaults are checked with the storage below. */
+  if (!/const \{ groupOn, groupKva, admdOn, admdKva, jointOn, jointM \} = levelOpts;/.test(canvas)) {
+    fail("the form's six settings are not all present");
   }
-  if (!/const \[groupKva, setGroupKva\] = useState\(8\)/.test(canvas)) {
-    fail("the form has no figure to add, or it does not start at the workbook's 8");
-  }
-  if (!/aria-label="Group allowance kVA"/.test(canvas)) {
-    fail("the number control is missing from the Levels Check form");
+  /* The switch and its figure, bound to the right state. This pinned
+     the aria-label's exact words and broke when the three options
+     became one list with composed labels. */
+  if (!/label: "Group allowance"[\s\S]{0,160}on: groupOn, setOn: setGroupOn, val: groupKva, setVal: setGroupKva/.test(canvas)) {
+    fail("the group allowance switch and figure are not on the form, or not bound "
+      + "to the group state");
   }
   /* Reaches the calculation, however the settings object is built —
      this pinned one assignment and went stale when the block became a
@@ -129,11 +133,10 @@ const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
 
      Asked for as a second switch, so the drawing can answer the
      workbook's question while people learn to trust it. */
-  if (!/const \[admdOn, setAdmdOn\] = useState\(false\)/.test(canvas)) {
-    fail("there is no switch for one ADMD per plot, or it is on by default");
-  }
-  if (!/aria-label="ADMD kVA per plot"/.test(canvas)) {
-    fail("the ADMD figure cannot be typed in");
+
+  if (!/label: "One ADMD per plot"[\s\S]{0,160}on: admdOn, setOn: setAdmdOn, val: admdKva, setVal: setAdmdKva/.test(canvas)) {
+    fail("the ADMD switch and figure are not on the form, or not bound to the "
+      + "ADMD state");
   }
   /* Wherever the plot's load is resolved: this was an inline
      `plotById` and is now `plotLoadById`, shared by every path that
@@ -174,14 +177,15 @@ const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
      is 0; the verification workbook has no equivalent. A switch so the
      app can be compared with the sheet without changing the setting
      for everybody. */
-  if (!/const \[jointOn, setJointOn\] = useState\(false\)/.test(canvas)) {
-    fail("there is no switch for the joint allowance, or it is on by default");
+
+  if (!/label: "Joint allowance"[\s\S]{0,160}on: jointOn, setOn: setJointOn, val: jointM, setVal: setJointM/.test(canvas)) {
+    fail("the joint switch and figure are not on the form, or not bound to the "
+      + "joint state");
   }
-  if (!/const \[jointM, setJointM\] = useState\(1\.5\)/.test(canvas)) {
-    fail("the joint allowance does not start at the 1.5 m asked for");
-  }
-  if (!/aria-label="Joint allowance metres"/.test(canvas)) {
-    fail("the metres cannot be typed in");
+  /* Stacked in one group, not three blocks that lay out side by side
+     and had to be kept in step by hand. */
+  if (!/className="gt-h-set gt-h-opts"/.test(canvas)) {
+    fail("the three settings are not one stacked group");
   }
   /* An OVERRIDE: off, the catalogue's own figure still applies, so a
      drawing nobody has touched reads exactly as it did. */
@@ -237,6 +241,44 @@ const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
      numbers. */
   if (!/a\.Source_Volt_Drop_Pct/.test(canvas)) {
     fail("changing it does not re-run the levels check");
+  }
+}
+
+// 9. The three settings survive a refresh.
+{
+  /* Asked for: they are how somebody has decided to check this design,
+     not a momentary choice. Kept in the browser rather than on the
+     project, because they belong to the person checking — one
+     estimator comparing against a workbook should not change what a
+     colleague sees on the same drawing. */
+  if (!/const LEVEL_OPTS_KEY = "aptus\.levels\.options";/.test(canvas)) {
+    fail("the three settings are not kept anywhere, so a refresh forgets them");
+  }
+  if (!/localStorage\.setItem\(LEVEL_OPTS_KEY/.test(canvas)
+    || !/localStorage\.getItem\(LEVEL_OPTS_KEY\)/.test(canvas)) {
+    fail("they are written but never read back, or read but never written");
+  }
+  /* Guarded both ways: private browsing refuses localStorage, and a
+     half-written entry must not stop the canvas opening. */
+  const at = canvas.indexOf("const [levelOpts, setLevelOpts]");
+  const init = at < 0 ? "" : canvas.slice(at, at + 1400);
+  if (!/catch \{\s*\n?\s*return def;/.test(init)) {
+    fail("an unreadable entry throws during render, so the drawing will not open");
+  }
+  if (!/catch \{ \/\* private mode/.test(canvas)) {
+    fail("writing in private browsing throws");
+  }
+  /* A figure that will not parse falls back rather than becoming NaN,
+     which would make its allowance zero while its switch still read
+     on — a setting that lies about itself. */
+  for (const k of ["groupKva", "admdKva", "jointM"]) {
+    if (!new RegExp(`Number\\.isFinite\\(Number\\(p\\.${k}\\)\\)`).test(init)) {
+      fail(`a corrupt ${k} becomes NaN rather than falling back to the default`);
+    }
+  }
+  /* Off by default on an instance that has never stored anything. */
+  if (!/groupOn: false, groupKva: 8, admdOn: false, admdKva: 5\.01, jointOn: false, jointM: 1\.5/.test(init)) {
+    fail("the defaults are not everything off at the workbook's figures");
   }
 }
 

@@ -3389,6 +3389,43 @@ export default function FeatureEditor({
             </div>
           )}
 
+          {/* ── What was spent before the LV board ──
+
+              The transformer above gives the baseline IMPEDANCE. This is
+              the same idea for volt drop, and the two are separate
+              numbers: a transformer's contribution is its impedance,
+              while this is whatever else somebody accounts for ahead of
+              the first metre of LV cable — the HV side, the busbar, the
+              way fuse.
+
+              Added because the customer's verification workbook types a
+              figure into exactly this cell (its M6) on a substation-fed
+              scheme, and the app had nowhere to put it: upstreamVoltDropPct
+              answered zero for anything but a POC, so the two differed by
+              that much however right the rest was.
+
+              Same attribute as the POC's field, so there is one rule and
+              one name rather than two. */}
+          {feature.Feature_Role === "substation" && (
+            <div className="fld">
+              <label htmlFor="fe-sub-vd">Volt drop already used upstream (%)</label>
+              <input id="fe-sub-vd" type="number" step="0.01" min="0" max="100"
+                value={f.Attributes.Source_Volt_Drop_Pct ?? ""}
+                placeholder="e.g. 0.02"
+                onChange={(e) => setAttr("Source_Volt_Drop_Pct")(
+                  e.target.value === "" ? null : Number(e.target.value))} />
+              <p className="hint">
+                {f.Attributes.Source_Volt_Drop_Pct == null
+                  ? "Anything spent before the LV board — the HV side, the busbar, "
+                    + "the way fuse. The transformer's own contribution is its "
+                    + "impedance and is set above, not here. Left blank, the check "
+                    + "measures from this board as though nothing had been spent."
+                  : "Added to every figure downstream, so a plot is judged on the "
+                    + "whole drop rather than on this design\u2019s share of it."}
+              </p>
+            </div>
+          )}
+
           {/* ── How this substation hangs off the HV network ──
 
               The standard arrangement, and the one worth recording:

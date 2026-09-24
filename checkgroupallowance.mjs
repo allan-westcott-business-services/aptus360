@@ -17,6 +17,7 @@
    constant: the allowance is what the adopting DNO asks for. */
 import { readFileSync } from "node:fs";
 import { legVoltDrop, cumulativeToNode, VD_DEFAULTS } from "./src/features/gis/voltDrop.js";
+import { upstreamVoltDropPct } from "./src/features/gis/electric.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -192,6 +193,50 @@ const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
     if (!(canvas.match(/const k = \[[^\]]*\]/) || [""])[0].includes(name)) {
       fail(`changing ${name} leaves the old figures on the drawing`);
     }
+  }
+}
+
+// 8. A substation can carry a starting volt drop.
+{
+  /* `upstreamVoltDropPct` answered zero for anything but a POC — a
+     substation IS the start of the network, and the transformer's
+     contribution is impedance, handled by sourceImpedance.
+
+     That still holds for the transformer. What it missed is everything
+     else somebody accounts for before the first metre of LV cable: the
+     HV side, the busbar, the way fuse. The customer's workbook types
+     0.02% into exactly that cell (its M6) on a substation-fed scheme,
+     and the app had nowhere to put it — so project 34 read 3.142
+     against the sheet's 3.162, the whole difference being that cell. */
+  const at = (role, v) => ({ Feature_Role: role, Attributes: { Source_Volt_Drop_Pct: v } });
+  if (upstreamVoltDropPct(at("substation", 0.02)) !== 0.02) {
+    fail("a substation cannot carry a starting volt drop");
+  }
+  if (upstreamVoltDropPct(at("poc", 2.5)) !== 2.5) {
+    fail("a POC's own figure has been broken by the change");
+  }
+  /* Unset stays zero, which is every drawing that exists. */
+  if (upstreamVoltDropPct(at("substation", undefined)) !== 0) {
+    fail("a substation with nothing set contributes something");
+  }
+  /* And only those two: a meter or a joint carrying the attribute by
+     accident must not start the cascade somewhere else. */
+  if (upstreamVoltDropPct(at("meter", 9)) !== 0) {
+    fail("any feature at all can now start the cascade");
+  }
+
+  /* One attribute for both, so there is one rule and one name. */
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/id="fe-sub-vd"/.test(editor)) {
+    fail("the substation editor has no field for it");
+  }
+  if ((editor.match(/setAttr\("Source_Volt_Drop_Pct"\)/g) || []).length < 2) {
+    fail("the substation's field writes a different attribute from the POC's");
+  }
+  /* Watched, or the figure is typed and the drawing keeps its old
+     numbers. */
+  if (!/a\.Source_Volt_Drop_Pct/.test(canvas)) {
+    fail("changing it does not re-run the levels check");
   }
 }
 

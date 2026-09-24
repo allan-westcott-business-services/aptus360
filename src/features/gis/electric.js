@@ -2241,7 +2241,24 @@ export function sourceImpedance(origin, transformerSizes = []) {
    the truth — which is the one direction a wrong number here must not
    go. */
 export function upstreamVoltDropPct(origin) {
-  if (!origin || origin.Feature_Role !== "poc") return 0;
+  /* ── A substation can carry one too ──
+
+     This answered zero for anything but a POC, on the argument that a
+     substation IS the start of the network and the transformer's own
+     contribution is impedance, handled by sourceImpedance.
+
+     That still holds for the transformer. What it missed is everything
+     else somebody may want to account for before the first metre of LV
+     cable — the HV side, the busbar, the way fuse. The customer's own
+     verification workbook types 0.02% into that cell on a
+     substation-fed scheme (its M6), and the app had nowhere to put it,
+     so the two differed by exactly that however right the rest was.
+
+     Both origins read the same attribute, so there is one field and one
+     rule rather than two. Zero unless somebody sets it, which is what
+     every existing drawing has. */
+  if (!origin) return 0;
+  if (origin.Feature_Role !== "poc" && origin.Feature_Role !== "substation") return 0;
   const v = Number(origin.Attributes?.Source_Volt_Drop_Pct);
   return Number.isFinite(v) && v > 0 ? v : 0;
 }

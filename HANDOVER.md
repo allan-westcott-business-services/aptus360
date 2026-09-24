@@ -8455,6 +8455,41 @@ characters is a hundred lines of prose and no rules at all.
      would have stopped the page opening at all. `checkdeadzone` and
      `checkhooks` caught the second before it left the room.
 
+196. **A substation can carry a starting volt drop.** Asked for after
+     the workbook comparison. `upstreamVoltDropPct` answered zero for
+     anything but a POC, on the argument that a substation IS the start
+     of the network and the transformer's contribution is impedance,
+     handled by `sourceImpedance`.
+
+     That still holds for the transformer. What it missed is everything
+     else somebody accounts for before the first metre of LV cable —
+     the HV side, the busbar, the way fuse. The customer's verification
+     workbook types 0.02% into exactly that cell (its M6) on a
+     substation-fed scheme, and the app had nowhere to put it: project
+     34 read 3.142 against the sheet's 3.162, and that cell was the
+     whole of the difference. With the figure on the substation it reads
+     3.1620 exactly.
+
+     **The same attribute as the POC's field** (`Source_Volt_Drop_Pct`),
+     so there is one rule and one name rather than two, and only those
+     two roles start the cascade — a meter carrying the attribute by
+     accident still contributes nothing. Blank stays zero, which is
+     every drawing that exists.
+
+     Worth recording what the comparison as a whole turned up, because
+     only one of the four was a bug in the app:
+
+       - `Distributed_Load_Factor` was **1** in the customer's
+         catalogue, not 0.5. That is the halving in the workbook's
+         `(I/2 + J)`, and at 1 every distributed customer was charged as
+         though it sat at the far end of its section. It applies to
+         every project on that instance — the single most valuable
+         finding of the exercise, and a data fault, not a code one.
+       - The group allowance was missing from the levels check (195).
+       - One ADMD versus each plot's own load: a real difference of
+         method, now switchable.
+       - The starting volt drop, above.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

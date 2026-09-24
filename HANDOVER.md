@@ -219,6 +219,8 @@ caught a fault that had already shipped at least once.
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checkhvring.mjs` | The daisy chain reads off the drawing: feed, split, shared fault |
 | `node checkhousetypes.mjs` | A development's house types have names, codes, types and plans; plots pick them by code |
+| `node checkgroupallowance.mjs` | The group allowance is the workbook's B5: a switch, a figure, and every leg agrees |
+| `node checktransformereli.mjs` | The transformer table carries the workbook's ELI rows, impedances and fuses |
 | `node checkgiswrite.mjs` | A feature write stands on the write, not on the row that comes back |
 | `node checkplotranges.mjs` | Plots go in as ranges and numbers, a house type per row, and nothing overlaps |
 | `node checkplanscale.mjs` | A PDF's scale is worked in points; an image claims none |
@@ -8294,6 +8296,121 @@ characters is a hundred lines of prose and no rules at all.
      Canvas only. Not on the printed sheet, where the service trench is
      drawn but these two marks would be new furniture nobody has asked
      for.
+
+194. **The transformer table is the workbook's ELI table (0238).**
+     Asked after comparing the app with the Aptus volt drop workbook.
+     The workbook's "Transformer ELI's" sheet gives, per transformer
+     size, the loop impedance a circuit starts from and the largest fuse
+     that transformer supports; it looks the impedance up into M7 and
+     adds it to every total (`I35 = SUM(O15:O34) + M7`, and `I36 = … +
+     M6` for the volt drop). The app does the same: a SUBSTATION takes
+     its starting impedance from the transformer size, a POC from the
+     declared figure typed into its editor, and the upstream percentage
+     is `Source_Volt_Drop_Pct`.
+
+     **Every figure the app held matched the workbook to the last
+     decimal.** Six of the eleven rows were simply absent: 750/800,
+     300/315, 250, 100, 50 and 25 kVA. The small end is what matters —
+     a 25 kVA transformer has NINETEEN times the impedance of a 500, so
+     a scheme fed from a small substation could not have its starting
+     figure set at all, and every figure downstream read far better than
+     the truth.
+
+     **`Max_Fuse_A` added**, asked for: 630 A at 1000 kVA down to 100 A
+     at 25. Nothing yet checks a way fuse against it — recording it is
+     what makes that possible. Editable in Admin, because the ELI sheet
+     is a document that gets revised.
+
+     "750/800" and "300/315" are the workbook's own dual-rated rows and
+     are NOT duplicates of 800 and 315: their impedances differ. They
+     carry the higher rating so sorting and any future fuse check behave.
+     One UPDATE at the foot of 0238 retires them if they are never used.
+
+     Written against the LIVE column names (`Label`, `Rating_kVA`) —
+     0082 in this folder declares `Size_Label` and `Size_kVA`, which the
+     live table does not have. It checks the columns exist and RAISES
+     rather than half-applying, as 0237 does.
+
+     **The check read the migration's comments.** Its first version
+     tested the whole file, and the note at the top lists every ELI row
+     — so a migration with the 25 kVA row deleted still passed. It
+     strips comments now. A check that reads a file's prose is testing
+     the documentation.
+
+195. **The calc sheet's customer counts come from the model.** Reported
+     off project 34: section B1 - B9 showed 7 plots distributed where 4
+     tee off along it.
+
+     The sheet read `Meters`, the count the build STAMPS on each cable,
+     and took distributed as this leg's figure less the legs leaving its
+     far end. Wrong twice over:
+
+       - a plot served AT the far node belongs to no leg leaving it, so
+         it fell into distributed when it is terminal — the
+         understatement noted long ago for spur ends, showing up here as
+         an OVERSTATEMENT of distributed;
+       - the stamps go stale. On that drawing the trunk read 65 by its
+         stamp and 67 by the model, and 67 is the number of meters on
+         the drawing.
+
+     The feeder model already separates `distribution` from `terminal`
+     and is what the Run Levels Check reads. The sheet reads it now, so
+     the two reports are one answer: B1 - B9 is 4 and 32, and the trunk
+     carries all 67.
+
+     The old arithmetic still answers where the model cannot trace — no
+     origin feeder point, a leg it did not reach — so a sheet is never
+     emptier than it was, and each row says which answered
+     (`countsFrom`).
+
+     **The caller had to change too.** `AptusCalcSheet` was mounted
+     without `lineTypes`, `plotById` or `nrsById`, so the model could not
+     tell a main from a trench and the sheet would have fallen back to
+     the stamped counts in the app while passing every direct test. The
+     check holds the mount as well as the arithmetic.
+
+     Also answered: the number in brackets on a section — "B1 - B9
+     (B11)" — is the CABLE's own label, not a node. The node pair is the
+     part before it.
+
+195. **The levels check was missing the group allowance.** Reported as
+     a discrepancy of about 0.2% at the feeder end points against the
+     customer's own verification workbook, which they could not
+     pinpoint. Found by running project 34 through both, leg by leg.
+
+     The workbook's load is the app's formula:
+     `((distributed ÷ 2 + terminal) × ADMD) + block + B5`, where **B5 is
+     8 kVA added to every section that HAS customers**, at full weight
+     beside the halved domestic load. `legVoltDrop` has taken `groupKva`
+     since it was written, and the Aptus Calc Sheet passes it. The
+     cumulative walk behind the LEVELS CHECK and every node label never
+     did — it passed the cable, the length, the loads and the joints,
+     and dropped `groupKva` and `blockKva` on the floor.
+
+     On project 34's route to B15: workbook 3.1620, app 2.7031. With the
+     allowance passed, every leg agrees to the last digit and the total
+     is 3.1620 exactly. Lengths, the halving, the 191 µV figure, the
+     0.687 Ω/km, 240 V and the 0.02% start all already matched — this
+     was the whole of it. The customer saw 0.2 rather than 0.46 because
+     their plots carry more than the workbook's 1.88 kVA ADMD, which
+     offsets part of it.
+
+     **A switch and a figure on the Levels Check form**, asked for
+     rather than a constant: the allowance is what the adopting DNO
+     asks for. OFF by default, 8 kVA when switched on, because turning
+     it on raises the volt drop on every route and that is a change
+     somebody should make deliberately.
+
+     `blockKva` is now forwarded too, so a section feeding a school
+     stops reading low.
+
+     **Two faults found by the checks while building it**, both mine:
+     the allowance was charged to sections with NO customers (the
+     workbook's `IF(K=0,0,B5)`), which would have put 8 kVA on a bare
+     run between two junctions; and the two new state values were
+     declared BELOW the hooks that depend on them, a dead-zone read that
+     would have stopped the page opening at all. `checkdeadzone` and
+     `checkhooks` caught the second before it left the room.
 
 ## Decisions worth knowing
 

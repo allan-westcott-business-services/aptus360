@@ -32,7 +32,7 @@
    way-fuse comparison uses. Written once here and once there rather
    than shared, because voltDrop.js imports nothing and making it import
    electric.js to borrow four lines of arithmetic would tie the two
-   together for no gain \u2014 checksourceimpedance asserts the two agree,
+   together for no gain — checksourceimpedance asserts the two agree,
    which is what stops them drifting.
 
    Zero volts gives zero rather than infinity: a substation with no
@@ -54,12 +54,27 @@ export function kvaOf(amps, voltageV) {
   return (Number(amps) || 0) * Math.sqrt(3) * v / 1000;
 }
 
+/* ── The allowance applies to a section that HAS customers ──
+
+   The workbook writes it as IF(K=0,0,B5): a length of main with nothing
+   tapped off it and nothing at its end carries no group, because there
+   is no group. Charged anyway, a bare run between two junctions would
+   pick up 8 kVA of load it does not have. */
+function groupFor(meterCount, groupKva) {
+  return (Number(meterCount) || 0) > 0 ? (Number(groupKva) || 0) : 0;
+}
+
 export const VD_DEFAULTS = {
   unbalanced: false,
   maxLoopOhms: 0.28,
   maxVoltDropPct: 7,
   unbalancedConstant: 4.14,
   distributedLoadFactor: 0.5,
+  /* The small group diversity allowance (the workbook's B5) and a
+     section's block load. Zero here so a caller that has not asked for
+     them gets the calculation as it was. */
+  groupKva: 0,
+  blockKva: 0,
   /* Metres of its own cable charged for each plot connection (0187).
      Zero here so a caller that has not read the setting gets the
      calculation as it was, rather than an allowance it did not ask
@@ -161,7 +176,7 @@ export function legVoltDrop({
 
      A service joint is not free: cutting a main and jointing a service
      onto it puts resistance in the run that undisturbed cable does not
-     have. Nothing counted it \u2014 the word "joint" appeared nowhere in
+     have. Nothing counted it — the word "joint" appeared nowhere in
      this calculation.
 
      Charged as an EQUIVALENT LENGTH of the joint's own cable, three
@@ -203,20 +218,20 @@ export function legVoltDrop({
 
      `kVA × 1000 ÷ 3 ÷ V`. That is a correct per-phase form and it wants
      the PHASE voltage. It was being handed `Output_V`, which is the
-     substation's line voltage and defaults to 400 \u2014 so it divided a
+     substation's line voltage and defaults to 400 — so it divided a
      per-phase power by a line voltage and came out low by exactly √3.
 
      Thirty kVA at 400 V read 25.0 A where the answer is 43.3 A: 42%
      under, on the figure a designer sizes a cable against. The
      substation way-fuse comparison, ampsFor, has always used the form
-     above, so the two disagreed by √3 across the app \u2014 which is what
+     above, so the two disagreed by √3 across the app — which is what
      surfaced it.
 
      Volt drop and loop impedance do not use this. `pct` and `ohms` are
      worked out from kVA and length below and are unchanged; only the
      reported current moves. */
   const amps = ampsOf((distributedKva || 0) + (terminalKva || 0)
-    + (Number(blockKva) || 0) + (Number(groupKva) || 0), v);
+    + (Number(blockKva) || 0) + groupFor(meterCount, groupKva), v);
 
   if (!cable || !lengthM) return { ohms: 0, pct: 0, amps, missingSpec: !cable };
 
@@ -243,7 +258,7 @@ export function legVoltDrop({
   const base = cable.Volt_Drop_Base != null ? Number(cable.Volt_Drop_Base) : null;
   let pct = 0;
   const weightedKva = (distributedKva || 0) * distFactor + (terminalKva || 0)
-    + (Number(blockKva) || 0) + (Number(groupKva) || 0);
+    + (Number(blockKva) || 0) + groupFor(meterCount, groupKva);
   /* Keyed on how many customers are on the section, not on current.
      That is the spreadsheet's own rule. */
   const corr = unbalanced && meterCount > 0
@@ -353,12 +368,12 @@ export function cumulativeToNode({
      A meter's load sits in the model at its cut-out: the far end of its
      service spur, which is a node OFF the mains. The walk below goes up
      the mains, node by node, and only ever read `meterKva` at the nodes
-     it passed \u2014 so a spur's load was never seen as distributed on the
+     it passed — so a spur's load was never seen as distributed on the
      leg it tees off. It was in `cumKva` at the span node *before* the
      leg, as terminal load of the previous leg, and then simply gone.
 
-     Which is why A36 to A39 \u2014 a hundred metres of 95 with seven
-     plots along it and nothing beyond \u2014 reported no current and no
+     Which is why A36 to A39 — a hundred metres of 95 with seven
+     plots along it and nothing beyond — reported no current and no
      drop at all: the seven were on spurs, the spurs were off the
      route, and `cumKva` at A39 is zero because nothing lies beyond a
      dead end. Every leg on every drawing was short by whatever tees
@@ -381,7 +396,7 @@ export function cumulativeToNode({
   const { parSvc } = model;
   /* `onward` is the next node on the route, left out; with none given
      every child counts. `spursOnly` limits the joints to service spurs
-     and asks nothing of a model without `parSvc` \u2014 the case at a span
+     and asks nothing of a model without `parSvc` — the case at a span
      node, where the mains carry on and are not connections. */
   const tapped = (u, onward, spursOnly = false) => {
     let kva = (meterKva?.[u]) || 0;
@@ -443,13 +458,29 @@ export function cumulativeToNode({
            `distCount` alone was zero on every real drawing. A service
            tees into the main and Place Span Nodes puts a node where it
            leaves, so the connection is AT a node rather than between
-           two \u2014 and the allowance never fired anywhere. It only showed
+           two — and the allowance never fired anywhere. It only showed
            up in a fixture with meters deliberately placed mid-leg.
 
            The node's own meters belong to the leg arriving at it,
            which is the leg being charged here, and to no other. */
         jointCount: distJoints + here.joints,
         jointEquivM: s.jointEquivM,
+        /* ── The small group diversity allowance ──
+
+           The workbook's B5: a lump added to every section that has
+           customers, at full weight. `legVoltDrop` has taken it since
+           it was written and the Aptus Calc Sheet passes it, but this
+           walk — the one behind the levels check and every node label
+           — never did. So the two disagreed by 8 kVA on every leg, and
+           a route of six legs read about half a percent low. Found by
+           comparing the app with the customer's own verification sheet
+           on project 34: leg for leg, the figures matched exactly once
+           this was passed.
+
+           Zero unless a caller asks, so nothing moves on a drawing
+           where nobody has switched it on. */
+        groupKva: s.groupKva,
+        blockKva: s.blockKva,
         unbalanced: s.unbalanced,
         distFactor: s.distributedLoadFactor,
         unbalConst: s.unbalancedConstant,
@@ -465,7 +496,7 @@ export function cumulativeToNode({
          A board on the third floor is reached by a cable running up to
          it; the feeder carrying on runs back DOWN before it goes
          anywhere. That descent is cable on the leg LEAVING the board,
-         carrying the load that leaves it \u2014 which is exactly what the
+         carrying the load that leaves it — which is exactly what the
          next leg carries, by construction.
 
          Charged as metres rather than added as a separate drop. The
@@ -480,8 +511,8 @@ export function cumulativeToNode({
          all agree, and the load is right without being chosen: the leg
          leaving a board carries what leaves the board. */
       /* Only where the walk CARRIES ON. Where the board is the target,
-         the run down has not been travelled yet \u2014 that is what "at the
-         board" means \u2014 and leaving the metres on the counter charged
+         the run down has not been travelled yet — that is what "at the
+         board" means — and leaving the metres on the counter charged
          them to the board's own figure as a remainder past the last
          stop. B3 read 0.821% against B4's 0.771%: the board worse than
          the stop beyond it, which cannot happen. */
@@ -489,7 +520,7 @@ export function cumulativeToNode({
       distKva = 0; distCount = 0; distJoints = 0;
     } else {
       /* Load tapped between span nodes is distributed load on the leg
-         being accumulated \u2014 at the node itself and down every spur
+         being accumulated — at the node itself and down every spur
          leaving it. The route onward is the next node on the path. */
       const t = tapped(cur, path[i + 1] ?? -1);
       distKva += t.kva;
@@ -518,7 +549,7 @@ export function cumulativeToNode({
      exactly what it was before. */
   if (legLenM > 0.001 && partialCableId != null) {
     /* The target is the last node on the path, so the loop above has
-       already counted what is tapped there as distributed \u2014 with
+       already counted what is tapped there as distributed — with
        no onward node to exclude, that took in the whole of its
        subtree. Terminal load is what lies beyond it, and the two must
        not both hold the same plots. */
@@ -696,7 +727,7 @@ export function levelsForParts(parts = [], opts = {}) {
        the second board's run up from ground.
 
      `atBoard` is filled from the trunk's own legs, so the first board
-     must have been reached by the dig \u2014 which it is, that being what
+     must have been reached by the dig — which it is, that being what
      makes it first. */
   const atBoard = new Map();
   for (const [stopId, fig] of out) {
@@ -738,7 +769,7 @@ export function levelsForParts(parts = [], opts = {}) {
          the second board's run up from ground.
 
        `part.acrossLink` is that total, already costed for the load the
-       link carries \u2014 the second board's flats and everything beyond
+       link carries — the second board's flats and everything beyond
        it, never the first board's. */
     const across = part.acrossLink;
     const start = from
@@ -757,7 +788,7 @@ export function levelsForParts(parts = [], opts = {}) {
        figure.
 
        A part rooted at the far side of a board-to-board link has no
-       such leg \u2014 nothing arrives there, which is the whole point of the
+       such leg — nothing arrives there, which is the whole point of the
        link. So the board sat with a feeder point on it and no figure
        against it, and every flat on it showed a dash.
 
@@ -791,7 +822,7 @@ export function levelsForParts(parts = [], opts = {}) {
      A board's panel shows "leaving the board", and it used to work the
      figure out itself: its own load, its own cable, its own arithmetic.
      That could be made to AGREE with the levels but never guaranteed
-     to, and for a while it did not \u2014 the panel said 0.17% while the
+     to, and for a while it did not — the panel said 0.17% while the
      stop beyond read 0.10%.
 
      The run down is charged as the first metres of the leg leaving the

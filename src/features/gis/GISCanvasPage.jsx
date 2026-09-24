@@ -1841,6 +1841,21 @@ export default function GISCanvasPage() {
     });
   }, []);
 
+  /* ── The small group diversity allowance ──
+
+     The verification workbook's B5: a lump of kVA added to every
+     section that has customers, at full weight beside the halved
+     domestic load. The Aptus Calc Sheet has always applied it; the
+     levels check never did, so the two disagreed by that much on every
+     leg \u2014 about half a percent over a six-leg route on project 34.
+
+     Switched OFF by default and 8 kVA when switched on, which is what
+     the workbook uses. Off by default because turning it on raises the
+     reported volt drop on every drawing, and that is a change somebody
+     should make deliberately rather than find one morning. */
+  const [groupOn, setGroupOn] = useState(false);
+  const [groupKva, setGroupKva] = useState(8);
+
   const levelsByNode = useCallback((src) => {
     const circuits = circuitsFrom(src);
     const cables = lookups?.cableSizes || [];
@@ -1864,6 +1879,9 @@ export default function GISCanvasPage() {
          zero then means the calculation as it was. */
       jointEquivM: Number(vs.Joint_Equivalent_M) || 0,
     } : {}) };
+    /* From the Levels Check form, not the catalogue: it is a choice
+       made per drawing while checking it. */
+    limits.groupKva = groupOn ? Number(groupKva) || 0 : 0;
     const ctx = {
       cableById: (id) => cables.find((c) => String(c.Cable_Size_ID) === String(id)) || null,
       cableTypes: lookups?.cableTypes || [],
@@ -2099,10 +2117,14 @@ export default function GISCanvasPage() {
       }
     }
     return out.size ? out : null;
-  }, [lookups, lineTypes, plotList, cableAtNode]);
+  }, [lookups, lineTypes, plotList, cableAtNode,
+    /* The group allowance from the Levels Check form: change it and the
+       figures must be worked out again, or the drawing keeps the ones
+       it had — the fault the POC's own fields had. */
+    groupOn, groupKva]);
 
   const levelsKey = useMemo(() => {
-    const k = [];
+    const k = [groupOn, groupKva];
     for (const f of features) {
       const a = f.Attributes || {};
       const line = f.Feature_Type === "line";
@@ -2147,7 +2169,7 @@ export default function GISCanvasPage() {
         a.VD_Transformer_Size_ID, a.Output_V);
     }
     return k;
-  }, [features]);
+  }, [features, groupOn, groupKva]);
 
   const [liveLevels, setLiveLevels] = useState(null);
   const levelsSeen = useRef(null);
@@ -2688,6 +2710,7 @@ export default function GISCanvasPage() {
      Both are computed every time; this chooses which is drawn. Nothing
      is recalculated by flicking it, so the two can never disagree. */
   const [vdBasis, setVdBasis] = useState("total");
+
 
   /* Sent here to raise a call-off, and nothing else.
 
@@ -27948,6 +27971,12 @@ export default function GISCanvasPage() {
           features={features}
           cableById={(id) => (lookups?.cableSizes || [])
             .find((c) => String(c.Cable_Size_ID) === String(id)) || null}
+          /* The same three the levels check traces with, so the sheet's
+             customer counts come from the model rather than from the
+             figures stamped on the cables. */
+          lineTypes={lineTypes}
+          plotById={(id) => plotList.find((p) => p.plot_id === id) || null}
+          nrsById={(id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null}
           project={project}
           busy={!!busy}
           /* The block load and the tick box, written back to the leg
@@ -30407,6 +30436,31 @@ export default function GISCanvasPage() {
                             ))}
                         </div>
                       )}
+                      {/* ── The small group diversity allowance ──
+
+                          The verification workbook's B5: a lump of kVA
+                          added to every section that has customers, at
+                          full weight beside the halved domestic load.
+                          The calc sheet has always applied it and the
+                          levels check never did, so the two disagreed
+                          by that much on every leg.
+
+                          Off until somebody asks, because switching it
+                          on raises the volt drop on every route. */}
+                      {trace.hasVd && (
+                        <div className="gt-h-set gt-h-grpkva">
+                          <label className="gt-h-r" title="The workbook's B5: added to every section that has customers">
+                            <input type="checkbox" checked={groupOn}
+                              onChange={(e) => setGroupOn(e.target.checked)} />
+                            Group allowance
+                          </label>
+                          <input type="number" className="gt-h-num" min="0" step="0.1"
+                            value={groupKva} disabled={!groupOn}
+                            aria-label="Group allowance kVA"
+                            onChange={(e) => setGroupKva(e.target.value)} />
+                          <span className="gt-h-unit">kVA</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -31297,6 +31351,14 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gt-h-one { font-weight: 600; }
 .gt-h-radios { display: flex; gap: 26px; flex-wrap: wrap; }
 .gt-h-set { display: flex; flex-direction: column; gap: 3px; }
+/* The group allowance sits on one line: a switch, a number and its
+   unit. The number greys out rather than disappearing when the switch
+   is off, so the figure it would use is still readable. */
+.gt-h-grpkva { flex-direction: row; align-items: center; gap: 6px; margin-top: 4px; }
+.gt-h-num { width: 64px; padding: 2px 4px; font: inherit; font-size: 12px;
+  border: 1px solid var(--border); border-radius: 5px; }
+.gt-h-num:disabled { opacity: .45; }
+.gt-h-unit { font-size: 12px; color: var(--muted); }
 .gt-h-r { display: flex; align-items: center; gap: 6px; font-size: 13px;
   cursor: pointer; white-space: nowrap; }
 .gt-h-over { font-size: 12.5px; color: var(--muted); }

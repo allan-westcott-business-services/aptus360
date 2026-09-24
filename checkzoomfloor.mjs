@@ -119,6 +119,41 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   }
 }
 
+/* ── And how far it zooms IN ──
+
+   Asked for: the ceiling was 40 pixels per metre, one pixel to 25 mm,
+   which is coarse for the work people zoom in to do — putting a joint
+   on the right side of a tee, telling which of two cables in a trench a
+   service leaves from, checking a boundary point against a kerb. 200 is
+   one pixel to 5 mm.
+
+   Held as ONE constant because it was hard-coded in four places: the
+   wheel, the fit, the saved view and the zoom-to-extent. Four copies of
+   a limit is three chances to raise it and miss one. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/const MAX_SCALE = 200;/.test(canvas)) {
+    fail("the zoom ceiling is not 200 pixels per metre");
+  }
+  if (/Math\.min\(40,|Math\.min\(scale, 40\)/.test(canvas)) {
+    fail("a copy of the old 40 ceiling is still there, so one path stops short "
+      + "of the others");
+  }
+  /* Every clamp reads the constant. */
+  const uses = (canvas.match(/MAX_SCALE/g) || []).length;
+  if (uses < 5) {
+    fail(`MAX_SCALE is used ${uses} times; the wheel, the fit, the saved view and `
+      + "the zoom-to-extent all clamp, so five is the minimum");
+  }
+  /* The floor is a constant too, and unchanged. */
+  if (!/const MIN_SCALE = 0\.05;/.test(canvas)) {
+    fail("the zoom floor has moved, or is still written out by hand");
+  }
+  if (/Math\.max\(0\.05,/.test(canvas)) {
+    fail("a copy of the old floor is still there");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The zoom stops at the drawing (and a drag says nothing).");
 process.exit(bad ? 1 : 0);

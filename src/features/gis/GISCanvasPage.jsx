@@ -297,6 +297,24 @@ const HANDLE_PX = 6;
    thing. */
 const LEVEL_OPTS_KEY = "aptus.levels.options";
 
+/* ── How far in the drawing will zoom ──
+
+   Pixels per metre of ground. It was 40 everywhere, hard-coded in four
+   places: one pixel to 25 mm, which is coarse for the work people
+   actually zoom in to do — putting a joint on the right side of a tee,
+   reading which of two cables in a trench a service leaves from,
+   checking a boundary point against a kerb.
+
+   200 is one pixel to 5 mm. Nothing is drawn in ground units that
+   becomes unreasonable at that: symbols are sized in pixels and clamp
+   themselves, labels have their own ceiling, and the basemap is a
+   raster that simply gets blockier, which is honest — it says you have
+   zoomed past what the plan can tell you.
+
+   The floor is unchanged. */
+const MAX_SCALE = 200;
+const MIN_SCALE = 0.05;
+
 export default function GISCanvasPage() {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
@@ -1672,7 +1690,7 @@ export default function GISCanvasPage() {
     if (![x, y, scale].every((n) => typeof n === "number" && Number.isFinite(n))) {
       return;
     }
-    setView({ x, y, scale: Math.max(0.05, Math.min(40, scale)) });
+    setView({ x, y, scale: Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale)) });
   }, [viewKey]);
 
   /* And remembered as it changes. Written on a short delay: a pan is a
@@ -10454,7 +10472,7 @@ export default function GISCanvasPage() {
     const r = wrap.getBoundingClientRect();
     if (!r.width || !r.height) return 0.05;
     const fit = Math.min(r.width / (b.w * 1.08), r.height / (b.h * 1.08));
-    return Math.max(0.05, Math.min(40, fit));
+    return Math.max(MIN_SCALE, Math.min(MAX_SCALE, fit));
   }, [features]);
 
   /* Everything on screen, at the closest zoom that shows all of it. The
@@ -10503,7 +10521,7 @@ export default function GISCanvasPage() {
         /* Out as far as the drawing, and no further: past that there is
            nothing more to see, and a drawing lost in the middle of an
            empty screen is a hunt to get back from. */
-        const next = Math.min(40, Math.max(fitScale(), v.scale * factor));
+        const next = Math.min(MAX_SCALE, Math.max(fitScale(), v.scale * factor));
         return {
           scale: next,
           x: px - (px - v.x) * (next / v.scale),
@@ -21381,7 +21399,7 @@ export default function GISCanvasPage() {
       ? Math.max(view.scale, 4)
       : Math.min((w - pad * 2) / spanX, (h - pad * 2) / spanY);
 
-    const clamped = Math.max(0.05, Math.min(scale, 40));
+    const clamped = Math.max(MIN_SCALE, Math.min(scale, MAX_SCALE));
     setView({
       x: w / 2 - ((minX + maxX) / 2) * clamped,
       y: h / 2 - ((minY + maxY) / 2) * clamped,

@@ -38,11 +38,15 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   if (!/\[viewKey\]/.test(effect)) {
     fail("the restore does not run when the project changes");
   }
-  /* Clamped. A stored scale edited by hand, or written by an older
-     version, must not leave the canvas at a zoom nothing can be seen
-     at — and the clamp is the same 0.05–40 the rest of the page
-     uses. */
-  if (!/Math\.max\(0\.05, Math\.min\(40, scale\)\)/.test(effect)) {
+  /* Clamped, by the SAME limits the rest of the page uses. A stored
+     scale edited by hand, or written by an older version, must not
+     leave the canvas at a zoom nothing can be seen at.
+
+     This named the numbers (0.05 and 40) and went red when the ceiling
+     was raised — on a clamp that was still perfectly correct. It names
+     the constants now, which is the actual rule: one limit, read
+     everywhere. */
+  if (!/Math\.max\(MIN_SCALE, Math\.min\(MAX_SCALE, scale\)\)/.test(effect)) {
     fail("a stored scale is trusted unclamped, so one bad value leaves "
       + "the canvas at a zoom nothing is visible at");
   }

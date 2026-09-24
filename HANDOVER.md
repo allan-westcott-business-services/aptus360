@@ -8559,6 +8559,29 @@ characters is a hundred lines of prose and no rules at all.
 
      The self-lay cross is drawn after the fill and is unaffected.
 
+200. **The canvas zooms in five times further.** Asked for. The ceiling
+     was 40 pixels per metre — one pixel to 25 mm — which is coarse for
+     the work people zoom in to do: putting a joint on the right side of
+     a tee, telling which of two cables in a trench a service leaves
+     from, checking a boundary point against a kerb. `MAX_SCALE` is 200
+     now, one pixel to 5 mm. The floor is unchanged.
+
+     It was hard-coded in FOUR places — the wheel, the fit, the restored
+     view and zoom-to-extent — which is three chances to raise it and
+     miss one. One constant now, and `MIN_SCALE` with it. The check
+     counts the uses, so a fifth path that clamps by hand fails.
+
+     Nothing drawn in ground units misbehaves at that zoom: symbols are
+     sized in pixels and clamp themselves, labels have their own ceiling,
+     and the grid steps in pixels so it thins out rather than
+     multiplying lines. The basemap is a raster and simply gets blockier,
+     which is honest — it says you have zoomed past what the plan can
+     tell you.
+
+     `checkviewmemory` named the old numbers and went red on a clamp that
+     was still correct; it names the constants now. Seventh instance this
+     month of a check describing the code rather than the rule.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

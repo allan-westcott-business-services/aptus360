@@ -5253,8 +5253,26 @@ export default function GISCanvasPage() {
              circuit nobody has coloured, or one not yet on a circuit at
              all, keeps the style's colour rather than turning grey. */
           if (isMeter && f.Layer_Key === "electric") {
+            /* ── Fed from a link box output, it wears that output ──
+
+               A box's outputs can each carry their own colour, and the
+               runs leaving them are drawn in it (feederColour's
+               `wayColourOf`). A meter on one of those outputs was still
+               painted its CIRCUIT's colour, so on a drawing where the
+               point of the colours is telling three outputs apart, the
+               houses all looked the same.
+
+               Same order as the cable: the output's colour where the
+               box sets one, the circuit's otherwise. So a box with no
+               way colours set changes nothing, and a meter and the
+               cable feeding it can never disagree. */
+            /* `wayColourOf` is the same rule the runs and the picker
+               use — there is one place that answers "what colour is this
+               output", and this was working it out again inline. */
+            const wayInk = wayColourOf(f, features);
+
             const cid = f.Attributes?.Circuit_ID;
-            const cc = cid != null ? ringColours.get(Number(cid)) : null;
+            const cc = wayInk ?? (cid != null ? ringColours.get(Number(cid)) : null);
             if (cc) fill = cc;
           }
 

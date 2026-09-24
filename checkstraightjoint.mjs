@@ -34,7 +34,7 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
     fail("one in and one out is reported as a fault");
   }
   if (!straightJointWarning(joint(), [run(1, [0, 0], [50, 0])])) {
-    fail("a straight joint with one cable says nothing \u2014 that is a bottle "
+    fail("a straight joint with one cable says nothing — that is a bottle "
       + "end, and somebody meant to draw the second run");
   }
   const three = [...two, run(3, [50, 0], [50, 80])];
@@ -119,7 +119,7 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
   const mtr = { Feature_ID: id++, Feature_Role: "meter", Feature_Type: "point",
     Layer_Key: "electric", Plot_ID: 1, Geometry: [[120, 8]],
     Attributes: { Seed_Feature_ID: p1.Feature_ID, Circuit_ID: 1 } };
-  /* Clicked onto the cable 60 m along a 120 m run \u2014 mid-span, where
+  /* Clicked onto the cable 60 m along a 120 m run — mid-span, where
      the trench has no vertex. */
   const j = { Feature_ID: id++, Feature_Role: "joint", Feature_Type: "point",
     Layer_Key: "electric", Label: "Straight Joint", Geometry: [[60, 0]],
@@ -134,7 +134,7 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
   const ends = (r.sections || []).map((sec) =>
     sec.pts[sec.pts.length - 1][0].toFixed(0));
   if (!ends.includes("60")) {
-    fail("the build lays one run straight through the joint \u2014 a rebuild "
+    fail("the build lays one run straight through the joint — a rebuild "
       + "would undo the break and the two cable sizes with it");
   }
   if ((r.sections || []).length !== 2) {
@@ -177,7 +177,7 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   const fdr = readFileSync("./src/features/gis/feeder.js", "utf8");
 
-  /* The levels pass takes span nodes, feeder points and the box \u2014 and
+  /* The levels pass takes span nodes, feeder points and the box — and
      not joints. The box's clause was once deleted along with the line
      it shared, and its levels vanished from every drawing: a filter is
      a list of what is wanted. */
@@ -190,7 +190,7 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
   else {
     for (const role of ["spannode", "feederpoint", "linkbox"]) {
       if (!filter.includes(`!== "${role}"`)) {
-        fail(`the levels pass no longer takes ${role}s \u2014 that kind of stop `
+        fail(`the levels pass no longer takes ${role}s — that kind of stop `
           + "shows no figures at all");
       }
     }
@@ -209,7 +209,7 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
     fail("spanTrace still treats the joint itself as a stop");
   }
 
-  /* The editor does not offer the joint a span code either \u2014 the code
+  /* The editor does not offer the joint a span code either — the code
      belongs to the point beside it. */
   const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
   if (/feature\.Feature_Role === "joint"\s*\n\s*&& String\(f\.Attributes\.Joint_Type/.test(editor)) {
@@ -241,7 +241,7 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
      A record derived from the same geometry that was wrong cannot
      correct it. The fitting's definition can. */
   if (/joinsEnds && !held\.size && isFeeder/.test(canvas)) {
-    fail("the two-cable bound applies only where no Connects was written \u2014 "
+    fail("the two-cable bound applies only where no Connects was written — "
       + "the relink pass writes one from geometry, so the next build puts "
       + "the passing cable back");
   }
@@ -283,7 +283,7 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
    circuit's colour reads as belonging to something else, which is the
    whole reason the outputs are coloured.
 
-   Taken from the box's own `Way_Colours` \u2014 where the runs get theirs \u2014
+   Taken from the box's own `Way_Colours` — where the runs get theirs —
    so the cable and the stop standing on it cannot disagree. */
 {
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
@@ -321,7 +321,12 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
 {
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   const at = canvas.indexOf('if (isMeter && f.Layer_Key === "electric")');
-  const body = at < 0 ? "" : canvas.slice(at, at + 400);
+  /* To the end of the branch, not a fixed number of characters. The
+     first version of this sliced 400 and went red the moment the branch
+     grew — the same fault as the character windows in 160, written
+     again a fortnight later. `if (cc) fill = cc;` closes it. */
+  const end = canvas.indexOf("if (cc) fill = cc;", at);
+  const body = at < 0 ? "" : canvas.slice(at, end > at ? end + 20 : at + 400);
   if (!body) fail("an electric meter is not coloured by its circuit");
   else {
     if (!/ringColours\.get\(Number\(cid\)\)/.test(body)) {
@@ -340,6 +345,34 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
       fail("meters on other utilities are recoloured too");
     }
   }
+  /* ── Fed from a link box output, it wears that output ──
+
+     A box's outputs can each carry their own colour and the runs
+     leaving them are drawn in it. A meter on one of those outputs was
+     still painted its CIRCUIT's colour, so on a drawing where the point
+     of the colours is telling three outputs apart, the houses all
+     looked the same. Project 20's box sets three; its 41 meters split
+     27 and 14 across two of them.
+
+     Same order as the cable — the output's colour where the box sets
+     one, the circuit's otherwise — so a meter and the cable feeding it
+     can never disagree, and a box with no way colours changes nothing. */
+  /* Through `wayColourOf`, the one rule the runs and the picker use —
+     not worked out again here, which is what checklinkwayisolate
+     forbids and what the first version of this did. */
+  if (!/const wayInk = wayColourOf\(f, features\);/.test(body)) {
+    fail("a meter fed from a link box output ignores that output's colour, or "
+      + "works it out for itself instead of asking the shared rule");
+  }
+  if (!/const cc = wayInk \?\? \(cid != null \? ringColours\.get\(Number\(cid\)\) : null\)/.test(body)) {
+    fail("the output's colour does not take precedence over the circuit's, or the "
+      + "circuit's is no longer the fallback");
+  }
+  /* The box is looked up in the canvas's own list. `allFeatures` is the
+     editor's prop name and does not exist here — it would throw on
+     every meter, which a build does not catch. */
+
+
   /* The colour map must be in the draw's dependencies, or recolouring a
      circuit leaves its meters as they were. */
   const deps = (canvas.match(/^\s*\}, \[visible, selected, view[^\]]*\]\);/m) || [""])[0];

@@ -8557,6 +8557,22 @@ characters is a hundred lines of prose and no rules at all.
      the symbol and its size, so a DNO drawing meters as hexagons gets
      hexagons in the circuit colour.
 
+     **And where a link box feeds it, the OUTPUT's colour.** Asked for
+     next. A box's outputs can each carry their own colour and the runs
+     leaving them are drawn in it; a meter on one of those outputs was
+     still painted its circuit's colour, so on a drawing where the whole
+     point of the colours is telling three outputs apart, the houses all
+     looked the same. Project 20: 27 meters cyan on output 1, 14 orange
+     on output 2, 44 on the circuit colour.
+
+     Same order as the cable — the output's colour where the box sets
+     one, the circuit's otherwise — through `wayColourOf`, the one rule
+     the runs and the picker already use. The first version worked it
+     out inline, which `checklinkwayisolate` exists to forbid and duly
+     caught; it also looked the box up in `allFeatures`, which is the
+     editor's prop name and does not exist on the canvas — a
+     ReferenceError on every meter that a build does not catch.
+
      The self-lay cross is drawn after the fill and is unaffected.
 
 200. **The canvas zooms in five times further.** Asked for. The ceiling

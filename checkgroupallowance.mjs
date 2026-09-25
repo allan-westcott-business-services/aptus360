@@ -30,7 +30,11 @@ const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
     fail("the cumulative walk does not pass the group allowance to each leg, so "
       + "the levels check and the calc sheet disagree by it");
   }
-  if (!/blockKva: s\.blockKva/.test(vd)) {
+  /* The caller's block load still reaches the leg — folded in with the
+     supplies' own load now, rather than passed on its own line. This
+     named the line and went red when the two were combined; the rule is
+     that `s.blockKva` is not dropped. */
+  if (!/blockKva: \(s\.blockKva \|\| 0\) \+ distNrs/.test(vd)) {
     fail("a section's block load is dropped by the walk, so a leg feeding a school "
       + "reads low on the drawing");
   }
@@ -306,6 +310,73 @@ const vd = readFileSync("./src/features/gis/voltDrop.js", "utf8");
      belonged to it. */
   if (!/p\.admdKva == null \|\| p\.admdKva === ""/.test(init)) {
     fail("an unset ADMD is read back as a number, so it stops following the drawing");
+  }
+}
+
+// 10. A non-residential supply is block load, not a customer.
+{
+  /* The verification workbook gives a supply its own column (L),
+     charged WHOLE and outside the `(I/2 + J)` halving, and counts only
+     dwellings as customers. The app treated a pumping station exactly
+     like a house: halved where it tees off mid-leg, and counted toward
+     the group allowance.
+
+     On project 34 that read 0.15% low at B15 and 0.18% at B16 — the
+     20 kVA TBS tees off the trunk, so half of it was missing from every
+     node past it. With this, five of the workbook's six legs match to
+     four decimal places; the sixth is a disagreement about where the
+     TBS connects, which is the sheet's error, not the app's. */
+  const model = {
+    nodes: [[0, 0], [50, 0]], parent: [-1, 0], S: 0,
+    /* One dwelling and one 20 kVA supply, both at the far node. */
+    cum: [2, 2], cumKva: [21.88, 21.88],
+    meterCount: [0, 2], meterKva: [0, 21.88],
+    nrsCount: [0, 1], nrsKva: [0, 20], cumNrsKva: [20, 20], cumDomestic: [1, 1],
+    mBetween: () => 50,
+  };
+  const stops = [{ index: 1, cableSizeId: 1, metres: 50 }];
+  const cable = { Volt_Drop_Base: 191, Loop_Impedance_Ohm: 0.687 };
+  const out = cumulativeToNode({
+    model, targetIdx: 1, stops, cableById: () => cable,
+    voltageV: 240, startPct: 0, settings: { distributedLoadFactor: 0.5, groupKva: 8 },
+  });
+  const w = out?.working;
+  if (!w) fail("the walk found no leg to the node");
+  else {
+    if (Math.abs(w.blockKva - 20) > 1e-9) {
+      fail(`the supply contributes ${w.blockKva} kVA of block load, not its 20`);
+    }
+    if (Math.abs(w.terminalKva - 1.88) > 1e-9) {
+      fail(`the dwelling side holds ${w.terminalKva} kVA — the supply should have `
+        + "come out of it, not been counted twice or lost");
+    }
+    /* Dwellings only: a supply is not a member of a group. */
+    if (w.meterCount !== 1) {
+      fail(`the group allowance counts ${w.meterCount} customers on a leg with one `
+        + "dwelling and one supply");
+    }
+    /* Whole, not halved: the whole point. */
+    const expected = (1.88 + 20 + 8) * 191e-6 * 50;
+    if (Math.abs(out.pct - expected) > 1e-9) {
+      fail(`the leg costs ${out.pct.toFixed(5)}%, not ${expected.toFixed(5)}% — the `
+        + "supply is not being charged whole");
+    }
+  }
+
+  /* A model with no supplies at all behaves exactly as before, which is
+     every drawing that has none and every fixture built by hand. */
+  const plain = {
+    nodes: [[0, 0], [50, 0]], parent: [-1, 0], S: 0,
+    cum: [1, 1], cumKva: [1.88, 1.88], meterCount: [0, 1], meterKva: [0, 1.88],
+    mBetween: () => 50,
+  };
+  const p2 = cumulativeToNode({
+    model: plain, targetIdx: 1, stops, cableById: () => cable,
+    voltageV: 240, startPct: 0, settings: { distributedLoadFactor: 0.5, groupKva: 8 },
+  });
+  if (Math.abs(p2.pct - (1.88 + 8) * 191e-6 * 50) > 1e-9) {
+    fail("a model that does not separate supplies no longer gives the figures it "
+      + "gave before");
   }
 }
 

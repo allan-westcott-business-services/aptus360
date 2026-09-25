@@ -8720,6 +8720,45 @@ characters is a hundred lines of prose and no rules at all.
      writing to every cable on every project is not something to do
      unasked.
 
+204. **A non-residential supply is block load, not a customer.** The
+     option parked on the 24th, built on the 25th against the
+     customer's own updated workbook.
+
+     A dwelling is one of a diversified group: on average half of them
+     draw through only part of the section they tee off, which is what
+     the distributed factor halves. A pumping station or a fibre cabinet
+     is one fixed draw and is not. The workbook gives it column L,
+     charged WHOLE and outside the `(I/2 + J)` bracket, and counts only
+     dwellings in K.
+
+     The app treated it exactly like a house. On project 34 the 20 kVA
+     TBS tees off the trunk, so half of it was missing from every node
+     past it: 0.15% low at B15, 0.18% at B16.
+
+     `buildFeederModel` now keeps `nrsKva`/`nrsCount` and their
+     cumulative forms beside the meter figures, and `cumulativeToNode`
+     takes the supplies OUT of the halved load and puts them in as
+     `blockKva` at full weight, with the group allowance counting
+     dwellings only (`cumDomestic`). A model built by hand without those
+     arrays behaves exactly as it did, which the check holds.
+
+     Against the workbook, five of six legs now match to four decimal
+     places. The sixth is a disagreement about WHERE the TBS connects:
+     the sheet carries 23 kVA through B9→B10, the drawing has the supply
+     teeing off the B1→B9 leg, 84 m before B9. The drawing is right.
+
+     **A duplicate key cost an hour.** `blockKva` was set twice in the
+     same object — once by this change, once by the earlier forwarding
+     of `s.blockKva` — and the later one won, so the supplies' load left
+     the dwellings' side and never arrived on the block side. Every
+     figure went DOWN, which is what gave it away. JavaScript does not
+     warn about that and nor does the build.
+
+     Not changed: supplies still count toward the unbalance correction.
+     It is switched off on this customer's system, and a three-phase
+     pump is arguably not a single-phase customer landing on one leg —
+     worth deciding, but not while nothing reads it.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

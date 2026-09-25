@@ -317,6 +317,10 @@ export function cumulativeToNode({
 }) {
   const s = { ...VD_DEFAULTS, ...settings };
   const { nodes, parent, cum, cumKva, meterKva, meterCount, S } = model;
+  /* Supplies, apart from dwellings (see buildFeederModel). Absent on a
+     model built by hand in a check, where they are all zero and every
+     figure comes out as it did before. */
+  const { nrsKva, nrsCount, cumNrsKva, cumDomestic } = model;
 
   const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
@@ -401,15 +405,20 @@ export function cumulativeToNode({
   const tapped = (u, onward, spursOnly = false) => {
     let kva = (meterKva?.[u]) || 0;
     let count = (meterCount?.[u]) || 0;
+    /* The supplies within that, so the caller can charge them whole
+       while the dwellings are halved. Zero on a model built before this
+       or by hand, which then behaves exactly as it did. */
+    let nrs = (nrsKva?.[u]) || 0;
     let joints = count;
     for (const c of kids.get(u) || []) {
       if (c === onward) continue;
       kva += (cumKva?.[c]) || 0;
       count += (cum?.[c]) || 0;
+      nrs += (cumNrsKva?.[c]) || 0;
       const isSpur = parSvc ? !!parSvc[c] : !spursOnly;
       if (isSpur) joints += (cum?.[c]) || 0;
     }
-    return { kva, count, joints };
+    return { kva, count, nrs, joints };
   };
 
   /* As the cable runs it: the measured figure where one was entered on
@@ -419,6 +428,9 @@ export function cumulativeToNode({
     || ((a, b) => dist(nodes[a], nodes[b]));
 
   let legLenM = 0, distKva = 0, distCount = 0, distJoints = 0;
+  /* What of the distributed load is a supply rather than a dwelling. */
+  let distNrs = 0;
+  let distDom = 0;
   for (let i = 1; i < path.length; i++) {
     const cur = path[i];
     legLenM += between(path[i - 1], cur);
@@ -448,9 +460,28 @@ export function cumulativeToNode({
       const leg = legVoltDrop({
         cable: cableById(sn.cableSizeId),
         lengthM: legLenM,
-        distributedKva: distKva,
-        terminalKva: (cumKva?.[cur]) || 0,
-        meterCount: distCount + ((cum?.[cur]) || 0),
+        /* ── A supply is charged whole; a dwelling is halved ──
+
+           Half a section's dwellings draw through only part of it, on
+           average, which is what the distributed factor is for. A
+           pumping station or a fibre cabinet is one fixed draw and is
+           not one of a diversified group: the verification workbook
+           gives it its own column, added outside that halving, and
+           charging it at half read about 0.15% low at every node past
+           the one it tees off.
+
+           So the supplies come out of the halved figure and go in as
+           block load, at full weight. */
+        distributedKva: distKva - distNrs,
+        terminalKva: ((cumKva?.[cur]) || 0) - ((cumNrsKva?.[cur]) || 0),
+        blockKva: (s.blockKva || 0) + distNrs + ((cumNrsKva?.[cur]) || 0),
+        /* Dwellings, for the group allowance: a supply is not a member
+           of a group, and the workbook triggers its B5 on the customer
+           count. Falls back to every meter where a model does not
+           separate them. */
+        meterCount: cumDomestic
+          ? distDom + ((cumDomestic?.[cur]) || 0)
+          : distCount + ((cum?.[cur]) || 0),
         /* The connections made on this leg: the ones tapped between the
            previous span node and this one, PLUS the ones at this node
            itself.
@@ -480,7 +511,12 @@ export function cumulativeToNode({
            Zero unless a caller asks, so nothing moves on a drawing
            where nobody has switched it on. */
         groupKva: s.groupKva,
-        blockKva: s.blockKva,
+        /* `blockKva` is set above, where the supplies are taken out of
+           the halved load — and it already folds in `s.blockKva`.
+           Setting it again here would win, being later in the same
+           object, and drop the supplies entirely: the load left the
+           dwellings' side and never arrived on the block side. Which is
+           precisely what it did. */
         unbalanced: s.unbalanced,
         distFactor: s.distributedLoadFactor,
         unbalConst: s.unbalancedConstant,
@@ -517,7 +553,7 @@ export function cumulativeToNode({
          stop. B3 read 0.821% against B4's 0.771%: the board worse than
          the stop beyond it, which cannot happen. */
       legLenM = cur === targetIdx ? 0 : (Number(sn.downM) || 0);
-      distKva = 0; distCount = 0; distJoints = 0;
+      distKva = 0; distCount = 0; distJoints = 0; distNrs = 0; distDom = 0;
     } else {
       /* Load tapped between span nodes is distributed load on the leg
          being accumulated — at the node itself and down every spur
@@ -525,6 +561,11 @@ export function cumulativeToNode({
       const t = tapped(cur, path[i + 1] ?? -1);
       distKva += t.kva;
       distCount += t.count;
+      distNrs += t.nrs;
+      /* Dwellings tapped here: everything at this point that is not a
+         supply. Counted separately because the group allowance is a
+         group OF dwellings. */
+      distDom += t.count - (nrsCount?.[cur] || 0);
       distJoints += t.joints;
     }
   }

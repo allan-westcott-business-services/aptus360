@@ -752,6 +752,11 @@ export function buildFeederModel(features = [], opts = {}) {
      anchor; the meter is the fallback for a meter with no seed. */
   const meterCount = new Array(nodes.length).fill(0);
   const meterKva = new Array(nodes.length).fill(0);
+  /* Non-residential supplies, kept apart from the dwellings: their load
+     is charged whole rather than halved, and they are not what the
+     group allowance is a group of. */
+  const nrsCount = new Array(nodes.length).fill(0);
+  const nrsKva = new Array(nodes.length).fill(0);
   /* ── Cable wanted here, whether or not load is ──
 
      A heavy duty cut-out at the end of a dig is a termination with
@@ -828,6 +833,7 @@ export function buildFeederModel(features = [], opts = {}) {
 
     if (nn.i >= 0 && nn.d <= tol) {
       meterCount[nn.i] += 1;
+      if (isNrs) nrsCount[nn.i] += 1;
       /* Where the load comes from. A dwelling's is worked out from its
          house type and sits on the plot; a non-residential supply's is
          the figure the operator was asked to provide, and there is no
@@ -842,6 +848,19 @@ export function buildFeederModel(features = [], opts = {}) {
       }
       const thisKva = kva != null && kva !== "" ? Number(kva) : fallbackKva;
       meterKva[nn.i] += thisKva;
+      /* ── A supply's load, kept apart ──
+
+         A dwelling is one of a diversified group: half of them, on
+         average, draw through only part of the section they tee off,
+         which is why the volt drop halves a distributed customer. A
+         pumping station or a fibre cabinet is not \u2014 it is one fixed
+         draw, and the verification workbook gives it its own column
+         (block load) charged WHOLE, outside that halving.
+
+         Counted here so the two can be weighted differently later.
+         It stays in meterKva as well, because everything asking "what
+         does this node draw" wants the total. */
+      if (isNrs) nrsKva[nn.i] += thisKva;
       /* The meter itself and the load it brought, so a service tail can
          be worked out for this customer specifically. */
       metersAt[nn.i].push({ meter: m, kva: thisKva, plotId: m.Plot_ID ?? null,
@@ -973,12 +992,18 @@ export function buildFeederModel(features = [], opts = {}) {
      everything beyond it has been. */
   const cum = meterCount.slice();
   const cumKva = meterKva.slice();
+  const cumNrsKva = nrsKva.slice();
+  /* The customers, dwellings only: what the group allowance is a group
+     OF, and what the workbook's customer count means. */
+  const cumDomestic = meterCount.map((n, i) => n - nrsCount[i]);
   const cumDemand = demand.slice();
   for (let i = order.length - 1; i >= 0; i--) {
     const u = order[i];
     if (parent[u] >= 0) {
       cum[parent[u]] += cum[u];
       cumKva[parent[u]] += cumKva[u];
+      cumNrsKva[parent[u]] += cumNrsKva[u];
+      cumDomestic[parent[u]] += cumDomestic[u];
       cumDemand[parent[u]] += cumDemand[u];
     }
   }
@@ -992,6 +1017,9 @@ export function buildFeederModel(features = [], opts = {}) {
 
   return {
     nodes, parent, parSvc, cum, cumKva, meterCount, meterKva, metersAt,
+    /* The supplies, apart from the dwellings: charged whole rather than
+       halved, and not counted as members of a group. */
+    nrsKva, nrsCount, cumNrsKva, cumDomestic,
     /* Cable wanted beyond each node, without load behind it: the
        cut-outs. Every reader that asks "is this branch cabled" asks
        cum OR this, through `carriesCable`. */

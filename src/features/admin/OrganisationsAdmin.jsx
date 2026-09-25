@@ -108,12 +108,17 @@ export default function OrganisationsAdmin() {
   const [contactFor, setContactFor] = useState(null);    // branch the form sits under
   const [contactDraft, setContactDraft] = useState({});
 
+  /* Hands the rows back as well as storing them. createOrg needs to look
+     in the refreshed list for the organisation it has just made, and
+     reading `rows` straight after setRows would still see the old array. */
   const loadList = useCallback(async () => {
     try {
       const r = await listOrganisations();
-      setRows(r.rows || []);
+      const list = r.rows || [];
+      setRows(list);
       setError("");
-    } catch (e) { setError(e.message); }
+      return list;
+    } catch (e) { setError(e.message); return []; }
     finally { setLoading(false); }
   }, []);
 
@@ -170,13 +175,29 @@ export default function OrganisationsAdmin() {
     setContactFor(null); setContactDraft({});
   }
 
+  /* A new organisation is left selected, so branches and contacts can be
+     added straight away without hunting for it in the list.
+
+     Selecting it is not enough on its own. A brand-new organisation holds
+     no roles and its name rarely matches whatever is in the search box, so
+     the row is filtered out of the list while its detail sits on the right
+     — the panel you wanted, with no highlighted row to explain it. Clear
+     the two filters that can hide it. Close any editor still open against
+     the organisation we were looking at a moment ago, too: branchFor and
+     contactFor carry that organisation's ids, and saving one of those forms
+     after the switch would file the record under the wrong company. */
   async function createOrg() {
     if (!newName.trim()) return setError("An organisation needs a name.");
+    const name = newName.trim();
     try {
-      const created = await saveOrganisation({ Name: newName.trim(), Is_Active: true });
+      const created = await saveOrganisation({ Name: name, Is_Active: true });
       setNewName(""); setAdding(false);
-      await loadList();
-      setSelected(created.Organisation_ID);
+      setSearch(""); setRoleFilter("");
+      setEditingOrg(false); closeEditors();
+      const fresh = await loadList();
+      const id = created?.Organisation_ID
+        ?? fresh.find((r) => r.Name === name)?.Organisation_ID;
+      if (id) setSelected(id);
     } catch (e) { setError(e.message); }
   }
 
@@ -329,6 +350,26 @@ export default function OrganisationsAdmin() {
       <div className="oa-split">
         {/* ── list ── */}
         <div className="oa-list">
+          {/* Above the list, not below it. The list runs to several hundred
+              companies and scrolls inside this panel, so a button at the
+              foot of it was a scroll away every time. */}
+          <div className="oa-addtop">
+            {adding ? (
+              <div className="oa-add">
+                <input autoFocus value={newName} placeholder="Organisation name"
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && createOrg()} />
+                <div className="oa-add-actions">
+                  <button className="btn ghost sm" onClick={() => setAdding(false)}>Cancel</button>
+                  <button className="btn accent sm" onClick={createOrg}>Add</button>
+                </div>
+                <p className="hint">A Head Office branch is created automatically.</p>
+              </div>
+            ) : (
+              <button className="oa-new" onClick={() => setAdding(true)}>+ Add organisation</button>
+            )}
+          </div>
+
           <input className="oa-search" value={search} placeholder="Search organisations&hellip;"
             aria-label="Search organisations" onChange={(e) => setSearch(e.target.value)} />
           <select className="oa-rolefilter" value={roleFilter} aria-label="Filter by role"
@@ -364,21 +405,6 @@ export default function OrganisationsAdmin() {
               <span className="oa-roles">{r.roles || "no role"}</span>
             </button>
           ))}
-
-          {adding ? (
-            <div className="oa-add">
-              <input autoFocus value={newName} placeholder="Organisation name"
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && createOrg()} />
-              <div className="oa-add-actions">
-                <button className="btn ghost sm" onClick={() => setAdding(false)}>Cancel</button>
-                <button className="btn accent sm" onClick={createOrg}>Add</button>
-              </div>
-              <p className="hint">A Head Office branch is created automatically.</p>
-            </div>
-          ) : (
-            <button className="oa-new" onClick={() => setAdding(true)}>+ Add organisation</button>
-          )}
         </div>
 
         {/* ── detail ── */}
@@ -799,6 +825,8 @@ const CSS = `
 .oa-new { width: 100%; background: none; border: 1px dashed var(--border); border-radius: 6px;
   padding: 7px; margin-top: 6px; cursor: pointer; font: 600 12.5px inherit; color: var(--accent); }
 .oa-new:hover { background: var(--accent-light); }
+.oa-addtop { margin-bottom: 9px; }
+.oa-addtop > .oa-new, .oa-addtop > .oa-add { margin-top: 0; }
 .oa-add { border: 1px solid var(--accent); border-radius: 6px; padding: 8px; margin-top: 6px; }
 .oa-add input { width: 100%; margin-bottom: 6px; font-size: 12px; }
 .oa-add-actions { display: flex; gap: 6px; }

@@ -348,13 +348,18 @@ export function MenuLabels({ kinds, showLabels, onShowLabels, value, onKind }) {
    current value implies the selection has one — and forty trenches
    halfway through a phase have four different ones. This does not show
    a value; it applies one. */
-export function MenuAction({ label, options, value = "", disabled, hint, onSet }) {
+/* `required` is for the other case: a row that SHOWS a setting rather
+   than applying one to a selection. Sizes is one setting per utility and
+   it always has a value, so the blank "—" at the top of the list is an
+   option that cannot be chosen and does not mean anything — it reads as
+   a fourth state of a two-state setting. */
+export function MenuAction({ label, options, value = "", disabled, hint, onSet, required = false }) {
   return (
     <div className={disabled ? "gm-act off" : "gm-act"} data-keep-open title={hint || ""}>
       <span className="gm-act-l">{label}</span>
       <select value={value} disabled={disabled}
         onChange={(e) => { if (e.target.value) onSet(e.target.value); }}>
-        <option value="">&mdash;</option>
+        {!required && <option value="">&mdash;</option>}
         {options.map((o) => (
           <option key={o.key} value={o.key}>{o.label}</option>
         ))}

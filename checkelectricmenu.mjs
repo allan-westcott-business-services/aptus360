@@ -76,7 +76,7 @@ if (!region) {
 {
   const order = [...region.matchAll(/<MenuBand[^>]*label="([^"]+)"/g)].map((m) => m[1]);
   const want = ["Supply", "Circuits", "Boxes and boards", "Feeder cable",
-    "Service cable", "Joints", "Tools and reporting", "Sizes"];
+    "Service cable", "Joints", "Tools and reporting"];
   if (order.join(" | ") !== want.join(" | ")) {
     fail(`the bands read ${order.join(" | ") || "(none)"}\n         expected ${want.join(" | ")}`);
   }
@@ -101,11 +101,55 @@ if (!region) {
     "Service Cable", "Manually add Service Cable", "Auto Lay Service Cable",
     "Joints", "+ Straight Joint", "+ Breech Joint", "+ Bottle End Joint",
     "+ Service Joint", "Auto Place Feeder Joints",
-    "Trace from a Point", "Circuit Report", "Run Levels Check", "Aptus Calc Sheet",
-    "System calculated", "Manually set",
+    "Circuit Report", "Run Levels Check", "Aptus Calc Sheet",
   ];
   for (const label of must) {
     if (!region.includes(label)) fail(`"${label}" has gone from the Electric menu`);
+  }
+}
+
+/* ─── 3b. The three that left went somewhere ───
+
+   Trace from a Point moved to Tools & Reporting, and the two size modes
+   to Setup. Both were asked for, and both are the kind of move where
+   "gone from here" and "arrived there" have to be one assertion: a
+   removal that lands nowhere passes a test that only looks at the menu
+   it left, and the feature is then unreachable with nothing failing.
+
+   The destination is named by the menu's id, which is the thing that
+   does not change when somebody retitles a menu. */
+{
+  const menuBody = (id) => {
+    const open = page.indexOf(`<Menu id="${id}"`);
+    if (open < 0) return null;
+    /* To the next <Menu, or to the end. Menus are siblings here, so the
+       next opening tag is this one's end for the purpose of asking what
+       it holds. */
+    const next = page.indexOf("<Menu id=", open + 8);
+    return page.slice(open, next < 0 ? page.length : next);
+  };
+
+  for (const [what, id] of [
+    ["Trace from a Point", "tools"],
+    ["System calculated", "setup"],
+    ["Manually set", "setup"],
+  ]) {
+    if (region.includes(what)) fail(`${what} is still on the Electric menu`);
+    const dest = menuBody(id);
+    if (!dest) fail(`there is no <Menu id="${id}"> to have moved ${what} to`);
+    else if (!dest.includes(what)) fail(`${what} did not arrive on the ${id} menu`);
+  }
+
+  /* One Trace, not four. The whole point of the move: it was on each
+     utility menu because that is how it knew which network was meant,
+     and the click answers that now. */
+  const traces = page.split('"Trace from a Point"').length - 1;
+  if (traces !== 1) fail(`"Trace from a Point" appears ${traces} times, expected 1`);
+
+  /* And it starts with no utility named, or it has not really moved. */
+  const tools = menuBody("tools") ?? "";
+  if (!/setTraceFrom\(\{\s*layerKey:\s*null/.test(tools)) {
+    fail("the Trace on Tools & Reporting still names a utility up front");
   }
 }
 

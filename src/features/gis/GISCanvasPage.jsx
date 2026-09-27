@@ -84,6 +84,7 @@ import BulkEditor from "./BulkEditor.jsx";
 import BomModal from "./BomModal.jsx";
 import {
   MenuBar, Menu, MenuGroup, MenuBand, MenuItem, MenuBranch, MenuLayer, MenuLabels,
+  MenuAction,
 } from "./GisMenus.jsx";
 import {
   LABEL_KINDS, DEFAULT_LABEL_KINDS, labelShown as labelShownFor,
@@ -10886,13 +10887,26 @@ export default function GISCanvasPage() {
      upstream and downstream are not questions it can answer, and the
      panel says so rather than offering a direction that would pick one
      at random. */
+  /* ── A null layerKey means any utility ──
+
+     Trace used to be started from a utility menu, which is how it knew
+     whether "the pipe" meant gas or water without being told. It is one
+     item on Tools & Reporting now, so the click has to say — and it
+     already does: the dialog lists the lines under the point and asks
+     which one, and the answer carries its own Layer_Key.
+
+     So this widens to every non-trench line while the question is still
+     open, and the walk itself is run with the layer of the line that
+     was picked. Nothing traces ACROSS utilities: a gas main and an LV
+     cable in the same trench are two networks, and following one into
+     the other would be a fiction. */
   const traceFollow = useCallback((layerKey, kind) => {
     if (kind === "trench") {
       return features.filter((f) => f.Feature_Type === "line"
         && isTrenchType(f.Attributes?.Line_Type, lineTypes));
     }
     return features.filter((f) => f.Feature_Type === "line"
-      && f.Layer_Key === layerKey
+      && (layerKey == null || f.Layer_Key === layerKey)
       && !isTrenchType(f.Attributes?.Line_Type, lineTypes));
   }, [features, lineTypes]);
 
@@ -10904,7 +10918,8 @@ export default function GISCanvasPage() {
        circuit is not a source of it. */
     const roles = new Set(["poc", "substation", "source", "governor", "primary"]);
     return features
-      .filter((f) => f.Feature_Type === "point" && f.Layer_Key === layerKey
+      .filter((f) => f.Feature_Type === "point"
+        && (layerKey == null || f.Layer_Key === layerKey)
         && roles.has(f.Feature_Role))
       .map((f) => f.Attributes?.Span_Anchor ?? f.Geometry?.[0])
       .filter(Boolean);
@@ -25640,6 +25655,52 @@ export default function GISCanvasPage() {
                         hint="Everything on the drawing, as far out as the zoom goes"
                         disabled={!features.length}
                         onClick={zoomToExtent} />
+                      {/* ── Which sizes the drawing shows ──
+
+                          Asked for: moved off the three utility menus,
+                          where the same setting sat three times under
+                          three identical Sizes headings. It is a setting
+                          rather than a step — it changes how the drawing
+                          READS, not what is on it — and settings belong
+                          here with the plan, the scale and the drawing
+                          standard.
+
+                          Still one setting per utility, because they are
+                          independent and always were: a scheme can have
+                          electric on what the build worked out and gas on
+                          what somebody overrode, and collapsing that into
+                          one switch would have decided it for them.
+
+                          A row with the value on it rather than two items
+                          per utility. Six items under one heading is the
+                          shape that made three menus long enough to
+                          scroll; three rows each showing where they stand
+                          is the same information read in one glance.
+                          `required`, because a size mode is always one of
+                          the two and a blank option would read as a third
+                          state. */}
+                      <div className="gm-sep" />
+                      <MenuGroup label="Sizes" />
+                      {[["electric", "Electric"], ["gas", "Gas"], ["water", "Water"]]
+                        .map(([key, name]) => (
+                          <MenuAction key={key}
+                            /* The layer's own Label the moment it loads,
+                               so renaming one in Admin still works; the
+                               written-out name until then, never the key
+                               — a heading that changes from "gas" to
+                               "Gas" under the reader looks like a fault
+                               whatever it settles on. */
+                            label={layers.find((l) => l.Layer_Key === key)?.Label ?? name}
+                            value={sizeMode[key] ?? "system"}
+                            required
+                            hint="System calculated is what the build worked out from the load; manually set uses the overrides where they are set and calculates the rest"
+                            options={[
+                              { key: "system", label: "System calculated" },
+                              { key: "manual", label: "Manually set" },
+                            ]}
+                            onSet={(mode) => setSizeModeFor(key, mode)} />
+                        ))}
+
                       {/* Last, under its own divider: it is not a drawing
                           tool and not a view setting, it is taking a copy
                           of the drawing away with you. */}
@@ -26553,21 +26614,6 @@ export default function GISCanvasPage() {
                       </MenuBand>
 
                       <MenuBand tone="#64748b" label="Tools and reporting">
-                        {/* Started from the utility's own menu, so what is
-                            being followed is already answered. The click
-                            supplies the only thing a menu cannot. */}
-                        <MenuItem label={traceFrom ? "Click the line\u2026 (Esc to stop)" : "Trace from a Point"}
-                          active={!!traceFrom}
-                          hint={hasTrench
-                            ? "Click a cable, joint, meter or node — upstream, downstream or both"
-                            : "Nothing drawn yet to trace"}
-                          disabled={!projectId || !hasTrench}
-                          onClick={() => {
-                            setTraceRun(null);
-                            setTraceFrom({ layerKey: "electric", kind: "cable", direction: "down" });
-                            setSelected([]); setDraft([]);
-                          }} />
-
                         {/* ── Greyed on the same rule as everything else ──
 
                             This asked for a substation. Every other thing
@@ -26633,20 +26679,6 @@ export default function GISCanvasPage() {
                               + "row is measured from one"}
                           disabled={!lvOrigin(features)}
                           onClick={() => setCalcSheetOpen(true)} />
-                      </MenuBand>
-
-                      <MenuBand tone="#94a3b8" label="Sizes">
-                        <MenuGroup label="Sizes" />
-                        <MenuItem label="System calculated" indent
-                          active={(sizeMode.electric ?? "system") === "system"}
-                          keepOpen
-                          hint="What the build worked out from the load"
-                          onClick={() => setSizeModeFor("electric", "system")} />
-                        <MenuItem label="Manually set" indent
-                          active={sizeMode.electric === "manual"}
-                          keepOpen
-                          hint="Overrides where set, calculated elsewhere"
-                          onClick={() => setSizeModeFor("electric", "manual")} />
                       </MenuBand>
 
                       {/* The column breaks here. Everything before it is
@@ -26885,22 +26917,6 @@ export default function GISCanvasPage() {
                               hand. Kept apart because they are
                               backfilled at different times: the mains
                               go in long before the plots are served. */}
-                          {/* Every utility can be traced, and each from
-                              its own menu — which is how the trace knows
-                              whether "the pipe" means gas or water
-                              without being told. */}
-                          <MenuItem label={traceFrom?.layerKey === key
-                            ? "Click the line\u2026 (Esc to stop)" : "Trace from a Point"}
-                            active={traceFrom?.layerKey === key}
-                            hint={hasTrench
-                              ? "Follow the network from a point — upstream, downstream or both"
-                              : "Nothing drawn yet to trace"}
-                            disabled={!projectId || !hasTrench}
-                            onClick={() => {
-                              setTraceRun(null);
-                              setTraceFrom({ layerKey: key, kind: "cable", direction: "down" });
-                              setSelected([]); setDraft([]);
-                            }} />
                           {key === "gas" && (<>
                             <MenuItem
                               label={busy === "hvtt" ? "Placing\u2026" : "Place Top Tees"}
@@ -26988,20 +27004,15 @@ export default function GISCanvasPage() {
                               the rest at the head of the next. Everything
                               before the break is the work; everything
                               after it is how the drawing is read. */}
-                          <MenuGroup label="Sizes" newColumn />
-                          <MenuItem label="System calculated" indent
-                            active={(sizeMode[key] ?? "system") === "system"}
-                            keepOpen
-                            hint="What the build worked out from the load"
-                            onClick={() => setSizeModeFor(key, "system")} />
-                          <MenuItem label="Manually set" indent
-                            active={sizeMode[key] === "manual"}
-                            keepOpen
-                            hint="Overrides where set, calculated elsewhere"
-                            onClick={() => setSizeModeFor(key, "manual")} />
-
-                          <div className="gm-sep" />
-                          <MenuGroup label="Show or Hide" />
+                          {/* The column breaks here now that Sizes has gone
+                              to Setup. It was the heading carrying the
+                              break, and losing it would have left this
+                              menu in one tall column — named rather than
+                              left to the browser, which splits by height
+                              and would put half the layer list at the
+                              foot of one column and the rest at the head
+                              of the next. */}
+                          <MenuGroup label="Show or Hide" newColumn />
                           {/* Labels, on every utility menu.
 
                               Whether the drawing is readable is a
@@ -27269,6 +27280,47 @@ export default function GISCanvasPage() {
                         live item and six dead ones reads as broken. */}
                     {!callOffOnly && (
                     <>
+                      {/* ── Behind the gate ──
+
+                          It read the drawing and changed nothing, so it
+                          went in above the gate at first — and that is
+                          exactly the fault the gate exists to stop.
+                          Somebody following a call-off link was sent
+                          here to raise the call-off, and a live Trace
+                          beside it is a second thing to do on a visit
+                          that has one. Reading the design is reasonable
+                          to want and is not what they came for.
+
+                          Caught by checkcalloffroutes.mjs, which stopped
+                          counting gated items and started asking what
+                          sits in front of the gate. */}
+                      {/* ── One Trace, for every utility ──
+
+                          Asked for. It was four items, one on each utility
+                          menu, and the menu it was started from is how the
+                          trace knew whether "the pipe" meant gas or water.
+                          Which is a fact the CLICK already carries: the
+                          dialog lists the lines under the point and asks
+                          which one, and the answer knows its own layer.
+
+                          So the utility is settled by the pick rather than
+                          by which menu was open, and it belongs here with
+                          the other things that read the drawing and change
+                          nothing. */}
+                      <MenuItem label={traceFrom
+                        ? "Click the line\u2026 (Esc to stop)" : "Trace from a Point"}
+                        active={!!traceFrom}
+                        hint={hasTrench
+                          ? "Click any cable, pipe, joint, meter or node — upstream, downstream or both"
+                          : "Nothing drawn yet to trace"}
+                        disabled={!projectId || !hasTrench}
+                        onClick={() => {
+                          setTraceRun(null);
+                          setTraceFrom({ layerKey: null, kind: "cable", direction: "down" });
+                          setSelected([]); setDraft([]);
+                        }} />
+                      <div className="gm-sep" />
+
                       {/* ── Writing on the drawing ──
 
                           Moved here from a menu of its own. A note
@@ -27845,6 +27897,12 @@ export default function GISCanvasPage() {
         const chosen = opts.find((o) =>
           Number(o.line.Feature_ID) === Number(tracePick.lineId)) ?? opts[0];
         const onTrench = tracePick.kind === "trench";
+        /* Which network is being followed. Started from Tools &
+           Reporting the trace names no utility, so the chosen line
+           answers it — and the walk is run with THAT layer, never with
+           the open question, so a trace stays on the network it began
+           on. A trace started with a utility already named keeps it. */
+        const followLayer = chosen?.line?.Layer_Key ?? tracePick.layerKey;
 
         return (
           <div className="cpick-backdrop" onClick={() => setTracePick(null)}>
@@ -27856,7 +27914,8 @@ export default function GISCanvasPage() {
                   started from: "Cable" on electric, "Pipe" on gas and
                   water, because that is what is in the ground. */}
               <div className="gt-p-row">
-                {[["cable", tracePick.layerKey === "electric" ? "Cable" : "Pipe"],
+                {[["cable", followLayer === "electric" || followLayer == null
+                  ? "Cable" : "Pipe"],
                   ["trench", "Trench"]].map(([k, label]) => (
                   <button key={k}
                     className={`gt-p-b${tracePick.kind === k ? " on" : ""}`}
@@ -27939,7 +27998,7 @@ export default function GISCanvasPage() {
                     const p = tracePick;
                     setTracePick(null);
                     runTrace(p.at, {
-                      layerKey: p.layerKey,
+                      layerKey: followLayer,
                       kind: p.kind,
                       direction: p.direction,
                       startLineId: chosen?.line?.Feature_ID ?? null,

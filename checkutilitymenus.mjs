@@ -785,6 +785,17 @@ const onScreen = (keys) => {
    Same reasoning as the Trench menu check above: a large block of JSX
    moved by hand goes wrong by leaving an item behind, and a command
    missing from a menu looks exactly like one that was never written. */
+/* The gas-and-water menu, which is one block built from the layer list
+   rather than two written out. Bounded by the map that makes it and the
+   menu that follows, so it does not drift when an item is added. */
+const gasMenuBody = () => {
+  const from = canvas.indexOf('[["gas", "Gas"], ["water", "Water"]].map');
+  if (from < 0) return null;
+  const to = canvas.indexOf('<Menu id="lighting"', from);
+  return canvas.slice(from, to < 0 ? canvas.length : to)
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+};
+
 {
   const from = canvas.indexOf('<Menu id="electric"');
   const to = canvas.indexOf("Gas and Water, the two menus built from the layer");
@@ -861,7 +872,6 @@ const onScreen = (keys) => {
     if (/label="Sizes" newColumn/.test(bare)) {
       fail("Sizes still starts a column of its own");
     }
-    const sizesAt = bare.indexOf('<MenuBand tone="#94a3b8" label="Sizes"');
     const showAt = bare.indexOf('label="Show or Hide"');
     const toolsAt = bare.indexOf('label="Tools and reporting"');
     /* Each has to BE there. Indexed with indexOf and compared with <,
@@ -870,10 +880,38 @@ const onScreen = (keys) => {
        this assertion did when the headings became bands and nothing
        said so. */
     if (toolsAt < 0) fail("the Electric menu has no tools and reporting group");
-    if (sizesAt < 0) fail("the Electric menu has no Sizes group");
     if (showAt < 0) fail("the Electric menu has no Show or Hide group");
-    if (!(toolsAt < sizesAt && sizesAt < showAt)) {
-      fail("Sizes is not at the foot of the left column");
+    if (!(toolsAt < showAt)) {
+      fail("the reports are not at the foot of the left column");
+    }
+
+    /* ── Sizes and Trace are not on a utility menu at all ──
+
+       Both moved, asked for: Sizes to Setup, where the settings are,
+       and Trace to Tools & Reporting as one item for every utility.
+       Asserted across ALL THREE menus rather than on Electric alone,
+       because the fault this guards against is one of them keeping its
+       copy — the same setting in two places, disagreeing, with neither
+       looking wrong on its own screen. */
+    for (const [menu, body] of [["Electric", bare], ["Gas and Water", gasMenuBody()]]) {
+      if (!body) continue;
+      if (/<MenuGroup label="Sizes"/.test(body)) {
+        fail(`${menu} still carries a Sizes group of its own`);
+      }
+      if (/setSizeModeFor\(/.test(body)) {
+        fail(`${menu} still sets the size mode`);
+      }
+      if (/"Trace from a Point"/.test(body)) {
+        fail(`${menu} still carries its own Trace from a Point`);
+      }
+    }
+    /* Whatever else moved, the second column still has to start
+       somewhere: Sizes' heading was carrying the break on the gas and
+       water menu, and removing it would have left one tall column. */
+    for (const [menu, body] of [["Electric", bare], ["Gas and Water", gasMenuBody()]]) {
+      if (body && !/label="Show or Hide" newColumn/.test(body)) {
+        fail(`${menu} no longer breaks into two columns`);
+      }
     }
 
     /* Mains before services, because that is the order the work is done

@@ -258,6 +258,7 @@ caught a fault that had already shipped at least once.
 | `node checkmigrations.mjs` | Numbering against a policed baseline; seeded style scopes that collide under the unique index; endpoint column lists against `ADD COLUMN` |
 | `node checkorgadd.mjs` | The add button sits above the list, and a new organisation is selected AND visible — mounted and driven |
 | `node checkelectricmenu.mjs` | The Electric menu's left column: seven bands, in the order of the work, nothing loose and nothing lost |
+| `node checktracescope.mjs` | One Trace for every utility: any network until you pick a line, one network once you have |
 | `python3 checkdefs.py` | Calls with no definition, state set with no `useState` |
 | `python3 checkcols.py` | Explicit column lists against the schema |
 | `python3 checkorder.py` | Use before declaration (heuristic — read the hits, see fault 2) |
@@ -8876,6 +8877,56 @@ characters is a hundred lines of prose and no rules at all.
      assumed. Eleven `.DS_Store` files ARE tracked, and an ignore rule
      does nothing to a file git already follows — taking them out is a
      separate decision and the command to do it is in the file.
+
+208. **Trace moved to Tools & Reporting, Sizes to Setup.** Both asked
+     for, and both were the same shape of problem: a thing that sat on
+     three utility menus because that is where it grew, not because it
+     belonged to any one of them.
+
+     **Trace is one item now, not three.** It was on Electric, Gas and
+     Water, and the menu it was started from is how it knew whether "the
+     pipe" meant gas or water — `setTraceFrom({ layerKey: key, ... })`.
+     But the click already carries that fact. The dialog lists the lines
+     under the point and asks which one, because cables sharing a trench
+     are stored with the same geometry and no measuring can tell them
+     apart, and the line that gets picked knows its own `Layer_Key`.
+
+     So `traceFollow` and `traceSources` take `layerKey == null` to mean
+     any utility, and the dialog works out `followLayer` from the chosen
+     line and runs the walk with THAT. **Nothing traces across
+     utilities.** A gas main and an LV cable in one trench have the same
+     vertices; a walk left on the open question would step from one to
+     the other at the first shared point and report a network that does
+     not exist — with lengths and branch counts, which is the worst kind
+     of wrong. Null is for the question, never for the walk, and
+     checktracescope.mjs holds both halves.
+
+     **It went in above the call-off gate first, which was wrong.** The
+     Tools menu hides everything but the call-off items from somebody
+     who followed a call-off link, and Trace reads the drawing without
+     changing it, so it looked like it belonged in front. It does not:
+     that visitor was sent here to raise a call-off, and a live Trace
+     beside it is a second thing to do on a visit that has one. Caught
+     by checkcalloffroutes.mjs, which had already been rewritten once to
+     stop counting gated items and start asking what sits in front of
+     the gate — the rewrite is what caught this.
+
+     **Sizes is one row per utility on Setup.** It was the same two
+     items under the same heading on three menus, and it is a setting
+     rather than a step: it changes how the drawing READS, not what is
+     on it. Still independent per utility, because they always were —
+     electric on what the build worked out and gas on somebody's
+     overrides is a real combination, and one switch would have decided
+     it for them. A `MenuAction` row showing where each stands, rather
+     than six items: six under one heading is the shape that made the
+     menus long enough to scroll. `MenuAction` gained a `required` flag
+     to drop its blank "—", which on a setting that always has a value
+     reads as a third state of a two-state switch.
+
+     The gas and water menu lost the heading that was carrying its
+     column break. `Show or Hide` carries it now — without that the menu
+     falls into one tall column, which is the fault the named break was
+     put there to prevent.
 
 ## Decisions worth knowing
 

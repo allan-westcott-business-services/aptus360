@@ -142,12 +142,22 @@ const world = [
   if (!/cancelAnimationFrame\(traceFrame\.current\)/.test(canvas)) {
     fail("the frame loop is never cancelled");
   }
-  /* Every utility, from its own menu \u2014 which is how it knows whether
-     "the pipe" means gas or water without being told. */
-  const armed = (canvas.match(/setTraceFrom\(\{ layerKey/g) || []).length;
-  if (armed < 2) {
-    fail(`${armed} menu(s) can start a trace \u2014 electric, gas and water all `
-      + "need it");
+  /* ── One place arms it now ──
+
+     It was three, one per utility menu, and the menu it was started
+     from is how it knew whether "the pipe" meant gas or water. Moved
+     to Tools & Reporting as a single item, asked for: the click
+     already carries the answer, because the dialog lists the lines
+     under the point and the one that is picked knows its own layer.
+
+     So the count went the other way on purpose \u2014 more than one
+     would now mean a utility menu had kept its copy, which is the
+     thing that was removed. What the trace does with an unnamed
+     utility is checktracescope.mjs. */
+  const armed = (canvas.match(/setTraceFrom\(\{\s*layerKey/g) || []).length;
+  if (armed !== 1) {
+    fail(`${armed} place(s) arm a trace \u2014 it is one item on Tools & `
+      + "Reporting, for every utility");
   }
   /* A trench has no source, so its directions are offered greyed with
      the reason rather than hidden: a control that disappears looks

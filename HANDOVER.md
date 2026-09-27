@@ -256,6 +256,8 @@ caught a fault that had already shipped at least once.
 | `node checkspaneditor.mjs` | Mounts the span node editor; both sizes shown, override read |
 | `node checkbottleends.mjs` | Bottle ends at feeder ends only, not on every dead end |
 | `node checkmigrations.mjs` | Numbering against a policed baseline; seeded style scopes that collide under the unique index; endpoint column lists against `ADD COLUMN` |
+| `node checkorgadd.mjs` | The add button sits above the list, and a new organisation is selected AND visible — mounted and driven |
+| `node checkelectricmenu.mjs` | The Electric menu's left column: seven bands, in the order of the work, nothing loose and nothing lost |
 | `python3 checkdefs.py` | Calls with no definition, state set with no `useState` |
 | `python3 checkcols.py` | Explicit column lists against the schema |
 | `python3 checkorder.py` | Use before declaration (heuristic — read the hits, see fault 2) |
@@ -8758,6 +8760,122 @@ characters is a hundred lines of prose and no rules at all.
      It is switched off on this customer's system, and a three-phase
      pump is arguably not a single-phase customer landing on one leg —
      worth deciding, but not while nothing reads it.
+
+205. **The organisation you just added is the one you are looking at.**
+     Asked for as one change; it was two, and the second was the one
+     doing damage.
+
+     Admin → Organisations had `+ Add organisation` under the list. The
+     list is every company we deal with, it scrolls inside its own panel,
+     and the button was under all of it — so adding one meant scrolling
+     past a few hundred rows first, every time. It is the first thing in
+     the panel now, above the search box, and the name form opens in the
+     same place rather than at the foot. Button and form are one control
+     in two states, so both moved. The gap below sits on a wrapper
+     (`.oa-addtop`) instead of the button carrying a `margin-top` that
+     only made sense underneath something: `.oa-new` is shared with
+     "+ Add branch" in the detail panel, which still sits under its list
+     and still wants it.
+
+     **The selection was already there and was not enough.** `createOrg`
+     called `setSelected` with the new id from the first version of that
+     screen. But the list is filtered three ways and two of those filters
+     hide a company that has only just been created: it holds no roles,
+     so any setting of the role dropdown other than "All roles" drops it,
+     and its name is almost never what is in the search box. The detail
+     panel opened on the new organisation while the list showed no
+     highlighted row — the right panel with nothing to explain it, which
+     reads as the add having gone nowhere. Both filters are cleared on
+     create. This is the same shape as the role filter matching DNO
+     inside IDNO, recorded above: a filter that silently keeps working
+     after the thing it is filtering has changed.
+
+     Two smaller things on the same path. **Editors are closed across the
+     switch** — `branchFor` and `contactFor` hold ids belonging to the
+     organisation selected a moment ago, and a branch form left open and
+     then saved would have filed that branch under the wrong company,
+     which is the fault `checkbranches.mjs` exists for and is quiet in
+     exactly the same way. And **`loadList` hands its rows back** as well
+     as storing them, so create can find the row it made if the endpoint
+     ever answers without one; reading `rows` straight after `setRows`
+     would still see the old array.
+
+     `checkorgadd.mjs` reads the source for the ordering and the cleared
+     filters, then mounts the real panel against a fake network — the
+     `checkpeopleadmin.mjs` pattern, module shim and React value setter
+     included. It narrows the list by search AND role, which is the state
+     the fault needs, adds a company, and asks whether its row is there,
+     highlighted, with the detail panel on it and "+ Add branch" in
+     reach. Reverting each half of the change was confirmed to turn the
+     matching assertion red.
+
+     No migration. `RELEASE-org-add.md` shipped without this entry
+     because the snapshot it was built from was fourteen commits behind
+     `main`; the entry is here now, written against the current file.
+
+206. **The Electric menu reads as seven jobs.** Asked for, from a
+     mockup of the left column with each group boxed and shaded: "just
+     make them look separate from each other."
+
+     It was one list of twenty-odd commands under four grey headings —
+     Mains Network, Services, Tools & Reporting, Sizes. A heading is a
+     weak separator. Nine-pixel grey capitals are what the eye runs past
+     on the way to the item it wants, and the items under one heading
+     look exactly like the items under the next, so the order the work
+     is done in was not visible in the thing that lists it. Which is the
+     same fault the eighteen-button toolbar had before it became menus
+     at all, one level down.
+
+     `MenuBand` in GisMenus.jsx boxes a group: a tinted panel with its
+     own edge, the tint built with `alpha()` as eight-digit hex like
+     every other translucent thing here, and `role="group"` with a label
+     so a screen reader is told what the colour tells everybody else.
+     **The border is not decoration.** It is what still separates the
+     groups where the tint does not carry, so it is the one property
+     that must not be tidied away, and the check says so.
+
+     The bands, in the order of the work: Supply, Circuits, Boxes and
+     boards, Feeder cable, Service cable, Joints, Tools and reporting,
+     Sizes. Three items were not in a mockup of seven boxes and are not
+     dropped: the HV ring goes with the supply because it is how the
+     substation is fed, Split Circuit with Link to Circuit because both
+     are the same act on the same thing, and Trace with the reports
+     because it answers a question rather than changing anything.
+
+     Renames from the mockup: "Joint" is Joints, and the Services
+     heading plus its "Cable" branch is one "Service Cable" row — the
+     band carries what the heading used to say.
+
+     **An existing check had gone quietly weak.** checkutilitymenus.mjs
+     held the order with `bare.indexOf('label="Tools & Reporting"')` and
+     compared it with `<`. Removing that heading made it -1, which sorts
+     before everything, so the Sizes assertion beside it passed over a
+     group that was no longer there rather than failing. Every one of
+     those positions is now checked for existence before it is ordered.
+     The rule it protects is unchanged — supply, then services, then
+     reporting, the same order as the gas and water menus — and it is
+     read off the bands.
+
+     The tones are not tested. They are decoration, the mockup said as
+     much, and pinning them would make a palette change look like a
+     break. What is tested is that every command sits inside some band,
+     that the bands run in that order, and that all thirty-five labels
+     that were in the left column still are — because a command lost in
+     a reorganisation of twenty JSX blocks is the one kind of breakage
+     nobody reports. You do not miss a menu item you cannot see; you
+     conclude the feature was never built.
+
+207. **The repo has a .gitignore.** It had none. The first thing anyone
+     does after cloning is `npm install`, and `git status` then answers
+     with 161 packages — a status nobody reads, which is how a real
+     change goes out unnoticed. `node_modules/`, the build output that
+     vite writes and netlify publishes, `.env` and the usual editor
+     state. `/dist/` is anchored so it means the one at the root.
+
+     Nothing tracked becomes ignored by it; that was checked rather than
+     assumed. Eleven `.DS_Store` files ARE tracked, and an ignore rule
+     does nothing to a file git already follows — taking them out is a
+     separate decision and the command to do it is in the file.
 
 ## Decisions worth knowing
 

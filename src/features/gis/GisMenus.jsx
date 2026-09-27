@@ -120,6 +120,40 @@ export const MenuGroup = ({ label, newColumn = false }) => (
   <p className={newColumn ? "gm-group gm-brk" : "gm-group"}>{label}</p>
 );
 
+/* ── A band: the items for one job, boxed together ──
+
+   A heading is a weak separator. On a menu as long as Electric's the
+   eye runs straight past nine-pixel grey capitals, and the items under
+   one heading look exactly like the items under the next — so a list
+   that is really seven separate jobs reads as one list of twenty-odd
+   commands, which is the state the toolbar was in before it became
+   menus at all.
+
+   A band draws the group instead of announcing it: a tinted box with
+   its own edge, so the break between "place the plant" and "check the
+   design" is a thing you see rather than a word you read. The tone is
+   decoration and nothing depends on it; the box is what does the work,
+   which is why it keeps its border in a theme that flattens the tint.
+
+   `label` names the group for a screen reader, which is the one reader
+   a coloured box says nothing to — the heading it replaces was doing
+   that job and a box on its own would not.
+
+   `strong` is for a band that is one item and has to hold its own
+   beside the multi-item ones around it. */
+export function MenuBand({ tone = "#64748b", label, strong = false, children }) {
+  const style = {
+    "--gm-band": alpha(tone, strong ? 22 : 9),
+    "--gm-band-edge": alpha(tone, strong ? 55 : 26),
+    "--gm-band-hover": alpha(tone, strong ? 36 : 20),
+  };
+  return (
+    <div className="gm-band" style={style} role="group" aria-label={label}>
+      {children}
+    </div>
+  );
+}
+
 /* hint goes to the tooltip, not beside the label. Shown inline it wrapped
    under long labels and turned a tidy list into a wall of grey text —
    and most of it is detail you want when hesitating over an item, not
@@ -459,4 +493,19 @@ const CSS = `
    being shown, and the two must not read as the same kind of thing. */
 .gm-hs.pick.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .gm-sep { height: 1px; background: var(--border); margin: 5px 0; }
+
+/* A band. The border is not decoration: it is what still separates the
+   groups if the tint is washed out by a theme or by a screen nobody
+   calibrated, so it is never the thing that gets dropped to tidy this
+   up. */
+.gm-band { background: var(--gm-band); border: 1px solid var(--gm-band-edge);
+  border-radius: 8px; padding: 3px; margin: 0 0 6px; }
+.gm-band:last-child { margin-bottom: 0; }
+/* Hover in the band's own tone. The grey used elsewhere reads as a
+   smudge over a tint rather than as the row lighting up. */
+.gm-band .gm-item:hover:not(:disabled) { background: var(--gm-band-hover); }
+/* A heading inside a band sits tighter than one adrift in the menu,
+   which needed the space to separate what was above it. */
+.gm-band .gm-group { margin: 4px 6px 3px; }
+.gm-band .gm-group:first-child { margin-top: 2px; }
 `;

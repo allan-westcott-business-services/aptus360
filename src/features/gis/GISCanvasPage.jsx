@@ -83,7 +83,7 @@ const lengthLabel = (f) => (hasMeasured(f)
 import BulkEditor from "./BulkEditor.jsx";
 import BomModal from "./BomModal.jsx";
 import {
-  MenuBar, Menu, MenuGroup, MenuItem, MenuBranch, MenuLayer, MenuLabels,
+  MenuBar, Menu, MenuGroup, MenuBand, MenuItem, MenuBranch, MenuLayer, MenuLabels,
 } from "./GisMenus.jsx";
 import {
   LABEL_KINDS, DEFAULT_LABEL_KINDS, labelShown as labelShownFor,
@@ -26261,356 +26261,393 @@ export default function GISCanvasPage() {
                           was wrong: "Build LV Network" is one of four
                           ways to get a feeder cable, so it reads as the
                           automatic one. */}
-                      <MenuGroup label="Mains Network" />
-                      <MenuItem label="+ POC" hint="Snaps to the nearest main"
-                        disabled={!projectId} onClick={() => placeNode("poc", "electric")} />
-                      <MenuItem label="+ Substation" hint="Snaps to the nearest trench"
-                        disabled={!projectId} onClick={() => placeNode("substation", "electric")} />
-                      <MenuItem label={busy === "route" ? "Routing\u2026" : "Route POC to Substation"}
-                        hint={hasTrench
-                          ? "Shortest path along the trenches, as HV feeder"
-                          : "No trench drawn yet to route along"}
-                        disabled={!!busy || !projectId || !hasTrench}
-                        onClick={routeSupply} />
+                      {/* ── Seven jobs, seven bands ──
 
-                      {/* ── The chain the substation hangs off ──
+                          Asked for, from a mockup. The left column was one list of
+                          twenty-odd commands under four grey headings, and a heading
+                          is a weak separator: the items under one look exactly like
+                          the items under the next, so the order the work is done in
+                          was not visible in the thing that lists it. Each job is
+                          boxed now, and the order of the boxes is the order of the
+                          work — supply in, circuits drawn, plant placed, cable run,
+                          joints fitted, the result checked.
 
-                          Upstream of the POC. The standard arrangement
-                          is not a dedicated way: the substation is
-                          looped in and out of a shared 11 kV circuit,
-                          several substations in series on one way's
-                          cable, the ring returning to a second way with
-                          a normally open point along it. These place
-                          the record of that — the primary, the other
-                          substations on the chain, the split — and the
-                          incumbent's cable to draw the route with. All
-                          of it goes down as existing: it is theirs, and
-                          nothing here is bought. */}
-                      <MenuBranch label="HV Ring"
-                        hint="How the substation is fed — the shared circuit upstream of the POC">
-                        <MenuItem label="+ Primary Substation" indent
-                          hint="The 33/11 kV primary whose way feeds the chain"
+                          Three items are not where a mockup of seven boxes could
+                          show them. The HV ring goes with the supply, because it is
+                          how the substation is fed. Split Circuit goes with Link to
+                          Circuit, because both are the same act on the same thing.
+                          Trace goes with the reports, because it answers a question
+                          rather than changing anything. None of the three was in the
+                          mockup and none of them is dropped.
+
+                          The tones are decoration and nothing reads them. Every band
+                          keeps its own border, which is what still separates the
+                          groups on a screen where the tint does not carry. */}
+                      <MenuBand tone="#16a34a" label="Supply">
+                        <MenuItem label="+ POC" hint="Snaps to the nearest main"
+                          disabled={!projectId} onClick={() => placeNode("poc", "electric")} />
+
+                        <MenuItem label="+ Substation" hint="Snaps to the nearest trench"
+                          disabled={!projectId} onClick={() => placeNode("substation", "electric")} />
+
+                        <MenuItem label={busy === "route" ? "Routing\u2026" : "Route POC to Substation"}
+                          hint={hasTrench
+                            ? "Shortest path along the trenches, as HV feeder"
+                            : "No trench drawn yet to route along"}
+                          disabled={!!busy || !projectId || !hasTrench}
+                          onClick={routeSupply} />
+
+                        {/* ── The chain the substation hangs off ──
+
+                            Upstream of the POC. The standard arrangement
+                            is not a dedicated way: the substation is
+                            looped in and out of a shared 11 kV circuit,
+                            several substations in series on one way's
+                            cable, the ring returning to a second way with
+                            a normally open point along it. These place
+                            the record of that — the primary, the other
+                            substations on the chain, the split — and the
+                            incumbent's cable to draw the route with. All
+                            of it goes down as existing: it is theirs, and
+                            nothing here is bought. */}
+                        <MenuBranch label="HV Ring"
+                          hint="How the substation is fed — the shared circuit upstream of the POC">
+                          <MenuItem label="+ Primary Substation" indent
+                            hint="The 33/11 kV primary whose way feeds the chain"
+                            disabled={!projectId}
+                            onClick={() => placeNode("primary", "electric")} />
+                          <MenuItem label="+ Ring Substation" indent
+                            hint="Another substation looped into the same circuit — click on the HV run to sit on it"
+                            disabled={!projectId}
+                            onClick={() => placeNode("ringsub", "electric")} />
+                          <MenuItem label="+ Normally Open Point" indent
+                            hint="Where the ring runs split — click on the HV run"
+                            disabled={!projectId}
+                            onClick={() => placeNode("openpoint", "electric")} />
+                          {[["elec_hv_existing", "Manually add Existing HV Cable"]]
+                            .map(([key, label]) => {
+                              /* From lineTypes like the feeder menu, so a
+                                 database that has not run 0211 renders no
+                                 button rather than a drawing tool that
+                                 writes a type nothing styles. */
+                              const t = lineTypes.find((x) => x.Type_Key === key);
+                              return t ? (
+                                <MenuItem key={key} label={label} indent
+                                  active={isDrawing(key)} onClick={() => drawAs(key)} />
+                              ) : null;
+                            })}
+                        </MenuBranch>
+                      </MenuBand>
+
+                      <MenuBand tone="#16a34a" label="Circuits" strong>
+                        <MenuItem label={tool === "circuit" ? "Drawing Circuit\u2026" : "Link to Circuit"}
+                          active={tool === "circuit"} disabled={!projectId}
+                          /* Says that the rings appear, so a ringed meter
+                             reads as "already spoken for" rather than as
+                             the drawing having changed under you. */
+                          hint={"Draw round the plot seeds it serves — meters already on a circuit are ringed"}
+                          onClick={() => {
+                            setTool(tool === "circuit" ? "select" : "circuit");
+                            setSelected([]); setDraft([]);
+                          }} />
+
+                        {/* ── Splitting a circuit that has grown too big ──
+
+                            Asked for: past 80 plots, or with its
+                            end-of-line levels out of tolerance, a circuit
+                            is divided into circuits carrying as near as
+                            possible an equal number of meters. The plan
+                            is worked out in splitPlan.js over the feeder
+                            model's tree; the write is the same one Link
+                            to Circuit does, meter by meter, so a split
+                            circuit is a circuit in every way the drawn
+                            one is. */}
+                        <MenuItem label={busy === "split" ? "Splitting\u2026" : "Split Circuit\u2026"}
+                          disabled={!!busy || !projectId || !circuitsFrom(features).length}
+                          hint="Past 80 meters or out of tolerance: divide into circuits of equal size"
+                          onClick={() => proposeSplit()} />
+                      </MenuBand>
+
+                      <MenuBand tone="#9333ea" label="Boxes and boards">
+                        <MenuBranch label="Link Box"
+                          hint="One input, fused outputs — click on the cable run">
+                          <MenuItem label="+ 2 Way" indent
+                            hint="One input, one fused output"
+                            disabled={!projectId}
+                            onClick={() => placeNode("linkbox", "electric", { ways: 2 })} />
+                          <MenuItem label="+ 4 Way" indent
+                            hint="One input, three fused outputs"
+                            disabled={!projectId}
+                            onClick={() => placeNode("linkbox", "electric", { ways: 4 })} />
+                        </MenuBranch>
+
+                        <MenuItem label={"+ MSDB\u2026"}
+                          hint="Multi service distribution board — one cable in, one out, the flats on a table"
                           disabled={!projectId}
-                          onClick={() => placeNode("primary", "electric")} />
-                        <MenuItem label="+ Ring Substation" indent
-                          hint="Another substation looped into the same circuit — click on the HV run to sit on it"
+                          onClick={() => placeNode("msdb", "electric")} />
+
+                        {/* A cut-out spliced into a feeder. Beside the
+                            link box because that is what somebody is
+                            choosing between: both are placed by pointing
+                            at a run, and the difference is whether the
+                            cable breaks there. */}
+                        <MenuItem label="Heavy Duty Cut Out"
+                          hint="Spliced into an LV feeder — the cable runs through it"
                           disabled={!projectId}
-                          onClick={() => placeNode("ringsub", "electric")} />
-                        <MenuItem label="+ Normally Open Point" indent
-                          hint="Where the ring runs split — click on the HV run"
-                          disabled={!projectId}
-                          onClick={() => placeNode("openpoint", "electric")} />
-                        {[["elec_hv_existing", "Manually add Existing HV Cable"]]
-                          .map(([key, label]) => {
-                            /* From lineTypes like the feeder menu, so a
-                               database that has not run 0211 renders no
-                               button rather than a drawing tool that
-                               writes a type nothing styles. */
+                          onClick={() => placeNode("hdcutout", "electric")} />
+                      </MenuBand>
+
+                      <MenuBand tone="#2563eb" label="Feeder cable">
+                        <MenuBranch label="Feeder Cable"
+                          hint="Drawn by hand, or routed along the trenches">
+                          {[["elec_hv", "Manually add HV Cable"],
+                            ["elec_main", "Manually add LV Cable"]].map(([key, label]) => {
+                            /* `elec_service`, not `electric_service` — the
+                               seeded key is the short form, and the long
+                               one matches nothing and renders no button at
+                               all. Which is why this reads from lineTypes
+                               and renders nothing when a type is missing
+                               rather than assuming it is there. */
                             const t = lineTypes.find((x) => x.Type_Key === key);
                             return t ? (
                               <MenuItem key={key} label={label} indent
                                 active={isDrawing(key)} onClick={() => drawAs(key)} />
                             ) : null;
                           })}
-                      </MenuBranch>
+                          <MenuItem label={busy === "feeder"
+                            ? "Building\u2026" : "Auto Build LV Network"} indent
+                            /* Two things it cannot do without: a circuit
+                               to route, and a dig to route it along. Named
+                               separately, because they are fixed in
+                               different places and "unavailable" without a
+                               reason is a dead end. */
+                            hint={!hasTrench
+                              ? "No trench drawn yet — the cables are routed along it"
+                              : circuitsFrom(features).length
+                                ? "Routes each circuit's cables along the trenches"
+                                : "No circuits yet — draw round the plot seeds with Link to "
+                                  + "Circuit first, and this becomes available"}
+                            disabled={busy === "feeder" || !hasTrench
+                              || !circuitsFrom(features).length}
+                            onClick={() => runStep("build",
+                              () => withUndo("Build LV Network", () => buildLvNetwork()))} />
+                          <MenuItem label="+ Feeder End Point" indent
+                            hint="A break in one circuit's cable — click on the run it belongs to"
+                            disabled={!projectId}
+                            onClick={() => placeNode("feederpoint", "electric")} />
+                        </MenuBranch>
+                      </MenuBand>
 
-                      <MenuBranch label="Feeder Cable"
-                        hint="Drawn by hand, or routed along the trenches">
-                        {[["elec_hv", "Manually add HV Cable"],
-                          ["elec_main", "Manually add LV Cable"]].map(([key, label]) => {
-                          /* `elec_service`, not `electric_service` — the
-                             seeded key is the short form, and the long
-                             one matches nothing and renders no button at
-                             all. Which is why this reads from lineTypes
-                             and renders nothing when a type is missing
-                             rather than assuming it is there. */
-                          const t = lineTypes.find((x) => x.Type_Key === key);
-                          return t ? (
-                            <MenuItem key={key} label={label} indent
-                              active={isDrawing(key)} onClick={() => drawAs(key)} />
-                          ) : null;
-                        })}
-                        <MenuItem label={busy === "feeder"
-                          ? "Building\u2026" : "Auto Build LV Network"} indent
-                          /* Two things it cannot do without: a circuit
-                             to route, and a dig to route it along. Named
-                             separately, because they are fixed in
-                             different places and "unavailable" without a
-                             reason is a dead end. */
-                          hint={!hasTrench
-                            ? "No trench drawn yet — the cables are routed along it"
-                            : circuitsFrom(features).length
-                              ? "Routes each circuit's cables along the trenches"
-                              : "No circuits yet — draw round the plot seeds with Link to "
-                                + "Circuit first, and this becomes available"}
-                          disabled={busy === "feeder" || !hasTrench
-                            || !circuitsFrom(features).length}
-                          onClick={() => runStep("build",
-                            () => withUndo("Build LV Network", () => buildLvNetwork()))} />
-                        <MenuItem label="+ Feeder End Point" indent
-                          hint="A break in one circuit's cable — click on the run it belongs to"
-                          disabled={!projectId}
-                          onClick={() => placeNode("feederpoint", "electric")} />
-                      </MenuBranch>
+                      <MenuBand tone="#f97316" label="Service cable">
+                        {/* ── Services ──
 
-                      <MenuItem label={"+ MSDB\u2026"}
-                        hint="Multi service distribution board — one cable in, one out, the flats on a table"
-                        disabled={!projectId}
-                        onClick={() => placeNode("msdb", "electric")} />
+                            A separate job from the mains, done after them,
+                            and it was mixed through the same list. */}
+                        <MenuBranch label="Service Cable"
+                          hint="Drawn by hand, or run along the service trenches">
+                          {(() => {
+                            const t = lineTypes.find((x) => x.Type_Key === "elec_service");
+                            return t ? (
+                              <MenuItem label="Manually add Service Cable" indent
+                                active={isDrawing("elec_service")}
+                                onClick={() => drawAs("elec_service")} />
+                            ) : null;
+                          })()}
+                          <MenuItem label={busy === "laysvc"
+                            ? "Laying\u2026" : "Auto Lay Service Cable"} indent
+                            /* It runs cable along service trenches already
+                               drawn. With none there is nothing to run
+                               along, and it can only report finding
+                               nothing to do. */
+                            hint={hasServiceTrench
+                              ? "Runs the cable along service trenches already drawn"
+                              : "No service trenches drawn yet to run along"}
+                            disabled={!!busy || !hasServiceTrench}
+                            onClick={() => autoLayServices("electric")} />
+                        </MenuBranch>
+                      </MenuBand>
 
-                      <MenuBranch label="Link Box"
-                        hint="One input, fused outputs — click on the cable run">
-                        <MenuItem label="+ 2 Way" indent
-                          hint="One input, one fused output"
-                          disabled={!projectId}
-                          onClick={() => placeNode("linkbox", "electric", { ways: 2 })} />
-                        <MenuItem label="+ 4 Way" indent
-                          hint="One input, three fused outputs"
-                          disabled={!projectId}
-                          onClick={() => placeNode("linkbox", "electric", { ways: 4 })} />
-                      </MenuBranch>
+                      <MenuBand tone="#e11d48" label="Joints">
+                        <MenuBranch label="Joints"
+                          hint="The fittings on a feeder — one at a time, or read off the routed network">
+                          {/* Placed by pointing at the cable. The other
+                              three drop one in the middle of the view and
+                              snap it to the nearest feeder, which answers
+                              "somewhere on this circuit"; this answers
+                              "here", and breaks the cable where it lands
+                              because that is what a joint is. */}
+                          <MenuItem label={jointFor === "straight"
+                            ? "Click the cable\u2026 (Esc to stop)"
+                            : "+ Straight Joint"} indent
+                            /* Its own kind, not "any joint mode": with a
+                               second kind armed the same way, `!!jointFor`
+                               lit this one up while the breech was the
+                               thing waiting for a click. */
+                            active={jointFor === "straight"}
+                            hint={"Click where it goes — the cable says ON LINE, and breaks there"}
+                            disabled={!!busy || !projectId}
+                            onClick={() => {
+                              setJointFor(jointFor === "straight" ? null : "straight");
+                              setSelected([]); setDraft([]);
+                            }} />
+                          {/* Clicked onto the cable, like the straight
+                              joint beside it, rather than dropped in the
+                              middle of the view and snapped to whatever
+                              feeder happened to be nearest. A breech is
+                              placed AT a point of a run — an end, a
+                              corner, the middle — and the point is the
+                              whole of what it records. */}
+                          <MenuItem label={jointFor === "breech"
+                            ? "Click the cable\u2026 (Esc to stop)"
+                            : "+ Breech Joint"} indent
+                            active={jointFor === "breech"}
+                            hint="Click an end, a corner or the middle of a feeder"
+                            disabled={!!busy || !projectId}
+                            onClick={() => {
+                              const on = jointFor !== "breech";
+                              setJointFor(on ? "breech" : null);
+                              setSelected([]); setDraft([]);
+                              /* ── Said where it can be seen ──
 
-                      {/* A cut-out spliced into a feeder. Beside the
-                          link box because that is what somebody is
-                          choosing between: both are placed by pointing
-                          at a run, and the difference is whether the
-                          cable breaks there. */}
-                      <MenuItem label="Heavy Duty Cut Out"
-                        hint="Spliced into an LV feeder — the cable runs through it"
-                        disabled={!projectId}
-                        onClick={() => placeNode("hdcutout", "electric")} />
+                                 The menu item's label changes while the
+                                 mode is armed, and the menu closes on
+                                 the click, so nobody ever sees it. The
+                                 only sign left was a small ring at the
+                                 pointer, which says something is armed
+                                 but not what, nor what to click.
 
-                      <MenuBranch label="Joint"
-                        hint="The fittings on a feeder — one at a time, or read off the routed network">
-                        {/* Placed by pointing at the cable. The other
-                            three drop one in the middle of the view and
-                            snap it to the nearest feeder, which answers
-                            "somewhere on this circuit"; this answers
-                            "here", and breaks the cable where it lands
-                            because that is what a joint is. */}
-                        <MenuItem label={jointFor === "straight"
-                          ? "Click the cable\u2026 (Esc to stop)"
-                          : "+ Straight Joint"} indent
-                          /* Its own kind, not "any joint mode": with a
-                             second kind armed the same way, `!!jointFor`
-                             lit this one up while the breech was the
-                             thing waiting for a click. */
-                          active={jointFor === "straight"}
-                          hint={"Click where it goes — the cable says ON LINE, and breaks there"}
-                          disabled={!!busy || !projectId}
+                                 Reported as the mode doing nothing. The
+                                 status line is where every other armed
+                                 mode says what it wants. */
+                              setStatus(on
+                                ? "Placing a breech joint — click an end, a "
+                                  + "corner or the middle of an LV feeder cable. "
+                                  + "Esc to stop."
+                                : "");
+                            }} />
+                          <MenuItem label="+ Bottle End Joint" indent
+                            hint="Seals a feeder that stops here"
+                            disabled={!!busy || !projectId}
+                            onClick={() => withUndo("Place bottle end",
+                              () => placeJoint("bottleend"))} />
+                          <MenuItem label="+ Service Joint" indent
+                            hint="One joint, snapped to the nearest LV feeder"
+                            disabled={!!busy || !projectId}
+                            onClick={() => withUndo("Place service joint",
+                              () => placeJoint("service"))} />
+                          {/* Kept, and kept here: it reads the routed
+                              network and places every joint the design
+                              calls for. The four above exist for the ones
+                              the model cannot know about — an existing
+                              main cut into, a breech left for a phase not
+                              yet drawn. */}
+                          <MenuItem label={busy === "joints"
+                            ? "Working\u2026" : "Auto Place Feeder Joints"} indent
+                            hint={circuitsFrom(features).length
+                              ? "Breech where a feeder divides, service where a service leaves it, straight where the cable changes, bottle end where it stops"
+                              : "No circuits yet — the joints are read off the routed "
+                                + "network, so the network has to be built first"}
+                            disabled={!!busy || !circuitsFrom(features).length}
+                            onClick={() => withUndo("Place Feeder Joints", () => placeFeederJoints())} />
+                        </MenuBranch>
+                      </MenuBand>
+
+                      <MenuBand tone="#64748b" label="Tools and reporting">
+                        {/* Started from the utility's own menu, so what is
+                            being followed is already answered. The click
+                            supplies the only thing a menu cannot. */}
+                        <MenuItem label={traceFrom ? "Click the line\u2026 (Esc to stop)" : "Trace from a Point"}
+                          active={!!traceFrom}
+                          hint={hasTrench
+                            ? "Click a cable, joint, meter or node — upstream, downstream or both"
+                            : "Nothing drawn yet to trace"}
+                          disabled={!projectId || !hasTrench}
                           onClick={() => {
-                            setJointFor(jointFor === "straight" ? null : "straight");
+                            setTraceRun(null);
+                            setTraceFrom({ layerKey: "electric", kind: "cable", direction: "down" });
                             setSelected([]); setDraft([]);
                           }} />
-                        {/* Clicked onto the cable, like the straight
-                            joint beside it, rather than dropped in the
-                            middle of the view and snapped to whatever
-                            feeder happened to be nearest. A breech is
-                            placed AT a point of a run — an end, a
-                            corner, the middle — and the point is the
-                            whole of what it records. */}
-                        <MenuItem label={jointFor === "breech"
-                          ? "Click the cable\u2026 (Esc to stop)"
-                          : "+ Breech Joint"} indent
-                          active={jointFor === "breech"}
-                          hint="Click an end, a corner or the middle of a feeder"
-                          disabled={!!busy || !projectId}
-                          onClick={() => {
-                            const on = jointFor !== "breech";
-                            setJointFor(on ? "breech" : null);
-                            setSelected([]); setDraft([]);
-                            /* ── Said where it can be seen ──
 
-                               The menu item's label changes while the
-                               mode is armed, and the menu closes on
-                               the click, so nobody ever sees it. The
-                               only sign left was a small ring at the
-                               pointer, which says something is armed
-                               but not what, nor what to click.
+                        {/* ── Greyed on the same rule as everything else ──
 
-                               Reported as the mode doing nothing. The
-                               status line is where every other armed
-                               mode says what it wants. */
-                            setStatus(on
-                              ? "Placing a breech joint — click an end, a "
-                                + "corner or the middle of an LV feeder cable. "
-                                + "Esc to stop."
-                              : "");
-                          }} />
-                        <MenuItem label="+ Bottle End Joint" indent
-                          hint="Seals a feeder that stops here"
-                          disabled={!!busy || !projectId}
-                          onClick={() => withUndo("Place bottle end",
-                            () => placeJoint("bottleend"))} />
-                        <MenuItem label="+ Service Joint" indent
-                          hint="One joint, snapped to the nearest LV feeder"
-                          disabled={!!busy || !projectId}
-                          onClick={() => withUndo("Place service joint",
-                            () => placeJoint("service"))} />
-                        {/* Kept, and kept here: it reads the routed
-                            network and places every joint the design
-                            calls for. The four above exist for the ones
-                            the model cannot know about — an existing
-                            main cut into, a breech left for a phase not
-                            yet drawn. */}
-                        <MenuItem label={busy === "joints"
-                          ? "Working\u2026" : "Auto Place Feeder Joints"} indent
-                          hint={circuitsFrom(features).length
-                            ? "Breech where a feeder divides, service where a service leaves it, straight where the cable changes, bottle end where it stops"
-                            : "No circuits yet — the joints are read off the routed "
-                              + "network, so the network has to be built first"}
-                          disabled={!!busy || !circuitsFrom(features).length}
-                          onClick={() => withUndo("Place Feeder Joints", () => placeFeederJoints())} />
-                      </MenuBranch>
+                            This asked for a substation. Every other thing
+                            that needs a source asks lvOrigin, which takes
+                            a substation OR an electric POC — because a
+                            connection to an existing network has no
+                            transformer and the circuits feed back to the
+                            point of connection.
 
-                      {/* ── Services ──
+                            So on a POC-fed design the report was the one
+                            control still refusing, with circuits drawn,
+                            meters on them and a hint describing what it
+                            would do rather than why it would not. And it
+                            is the only way to move a meter from one
+                            circuit to another, so the way out of a
+                            mislinked circuit was the thing that was
+                            disabled.
 
-                          A separate job from the mains, done after them,
-                          and it was mixed through the same list. */}
-                      <MenuGroup label="Services" />
-                      <MenuBranch label="Cable"
-                        hint="Drawn by hand, or run along the service trenches">
-                        {(() => {
-                          const t = lineTypes.find((x) => x.Type_Key === "elec_service");
-                          return t ? (
-                            <MenuItem label="Manually add Service Cable" indent
-                              active={isDrawing("elec_service")}
-                              onClick={() => drawAs("elec_service")} />
-                          ) : null;
-                        })()}
-                        <MenuItem label={busy === "laysvc"
-                          ? "Laying\u2026" : "Auto Lay Service Cable"} indent
-                          /* It runs cable along service trenches already
-                             drawn. With none there is nothing to run
-                             along, and it can only report finding
-                             nothing to do. */
-                          hint={hasServiceTrench
-                            ? "Runs the cable along service trenches already drawn"
-                            : "No service trenches drawn yet to run along"}
-                          disabled={!!busy || !hasServiceTrench}
-                          onClick={() => autoLayServices("electric")} />
-                      </MenuBranch>
-                      <MenuItem label={tool === "circuit" ? "Drawing Circuit\u2026" : "Link to Circuit"}
-                        active={tool === "circuit"} disabled={!projectId}
-                        /* Says that the rings appear, so a ringed meter
-                           reads as "already spoken for" rather than as
-                           the drawing having changed under you. */
-                        hint={"Draw round the plot seeds it serves — meters already on a circuit are ringed"}
-                        onClick={() => {
-                          setTool(tool === "circuit" ? "select" : "circuit");
-                          setSelected([]); setDraft([]);
-                        }} />
-                      {/* ── Splitting a circuit that has grown too big ──
+                            The reason is on it now. A greyed control with
+                            no reason is what runStep was written to
+                            avoid, one menu along. */}
+                        <MenuItem label="Circuit Report"
+                          hint={lvOrigin(features)
+                            ? "Meters by feeder, with distances from the origin"
+                            : "Place a substation or an electric POC first — the "
+                              + "report measures every circuit from one"}
+                          disabled={!lvOrigin(features)}
+                          onClick={() => setReportOpen(true)} />
 
-                          Asked for: past 80 plots, or with its
-                          end-of-line levels out of tolerance, a circuit
-                          is divided into circuits carrying as near as
-                          possible an equal number of meters. The plan
-                          is worked out in splitPlan.js over the feeder
-                          model's tree; the write is the same one Link
-                          to Circuit does, meter by meter, so a split
-                          circuit is a circuit in every way the drawn
-                          one is. */}
-                      <MenuItem label={busy === "split" ? "Splitting\u2026" : "Split Circuit\u2026"}
-                        disabled={!!busy || !projectId || !circuitsFrom(features).length}
-                        hint="Past 80 meters or out of tolerance: divide into circuits of equal size"
-                        onClick={() => proposeSplit()} />
+                        {/* Every circuit, from its own origin node outward.
 
-                      <MenuGroup label="Tools & Reporting" />
-                      {/* Started from the utility's own menu, so what is
-                          being followed is already answered. The click
-                          supplies the only thing a menu cannot. */}
-                      <MenuItem label={traceFrom ? "Click the line\u2026 (Esc to stop)" : "Trace from a Point"}
-                        active={!!traceFrom}
-                        hint={hasTrench
-                          ? "Click a cable, joint, meter or node — upstream, downstream or both"
-                          : "Nothing drawn yet to trace"}
-                        disabled={!projectId || !hasTrench}
-                        onClick={() => {
-                          setTraceRun(null);
-                          setTraceFrom({ layerKey: "electric", kind: "cable", direction: "down" });
-                          setSelected([]); setDraft([]);
-                        }} />
-                      {/* ── Greyed on the same rule as everything else ──
+                            Nothing has to be selected: the question is
+                            whether anything on the scheme is outside its
+                            limits, which is about the design rather than
+                            about a point in it. Tracing from one selected
+                            node answered a narrower question and left the
+                            rest of the drawing unchecked. */}
+                        <MenuItem label="Run Levels Check"
+                          hint="Loop impedance and volt drop on every circuit, from the substation"
+                          disabled={!circuitsFrom(features).length}
+                          onClick={() => runLevelsCheck()} />
 
-                          This asked for a substation. Every other thing
-                          that needs a source asks lvOrigin, which takes
-                          a substation OR an electric POC — because a
-                          connection to an existing network has no
-                          transformer and the circuits feed back to the
-                          point of connection.
+                        {/* ── The submission sheet, on the drawing ──
 
-                          So on a POC-fed design the report was the one
-                          control still refusing, with circuits drawn,
-                          meters on them and a hint describing what it
-                          would do rather than why it would not. And it
-                          is the only way to move a meter from one
-                          circuit to another, so the way out of a
-                          mislinked circuit was the thing that was
-                          disabled.
+                            The same figures the levels check works out,
+                            in the shape a scheme is submitted in: one
+                            row per leg of main from the point of
+                            connection outwards, matching the SUBMIT
+                            worksheet of the Aptus volt drop workbook
+                            column for column.
 
-                          The reason is on it now. A greyed control with
-                          no reason is what runStep was written to
-                          avoid, one menu along. */}
-                      <MenuItem label="Circuit Report"
-                        hint={lvOrigin(features)
-                          ? "Meters by feeder, with distances from the origin"
-                          : "Place a substation or an electric POC first — the "
-                            + "report measures every circuit from one"}
-                        disabled={!lvOrigin(features)}
-                        onClick={() => setReportOpen(true)} />
-                      {/* ── The submission sheet, on the drawing ──
+                            Beside the Circuit Report rather than under
+                            Tools, because it is about one utility's
+                            design and reads the electric network to
+                            build itself. Its guard is the same one:
+                            every row is measured from an origin, and
+                            without one there is nothing to measure
+                            from. */}
+                        <MenuItem label="Aptus Calc Sheet"
+                          hint={lvOrigin(features)
+                            ? "Volt drop and loop impedance, laid out for submission"
+                            : "Place a substation or an electric POC first — every "
+                              + "row is measured from one"}
+                          disabled={!lvOrigin(features)}
+                          onClick={() => setCalcSheetOpen(true)} />
+                      </MenuBand>
 
-                          The same figures the levels check works out,
-                          in the shape a scheme is submitted in: one
-                          row per leg of main from the point of
-                          connection outwards, matching the SUBMIT
-                          worksheet of the Aptus volt drop workbook
-                          column for column.
-
-                          Beside the Circuit Report rather than under
-                          Tools, because it is about one utility's
-                          design and reads the electric network to
-                          build itself. Its guard is the same one:
-                          every row is measured from an origin, and
-                          without one there is nothing to measure
-                          from. */}
-                      <MenuItem label="Aptus Calc Sheet"
-                        hint={lvOrigin(features)
-                          ? "Volt drop and loop impedance, laid out for submission"
-                          : "Place a substation or an electric POC first — every "
-                            + "row is measured from one"}
-                        disabled={!lvOrigin(features)}
-                        onClick={() => setCalcSheetOpen(true)} />
-                      {/* Every circuit, from its own origin node outward.
-
-                          Nothing has to be selected: the question is
-                          whether anything on the scheme is outside its
-                          limits, which is about the design rather than
-                          about a point in it. Tracing from one selected
-                          node answered a narrower question and left the
-                          rest of the drawing unchecked. */}
-                      <MenuItem label="Run Levels Check"
-                        hint="Loop impedance and volt drop on every circuit, from the substation"
-                        disabled={!circuitsFrom(features).length}
-                        onClick={() => runLevelsCheck()} />
-
-                      {/* Which sizes the drawing shows. Last in the left
-                          column: it is a setting rather than a step, and
-                          the steps above run in the order they are
-                          listed. */}
-                      <div className="gm-sep" />
-                      <MenuGroup label="Sizes" />
-                      <MenuItem label="System calculated" indent
-                        active={(sizeMode.electric ?? "system") === "system"}
-                        keepOpen
-                        hint="What the build worked out from the load"
-                        onClick={() => setSizeModeFor("electric", "system")} />
-                      <MenuItem label="Manually set" indent
-                        active={sizeMode.electric === "manual"}
-                        keepOpen
-                        hint="Overrides where set, calculated elsewhere"
-                        onClick={() => setSizeModeFor("electric", "manual")} />
+                      <MenuBand tone="#94a3b8" label="Sizes">
+                        <MenuGroup label="Sizes" />
+                        <MenuItem label="System calculated" indent
+                          active={(sizeMode.electric ?? "system") === "system"}
+                          keepOpen
+                          hint="What the build worked out from the load"
+                          onClick={() => setSizeModeFor("electric", "system")} />
+                        <MenuItem label="Manually set" indent
+                          active={sizeMode.electric === "manual"}
+                          keepOpen
+                          hint="Overrides where set, calculated elsewhere"
+                          onClick={() => setSizeModeFor("electric", "manual")} />
+                      </MenuBand>
 
                       {/* The column breaks here. Everything before it is
                           the work; everything after is how the drawing

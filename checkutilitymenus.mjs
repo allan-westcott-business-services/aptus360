@@ -861,20 +861,35 @@ const onScreen = (keys) => {
     if (/label="Sizes" newColumn/.test(bare)) {
       fail("Sizes still starts a column of its own");
     }
-    const sizesAt = bare.indexOf('label="Sizes"');
+    const sizesAt = bare.indexOf('<MenuBand tone="#94a3b8" label="Sizes"');
     const showAt = bare.indexOf('label="Show or Hide"');
-    const toolsAt = bare.indexOf('label="Tools & Reporting"');
+    const toolsAt = bare.indexOf('label="Tools and reporting"');
+    /* Each has to BE there. Indexed with indexOf and compared with <,
+       a heading that has gone reads as -1 and sorts before everything,
+       so the order still passes over the missing thing — which is what
+       this assertion did when the headings became bands and nothing
+       said so. */
+    if (toolsAt < 0) fail("the Electric menu has no tools and reporting group");
+    if (sizesAt < 0) fail("the Electric menu has no Sizes group");
+    if (showAt < 0) fail("the Electric menu has no Show or Hide group");
     if (!(toolsAt < sizesAt && sizesAt < showAt)) {
       fail("Sizes is not at the foot of the left column");
     }
 
-    /* Mains before services, because that is the order the work is
-       done in, and both before Tools & Reporting. */
-    const mainsAt = bare.indexOf('label="Mains Network"');
-    const svcAt = bare.indexOf('label="Services"');
-    if (!(mainsAt >= 0 && svcAt > mainsAt && svcAt < toolsAt)) {
-      fail("the Electric menu is not Mains Network, then Services, then "
-        + "Tools & Reporting");
+    /* Mains before services, because that is the order the work is done
+       in, and both before the reports that read them.
+
+       Named by band now rather than by heading — the left column is
+       boxed into one band per job, which checkelectricmenu.mjs covers
+       in full. What is kept here is the part that is about this menu
+       agreeing with the gas and water ones: the same order of work in
+       all three. */
+    const mainsAt = bare.indexOf('label="Supply"');
+    const svcAt = bare.indexOf('label="Service cable"');
+    if (mainsAt < 0 || svcAt < 0) {
+      fail("the Electric menu no longer groups the supply and the services");
+    } else if (!(svcAt > mainsAt && svcAt < toolsAt)) {
+      fail("the Electric menu is not supply, then services, then reporting");
     }
     /* And the build sits inside Feeder Cable, with the other ways of
        getting one. */

@@ -207,6 +207,7 @@ caught a fault that had already shipped at least once.
 | `node checktwostations.mjs` | Each meter says which substation and way feeds it |
 | `node checkroutepair.mjs` | Routing a supply asks which pair, and keeps the other |
 | `node checkdeletekey.mjs` | Delete removes the selection, live and not stale — and no handler takes Backspace from a note being typed into |
+| `node checkstyletree.mjs` | GIS Styles group into sections and items — every rule once, and the cascade untouched |
 | `node checknumberremoved.mjs` | The old numbering pass stays out of the client |
 | `node checkmsdblink.mjs` | Board-to-board links: stamped, ordered, routed past |
 | `node checkisolation.mjs` | A trench that refuses LV is not walked across |
@@ -9100,6 +9101,90 @@ characters is a hundred lines of prose and no rules at all.
      every one. Source is read with comments stripped, the fourth time
      in one session that a check has matched its own history and called
      the record of a fix the fault.
+
+213. **GIS Styles reads as sections and items.** Asked for, with the
+     sections listed: General Site Styles, Trench, Electric, Gas, Water
+     — one line per THING, and the variations of a thing folded inside
+     it. "I want to minimise the number of items in the list."
+
+     It was one flat list. Every rule sat at the same level, so
+     "off-site electric mains for this IDNO" had the same standing on
+     screen as "electric", and finding one meant reading scope lines
+     down a list that grows every time anybody narrows anything.
+
+     **The screen, not the data.** Offered both and the screen was
+     chosen, which is the right call: the rules and the cascade are
+     untouched, so nothing on any drawing can move. `styleTree.js` is a
+     pure function from rows to sections, tested on its own, and it
+     cannot reach `gisStyle.js` — checkstyletree.mjs fails if it
+     imports it or names `styleScore`, `resolveStyle` or `WEIGHT`.
+     Arranging rules on a screen is a rendering change; one that could
+     decide which rule WON would be a rendering change with teeth.
+
+     **Section from the layer, item from the thing.** A role names the
+     item outright (POC, Meter, Joint). A line type collapses to its
+     family, so elec_hv and elec_main are both "Cable" and the voltage
+     is a variant underneath — that collapse is the whole request.
+     The dig is the exception: a mains trench and a service trench are
+     dug at different times by different gangs and were asked for
+     separately, so they stay two items.
+
+     **The order is the order it was asked in.** POC, Substation,
+     Cable, MSDB, Link Box, Meter, Joints, Heavy Duty Cut Out — which
+     is how a network is built, the same argument the Electric menu's
+     bands were arranged on. Alphabetical sorts easily and says
+     nothing. One `ITEM_ORDER` for every utility rather than one per
+     section, because a gas governor and an electric substation are the
+     same thing in the same place; anything unnamed follows
+     alphabetically, so a new role appears without this file being
+     edited.
+
+     **Names come from the rules.** This screen is deliberately
+     self-contained — layers and line types come from the canvas
+     endpoint, which needs a project — so there are no line-type
+     labels to read. An item with one base rule takes that rule's own
+     `Style_Name`, giving "Mains trench" rather than the "Trench Main"
+     that titleCasing a key produces. With several base rules it keeps
+     the family name, because borrowing one of their names would be a
+     lie about the others. The section falls back to the key's prefix
+     (`trench_`, `elec_`, `gas_`, `water_`), written as a fallback:
+     pass real line-type rows and they win.
+
+     Two mutation tests walked through untouched at first and both were
+     real gaps: a rule on a site LAYER (annotation, boundary) went down
+     a different branch from a site ROLE and the fixture never reached
+     it, and the duplicate-row case was passing on indentation rather
+     than on the rule. Both fixed rather than explained away.
+
+     Not done here: `trench_sep` ("Separate Trench"). 0050 already
+     ships a guarded deactivation that is a no-op if anything has used
+     it — see 214.
+
+214. **"Separate Trench" retired (0239).** Asked for: "Separate Trench
+     can be removed as I'm not sure what this is." It is `trench_sep`,
+     seeded in 0050 beside `trench_joint` and superseded the same day by
+     Mains Trench and Service Trench.
+
+     0050 already shipped a deactivation for the pair, guarded by NOT
+     EXISTS, with a note saying "check first, then run it if the count
+     is zero". If the type is still on the picker then either that never
+     ran or it ran while something was using it. 0239 runs the same
+     guard and then **says which of those happened** — a migration that
+     silently does nothing is indistinguishable from one that worked,
+     which is how the first one came to be believed.
+
+     **Deactivating is not deleting.** The type leaves the picker and
+     leaves GIS Styles; anything drawn with it keeps rendering, because
+     the canvas falls back to the layer colour for a type it cannot
+     find. Those lengths stay, in brown, without their own weight and
+     dash. If it IS in use, 0239 leaves it active and prints the query
+     that shows where — hiding a type somebody is using takes the
+     styling off work that exists, and the request was to remove
+     something nobody recognised, not to restyle a live drawing.
+
+     Its style rules go with it, but only the ones that name it and
+     nothing else. A rule scoping `trench_sep` AND an operator is
+     somebody's decision and not a migration's to discard.
 
 ## Decisions worth knowing
 

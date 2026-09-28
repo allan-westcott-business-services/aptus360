@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { buildTree } from "./styleTree.js";
 import Banner from "../../components/Banner.jsx";
 import { listGisStyles, saveGisStyle, deleteGisStyle } from "../../api/gis.js";
 import { getLookups } from "../../api/lookups.js";
@@ -312,6 +313,33 @@ export default function GisStylesAdmin() {
     } catch (e) { setError(e.message); }
   }
 
+  /* ── Sections and items, not one flat list ──
+
+     Asked for. Every rule sat at the same level, so "off-site electric
+     mains for this IDNO" had the same standing on screen as
+     "electric", and finding one meant reading scope lines down a list
+     that grows every time anybody narrows anything.
+
+     The arranging is styleTree.js: separate, pure, and tested on its
+     own — and deliberately unable to reach the cascade. Which rule WINS
+     is still scored in gisStyle.js from the scope columns; this only
+     decides where a rule is drawn. A grouping that could change a
+     drawing would be a rendering change with teeth. */
+  const tree = useMemo(
+    () => buildTree(rows, { roleLabels: Object.fromEntries(ROLES.filter(([k]) => k)) }),
+    [rows],
+  );
+
+  /* Shut by default. The point of the exercise is a short list, and
+     opening everything on arrival would put the long one back. An item
+     holding one rule has nothing to fold and never shows a twisty. */
+  const [openItems, setOpenItems] = useState(() => new Set());
+  const toggleItem = (key) => setOpenItems((o) => {
+    const next = new Set(o);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+
   const opName = (id) => operators.find((o) => String(o.Organisation_ID) === String(id))?.Name;
   const utName = (id) => utilities.find((u) => String(u.Utility_ID) === String(id))?.Utility;
 
@@ -489,27 +517,63 @@ export default function GisStylesAdmin() {
               No rules yet. Run migration 0051 to seed them from the current line types.
             </p>
           )}
-          {rows.map((r) => (
-            <button key={r.GIS_Style_ID}
-              className={selected === r.GIS_Style_ID ? "gs-item on" : "gs-item"}
-              onClick={() => open(r)}>
-              <span className="gs-sw" style={{
-                background: r.Colour || "#cbd5e1",
-                height: Math.max(2, Math.min(10, Number(r.Width_Px) || 3)),
-              }} />
-              <span className="gs-nm">
-                {r.Style_Name}
-                {r.Is_Active === false && <span className="gs-off">off</span>}
-              </span>
-              <span className="gs-scope">{scopeOf(r)}</span>
-              {(r.Min_Scale || r.Max_Scale) && (
-                <span className="gs-zoom">
-                  {r.Min_Scale ? `\u2265${r.Min_Scale}` : ""}
-                  {r.Min_Scale && r.Max_Scale ? " " : ""}
-                  {r.Max_Scale ? `\u2264${r.Max_Scale}` : ""}
-                </span>
-              )}
-            </button>
+          {tree.map((section) => (
+            <div className="gs-sec" key={section.key}>
+              <p className="gs-sec-h">{section.label}</p>
+              {section.items.map((item) => {
+                /* One rule is not a group. It shows as itself, so the
+                   commonest case costs no extra click. */
+                const lone = item.rows.length === 1;
+                const isOpen = lone || openItems.has(`${section.key}/${item.key}`);
+                const head = item.rows[0];
+                return (
+                  <div className="gs-grp" key={item.key}>
+                    {!lone && (
+                      <button className={isOpen ? "gs-head open" : "gs-head"}
+                        aria-expanded={isOpen}
+                        onClick={() => toggleItem(`${section.key}/${item.key}`)}>
+                        <span className="gs-sw" style={{
+                          background: head?.Colour || "#cbd5e1",
+                          height: Math.max(2, Math.min(10, Number(head?.Width_Px) || 3)),
+                        }} />
+                        <span className="gs-nm">{item.label}</span>
+                        <span className="gs-count">
+                          {item.rows.length}
+                          {item.variants > 0 && ` \u00b7 ${item.variants} variation`}
+                          {item.variants > 1 ? "s" : ""}
+                        </span>
+                        <span className="gs-chev" aria-hidden="true">{isOpen ? "\u2212" : "+"}</span>
+                      </button>
+                    )}
+                    {isOpen && item.rows.map((r) => (
+                      <button key={r.GIS_Style_ID}
+                        className={[
+                          selected === r.GIS_Style_ID ? "gs-item on" : "gs-item",
+                          lone ? "" : "gs-in",
+                        ].filter(Boolean).join(" ")}
+                        onClick={() => open(r)}>
+                        <span className="gs-sw" style={{
+                          background: r.Colour || "#cbd5e1",
+                          height: Math.max(2, Math.min(10, Number(r.Width_Px) || 3)),
+                        }} />
+                        <span className="gs-nm">
+                          {r.Style_Name}
+                          {r.Is_Active === false && <span className="gs-off">off</span>}
+                        </span>
+                        <span className="gs-scope">{scopeOf(r)}</span>
+                        {(r.Min_Scale || r.Max_Scale) && (
+                          <span className="gs-zoom">
+                            {r.Min_Scale ? `\u2265${r.Min_Scale}` : ""}
+                            {r.Min_Scale && r.Max_Scale ? " " : ""}
+                            {r.Max_Scale ? `\u2264${r.Max_Scale}` : ""}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
           ))}
         </div>
 
@@ -890,6 +954,22 @@ const CSS = `
 .gs-zoom { grid-row: 1 / 3; grid-column: 3; font: 700 9.5px ui-monospace, Menlo, monospace;
   background: var(--bg); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px;
   color: var(--muted); }
+.gs-sec { margin-bottom: 10px; }
+.gs-sec-h { margin: 8px 6px 4px; font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--muted); }
+.gs-sec:first-child .gs-sec-h { margin-top: 2px; }
+.gs-grp { margin-bottom: 1px; }
+/* The item line: the thing, and how many rules are folded under it. */
+.gs-head { display: grid; grid-template-columns: 22px 1fr auto 12px; gap: 8px; width: 100%;
+  align-items: center; text-align: left; background: none; border: 1px solid transparent;
+  border-radius: 6px; padding: 6px 9px; cursor: pointer; font: inherit; color: var(--text); }
+.gs-head:hover { background: var(--bg); }
+.gs-head.open { background: var(--bg); }
+.gs-count { font-size: 10px; color: var(--muted); white-space: nowrap; }
+.gs-chev { color: var(--muted); font-weight: 700; font-size: 13px; text-align: center; }
+/* A rule inside an item, stepped in far enough to read as belonging to
+   it and not so far that the swatches stop lining up. */
+.gs-in { padding-left: 22px; }
 .gs-detail { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px;
   min-height: 420px; }
 .gs-pick { color: var(--muted); font-size: 13px; text-align: center; padding: 150px 20px; }

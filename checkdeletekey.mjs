@@ -35,6 +35,74 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   }
 }
 
+// 2b. EVERY handler, not the first one.
+//
+//     The case above looks at the first `e.key === "Delete"` it finds,
+//     and that one was always the guarded one. A SECOND branch sat below
+//     it, guarded on `document.activeElement?.tagName !== "INPUT"` alone
+//     — and a text note is edited in a TEXTAREA, so Backspace inside a
+//     note deleted the note being typed into. The save that followed
+//     said the feature was not on the drawing, and four days went into
+//     the table, its sequence, its triggers, its RLS and its constraints.
+//
+//     Worse, the guarded branch always returns, so the second could only
+//     ever run WHILE typing: the one case it must not. Checking one
+//     handler is checking a handler; the rule is about all of them.
+//
+//     Comments are stripped first. The comment recording this quotes the
+//     old guard, and a check that matches its own history calls the
+//     record of a fix the fault.
+{
+  const live = canvas.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+  const branches = [...live.matchAll(
+    /if \(([^)]*?)\(e\.key === "Delete" \|\| e\.key === "Backspace"\)/g)];
+  if (branches.length !== 1) {
+    fail(`${branches.length} Delete/Backspace branches in live code, expected 1`);
+  }
+  for (const b of branches) {
+    if (!/!typing\s*&&/.test(b[1])) {
+      fail(`a Delete/Backspace branch is guarded by "${b[1].trim() || "nothing"}" `
+        + "rather than by !typing");
+    }
+  }
+  if (/activeElement\??\.tagName\s*!==\s*"INPUT"/.test(live)) {
+    fail("a handler still guards on activeElement being INPUT, which lets a "
+      + "TEXTAREA through");
+  }
+
+  // The guard has to cover every field a person types into.
+  const g = /const typing = ([\s\S]*?);\n/.exec(live)?.[1] ?? "";
+  for (const tag of ["INPUT", "TEXTAREA", "SELECT"]) {
+    if (!g.includes(`"${tag}"`)) {
+      fail(`the typing guard does not cover ${tag} — Backspace in one deletes `
+        + "the drawing");
+    }
+  }
+  if (!/isContentEditable/.test(g)) fail("the typing guard does not cover contentEditable");
+
+  // And the decision itself, for each kind of focused element.
+  const wouldDelete = (tagName, { isContentEditable = false, selected = 1 } = {}) => {
+    const el = { tagName, isContentEditable };
+    const typing = el.tagName === "INPUT" || el.tagName === "TEXTAREA"
+      || el.tagName === "SELECT" || el.isContentEditable;
+    if (typing) return false;
+    return !!selected;
+  };
+  for (const [tag, opts] of [["TEXTAREA", {}], ["INPUT", {}], ["SELECT", {}],
+    ["DIV", { isContentEditable: true }]]) {
+    if (wouldDelete(tag, opts)) {
+      fail(`Backspace in a ${tag.toLowerCase()} still deletes the selected feature`);
+    }
+  }
+  /* And it still deletes where it should \u2014 a guard added in a panic
+     is how a shortcut quietly stops working. */
+  if (!wouldDelete("CANVAS")) fail("Delete on the canvas no longer removes the selection");
+  if (wouldDelete("CANVAS", { selected: 0 })) {
+    fail("Delete with nothing selected deletes something");
+  }
+}
+
 // 3. Read live, not from the closure.
 //
 //    The listener is bound once per change of `features`, so everything
@@ -123,5 +191,5 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
 }
 
 console.log(bad ? `\n${bad} problem(s)`
-  : "Delete removes the selection, and Backspace undoes a vertex while drawing.");
+  : "Delete removes the selection and Backspace undoes a vertex; neither touches a note being typed into.");
 process.exit(bad ? 1 : 0);

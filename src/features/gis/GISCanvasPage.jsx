@@ -25002,6 +25002,16 @@ export default function GISCanvasPage() {
          selection is the browser's Back on some setups, and swallowing
          it silently would be its own surprise. */
       if (!typing && (e.key === "Delete" || e.key === "Backspace")) {
+        /* A point is being worked on, so Delete means that point. Only
+           once nothing is picked does it mean the whole feature.
+
+           Moved up from the second branch below, which has gone: that
+           branch could only ever run WHILE TYPING, so this was dead. */
+        if (editVertex) {
+          const f = featuresRef.current.find((x) => x.Feature_ID === editVertex.featureId);
+          if (f) { e.preventDefault(); removeVertex(f, editVertex.index); return; }
+        }
+
         /* ── Read through a ref, not the closure ──
 
            This listener is bound once per change of `features`, so
@@ -25056,18 +25066,34 @@ export default function GISCanvasPage() {
       }
       if (e.key === "Escape") { setDraft([]); setTool("select"); setSelected([]); stopPlacing(); }
       if (e.key === "Enter" && drawing) finishDrawing();
-      /* The vertex undo is handled at the top, before the deletion
-         that also reads Backspace. It was here, and was unreachable. */
-      if ((e.key === "Delete" || e.key === "Backspace")
-          && document.activeElement?.tagName !== "INPUT") {
-        /* A point is being worked on, so Delete means that point. Only
-           once nothing is picked does it mean the whole feature. */
-        if (editVertex) {
-          const f = features.find((x) => x.Feature_ID === editVertex.featureId);
-          if (f) { e.preventDefault(); removeVertex(f, editVertex.index); return; }
-        }
-        if (selected.length) { e.preventDefault(); removeSelected(); }
-      }
+      /* ── The second Delete handler is gone, and it was the bug ──
+
+         It read:
+
+           if ((e.key === "Delete" || e.key === "Backspace")
+               && document.activeElement?.tagName !== "INPUT")
+
+         Guarding against INPUT alone. A text note is edited in a
+         TEXTAREA, so pressing Backspace to correct a typo inside a note
+         ran `removeSelected()` and deleted the note being typed into.
+         The save that followed then reported the feature as not on the
+         drawing, which was true and read as a database fault. Days went
+         into the table, its sequence, its triggers, its RLS and its
+         constraints.
+
+         Worse, the branch above it always returns — it deletes and
+         returns, or returns because nothing is selected — so this one
+         could ONLY be reached while `typing` was true. It was not
+         under-guarded so much as exclusively wrong: the single
+         circumstance it could fire in was the one circumstance in which
+         it must not. Its vertex case was dead for the same reason and
+         now lives above, where it can run.
+
+         The lesson is in the branch that survived, which had the right
+         guard and said why: "Delete and Backspace are how a field is
+         edited, and taking them would make the notes box unusable."
+         Written by somebody who saw this coming, in a file where a
+         second copy of the same rule had already drifted. */
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

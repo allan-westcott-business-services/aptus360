@@ -206,7 +206,7 @@ caught a fault that had already shipped at least once.
 | `node checkinherit.mjs` | A drawn cable takes the circuit it was drawn from |
 | `node checktwostations.mjs` | Each meter says which substation and way feeds it |
 | `node checkroutepair.mjs` | Routing a supply asks which pair, and keeps the other |
-| `node checkdeletekey.mjs` | Delete removes the selection, live and not stale |
+| `node checkdeletekey.mjs` | Delete removes the selection, live and not stale — and no handler takes Backspace from a note being typed into |
 | `node checknumberremoved.mjs` | The old numbering pass stays out of the client |
 | `node checkmsdblink.mjs` | Board-to-board links: stamped, ordered, routed past |
 | `node checkisolation.mjs` | A trench that refuses LV is not walked across |
@@ -8997,6 +8997,109 @@ characters is a hundred lines of prose and no rules at all.
      rule. It matches the header rather than its spelling now, and picks
      up the other half of the pair: the browser does not send requests
      it has no session for.
+
+211. **The save that could not tell "absent" from "could not look".**
+     The session fix (210) went out and the same fault came back on a
+     fresh session: place a note, edit it, `Feature 57383 is not on this
+     drawing`. So the expired session was never the whole story, and the
+     message was still asserting something nobody had established.
+
+     Reading the PATCH branch again turned up three faults in the space
+     of eight lines:
+
+     **It was the only write in the file not scoped by `Project_ID`.**
+     The bulk PATCH and the DELETE both scope; this one matched on
+     `Feature_ID` alone, so a stale id from another drawing would have
+     been written to rather than refused. Now scoped like its
+     neighbours.
+
+     **The fallback lookup threw its error away.**
+     `const { data: after } = await ...` — no `error`. So a lookup that
+     FAILED was indistinguishable from a row that was ABSENT, and both
+     came out as "not on this drawing". A failed lookup is not a missing
+     row, and the error is now raised instead of being read as evidence.
+
+     **Three outcomes were collapsed into one sentence.** There are now
+     three: the row is ours and only the representation was missing (as
+     before, return it); the row exists on a DIFFERENT project, which is
+     said in those words because it means the browser is holding ids
+     from a drawing it is no longer showing and is fixed by reloading;
+     or the row is genuinely not there, which is the only case that now
+     gets the original message.
+
+     The cause of the note fault is still not known. What has changed is
+     that the next occurrence will say which of the three it is instead
+     of guessing — which is the only honest thing to ship while it
+     cannot be reproduced here.
+
+     **And the same trap caught me a third time in one session.** The
+     comment above the branch quotes the old `const { data: after } =`
+     to record why it changed, so the new assertion matched the comment
+     and called the history a fault — exactly as the Split Circuit
+     removal and the "may have been deleted" message did. checkgiswrite
+     .mjs now strips comments before matching. A pre-existing assertion
+     in that file had also pinned the exact destructuring rather than
+     the rule that it LOOKS at all, and broke on a change that kept the
+     rule; it matches the lookup now, not its spelling.
+
+212. **Backspace inside a text note deleted the note.** Four days, and
+     the answer was a key handler.
+
+     The canvas listener had TWO Delete/Backspace branches. The first is
+     right: guarded by `typing`, which tests INPUT, TEXTAREA, SELECT and
+     contentEditable, reading the selection through `liveSelected` —
+     and its own comment says why, in as many words: *"Delete and
+     Backspace are how a field is edited, and taking them would make the
+     notes box unusable."*
+
+     The second, older one guarded on this alone:
+
+         document.activeElement?.tagName !== "INPUT"
+
+     **A text note is edited in a TEXTAREA.** So typing in a note and
+     pressing Backspace to fix a character ran `removeSelected()` and
+     deleted the note being typed into. Save then asked the server to
+     patch a row that no longer existed, and was told the feature was
+     not on the drawing.
+
+     **It could only ever fire while typing.** The branch above always
+     returns — it deletes and returns, or returns because nothing is
+     selected — so the second was unreachable unless `typing` was
+     true. Not under-guarded: the single circumstance it could run in
+     was the single circumstance in which it must not. Its vertex case
+     was dead for the same reason and now lives in the surviving branch,
+     reading `featuresRef` rather than the closure.
+
+     **What the search cost.** The feature id, the `GIS_Feature` table,
+     its sequence (six ids past the highest surviving row), its two
+     triggers read in full, its RLS, its constraints, a probe insert
+     that went straight in, the session (genuinely expired, genuinely a
+     bug — 210), and the PATCH branch's own three faults (211). Every
+     one a real finding; none the cause.
+
+     The tell was there in the first hour and was read backwards: ONLY
+     TEXT NOTES failed. Seeds, meters and cables all saved. A note is
+     the only feature on that canvas you type free text into — which
+     pointed at typing, not at the row.
+
+     **The original message was right.** `it may have been deleted while
+     it was open` was removed in 211 as speculation. The speculation was
+     correct. It stays removed, because a message must not assert a
+     cause it has not established and being accidentally right is not a
+     defence — but the record should say the guess named the mechanism
+     on day one and was not believed.
+
+     **And I overwrote the check that should have caught it.**
+     checkdeletekey.mjs already existed, with fourteen assertions. Its
+     "never while typing" case took `canvas.indexOf('e.key === "Delete"')`
+     — the FIRST handler, which was always the guarded one — so the
+     second sat below it unseen. Writing a new file of that name
+     destroyed all fourteen; it was restored from git and the new cases
+     merged in. Checking one handler is checking a handler; the rule is
+     about all of them, and the new case counts the branches and guards
+     every one. Source is read with comments stripped, the fourth time
+     in one session that a check has matched its own history and called
+     the record of a fix the fault.
 
 ## Decisions worth knowing
 

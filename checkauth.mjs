@@ -103,6 +103,20 @@ const shared = readFileSync(join(DIR, "_supabase.js"), "utf8");
   }
 }
 
+// 3b. And where there is no token, it sends nothing.
+//
+//     Every endpoint is behind withAuth, so an unsigned request is
+//     refused — and that refusal used to arrive attached to whatever the
+//     person was doing rather than saying the session had gone.
+//     checksession.mjs holds the whole of this; what is kept here is the
+//     half that belongs beside the guard it pairs with.
+{
+  const client = readFileSync("./src/api/client.js", "utf8");
+  if (!/if \(auth\.required && !auth\.token\)/.test(client)) {
+    fail("the browser sends requests it has no session for");
+  }
+}
+
 // 4. The browser sends the token.
 //
 //    The guard is only half of it. If the client stopped attaching the
@@ -110,7 +124,10 @@ const shared = readFileSync(join(DIR, "_supabase.js"), "utf8");
 //    together rather than assumed to stay in step.
 {
   const client = readFileSync("./src/api/client.js", "utf8");
-  if (!/Authorization: `Bearer \$\{token\}`/.test(client)) {
+  /* Whatever the token is held in. This pinned `Bearer ${token}` and
+     broke when the variable was renamed on a change that did not touch
+     the rule at all \u2014 the header is what matters, not its spelling. */
+  if (!/Authorization: `Bearer \$\{[^}]+\}`/.test(client)) {
     fail("the browser no longer sends the session token");
   }
   if (!/auth\.getSession\(\)/.test(client)) {

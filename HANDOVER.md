@@ -259,6 +259,7 @@ caught a fault that had already shipped at least once.
 | `node checkorgadd.mjs` | The add button sits above the list, and a new organisation is selected AND visible — mounted and driven |
 | `node checkelectricmenu.mjs` | The Electric menu's left column: seven bands, in the order of the work, nothing loose and nothing lost |
 | `node checktracescope.mjs` | One Trace for every utility: any network until you pick a line, one network once you have |
+| `node checksession.mjs` | A dead session says so, once, before anything else fails |
 | `python3 checkdefs.py` | Calls with no definition, state set with no `useState` |
 | `python3 checkcols.py` | Explicit column lists against the schema |
 | `python3 checkorder.py` | Use before declaration (heuristic — read the hits, see fault 2) |
@@ -8927,6 +8928,75 @@ characters is a hundred lines of prose and no rules at all.
      column break. `Show or Hide` carries it now — without that the menu
      falls into one tall column, which is the fault the named break was
      put there to prevent.
+
+210. **A dead session said everything except that it was a dead
+     session.** Reported as "when I try to place a text note I get
+     `Feature 57372 is not on this drawing`". It was not about text
+     notes.
+
+     `authHeader` in client.js read the session and, when it could not
+     get a token, returned `{}` — no Authorization header — and sent
+     the request anyway. Every endpoint is behind `withAuth`, so the
+     server refused it, correctly, with "Sign in to use this." That
+     refusal then landed on whatever the person happened to be doing.
+
+     **The morning it cost.** The hunt went: the feature id, then the
+     `GIS_Feature` table, then its sequence (six ids issued past the
+     highest surviving row), then its two triggers — read in full,
+     both clean — then its RLS (enabled with no policies, which is
+     deliberate: the anon key is meant to read nothing), then its
+     constraints, then a probe insert in SQL which went straight in.
+     Only then did clicking one failed request's Response show
+     `{"error":"Sign in to use this."}`. Every step was reasonable and
+     every one was wasted, because the app had the answer from the
+     first failed call and threw it away.
+
+     Three changes, all about making the fault legible. Auth itself was
+     working exactly as designed.
+
+     **1. Nothing is sent without a token where one is required.**
+     `authToken` answers three states instead of two: auth off (send as
+     before — that is the unconfigured deployment, not a signed-out
+     person), token in hand (send it), auth on with no token (the
+     session has gone: announce it, refuse here, send nothing). A
+     failure in the auth client itself counts as a dead session rather
+     than as auth being off — guessing the other way is what sent
+     unsigned requests to begin with.
+
+     **2. The same words either way.** A 401 from the server now reads
+     as `SESSION_GONE` too. Whether the session died just before the
+     request or just after is not a distinction anybody can act on, and
+     "Sign in to use this." is true and useless on a screen somebody is
+     already looking at.
+
+     **3. The undo journal stopped being silent.** `recordAction` runs
+     on every edit, so it is the FIRST thing to meet a dead session —
+     and its catch was empty, on the sound argument that a history which
+     cannot be written must not fail work that has already succeeded.
+     Sound, and it threw away the earliest warning available. It still
+     swallows, but says so once (`historyWarned`), because undo being
+     quietly gone is worth knowing before you rely on stepping back.
+
+     **And the message that sent us hunting.** `Feature N is not on this
+     drawing — it may have been deleted while it was open` was written
+     before the case had ever occurred, and its guess was wrong. It now
+     says what is known — the feature is not there, nothing was saved
+     — and what to do: reload. Where the cause is not known it says
+     nothing about the cause.
+
+     Not explained, and left honest rather than papered over: six
+     sequence ids were consumed with no rows behind them, and some
+     failing saves reached the handler, which means they were
+     authenticated. A 401 never reaches Postgres, so the session cannot
+     account for those. If it recurs the trail starts at the Netlify
+     function log, where `fail()` has been writing the full Postgres
+     error all along.
+
+     checkauth.mjs had pinned ``Authorization: `Bearer ${token}` ``
+     literally and broke on a variable rename that did not touch its
+     rule. It matches the header rather than its spelling now, and picks
+     up the other half of the pair: the browser does not send requests
+     it has no session for.
 
 ## Decisions worth knowing
 

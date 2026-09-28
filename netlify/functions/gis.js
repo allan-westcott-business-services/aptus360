@@ -217,8 +217,19 @@ export default withAuth(async function handler(req, context) {
          missing; if it is not, say so plainly. */
       const { data: after } = await db.from("GIS_Feature").select(F).eq("Feature_ID", id);
       if (after?.length) return json(after[0]);
-      throw new Error(`Feature ${id} is not on this drawing — it may have been `
-        + "deleted while it was open.");
+      /* ── What happened, not what might have ──
+
+         This used to add "it may have been deleted while it was open",
+         which was a guess written before the case had ever been
+         diagnosed. When it finally fired in anger the guess was wrong
+         — the session had expired and the browser was holding ids from
+         a drawing it could no longer write to — and two people spent a
+         morning hunting a deletion that never happened.
+
+         A message states what is known and what to do about it. Where
+         the cause is not known, it says nothing about the cause. */
+      throw new Error(`Feature ${id} is not on this drawing, so nothing was `
+        + "saved. Reload the drawing to see what is on it.");
     }
 
     if (req.method === "DELETE") {

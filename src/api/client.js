@@ -9,19 +9,46 @@
    instead of just working. */
 export const USE_MOCKS = import.meta.env.VITE_USE_MOCKS !== "false";
 
-/* The signed-in user's token travels with every request so functions can
-   tell who's calling. Imported lazily to keep this module usable when
-   auth isn't configured. */
-async function authHeader() {
+/* What the user sees when the session has gone. One sentence, and it
+   names the thing to do — a message that only says what is wrong is
+   half a message. */
+export const SESSION_GONE = "Your session has expired — sign in again.";
+
+/* ── The signed-in user's token, and what to do when there isn't one ──
+
+   The token travels with every request so functions can tell who's
+   calling. Imported lazily to keep this module usable when auth isn't
+   configured at all.
+
+   This used to answer a missing session with `{}` — no Authorization
+   header — and the request went out unsigned. Every endpoint is behind
+   withAuth, so the server refused it, correctly, with "Sign in to use
+   this." — and that landed on whatever the person happened to be doing.
+   A text note that would not save. A levels check that would not run.
+   The failure looked like a fault in the feature rather than in the
+   session, and it cost most of a morning to find, because a dead
+   session can look like anything except a dead session.
+
+   So a missing token is now answered here, once, before anything is
+   sent. Three states, not two:
+
+     auth is off        no token wanted, send as before. This is the
+                        unconfigured case, not the signed-out one.
+     token in hand      send it.
+     auth on, no token  the session has gone. Say so and send nothing. */
+async function authToken() {
   try {
-    const { getSupabase } = await import("../lib/supabaseClient.js");
+    const { getSupabase, authEnabled } = await import("../lib/supabaseClient.js");
+    if (!authEnabled) return { required: false, token: null };
     const supabase = await getSupabase();
-    if (!supabase) return {};
+    if (!supabase) return { required: false, token: null };
     const { data } = await supabase.auth.getSession();
-    const token = data?.session?.access_token;
-    return token ? { Authorization: `Bearer ${token}` } : {};
+    return { required: true, token: data?.session?.access_token ?? null };
   } catch {
-    return {};
+    /* The auth client would not load or would not answer. Treated as a
+       session that has gone rather than as auth being off: guessing the
+       other way is what sent unsigned requests in the first place. */
+    return { required: true, token: null };
   }
 }
 
@@ -34,13 +61,30 @@ class ApiError extends Error {
   }
 }
 
+/* Announced rather than acted on directly: this module knows nothing
+   about routing or React, and AuthContext owns the session. */
+function announceSignedOut() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("aptus:signed-out"));
+  }
+}
+
 async function request(path, { method = "GET", body, signal } = {}) {
+  const auth = await authToken();
+  /* Nothing is sent without a token where one is required. The refusal
+     would be identical and it would arrive wearing the costume of
+     whatever asked for it. */
+  if (auth.required && !auth.token) {
+    announceSignedOut();
+    throw new ApiError(SESSION_GONE, 401, null);
+  }
+
   const res = await fetch(`/api${path}`, {
     method,
     signal,
     headers: {
       ...(body ? { "Content-Type": "application/json" } : {}),
-      ...(await authHeader()),
+      ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -68,8 +112,14 @@ async function request(path, { method = "GET", body, signal } = {}) {
        Announced rather than acted on directly: this module knows nothing
        about routing or React, and AuthContext is what owns the session.
        It listens for this and clears it. */
-    if (res.status === 401 && typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("aptus:signed-out"));
+    if (res.status === 401) {
+      announceSignedOut();
+      /* The server's own words here are "Sign in to use this.", which
+         is true and unhelpful on a screen somebody is already looking
+         at. Said the same way as the case above, so a session that
+         dies before the request and one that dies at the server read
+         identically to whoever is looking. */
+      throw new ApiError(SESSION_GONE, 401, data);
     }
     throw new ApiError(data?.error || `Request failed (${res.status})`, res.status, data);
   }

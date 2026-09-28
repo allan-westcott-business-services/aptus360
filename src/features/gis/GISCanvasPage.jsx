@@ -2715,6 +2715,11 @@ export default function GISCanvasPage() {
      delta computed against a stale "after" would record an action as
      having done less than it did — which is worse than not recording it,
      because undo would then half-reverse it. */
+  /* Said once. The journal is written on every edit, so a fault here
+     repeats with every drag and every field — and a warning that
+     appears fifty times is one nobody reads by the third. */
+  const historyWarned = useRef(false);
+
   const recordAction = useCallback(async (label, before, after) => {
     const delta = diffFeatures(before, after);
     if (isEmptyDelta(delta)) return;
@@ -2723,9 +2728,32 @@ export default function GISCanvasPage() {
     try {
       const r = await recordUndo(projectId, label, delta);
       id = r?.entry?.Undo_ID ?? null;
-    } catch {
-      /* A history that cannot be written must not fail the work: the
-         action itself has already succeeded. */
+    } catch (e) {
+      /* ── Swallowed, but not silently ──
+
+         A history that cannot be written must not fail the work: the
+         action itself has already succeeded, and refusing to let
+         somebody move a cable because the journal is down would be the
+         worse trade. That part was right.
+
+         What was wrong was saying nothing. This is the FIRST thing to
+         notice a dead session — it runs on every edit, before anything
+         the person asked for has a chance to fail — and its error went
+         straight into an empty catch. So a session that had expired
+         announced itself here and was thrown away, and the fault
+         surfaced later wearing the costume of whatever was being saved
+         at the time. Most of a morning went into a text note that was
+         never the problem.
+
+         Undo is also quietly gone while this is failing, which somebody
+         deserves to know BEFORE they rely on being able to step back. */
+      if (!historyWarned.current) {
+        historyWarned.current = true;
+        setError(e?.status === 401
+          ? e.message
+          : `Undo history isn't being recorded: ${e?.message || "the journal refused the write"}. `
+            + "Your work is still being saved.");
+      }
       return;
     }
     /* Through the stack helper so the limit and the "a new action clears

@@ -34,6 +34,72 @@ const WEIGHT = {
   Layer_Key: 1,
 };
 
+/* ── Conditions: the scope columns, generalised ──
+
+   The seven columns above are seven questions somebody thought to ask
+   when this was written. Asked for: a rule built out of whatever a
+   feature actually carries — "Build Status = Planned AND Operator =
+   Electricity North West" — where the useful fields are not known in
+   advance and adding one should not be a migration.
+
+   A rule's `Conditions` is a list of {field, value}, ALL of which must
+   match: one more narrowing each, the same AND the columns already are.
+   Stored as data rather than as a column apiece, so cable size,
+   voltage rating and whatever comes next are a dropdown entry.
+
+   ── What a condition is worth ──
+
+   Four. The same as Feature_Role, which is the weight for "one more
+   fact about this thing" — above the layer and the utility it belongs
+   to, below the Site and the line type, well below an operator's own
+   standard.
+
+   Deliberately additive and deliberately uncapped: a rule naming five
+   facts is more specific than one naming two, and there is no reading
+   of "specific" where that is not true. It does mean a rule with
+   enough conditions can outrank an operator's. That is already
+   possible without conditions — Site, line type, supply type, role,
+   utility and layer together score 39 against an operator's 32 — so
+   this changes the arithmetic, not the rules of it.
+
+   A rule with no conditions scores exactly what it scored before.
+   Nothing on any drawing moves the day this ships, which is the
+   condition this was built under. */
+export const CONDITION_WEIGHT = 4;
+
+/* The fields a condition can name, with the labels they go by and,
+   where the set is known, the values they take. `Other` is not here:
+   anything a feature carries can be named, and a list that pretended
+   otherwise would be the same fault the ROLES list has had twice. */
+export const CONDITION_FIELDS = [
+  { field: "Build_Status", label: "Build status" },
+  { field: "Size", label: "Size" },
+  { field: "Circuit_ID", label: "Circuit" },
+  { field: "Circuit_Name", label: "Circuit name" },
+  { field: "Off_Site", label: "Off site (true/false)" },
+  { field: "Voltage", label: "Voltage rating" },
+  { field: "Material", label: "Material" },
+];
+
+const conditionsOf = (style) => {
+  const c = style?.Conditions;
+  if (!Array.isArray(c)) return [];
+  return c.filter((x) => x && x.field != null && String(x.field) !== "");
+};
+
+/* One condition against what the feature carries.
+
+   Compared as text, like every other scope column, so 11 and "11" are
+   the same answer — a value typed into an admin box is a string and a
+   value read off a drawing may not be. A condition naming a field the
+   feature does not carry does NOT match: it narrows to things that
+   have it, which is what naming it means. */
+function conditionMatches(cond, subject) {
+  const have = subject?.Attributes?.[cond.field];
+  if (have == null) return false;
+  return same(have, cond.value);
+}
+
 /* The fields a style can carry. Anything null on a row is inherited
    from the row below it rather than overriding with a blank. */
 const FIELDS = [
@@ -52,6 +118,12 @@ const same = (a, b) => String(a) === String(b);
    A non-null one must match exactly or the row is out. */
 export function styleMatches(style, subject, ctx = {}) {
   if (style.Is_Active === false) return false;
+  /* Every condition, or none of it. They narrow the same way the
+     columns do and there is no reading of a rule where some of its
+     conditions holding is enough. */
+  for (const c of conditionsOf(style)) {
+    if (!conditionMatches(c, subject)) return false;
+  }
   if (style.Layer_Key != null && !same(style.Layer_Key, subject.Layer_Key)) return false;
   if (style.Line_Type != null && !same(style.Line_Type, subject.Line_Type)) return false;
   if (style.Feature_Role != null && !same(style.Feature_Role, subject.Feature_Role)) return false;
@@ -68,6 +140,7 @@ export function styleMatches(style, subject, ctx = {}) {
 export function styleScore(style) {
   let n = 0;
   for (const k of Object.keys(WEIGHT)) if (style[k] != null) n += WEIGHT[k];
+  n += conditionsOf(style).length * CONDITION_WEIGHT;
   return n;
 }
 
@@ -76,6 +149,11 @@ export function styleScore(style) {
 export function subjectOf(feature, layers = []) {
   const layer = layers.find((l) => l.Layer_Key === feature.Layer_Key);
   return {
+    /* What the feature carries, for conditions to be asked of. The
+       named fields below stay as they are: they are what the columns
+       match on, and a condition naming one of them reads the same
+       value through here. */
+    Attributes: feature.Attributes ?? {},
     Layer_Key: feature.Layer_Key ?? null,
     Line_Type: feature.Attributes?.Line_Type ?? null,
     Feature_Role: feature.Feature_Role ?? null,

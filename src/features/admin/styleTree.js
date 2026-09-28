@@ -250,7 +250,14 @@ export function itemOf(row, { lineTypes = [], roleLabels = {} } = {}) {
 export function isVariant(row) {
   return row.Site != null
     || row.Supply_Type != null
-    || row.Organisation_ID != null;
+    || row.Organisation_ID != null
+    /* A condition narrows the thing, which is the definition of a
+       variation. Without this, "Electric main, planned" would stand
+       beside "Electric main" as a second item with the same name and
+       nothing on screen to tell them apart — the fault Supply_Type
+       had on this screen before it was named in the scope line. */
+    || (Array.isArray(row.Conditions)
+      && row.Conditions.some((c) => c && c.field));
 }
 
 /* The tree. Sections in the order above, then any unnamed layer; items

@@ -446,6 +446,16 @@ const itemsOf = (k) => (find(k)?.items ?? []).map((i) => i.label);
   if (!isVariant({ Site: "Off-site" })) fail("Site is not treated as a variation");
   if (!isVariant({ Organisation_ID: 3 })) fail("an operator rule is not treated as a variation");
   if (isVariant({ Line_Type: "elec_hv" })) fail("a plain line-type rule was called a variation");
+  /* A condition narrows the thing, so it is a variation of it — or
+     "Electric main, planned" stands beside "Electric main" as a second
+     item with the same name. */
+  if (!isVariant({ Conditions: [{ field: "Build_Status", value: "planned" }] })) {
+    fail("a rule narrowed by a condition is not treated as a variation");
+  }
+  if (isVariant({ Conditions: [] })) fail("an empty condition list was called a variation");
+  if (isVariant({ Conditions: [{ value: "x" }] })) {
+    fail("a condition with no field was called a variation");
+  }
   if (SECTIONS.length < 5) fail("the sections asked for are not all declared");
 }
 

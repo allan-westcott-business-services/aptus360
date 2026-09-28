@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { buildTree } from "./styleTree.js";
+import { CONDITION_FIELDS } from "../../lib/gisStyle.js";
+import { BUILD_STATUSES } from "../gis/buildStatus.js";
 import Banner from "../../components/Banner.jsx";
 import { listGisStyles, saveGisStyle, deleteGisStyle } from "../../api/gis.js";
 import { getLookups } from "../../api/lookups.js";
@@ -41,6 +43,10 @@ const BLANK = {
   Marker_Text: "", Marker_Symbol: "", Marker_Interval_M: "", Marker_Size_Px: "",
   Marker_Colour: "", Marker_Rotate: true, Marker_Offset_Px: "", Marker_Min_Gap_Px: "",
   Sort_Order: 0, Is_Active: true, Notes: "",
+  /* Not null: the builder edits a list, and a rule that starts as null
+     would need every caller to remember that. Empty and null are the
+     same thing to the cascade. */
+  Conditions: [],
 };
 
 /* Every role a feature can hold, with the name it goes by.
@@ -295,8 +301,19 @@ export default function GisStylesAdmin() {
     if (!draft.Style_Name.trim()) return setError("A rule needs a name.");
     try {
       const { GIS_Style_ID, ...body } = draft;
-      await saveGisStyle({ ...body, Style_Name: body.Style_Name.trim() },
-        isNew ? undefined : selected);
+      /* A condition with no field narrows nothing, would be scored for
+         and never match, and the database refuses it outright — so a
+         row left half-filled by somebody who pressed Add and changed
+         their mind would come back as a constraint error about JSON.
+         Dropped here, where the intention is obvious. */
+      const conds = (Array.isArray(body.Conditions) ? body.Conditions : [])
+        .filter((c) => c && String(c.field ?? "").trim() !== "")
+        .map((c) => ({ field: String(c.field).trim(), value: String(c.value ?? "").trim() }));
+      await saveGisStyle({
+        ...body,
+        Style_Name: body.Style_Name.trim(),
+        Conditions: conds.length ? conds : null,
+      }, isNew ? undefined : selected);
       setSelected(null);
       await load();
       setStatus("Saved");
@@ -340,6 +357,16 @@ export default function GisStylesAdmin() {
     return next;
   });
 
+  /* The rule's conditions, edited as a list. Held on the draft like
+     every other field so Save carries them without a second path. */
+  const conditions = Array.isArray(draft.Conditions) ? draft.Conditions : [];
+  const putConditions = (next) => setDraft((d) => ({ ...d, Conditions: next }));
+  const addCondition = () => putConditions([...conditions, { field: "", value: "" }]);
+  const removeCondition = (i) => putConditions(conditions.filter((_, j) => j !== i));
+  const setCondition = (i, patch) => putConditions(
+    conditions.map((c, j) => (j === i ? { ...c, ...patch } : c)),
+  );
+
   const opName = (id) => operators.find((o) => String(o.Organisation_ID) === String(id))?.Name;
   const utName = (id) => utilities.find((u) => String(u.Utility_ID) === String(id))?.Utility;
 
@@ -351,6 +378,12 @@ export default function GisStylesAdmin() {
        which is exactly what this screen showed until now. */
     r.Supply_Type && (SUPPLY_TYPES.find(([k]) => k === r.Supply_Type)?.[1] ?? r.Supply_Type),
     r.Layer_Key, r.Utility_ID && utName(r.Utility_ID),
+    /* Said in the list, or a rule narrowed by a condition reads as an
+       identical copy of the one it narrows — which is the exact fault
+       Supply_Type had before it was named here. */
+    ...(Array.isArray(r.Conditions) ? r.Conditions : [])
+      .filter((c) => c && c.field)
+      .map((c) => `${c.field} = ${c.value ?? ""}`),
   ].filter(Boolean).join(" \u00B7 ") || "Everything";
 
   if (loading) return <div className="loading">Loading styles&hellip;</div>;
@@ -663,6 +696,57 @@ export default function GisStylesAdmin() {
                 </div>
               </div>
 
+              {/* ── And anything else the feature carries ──
+
+                  Asked for: "Build Status = Planned AND DNO Operator =
+                  Electricity North West THEN set style". The boxes
+                  above were already ANDed together, so the shape was
+                  right and the CONTENTS were the problem — Build Status
+                  was not one of them, and nor was cable size or voltage
+                  rating, and each new one would have been a migration.
+
+                  A condition names a field and a value, and every one
+                  has to hold. The field list is a convenience, not a
+                  fence: type any key a feature carries and it works,
+                  because a list that decided what existed is the fault
+                  the role register has had twice. */}
+              <p className="panel-label">And where&hellip;</p>
+              <div className="gs-conds">
+                {conditions.length === 0 && (
+                  <p className="gs-cond-none">
+                    No extra conditions &mdash; this rule applies wherever the
+                    boxes above match.
+                  </p>
+                )}
+                {conditions.map((c, i) => (
+                  <div className="gs-cond" key={i}>
+                    <input aria-label={`Condition ${i + 1} field`}
+                      list="gs-cond-fields" value={c.field ?? ""}
+                      placeholder="Field, e.g. Build_Status"
+                      onChange={(e) => setCondition(i, { field: e.target.value })} />
+                    <span className="gs-cond-eq">=</span>
+                    <input aria-label={`Condition ${i + 1} value`}
+                      list={c.field === "Build_Status" ? "gs-cond-status" : undefined}
+                      value={c.value ?? ""} placeholder="Value"
+                      onChange={(e) => setCondition(i, { value: e.target.value })} />
+                    <button className="gs-cond-x" type="button"
+                      aria-label={`Remove condition ${i + 1}`}
+                      onClick={() => removeCondition(i)}>&times;</button>
+                  </div>
+                ))}
+                <button className="gs-cond-add" type="button" onClick={addCondition}>
+                  + Add a condition
+                </button>
+                <datalist id="gs-cond-fields">
+                  {CONDITION_FIELDS.map((f) => (
+                    <option key={f.field} value={f.field}>{f.label}</option>
+                  ))}
+                </datalist>
+                <datalist id="gs-cond-status">
+                  {BUILD_STATUSES.map((b) => <option key={b.key} value={b.key}>{b.label}</option>)}
+                </datalist>
+              </div>
+
               <p className="panel-label">Looks like</p>
               <div className="gs-grid">
                 <div className="fld">
@@ -970,6 +1054,19 @@ const CSS = `
 /* A rule inside an item, stepped in far enough to read as belonging to
    it and not so far that the swatches stop lining up. */
 .gs-in { padding-left: 22px; }
+.gs-conds { margin-bottom: 12px; }
+.gs-cond { display: grid; grid-template-columns: 1fr 14px 1fr 26px; gap: 6px;
+  align-items: center; margin-bottom: 5px; }
+.gs-cond input { width: 100%; font-size: 12.5px; }
+.gs-cond-eq { text-align: center; color: var(--muted); font-weight: 700; }
+.gs-cond-x { border: 1px solid var(--border); background: var(--white); border-radius: 5px;
+  width: 26px; height: 26px; cursor: pointer; color: var(--muted); font-size: 15px;
+  line-height: 1; }
+.gs-cond-x:hover { border-color: #b91c1c; color: #b91c1c; }
+.gs-cond-add { background: none; border: 1px dashed var(--border); border-radius: 6px;
+  padding: 5px 10px; cursor: pointer; font: 600 12px inherit; color: var(--accent); }
+.gs-cond-add:hover { background: var(--accent-light); }
+.gs-cond-none { font-size: 11.5px; color: var(--muted); font-style: italic; margin: 0 0 6px; }
 .gs-detail { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px;
   min-height: 420px; }
 .gs-pick { color: var(--muted); font-size: 13px; text-align: center; padding: 150px 20px; }

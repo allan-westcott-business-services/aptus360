@@ -208,6 +208,7 @@ caught a fault that had already shipped at least once.
 | `node checkroutepair.mjs` | Routing a supply asks which pair, and keeps the other |
 | `node checkdeletekey.mjs` | Delete removes the selection, live and not stale — and no handler takes Backspace from a note being typed into |
 | `node checkstyletree.mjs` | GIS Styles group into sections and items — every rule once, and the cascade untouched |
+| `node checkstyleconditions.mjs` | A style rule takes conditions: all must match, each narrows, and a rule without any is unchanged |
 | `node checknumberremoved.mjs` | The old numbering pass stays out of the client |
 | `node checkmsdblink.mjs` | Board-to-board links: stamped, ordered, routed past |
 | `node checkisolation.mjs` | A trench that refuses LV is not walked across |
@@ -9277,6 +9278,66 @@ characters is a hundred lines of prose and no rules at all.
      holds both halves: where a Site-only rule is filed, and that
      narrowing it moves it, so the advice given cannot quietly stop
      being true.
+
+218. **A style rule is built out of conditions (0240).** Asked for: "I
+     need to be able to build a rule within the pane where all the
+     fields are. e.g. Build Status = Planned AND DNO Operator =
+     Electricity North West THEN set style of line/point."
+
+     The seven scope columns were ALREADY ANDed together, so the shape
+     was right and the contents were the problem. Build Status was not
+     one of them; neither was cable size or voltage rating; and each new
+     one would have been a migration. A rule now carries `Conditions` —
+     a list of `{field, value}` matched against whatever the feature
+     holds in its Attributes, all of which must hold.
+
+     **Nothing on any drawing moved.** That was the condition the work
+     was agreed under and it is the first thing the check tests: a rule
+     with no conditions scores exactly what it scored and matches
+     exactly what it matched. Absent, null, `[]`, `""`, `[{}]` and
+     `[{field:""}]` all read as none — rows saved before 0240 have no
+     column at all, and a form that sends an empty list must not be a
+     different thing from one that sends nothing.
+
+     **What a condition is worth: four.** The same as Feature_Role —
+     one more fact about the thing. Above the layer and the utility it
+     sits in, no more than the line type it narrows, below Site, which
+     is about consent and cost and is meant to read at a glance.
+     Additive and uncapped, because a rule naming five facts IS more
+     specific than one naming two. That does mean enough conditions can
+     outrank an operator's standard — already true without them, since
+     Site, line type, supply type, role, utility and layer together
+     score 39 against an operator's 32. The arithmetic changed; the
+     rules of it did not.
+
+     The check pins the condition's PLACE among the weights rather than
+     the number 4, by scoring synthetic rules against each other. The
+     first version only asserted that two rules differing by one
+     condition differed by CONDITION_WEIGHT, which is true for any
+     value — a mutation setting it to 40 walked straight through.
+
+     **The field list is a convenience, not a fence.** Type any key a
+     feature carries and it works. A list that decided what existed is
+     the fault the ROLES register has had twice.
+
+     **`S` in gis-styles.js.** Its own comment records Supply_Type being
+     missing from that list for the whole of 0194's life — saved by
+     nobody, returned to nobody, and invisible. Conditions went into it
+     in the same edit as the column.
+
+     Blank conditions are stripped on save. The database refuses one
+     with no field (it would be scored for and never match), so a row
+     left half-filled by somebody who pressed Add and changed their mind
+     would otherwise come back as a constraint error about JSON.
+
+     A rule carrying a condition counts as a VARIATION in the styles
+     tree, so "Electric main, planned" folds under Electric main instead
+     of standing beside it with the same name.
+
+     Not built: operators other than `=`. Every example given was an
+     equality and a rule engine nobody asked for is a rule engine
+     nobody wants. `!=`, `is one of` and ranges are a day's work on top
+     of this if they are ever wanted.
 
 ## Decisions worth knowing
 

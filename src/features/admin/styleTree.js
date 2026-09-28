@@ -46,6 +46,7 @@ export const SECTIONS = [
   { key: "electric", label: "Electric" },
   { key: "gas", label: "Gas" },
   { key: "water", label: "Water" },
+  { key: "lighting", label: "Street Lighting" },
 ];
 
 /* ── The order items read in ──
@@ -82,12 +83,50 @@ const orderOf = (key) => {
   return i < 0 ? ITEM_ORDER.length : i;
 };
 
-/* Roles that are about the site rather than about a utility. A plot
-   seed is not electric, even though what hangs off it is. */
-const SITE_ROLES = new Set(["plot", "boundary", "shape"]);
+/* ── Where a role lives when the rule names no layer ──
+
+   Most rules scope a role and stop: "Meter", "Joint", "POC". With no
+   layer to file them under they all landed in General Site Styles,
+   which put the whole of Electric in the wrong section — reported, and
+   fair.
+
+   So a role says where it belongs. Three of these are shared in truth:
+   a POC, a meter and a joint exist on gas and water too, and a rule
+   naming one and no layer really does apply to all three. They are
+   filed under Electric because that is where they are worked on and
+   where somebody goes to look — while the scope line under the item
+   still says the rule names no layer, which is where the truth is
+   kept. Narrowing such a rule with a layer moves it to that utility,
+   which is the honest way to have it both ways.
+
+   A role missing from here falls to General Site Styles: a place
+   somebody will find it, rather than a guess at a utility. */
+const ROLE_SECTION = {
+  // the site itself
+  plot: "site", boundary: "site", shape: "site",
+  // the dig
+  spannode: "trench",
+  // electric, including the three that are shared
+  poc: "electric", source: "electric", meter: "electric", joint: "electric",
+  substation: "electric", msdb: "electric", linkbox: "electric",
+  feederpoint: "electric", nrs: "electric", hdcutout: "electric",
+  // gas
+  governor: "gas", hvtt: "gas", reducer: "gas",
+  // water
+  servicevalve: "water", washout: "water", pumping: "water",
+  // street lighting
+  column: "lighting",
+};
 
 /* Layers that are about the site rather than a utility or the dig. */
-const SITE_LAYERS = new Set(["site", "boundary", "annotation", "plots"]);
+/* `plot`, singular, is the real key — this had the plural and nothing
+   else, so the layer default for plots was filed under a section of its
+   own called "Plot", after Street Lighting. Both are listed rather than
+   one corrected, because guessing a key's number twice is worse than
+   accepting either. */
+const SITE_LAYERS = new Set([
+  "site", "boundary", "annotation", "plot", "plots",
+]);
 
 /* ── Working out the layer where nothing says it ──
 
@@ -138,7 +177,9 @@ export function sectionOf(row, { lineTypes = [] } = {}) {
   if (layer) return layer;
 
   /* No layer on the rule. The role can still say what it is about. */
-  if (row.Feature_Role && SITE_ROLES.has(row.Feature_Role)) return "site";
+  if (row.Feature_Role && ROLE_SECTION[row.Feature_Role]) {
+    return ROLE_SECTION[row.Feature_Role];
+  }
 
   /* Nothing says. It applies across the drawing, so it belongs with the
      general rules rather than being hidden under one utility. */
@@ -185,9 +226,17 @@ export function itemOf(row, { lineTypes = [], roleLabels = {} } = {}) {
     return { key: `family:${layer ?? "any"}`, label: family };
   }
 
-  /* Layer only: the rule the whole layer falls back to. */
+  /* Layer only: the rule the whole layer falls back to.
+
+     Named from the rule itself where there is one, in buildTree — a
+     section holding several layers cannot call them all "Everything
+     else" and expect anybody to tell them apart, which is exactly the
+     question this drew: "what is the difference between Plots and Plot
+     Seed?" One is the plot LAYER's fallback and the other is the seed
+     SYMBOL, and the names are the only thing on screen that can say
+     so. */
   if (row.Layer_Key) {
-    return { key: `layer:${row.Layer_Key}`, label: "Everything else" };
+    return { key: `layer:${row.Layer_Key}`, label: null, fallback: "Everything else" };
   }
 
   return { key: "any", label: "Everything" };

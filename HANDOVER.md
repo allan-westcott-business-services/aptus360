@@ -9186,6 +9186,98 @@ characters is a hundred lines of prose and no rules at all.
      nothing else. A rule scoping `trench_sep` AND an operator is
      somebody's decision and not a migration's to discard.
 
+215. **A role with no layer now finds its own section.** Reported from a
+     screenshot: General Site Styles held POC, Substation, MSDB, Link
+     box, Feeder end point, Meter, Non-residential supply and Joint —
+     the whole of Electric, in the wrong place.
+
+     213 filed a rule by its LAYER, and most rules do not carry one.
+     They scope a role and stop, so `sectionOf` fell through to its
+     catch-all and swept them all into the general section. `ROLE_SECTION`
+     now says where each role belongs.
+
+     **Three of them are shared, and it is worth being honest about
+     it.** A POC, a meter and a joint exist on gas and water too, so a
+     rule naming one of them and no layer really does apply to all
+     three. They are filed under Electric because that is where they are
+     worked on and where somebody goes to look for them — and the
+     scope line under the item still says the rule names no layer, which
+     is where the truth is kept. Narrowing such a rule with a layer
+     moves it to that utility, which is the honest way to have it both
+     ways.
+
+     **Street Lighting is a section**, so the lighting column stops
+     being a site style. Named rather than left to the unknown-layer
+     fallback, which would have titleCased it to "Lighting" and sorted
+     it after Water.
+
+     **And the check passed on the fault.** Every role in the fixture
+     carried a layer, so every role was filed by its layer and the role
+     path was never exercised — the screen was wrong in exactly the
+     shape the check could not see. The fixture now carries rules in the
+     shape the seeded ones are actually in, and asserts that General
+     Site Styles holds nothing but plot seeds, boundary points and
+     shapes. A fixture that only contains the easy shape is a fixture
+     that agrees with you.
+
+216. **"What is the difference between Plots and Plot Seed?"** Two rules,
+     two scopes, and the screen could not say which was which.
+
+         20  Plot seed              Feature_Role = plot,  no colour
+         11  Plots (layer default)  Layer_Key   = plot,   #2563eb
+
+     Not duplicates: one is the seed SYMBOL, the other is the plot
+     LAYER's fallback. Both apply to a plot seed, and the cascade does
+     the right thing with them — the role scores 4 against the layer's
+     1, so the seed rule wins field by field, and since it sets no
+     colour the blue is inherited from the layer rule. Working exactly
+     as designed and impossible to tell from the list, which is the
+     complaint.
+
+     Two faults behind it:
+
+     **The layer key is `plot`, singular.** SITE_LAYERS had `plots` and
+     nothing else, so rule 11 fell past General Site Styles into a
+     section of its own called "Plot", after Street Lighting. Both
+     spellings are listed now rather than one corrected — guessing a
+     key's number twice is worse than accepting either.
+
+     **Every layer fallback was called "Everything else".** Fine when a
+     section holds one layer; useless in General Site Styles, which
+     holds several. A layer item with one base rule takes that rule's
+     own name, so "Plots (layer default)" stands beside "Plot seed" and
+     the names answer the question.
+
+     A check assertion pinned the words "Everything else" rather than
+     the rule that a layer fallback sorts LAST, and broke on a change
+     that kept the rule. It matches the item's key now.
+
+217. **The off-site rule was scoped to nothing but Site.**
+
+         19  Off site   Site = Off-site, no layer, no line type, no role
+
+     Which is why it showed up as a style item rather than a variation,
+     and why an off-site HV cable was drawn like an off-site trench
+     earlier the same day: `Site` scores 16, above `Line_Type` at 8, so
+     one rule beat every line type on the drawing.
+
+     Reported as "I should not have a style item for Off Site as this
+     should be a variation on a style. A trench should have an
+     onsite/offsite field which dictates its style." Right on both
+     counts, and the trench already HAS that field — `Site` is set
+     from the boundary when a line is drawn. What was missing is that
+     the rule reading it was not tied to trenches.
+
+     **Not fixed in the screen, because the rule is not wrong about
+     itself.** As written it genuinely applies to every off-site thing
+     on the drawing, and filing it under Trench would be the screen
+     lying about what it does. Narrowing the rule is the fix — set
+     `Layer = trench` on it and it stops being an item, folds into the
+     trench layer's, and is counted as a variation. checkstyletree.mjs
+     holds both halves: where a Site-only rule is filed, and that
+     narrowing it moves it, so the advice given cannot quietly stop
+     being true.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

@@ -78,11 +78,37 @@ const rows = [
   r({ Feature_Role: "governor", Layer_Key: "gas", Style_Name: "Governor" }),
   r({ Line_Type: "water_main", Layer_Key: "water", Style_Name: "Water main" }),
   r({ Feature_Role: "servicevalve", Layer_Key: "water", Style_Name: "Service valve" }),
+  /* ── Roles with NO layer, which is what the seeded rules look like ──
+
+     The fixture gave every role a layer, so every role was filed by its
+     layer and the role map was never exercised. The real rules scope a
+     role and stop, and they all landed in General Site Styles: the
+     whole of Electric in the wrong section, reported from a screenshot
+     and invisible here. */
+  r({ Feature_Role: "poc", Style_Name: "Point of connection" }),
+  r({ Feature_Role: "feederpoint", Style_Name: "Feeder end point" }),
+  r({ Feature_Role: "nrs", Style_Name: "Non-residential supply" }),
+  r({ Feature_Role: "governor", Style_Name: "Gas governor, any layer" }),
+  r({ Feature_Role: "washout", Style_Name: "Wash out" }),
+  r({ Feature_Role: "column", Style_Name: "Lighting column" }),
+  r({ Feature_Role: "spannode", Style_Name: "Span node, any layer" }),
+  /* The two that prompted "what is the difference between Plots and
+     Plot Seed?" — the plot LAYER's fallback and the seed SYMBOL. Both
+     belong in General Site Styles and both must keep their own name, or
+     the screen cannot answer the question. The layer key is `plot`,
+     singular, which this file had as `plots` and nothing else. */
+  r({ Layer_Key: "plot", Style_Name: "Plots (layer default)", Colour: "#2563eb" }),
   // site layers: not a utility and not the dig
   r({ Layer_Key: "annotation", Style_Name: "Notes" }),
   r({ Layer_Key: "boundary", Style_Name: "Site boundary" }),
   // a layer this file has never heard of
-  r({ Layer_Key: "lighting", Style_Name: "Lighting" }),
+  r({ Layer_Key: "telecoms", Style_Name: "Ducting" }),
+  /* Scoped by Site and nothing else — the real rule 19. It applies to
+     every off-site thing on the drawing, which is why it showed up as
+     an item of its own rather than as a variation of anything. The
+     screen must not pretend otherwise: it is filed where a rule that
+     applies to everything belongs, and narrowing it is a data fix. */
+  r({ Site: "Off-site", Style_Name: "Off site" }),
   // and one that scopes nothing at all
   r({ Style_Name: "Everything" }),
 ];
@@ -131,7 +157,8 @@ const itemsOf = (k) => (find(k)?.items ?? []).map((i) => i.label);
 
 // ─── 3. The sections asked for, in the order asked for ───
 {
-  const want = ["General Site Styles", "Trench", "Electric", "Gas", "Water"];
+  const want = ["General Site Styles", "Trench", "Electric", "Gas", "Water",
+    "Street Lighting"];
   const got = tree.map((s) => s.label);
   if (got.slice(0, want.length).join("|") !== want.join("|")) {
     fail(`sections read ${got.join(" | ")}\n         expected ${want.join(" | ")} first`);
@@ -139,8 +166,8 @@ const itemsOf = (k) => (find(k)?.items ?? []).map((i) => i.label);
   /* A layer nobody named still gets a home, after the named ones —
      otherwise adding a utility means editing this file, which is the
      fault the ROLES list has had twice. */
-  if (!got.includes("Lighting")) fail("a layer this file does not know about has no section");
-  if (got.indexOf("Lighting") < want.length) fail("an unnamed layer jumped the named sections");
+  if (!got.includes("Telecoms")) fail("a layer this file does not know about has no section");
+  if (got.indexOf("Telecoms") < want.length) fail("an unnamed layer jumped the named sections");
 }
 
 // ─── 4. One line per thing, variations inside it ───
@@ -204,9 +231,12 @@ const itemsOf = (k) => (find(k)?.items ?? []).map((i) => i.label);
   }
   /* The layer's own fallback sorts last: it is the thing the others are
      exceptions to. */
+  /* By its KEY, not its label: a layer fallback now takes the name of
+     its own rule, so pinning "Everything else" tested the wording and
+     not the rule that it sorts last. */
   const last = find("trench")?.items.at(-1);
-  if (last?.label !== "Everything else") {
-    fail(`Trench ends with "${last?.label}" rather than its fallback rule`);
+  if (!last?.key.startsWith("layer:")) {
+    fail(`Trench ends with "${last?.label}" rather than its layer fallback`);
   }
 }
 
@@ -231,6 +261,22 @@ const itemsOf = (k) => (find(k)?.items ?? []).map((i) => i.label);
   if (!items.includes("Everything")) {
     fail("a rule that scopes nothing has been hidden under a utility");
   }
+  /* The plot layer's fallback keeps its own name rather than being
+     called "Everything else" beside two other layers' fallbacks. */
+  const siteSec = tree.find((sec) => sec.key === "site");
+  const plotsItem = (siteSec?.items ?? []).find((it) =>
+    it.rows.some((x) => x.Style_Name === "Plots (layer default)"));
+  if (!plotsItem) fail("the plot layer's fallback is not in General Site Styles");
+  else if (plotsItem.label !== "Plots (layer default)") {
+    fail(`the plot layer's fallback is shown as "${plotsItem.label}"`);
+  }
+  /* And it is a DIFFERENT item from the seed symbol: same section, two
+     rules, two names, because they are two different scopes. */
+  const seedItem = (siteSec?.items ?? []).find((it) => it.key === "role:plot");
+  if (seedItem && plotsItem && seedItem.key === plotsItem.key) {
+    fail("the plot layer default and the plot seed were merged into one item");
+  }
+
   /* And a rule on a site LAYER — annotation, the boundary — is a site
      rule too. A different branch from the role path above, and the one
      the fixture did not reach until a mutation walked through it
@@ -244,11 +290,99 @@ const itemsOf = (k) => (find(k)?.items ?? []).map((i) => i.label);
   }
 }
 
+// ─── 7d. A rule scoped by Site alone is not an item of anything ───
+//
+//     Reported: "I should not have a style item for Off Site as this
+//     should be a variation on a style." Correct — but the rule as it
+//     stands (Site = Off-site, nothing else) really does apply to every
+//     off-site thing on the drawing, and the screen must not pretend it
+//     belongs to one of them. It sits with the rules that apply across
+//     the drawing, where somebody will find it and can narrow it.
+//
+//     What makes it a variation is narrowing the RULE. Held here,
+//     because that is the advice given and it has to stay true.
+{
+  const broad = tree.find((sec) => sec.items.some((it) =>
+    it.rows.some((x) => x.Style_Name === "Off site")));
+  if (broad?.key !== "site") {
+    fail(`a Site-only rule is filed under ${broad?.label ?? "nothing"}, not with the general rules`);
+  }
+
+  /* Narrowed to the dig, it stops being its own item and folds into
+     the trench layer's, counted as a variation. */
+  const narrowed = rows.map((x) => (x.Style_Name === "Off site"
+    ? { ...x, Layer_Key: "trench" } : x));
+  const t2 = buildTree(narrowed, opts).find((sec) => sec.key === "trench");
+  const host = (t2?.items ?? []).find((it) =>
+    it.rows.some((x) => x.Style_Name === "Off site"));
+  if (!host) fail("narrowed to the trench layer, the off-site rule is not in Trench");
+  else {
+    if (host.label === "Off site") {
+      fail("narrowed to the trench layer, the off-site rule is still an item of its own");
+    }
+    if (host.variants < 1) fail("the narrowed off-site rule is not counted as a variation");
+  }
+}
+
 // ─── 8. Empty in, empty out ───
 {
   const t = buildTree([], opts);
   if (t.length !== 0) fail("an empty rule set produced sections anyway");
   if (countRows(t) !== 0) fail("an empty rule set counted rows");
+}
+
+// ─── 7b. A role with no layer still finds its own section ───
+//
+//     This is the shape most rules are in. Filed by role, because the
+//     rule has nothing else to go on — and NOT all swept into General
+//     Site Styles, which is what happened and what was reported.
+{
+  const where = (name) => tree.find((sec) => sec.items.some((it) =>
+    it.rows.some((x) => x.Style_Name === name)))?.key;
+
+  for (const [name, want] of [
+    ["Point of connection", "electric"],
+    ["Feeder end point", "electric"],
+    ["Non-residential supply", "electric"],
+    ["Gas governor, any layer", "gas"],
+    ["Wash out", "water"],
+    ["Lighting column", "lighting"],
+    ["Span node, any layer", "trench"],
+    ["Plot seed", "site"],
+  ]) {
+    const got = where(name);
+    if (got !== want) fail(`"${name}" is filed under ${got ?? "nothing"}, expected ${want}`);
+  }
+
+  /* And the section it was wrongly landing in holds only what belongs
+     there. A screenshot of General Site Styles full of electric plant
+     is how this was reported. */
+  const site = tree.find((sec) => sec.key === "site");
+  const strays = (site?.items ?? []).flatMap((it) => it.rows)
+    .filter((x) => x.Feature_Role
+      && !["plot", "boundary", "shape"].includes(x.Feature_Role));
+  for (const x of strays) {
+    fail(`"${x.Style_Name}" (${x.Feature_Role}) is in General Site Styles`);
+  }
+}
+
+// ─── 7c. Street Lighting is a section of its own ───
+{
+  const lighting = tree.find((sec) => sec.key === "lighting");
+  if (!lighting) fail("there is no Street Lighting section");
+  else {
+    if (lighting.label !== "Street Lighting") {
+      fail(`the lighting section is called "${lighting.label}"`);
+    }
+    const names = lighting.items.flatMap((it) => it.rows).map((x) => x.Style_Name);
+    if (!names.includes("Lighting column")) fail("the lighting column is not in Street Lighting");
+  }
+  /* Named, so it sorts with the others rather than being appended as an
+     unknown layer after Water. */
+  const labels = tree.map((x) => x.label);
+  if (labels.indexOf("Street Lighting") < labels.indexOf("Water")) {
+    fail("Street Lighting sorts before Water");
+  }
 }
 
 // ─── 8b. With no line-type rows, it still files and names correctly ───

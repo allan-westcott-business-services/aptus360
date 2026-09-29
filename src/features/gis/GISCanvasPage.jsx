@@ -13630,9 +13630,11 @@ export default function GISCanvasPage() {
            It was on the `trench` layer, because that is what it is
            placed on — and the layer is one of the keys the drawing
            hides by, so switching the trench off switched off every
-           section mark with it. Print to Scale switches the trench off
-           deliberately, so a mark vanished from exactly the sheet it
-           was drawn for. A note about the dig is not part of the dig. */
+           section mark with it. Print to Scale used to switch the
+           trench off deliberately, so a mark vanished from exactly the
+           sheet it was drawn for; it no longer does, but anybody who
+           hides the dig by hand still wants the note about it. A note
+           about the dig is not part of the dig. */
         Layer_Key: "annotation",
         Feature_Type: "point",
         Feature_Role: "sectionmark",
@@ -23811,12 +23813,28 @@ export default function GISCanvasPage() {
   /* ── What a sheet for issue shows ──
 
      Print to Scale sets the drawing up the way a plan for issue is
-     read, then opens the dialogue. The dig, the plot seeds, the span
-     nodes and the feeder end points come off — they are working
-     information, for designing with, and on a sheet they crowd the very
-     pipes and cables somebody is trying to follow. The mains and
-     service labels go on, because a plan whose runs are not named is a
-     plan nobody can work from.
+     read, then opens the dialogue. The plot seeds, the span nodes and
+     the feeder end points come off — they are working information, for
+     designing with, and on a sheet they crowd the very pipes and cables
+     somebody is trying to follow. The mains and service labels go on,
+     because a plan whose runs are not named is a plan nobody can work
+     from.
+
+     ── The dig is NOT one of them any more ──
+
+     Asked for: "when printing, change the rule regarding the trench. If
+     trench is visible on the screen, print the trench too."
+
+     139 switched the `trench` layer off here on the grounds that the
+     dig is working information. It is on a design drawing; it is the
+     whole point of a drawing issued to the people doing the digging,
+     and the person who wants it off has a layer menu. Deciding for them
+     made Print to Scale the one action on the drawing that produced
+     something other than what was in front of them — which is the thing
+     the paragraph below says it is for.
+
+     So it stays whatever the screen says. A trench switched off is
+     still switched off; one left on now reaches the paper.
 
      Applied to the CANVAS rather than passed to the print, for two
      reasons. The print already draws what the screen draws (faults 131
@@ -23828,8 +23846,7 @@ export default function GISCanvasPage() {
      Left applied afterwards rather than put back. A silent restore
      would undo, unasked, whatever somebody then chose to change; the
      layer menu is right there, and a status line says what moved. */
-  const PRINT_OFF_KEYS = ["trench", "role:plot", "role:spannode",
-    "role:feederpoint"];
+  const PRINT_OFF_KEYS = ["role:plot", "role:spannode", "role:feederpoint"];
 
   function openPrintToScale() {
     if (!projectId) return;
@@ -23868,7 +23885,7 @@ export default function GISCanvasPage() {
     setPrintOpen(true);
 
     if (added.length || !labelsWere) {
-      setStatus("Set up for issue — trench, plot seeds, span nodes and "
+      setStatus("Set up for issue — plot seeds, span nodes and "
         + "feeder end points off"
         + (wanted.length ? `; ${wanted.join(" and ")} labels on` : "")
         + ". The layer menu puts any of it back.");
@@ -26923,7 +26940,7 @@ export default function GISCanvasPage() {
                               differently would be worse than one button
                               in an awkward place. */}
                           <MenuItem label={"Print to Scale\u2026"}
-                            hint={"Sets the drawing up for issue first — trench, plot seeds, span nodes and feeder end points off, mains and service labels on"}
+                            hint={"Sets the drawing up for issue first — plot seeds, span nodes and feeder end points off, mains and service labels on. The trench prints if it is on the screen"}
                             disabled={!projectId}
                             onClick={openPrintToScale} />
                           <div className="gm-sep" />

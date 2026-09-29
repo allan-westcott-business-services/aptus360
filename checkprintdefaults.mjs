@@ -1,7 +1,9 @@
 /* What Print to Scale is allowed to change.
 
-   Opening it sets the drawing up for issue: trench, plot seeds, span
-   nodes and feeder end points off, mains and service labels on. Both
+   Opening it sets the drawing up for issue: plot seeds, span nodes and
+   feeder end points off, mains and service labels on. (The trench was
+   on that list and is not any more — it prints if it is on the screen.
+   checkprintsetup holds that.) Both
    label switches default to OFF, and a sheet issued with anonymous
    cables is the fault the print's label pass was written to fix, so
    turning them on is a sensible default.

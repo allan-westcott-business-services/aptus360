@@ -1,10 +1,15 @@
 /* Print to Scale sets the drawing up for issue before it opens.
 
-   A sheet for issue is not the drawing somebody designs in. The dig,
-   the plot seeds, the span nodes and the feeder end points are working
+   A sheet for issue is not the drawing somebody designs in. The plot
+   seeds, the span nodes and the feeder end points are working
    information; on paper they crowd the pipes and cables a reader is
    trying to follow. The mains and service labels are the opposite — a
    plan whose runs are not named is a plan nobody can work from.
+
+   The dig was on that list until it was asked not to be. It is not
+   working information: it is the whole point of a sheet issued to the
+   people doing the digging. It now prints if it is on the screen, and
+   section 1 asserts that nothing here takes it off.
 
    Held here because the keys are easy to get subtly wrong: the hidden
    set takes four shapes of key (a layer, `lt:` a line type, `role:` a
@@ -30,12 +35,28 @@ const listed = (() => {
   if (!listed) {
     fail("the set-up lists no layers to switch off");
   } else {
-    /* The dig, both mains and service. The `trench` LAYER covers both:
-       a mains trench and a service trench are two line types on it, so
-       naming the layer is what catches them together. */
-    if (!listed.includes("trench")) {
-      fail("the trench is not switched off \u2014 and it must be the layer "
-        + "key, which catches mains and service trench together");
+    /* ── The dig prints if it is on the screen ──
+
+       Asked for: "when printing, change the rule regarding the trench.
+       If trench is visible on the screen, print the trench too."
+
+       139 switched the `trench` layer off here and this check insisted
+       on it. The dig is the whole point of a drawing issued to the
+       people doing the digging, and somebody who wants it off has a
+       layer menu — deciding for them made Print to Scale the one
+       action on the drawing that produced something other than what
+       was in front of them.
+
+       So the assertion is inverted rather than deleted: no key here may
+       hide the trench, by any of the shapes that would. `trench` is the
+       layer, `lt:trench_main` and `lt:trench_service` are its line
+       types, and any of the three would take the dig off a sheet while
+       the screen still showed it. */
+    for (const k of listed) {
+      if (k === "trench" || /^lt:trench/.test(k)) {
+        fail(`printing switches ${k} off, so a trench on the screen does `
+          + `not reach the paper \u2014 which is what was asked for`);
+      }
     }
     for (const [what, key] of [
       ["plot seeds", "role:plot"],

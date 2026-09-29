@@ -9596,6 +9596,50 @@ characters is a hundred lines of prose and no rules at all.
      and it is what 0080 asked for. Not shipped as a migration because
      there are two unrun already and nothing on project 32 needs it.
 
+222. **The trench prints if it is on the screen.** Asked for: "when
+     printing, change the rule regarding the trench. If trench is
+     visible on the screen, print the trench too."
+
+     139 had Print to Scale switch the `trench` layer off on the way to
+     the dialogue, on the grounds that the dig is working information
+     that crowds the pipes and cables a reader is following. That is
+     true of a design drawing and wrong about the sheet it is issued
+     on: the dig is the whole point of a plan handed to the people doing
+     the digging.
+
+     `"trench"` comes out of `PRINT_OFF_KEYS` and nothing replaces it.
+     Plot seeds, span nodes and feeder end points still come off, and
+     the mains and service labels still go on, for the reasons 139 gave
+     — none of which were challenged.
+
+     **There was never a print-side filter to change.** The print draws
+     what the screen draws (131, 132), so the whole of the old behaviour
+     was one string pushing the layer into the shared `hidden` array
+     before the dialogue opened. Removing it means the rule is now
+     literally what was asked for: whatever the screen says. A trench
+     switched off by hand is still off, an isolate still holds, and the
+     `liveTrenchOnly` filter still applies — all of them because they
+     are on the screen too.
+
+     **The check was inverted, not deleted.** `checkprintsetup` insisted
+     the trench was switched off; it now fails if anything switches it
+     off, and it names all three keys that would — the `trench` layer
+     and both `lt:trench_*` line types — because switching the layer off
+     was only the tidiest way to do it. Six mutations, including one
+     that stops the print reading `visible` at all, which is the other
+     half of the chain and is held by `checkprintpdf`.
+
+     **Unchanged on purpose:** section marks and text notes stay on the
+     `annotation` layer. They were moved there (0215) BECAUSE Print to
+     Scale hid the trench, and that reason has now gone — but somebody
+     who hides the dig by hand still wants the note about it, which is
+     the better reason and was true all along. The comment in the canvas
+     now says so rather than citing the print.
+
+     The menu hint and the status line say what they now do. The hint
+     adds "The trench prints if it is on the screen", because a person
+     who has read the old one needs telling.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

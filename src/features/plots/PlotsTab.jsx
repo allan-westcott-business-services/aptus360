@@ -16,6 +16,7 @@ import FilterCell, { blankFilter, isActive, rowPasses, FILTER_CSS } from "../../
 import Select from "../../components/Select.jsx";
 import { heatPumpLabel, heatPumpShort, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
 import HeatPumpPicker from "../../components/HeatPumpPicker.jsx";
+import { planBulkChanges, CALCULATED, isCalculated } from "./plotBulk.js";
 
 /* "10" sorts after "9", not before — Plot_Number is text because of 43A
    and B1, so compare the numeric prefix when both rows have one. */
@@ -158,6 +159,35 @@ function BedroomSummary({ plots, configFor, typeName }) {
         </span>
       )}
     </div>
+  );
+}
+
+/* One of the two load boxes on the bulk bar: a figure to write, or the
+   figure the plot works out for itself.
+
+   The button is a toggle rather than a third option in a dropdown,
+   because the box beside it is where a number goes and a number and
+   "none of the above" do not belong in the same control. Pressed, the
+   box is emptied and disabled: there is nothing to type, and a figure
+   left visible under a pressed button asks which of the two will
+   happen. */
+function LoadBox({ label, value, onChange }) {
+  const calc = isCalculated(value);
+  return (
+    <span className="bulk-load">
+      <input type="number" step="0.1" className="bulk-kva"
+        placeholder={calc ? "\u2014" : label} disabled={calc}
+        aria-label={label}
+        value={calc ? "" : value}
+        onChange={(e) => onChange(e.target.value)} />
+      <button type="button" className={calc ? "bulk-calc on" : "bulk-calc"}
+        aria-pressed={calc}
+        title={`Clear the ${label} entered on the selected plots so each one `
+          + `uses the figure worked out from its house type and heat source`}
+        onClick={() => onChange(calc ? "" : CALCULATED)}>
+        calculated
+      </button>
+    </span>
   );
 }
 
@@ -467,37 +497,10 @@ export default function PlotsTab({ projectId, projectRef }) {
     setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
 
   async function applyBulk() {
-    const changes = {};
-    if (bulk.Property_Config_ID) changes.Property_Config_ID = Number(bulk.Property_Config_ID);
-
-    /* "__default" clears the plot's own value so it follows the project
-       default again — a plot needs a way back to inheriting, not just a
-       way to depart from it. */
-    if (bulk.Heat_Source_ID === "__default") {
-      changes.Heat_Source_ID = null;
-      changes.Heat_Pump_Model_ID = null;
-    } else if (bulk.Heat_Source_ID) {
-      changes.Heat_Source_ID = Number(bulk.Heat_Source_ID);
-      /* A heat pump model only means anything on a heat pump plot.
-         Switching to gas and leaving the model behind is how a plot ends
-         up costed for both — the same rule FeatureEditor applies. */
-      const hs = (lookups?.heatSources || [])
-        .find((h) => String(h.Heat_Source_ID) === String(bulk.Heat_Source_ID));
-      if (!/pump|ashp|gshp|wshp/i.test(hs?.Heat_Source || "")) changes.Heat_Pump_Model_ID = null;
-    }
-
-    if (bulk.Heat_Pump_Model_ID) changes.Heat_Pump_Model_ID = Number(bulk.Heat_Pump_Model_ID);
-    if (bulk.KVA_Load !== "") changes.KVA_Load = Number(bulk.KVA_Load);
-    /* The plot's own gas load, which wins over the one its house type
-       carries. Set here for the same reason kVA is: a phase of forty
-       plots is one figure entered once, not forty. */
-    if (bulk.Gas_Load_kW !== "") changes.Gas_Load_kW = Number(bulk.Gas_Load_kW);
-    if (bulk.PV) changes.PV = bulk.PV === "y";
-    /* Self-lay is NOT in `changes`. It writes Plot_Utility, one row per
-       plot per utility, while everything above writes Plot — two tables,
-       so two calls. Folding it in would make `changes` a bag that
-       sometimes means a different table depending on which key is in
-       it, and the updated count would mean two things. */
+    /* What each control means is plotBulk.js, so it can be run without
+       a browser: these rules decide what a plot draws, and that figure
+       sizes every circuit and main above it. */
+    const changes = planBulkChanges(bulk, { heatSources: lookups?.heatSources || [] });
     setBulkBusy(true);
     try {
       if (bulkDev) {
@@ -732,13 +735,25 @@ export default function PlotsTab({ projectId, projectRef }) {
                   />
                 </div>
               )}
-              <input type="number" step="0.1" placeholder="kVA" className="bulk-kva"
-                value={bulk.KVA_Load} onChange={(e) => setBulk((b) => ({ ...b, KVA_Load: e.target.value }))} />
+              {/* ── A figure, or the one worked out for the plot ──
+
+                  Both loads are OVERRIDES: `gis_unplaced_plots` resolves
+                  a plot's load as COALESCE(the entered figure, the one
+                  worked out from its house type and heat source), so an
+                  entered figure wins for ever. The bar could set one and
+                  had no way to remove one — blank means "leave it alone"
+                  — so a plot could depart from the calculated figure and
+                  never come back, and changing its heat source or heat
+                  pump model moved nothing. Which is what was reported.
+
+                  The heat source has had its way back since it was asked
+                  for, as "Project default". This is the same idea. */}
+              <LoadBox label="kVA" value={bulk.KVA_Load}
+                onChange={(v) => setBulk((b) => ({ ...b, KVA_Load: v }))} />
               {/* Beside the kVA, because they are the same decision
                   asked twice — what this plot draws, on each utility. */}
-              <input type="number" step="0.1" placeholder="Gas kW" className="bulk-kva"
-                value={bulk.Gas_Load_kW}
-                onChange={(e) => setBulk((b) => ({ ...b, Gas_Load_kW: e.target.value }))} />
+              <LoadBox label="Gas kW" value={bulk.Gas_Load_kW}
+                onChange={(v) => setBulk((b) => ({ ...b, Gas_Load_kW: v }))} />
               <select value={bulk.PV} onChange={(e) => setBulk((b) => ({ ...b, PV: e.target.value }))}>
                 <option value="">PV&hellip;</option><option value="y">PV: Yes</option><option value="n">PV: No</option>
               </select>
@@ -1025,6 +1040,14 @@ const CSS = FILTER_CSS + `
 .bulk-bar select, .bulk-bar input:not([type=checkbox]) { width: auto; min-width: 118px; font-size: 12px; padding: 5px 8px; }
 .bulk-hp { min-width: 250px; }
 .bulk-kva { width: 78px !important; min-width: 0 !important; }
+/* The figure and the way back from it, as one control. */
+.bulk-load { display: inline-flex; align-items: stretch; gap: 0; }
+.bulk-load .bulk-kva { border-top-right-radius: 0 !important; border-bottom-right-radius: 0 !important; }
+.bulk-calc { border: 1px solid var(--border); border-left: none; background: var(--white);
+  border-radius: 0 6px 6px 0; padding: 0 7px; cursor: pointer; font: 600 10.5px inherit;
+  color: var(--muted); white-space: nowrap; }
+.bulk-calc:hover { color: var(--text); background: var(--bg); }
+.bulk-calc.on { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
 .bulk-bar .btn { padding: 5px 13px; font-size: 12.5px; }
 .bulk-bar .btn.ghost.danger { color: #b91c1c; }
 .bulk-x { background: none; border: none; color: #fff; cursor: pointer; font-size: 12px; margin-left: auto; }

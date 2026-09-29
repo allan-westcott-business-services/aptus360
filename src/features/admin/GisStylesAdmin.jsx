@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { buildTree } from "./styleTree.js";
-import { CONDITION_FIELDS } from "../../lib/gisStyle.js";
+import {
+  toCriteria, fromCriteria, fieldOptions, valuesFor, isColumnField, changeField,
+  preservedScope, labelFor, PRESERVED, OTHER,
+} from "./styleCriteria.js";
 import { BUILD_STATUSES } from "../gis/buildStatus.js";
 import Banner from "../../components/Banner.jsx";
 import { listGisStyles, saveGisStyle, deleteGisStyle } from "../../api/gis.js";
@@ -45,7 +48,12 @@ const BLANK = {
   Sort_Order: 0, Is_Active: true, Notes: "",
   /* Not null: the builder edits a list, and a rule that starts as null
      would need every caller to remember that. Empty and null are the
-     same thing to the cascade. */
+     same thing to the cascade.
+
+     While a rule is open this holds the whole criteria list, Operator
+     and Site included — see styleCriteria.js. `fromCriteria` puts those
+     back in their columns on save, and it is the only thing that writes
+     a rule back. */
   Conditions: [],
 };
 
@@ -289,8 +297,11 @@ export default function GisStylesAdmin() {
 
   function open(row) {
     setSelected(row ? row.GIS_Style_ID : "new");
-    setDraft(row ? { ...BLANK, ...Object.fromEntries(
-      Object.entries(row).map(([k, v]) => [k, v == null ? "" : v])) } : BLANK);
+    /* toCriteria folds Operator and Site into the criteria list and
+       blanks their columns, so while the rule is open its scope lives in
+       one place. save() undoes it. */
+    setDraft(row ? toCriteria({ ...BLANK, ...Object.fromEntries(
+      Object.entries(row).map(([k, v]) => [k, v == null ? "" : v])) }) : BLANK);
     setError("");
   }
 
@@ -300,19 +311,20 @@ export default function GisStylesAdmin() {
   async function save() {
     if (!draft.Style_Name.trim()) return setError("A rule needs a name.");
     try {
-      const { GIS_Style_ID, ...body } = draft;
-      /* A condition with no field narrows nothing, would be scored for
-         and never match, and the database refuses it outright — so a
-         row left half-filled by somebody who pressed Add and changed
-         their mind would come back as a constraint error about JSON.
-         Dropped here, where the intention is obvious. */
-      const conds = (Array.isArray(body.Conditions) ? body.Conditions : [])
-        .filter((c) => c && String(c.field ?? "").trim() !== "")
-        .map((c) => ({ field: String(c.field).trim(), value: String(c.value ?? "").trim() }));
+      /* Operator and Site come back out of the criteria list and into
+         their own columns, and a criterion naming no field is dropped —
+         somebody pressed Add and changed their mind, and the database
+         refuses a condition that names nothing (0240), correctly, since
+         it would be scored for and never match.
+
+         A criterion on Operator left sitting in Conditions is the one
+         thing that must not happen: conditions are matched against the
+         feature's Attributes, which carry no Organisation_ID, so it
+         would save cleanly, look right and match nothing. */
+      const { GIS_Style_ID, ...body } = fromCriteria(draft);
       await saveGisStyle({
         ...body,
         Style_Name: body.Style_Name.trim(),
-        Conditions: conds.length ? conds : null,
       }, isNew ? undefined : selected);
       setSelected(null);
       await load();
@@ -357,18 +369,39 @@ export default function GisStylesAdmin() {
     return next;
   });
 
-  /* The rule's conditions, edited as a list. Held on the draft like
-     every other field so Save carries them without a second path. */
-  const conditions = Array.isArray(draft.Conditions) ? draft.Conditions : [];
-  const putConditions = (next) => setDraft((d) => ({ ...d, Conditions: next }));
-  const addCondition = () => putConditions([...conditions, { field: "", value: "" }]);
-  const removeCondition = (i) => putConditions(conditions.filter((_, j) => j !== i));
-  const setCondition = (i, patch) => putConditions(
-    conditions.map((c, j) => (j === i ? { ...c, ...patch } : c)),
+  /* The rule's criteria, edited as one list — Operator and Site
+     included. Held on the draft like every other field so Save carries
+     them without a second path. */
+  const criteria = Array.isArray(draft.Conditions) ? draft.Conditions : [];
+  const putCriteria = (next) => setDraft((d) => ({ ...d, Conditions: next }));
+  const addCriterion = () => putCriteria([...criteria, { field: "", value: "" }]);
+  const removeCriterion = (i) => putCriteria(criteria.filter((_, j) => j !== i));
+  const setCriterion = (i, patch) => putCriteria(
+    criteria.map((c, j) => (j === i ? { ...c, ...patch } : c)),
   );
+
+  /* Changing the field clears the value, and choosing "Something else"
+     marks the row so it shows a box to type a key into. The rule is in
+     styleCriteria.js, where a check can reach it without a browser. */
+  const pickField = (i, choice) => putCriteria(changeField(criteria, i, choice));
 
   const opName = (id) => operators.find((o) => String(o.Organisation_ID) === String(id))?.Name;
   const utName = (id) => utilities.find((u) => String(u.Utility_ID) === String(id))?.Utility;
+  const roleName = (k) => ROLES.find(([r]) => r === k)?.[1] ?? k;
+
+  /* What still narrows this rule that the screen no longer has a box
+     for. Empty for almost every rule; said out loud for the ones 0051
+     seeded against a layer or a role, because a rule that only applies
+     on the plot layer is doing that whether or not there is a control
+     for it. */
+  const hidden = editing
+    ? preservedScope(draft, { roleName, utilityName: utName })
+    : [];
+  const clearHidden = () => setDraft((d) => {
+    const next = { ...d };
+    for (const k of PRESERVED) next[k] = "";
+    return next;
+  });
 
   const scopeOf = (r) => [
     r.Organisation_ID && opName(r.Organisation_ID),
@@ -400,6 +433,17 @@ export default function GisStylesAdmin() {
       </p>
       {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
       {status && <Banner kind="ok">{status}</Banner>}
+
+      {/* Both panes offer these, so they are rendered once here rather
+          than inside the rule pane — where they used to be, which meant
+          the inspector's own suggestions only worked while a rule
+          happened to be open. */}
+      <datalist id="gs-lts">
+        {lineTypes.map((t) => <option key={t} value={t} />)}
+      </datalist>
+      <datalist id="gs-layers">
+        {layers.map((l) => <option key={l} value={l} />)}
+      </datalist>
 
       <div className="gs-insp" style={{ margin: "10px 0 14px" }}>
         <button className="btn ghost" onClick={() => setInspOpen((o) => !o)}>
@@ -624,54 +668,9 @@ export default function GisStylesAdmin() {
               <p className="panel-label">Applies to</p>
               <div className="gs-grid">
                 <div className="fld">
-                  <label htmlFor="gs-op">Operator</label>
-                  <select id="gs-op" value={draft.Organisation_ID} onChange={set("Organisation_ID")}>
-                    <option value="">Any</option>
-                    {operators.map((o) => (
-                      <option key={o.Organisation_ID} value={o.Organisation_ID}>{o.Name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="fld">
-                  <label htmlFor="gs-util">Utility</label>
-                  <select id="gs-util" value={draft.Utility_ID} onChange={set("Utility_ID")}>
-                    <option value="">Any</option>
-                    {utilities.map((u) => (
-                      <option key={u.Utility_ID} value={u.Utility_ID}>{u.Utility}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="fld">
                   <label htmlFor="gs-lt">Line type</label>
                   <input id="gs-lt" list="gs-lts" value={draft.Line_Type} onChange={set("Line_Type")}
                     placeholder="Any" />
-                  <datalist id="gs-lts">
-                    {lineTypes.map((t) => <option key={t} value={t} />)}
-                  </datalist>
-                </div>
-                <div className="fld">
-                  <label htmlFor="gs-layer">Layer</label>
-                  <input id="gs-layer" list="gs-layers" value={draft.Layer_Key} onChange={set("Layer_Key")}
-                    placeholder="Any" />
-                  <datalist id="gs-layers">
-                    {layers.map((l) => <option key={l} value={l} />)}
-                  </datalist>
-                </div>
-                <div className="fld">
-                  <label htmlFor="gs-site">Site</label>
-                  <select id="gs-site" value={draft.Site} onChange={set("Site")}>
-                    <option value="">Any</option>
-                    <option value="On-site">On-site</option>
-                    <option value="Off-site">Off-site</option>
-                  </select>
-                </div>
-                <div className="fld">
-                  <label htmlFor="gs-role">Point role</label>
-                  <select id="gs-role" value={draft.Feature_Role} onChange={set("Feature_Role")}>
-                    {ROLES.map(([r, name]) => (
-                      <option key={r} value={r}>{name}</option>
-                    ))}
-                  </select>
                 </div>
                 {/* What kind of supply a point is, where that is not the
                     same question as what role it plays.
@@ -696,56 +695,102 @@ export default function GisStylesAdmin() {
                 </div>
               </div>
 
-              {/* ── And anything else the feature carries ──
+              {/* ── One list of criteria ──
 
-                  Asked for: "Build Status = Planned AND DNO Operator =
-                  Electricity North West THEN set style". The boxes
-                  above were already ANDed together, so the shape was
-                  right and the CONTENTS were the problem — Build Status
-                  was not one of them, and nor was cable size or voltage
-                  rating, and each new one would have been a migration.
+                  Asked for: Operator and Site "should be a Rule
+                  Criteria", and Utility, Layer and Point Role are gone
+                  because "I do not understand how this is having any
+                  bearing on the style".
 
-                  A condition names a field and a value, and every one
-                  has to hold. The field list is a convenience, not a
-                  fence: type any key a feature carries and it works,
-                  because a list that decided what existed is the fault
-                  the role register has had twice. */}
-              <p className="panel-label">And where&hellip;</p>
+                  They were all doing the same job — narrowing the rule —
+                  and only the storage made three of them look different.
+                  Operator and Site are still COLUMNS with their own
+                  weights, still matched by the same styleMatches, and
+                  styleCriteria.js puts them back there on save. Nothing
+                  about any drawing changes because the boxes moved.
+
+                  The field is a select, not an input with a datalist.
+                  That was the bug: a datalist filters its suggestions by
+                  what is already typed, so a box holding Build_Status
+                  offered Build_Status and nothing else, and the only way
+                  out was to delete the row. */}
+              <p className="panel-label">Rule criteria</p>
+              <p className="hint gs-hint">
+                Every criterion has to hold for the rule to apply, and the more
+                it names the more specific it is. A rule with none applies
+                wherever the line type above matches.
+              </p>
               <div className="gs-conds">
-                {conditions.length === 0 && (
-                  <p className="gs-cond-none">
-                    No extra conditions &mdash; this rule applies wherever the
-                    boxes above match.
-                  </p>
-                )}
-                {conditions.map((c, i) => (
-                  <div className="gs-cond" key={i}>
-                    <input aria-label={`Condition ${i + 1} field`}
-                      list="gs-cond-fields" value={c.field ?? ""}
-                      placeholder="Field, e.g. Build_Status"
-                      onChange={(e) => setCondition(i, { field: e.target.value })} />
-                    <span className="gs-cond-eq">=</span>
-                    <input aria-label={`Condition ${i + 1} value`}
-                      list={c.field === "Build_Status" ? "gs-cond-status" : undefined}
-                      value={c.value ?? ""} placeholder="Value"
-                      onChange={(e) => setCondition(i, { value: e.target.value })} />
-                    <button className="gs-cond-x" type="button"
-                      aria-label={`Remove condition ${i + 1}`}
-                      onClick={() => removeCondition(i)}>&times;</button>
-                  </div>
-                ))}
-                <button className="gs-cond-add" type="button" onClick={addCondition}>
-                  + Add a condition
+                {criteria.map((c, i) => {
+                  const opts = fieldOptions(criteria, i);
+                  const vals = valuesFor(c.field, { operators, statuses: BUILD_STATUSES });
+                  const typing = !!c.other && !c.field;
+                  return (
+                    <div className="gs-cond" key={i}>
+                      {typing ? (
+                        <input aria-label={`Criterion ${i + 1} field`} autoFocus
+                          value={c.field ?? ""} placeholder="Field name, as the feature holds it"
+                          onChange={(e) => setCriterion(i, { field: e.target.value })} />
+                      ) : (
+                        <select aria-label={`Criterion ${i + 1} field`}
+                          value={c.field ?? ""}
+                          onChange={(e) => pickField(i, e.target.value)}>
+                          <option value="">Choose a field&hellip;</option>
+                          {opts.map((f) => (
+                            <option key={f.field} value={f.field}>{f.label}</option>
+                          ))}
+                          <option value={OTHER}>Something else&hellip;</option>
+                        </select>
+                      )}
+                      <span className="gs-cond-eq">=</span>
+                      {vals ? (
+                        <select aria-label={`Criterion ${i + 1} value`}
+                          value={c.value ?? ""}
+                          onChange={(e) => setCriterion(i, { value: e.target.value })}>
+                          <option value="">Choose&hellip;</option>
+                          {vals.map(([k, name]) => (
+                            <option key={k} value={k}>{name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input aria-label={`Criterion ${i + 1} value`}
+                          value={c.value ?? ""} placeholder="Value"
+                          onChange={(e) => setCriterion(i, { value: e.target.value })} />
+                      )}
+                      <button className="gs-cond-x" type="button"
+                        aria-label={`Remove criterion ${i + 1}`}
+                        onClick={() => removeCriterion(i)}>&times;</button>
+                      {c.field && !isColumnField(c.field) && (
+                        <span className="gs-cond-note">
+                          read from the feature&rsquo;s {labelFor(c.field)}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+                <button className="gs-cond-add" type="button" onClick={addCriterion}>
+                  + Add a criterion
                 </button>
-                <datalist id="gs-cond-fields">
-                  {CONDITION_FIELDS.map((f) => (
-                    <option key={f.field} value={f.field}>{f.label}</option>
-                  ))}
-                </datalist>
-                <datalist id="gs-cond-status">
-                  {BUILD_STATUSES.map((b) => <option key={b.key} value={b.key}>{b.label}</option>)}
-                </datalist>
               </div>
+
+              {/* Scope the screen no longer offers a box for, and which
+                  is still narrowing the rule.
+
+                  Stated rather than hidden, and never cleared on its
+                  own: a rule scoped to the plot layer applies only
+                  there whether or not there is a control for it, and
+                  dropping the value because the dropdown went away would
+                  broaden the rule and change what is drawn. */}
+              {hidden.length > 0 && (
+                <p className="gs-hidden">
+                  <strong>Also limited to</strong> {hidden.join(" · ")}.
+                  {" "}This is how the seeded rules were written and it still
+                  narrows this one.
+                  <button className="btn ghost sm" type="button" onClick={clearHidden}>
+                    Remove that limit
+                  </button>
+                </p>
+              )}
 
               <p className="panel-label">Looks like</p>
               <div className="gs-grid">
@@ -1055,9 +1100,18 @@ const CSS = `
    it and not so far that the swatches stop lining up. */
 .gs-in { padding-left: 22px; }
 .gs-conds { margin-bottom: 12px; }
-.gs-cond { display: grid; grid-template-columns: 1fr 14px 1fr 26px; gap: 6px;
-  align-items: center; margin-bottom: 5px; }
-.gs-cond input { width: 100%; font-size: 12.5px; }
+.gs-cond { display: grid; grid-template-columns: 1fr 14px 1fr 26px; gap: 4px 6px;
+  align-items: center; margin-bottom: 7px; }
+.gs-cond input, .gs-cond select { width: 100%; font-size: 12.5px; }
+/* Which half of the cascade this criterion is asked of, on its own line
+   so the row above it stays three boxes wide. */
+.gs-cond-note { grid-column: 1 / -1; font-size: 10.5px; color: var(--muted); }
+/* Scope with no control left on the screen. Loud enough to be read,
+   since it changes what the rule matches. */
+.gs-hidden { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 11.5px; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px;
+  margin: 0 0 12px; }
 .gs-cond-eq { text-align: center; color: var(--muted); font-weight: 700; }
 .gs-cond-x { border: 1px solid var(--border); background: var(--white); border-radius: 5px;
   width: 26px; height: 26px; cursor: pointer; color: var(--muted); font-size: 15px;

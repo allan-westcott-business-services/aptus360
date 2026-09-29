@@ -121,13 +121,26 @@ export default function PlotAssignment({ projectId, quotationId, optionId, utili
   }
 
   const selectableIds = ordered.filter(eligible).map((p) => p.Plot_ID);
+
+  /* The resolved load, not the override column — the same rule the
+     applications tab states beside its own total.
+
+     KVA_Load is only filled in where somebody has typed a figure over
+     the calculated one. This screen read it raw, so a plot taking its
+     load from its house type counted as 0 kVA here and was listed as
+     having no figure. It did not show on project 32, where every plot
+     happened to carry an override of 1.7 — and would have appeared the
+     moment those were cleared, which is what "calculated" on the plots
+     bar now does. A total that is right only while a placeholder is in
+     the way is not right. */
+  const loadOf = (p) => Number(p?.KVA_Resolved ?? p?.KVA_Load) || 0;
+  const hasLoad = (p) => (p?.KVA_Resolved ?? p?.KVA_Load ?? "") !== "";
   const kva = selected.reduce((sum, id) => {
-    const p = plots.find((x) => x.Plot_ID === id);
-    return sum + (Number(p?.KVA_Load) || 0);
+    return sum + loadOf(plots.find((x) => x.Plot_ID === id));
   }, 0);
   const unmapped = selected.filter((id) => {
     const p = plots.find((x) => x.Plot_ID === id);
-    return !p || p.KVA_Load == null || p.KVA_Load === "";
+    return !p || !hasLoad(p);
   }).length;
   const selfLayCount = ordered.filter(selfLayHere).length;
 
@@ -178,7 +191,7 @@ export default function PlotAssignment({ projectId, quotationId, optionId, utili
               const cfg = configFor(p.Property_Config_ID);
               const cls = ["pa-plot", on ? "on" : "", takenBy ? "taken" : "", self ? "selflay" : ""]
                 .filter(Boolean).join(" ");
-              const why = takenBy ? `Assigned to ${takenBy}` : self ? `Self-lay for ${utilName || "this utility"}` : cfg ? `${cfg.Code} · ${p.KVA_Load ?? "?"} kVA` : "";
+              const why = takenBy ? `Assigned to ${takenBy}` : self ? `Self-lay for ${utilName || "this utility"}` : cfg ? `${cfg.Code} · ${p.KVA_Resolved ?? p.KVA_Load ?? "?"} kVA` : "";
               return (
                 <button key={p.Plot_ID} className={cls} title={why}
                   onClick={(e) => click(p, e)} disabled={!eligible(p)}>

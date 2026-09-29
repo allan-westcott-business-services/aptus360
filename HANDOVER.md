@@ -9521,6 +9521,81 @@ characters is a hundred lines of prose and no rules at all.
      pane, relative to the folder it is written into. Composed through a
      variable now, which is also what it is.
 
+221. **"The kVA does not update when I change the Heat Source or the
+     ASHP model."** Nothing was wrong with the page. `Plot.KVA_Load` is
+     an OVERRIDE, and `gis_unplaced_plots` resolves a load as
+     `COALESCE(pl."KVA_Load", <worked out from the house type and heat
+     source>)` — so a figure entered on the plot wins for ever and no
+     heating change can move it.
+
+     **On project 32, all 42 plots carried one: 1.7 kVA, every plot the
+     same.** One value across the whole site is a bulk action, not
+     forty-two considered figures — and all 42 would get a house-type
+     figure if it were cleared, which is what made clearing the answer
+     rather than a risk.
+
+     **The first diagnosis was wrong and the data said so.** 0080 wrote
+     2.2 into every plot without a load and set it as the column
+     DEFAULT, and nothing since dropped either — 0080's own note
+     predicted exactly this ("otherwise it quietly reappears on the next
+     plot created") and 0095-0097 brought the reference data and did
+     neither. That is real and still outstanding, but it is not this:
+     the query came back with **zero** plots at 2.2. Asking before
+     writing a migration is the only reason a migration clearing 2.2 on
+     a project that has none was not written.
+
+     **What was actually missing: the way back.** The bulk bar could SET
+     a load and had no way to REMOVE one — blank means "leave it alone"
+     — so a plot could depart from the calculated figure and never
+     return. The heat source has had `__default` for precisely this
+     reason since it was asked for. Both loads now have a **calculated**
+     toggle beside the box, which writes null. Both, not just the kVA
+     that was reported: the file's own comment says they are "the same
+     decision asked twice, what this plot draws, on each utility", and
+     fixing one of a pair is how the other becomes the next report.
+
+     **No migration, no data written by me.** Selecting the 42 plots and
+     pressing calculated does it, and typing 1.7 back in undoes it.
+
+     **A second bug, found on the way and shipped with it.**
+     `PlotAssignment` totalled `Number(p?.KVA_Load)` — the raw override —
+     so a plot taking its load from its house type counted as **0 kVA**
+     and was listed as having no figure. It does not show on project 32
+     today *because* every plot carries an override, and it would have
+     appeared the moment those were cleared: the fix would have caused
+     the bug. `POCApplicationsTab` states this rule twice beside its own
+     totals; this screen was the one that missed it.
+
+     **`planBulkChanges` is its own file now** (`plotBulk.js`). It was
+     twenty lines inside `applyBulk` between the API call and the error
+     handling, and it decides what a plot draws — which sizes every
+     circuit and main above it.
+
+     **One spelling of "takes a heat pump", deliberately.** The bulk bar
+     asked `/pump|ashp|gshp|wshp/i`, written there and nowhere else,
+     while the picker, the GIS editor and 0097's regex all ask
+     `takesHeatPump` (`\bashp\b|air\s*source`). So a bulk change to GSHP
+     KEPT a heat pump model that 0097 would never read. It now clears
+     it, which is a behaviour change beyond the report: a GSHP plot
+     carrying a model loses it next time its heat source is bulk-set.
+     The blast radius is small — the picker refuses to offer a model for
+     GSHP at all, so such a plot can only have been ASHP first — and
+     nothing but 0097 reads the column. The check asserts against
+     `takesHeatPump` itself rather than a list, so the two cannot drift
+     apart again.
+
+     **Seventeen mutations.** Two of them exposed assertions that passed
+     on the fault: zero-as-a-figure was tested only as the string "0",
+     which is truthy, so a falsy test walked through; and the scan for
+     screens reading the override raw looked in a 90-character window,
+     which the CORRECT expression one line above happily satisfied. Both
+     now ask the narrow question.
+
+     **Still outstanding:** the 2.2 column default. `ALTER TABLE "Plot"
+     ALTER COLUMN "KVA_Load" DROP DEFAULT;` — one line, in nobody's way,
+     and it is what 0080 asked for. Not shipped as a migration because
+     there are two unrun already and nothing on project 32 needs it.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

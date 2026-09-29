@@ -76,7 +76,13 @@ export const CONDITION_FIELDS = [
   { field: "Size", label: "Size" },
   { field: "Circuit_ID", label: "Circuit" },
   { field: "Circuit_Name", label: "Circuit name" },
-  { field: "Off_Site", label: "Off site (true/false)" },
+  /* Not the same fact as the `Site` column, which sits beside it in the
+     admin's one criteria list and would otherwise read as a duplicate.
+     `Site` is worked out from the boundary polygons when a line is
+     drawn; this is a boolean somebody sets by hand for a commercial
+     arrangement — a different rate and a different permit. They do not
+     have to agree, and buildStatus.js explains at length why. */
+  { field: "Off_Site", label: "Off site (set by hand)" },
   { field: "Voltage", label: "Voltage rating" },
   { field: "Material", label: "Material" },
 ];

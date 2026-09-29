@@ -9339,6 +9339,188 @@ characters is a hundred lines of prose and no rules at all.
      nobody wants. `!=`, `is one of` and ranges are a day's work on top
      of this if they are ever wanted.
 
+219. **0240 would not run: a CHECK constraint cannot hold a subquery.**
+     Reported by the person running it: `ERROR: 0A000: cannot use
+     subquery in check constraint`. The constraint asked "is every entry
+     in `Conditions` an object that names a field?" the obvious way —
+     `NOT EXISTS (SELECT 1 FROM jsonb_array_elements(...))` — and a
+     CHECK may only use immutable expressions, which a subquery is
+     never. Postgres says so when the migration is RUN, so the first
+     person to find out was the person running it.
+
+     **Why nothing caught it.** A migration is the only code in this
+     repo that ships unrun. There is no runner; `checkmigrations` reads
+     numbers and filenames. Every other line of this change was
+     mutation-tested and the SQL was read carefully and shipped
+     untried, and reading SQL carefully is exactly how this one passes:
+     it is valid SQL, and it is valid everywhere except in a
+     constraint.
+
+     **The fix.** Ask it the only way a constraint can: pull out the
+     entries that ARE well formed and require that there are as many of
+     them as there are entries.
+
+         jsonb_array_length(
+           jsonb_path_query_array("Conditions",
+             'strict $[*] ? (@.type() == "object"
+              && @.field.type() == "string" && @.field <> "")')
+         ) = jsonb_array_length("Conditions")
+
+     `jsonb_path_query_array` is immutable and returns a scalar, which
+     is what a constraint needs; `jsonb_array_elements` is set-returning
+     and is what somebody reaches for next when the subquery is refused.
+
+     **`strict`, deliberately.** In lax mode the path unwraps a nested
+     array, so `[[{"field":"a"}]]` reads as a well-formed condition. Lax
+     was tried first and accepted it.
+
+     **The `jsonb_typeof(...) <> 'array'` disjunct is not redundant.**
+     `jsonb_array_length` throws on a scalar, and which of two
+     constraints is checked first is not ours to decide — without it,
+     writing `'"x"'::jsonb` raises a type error about array length
+     instead of the clean violation the other constraint is there to
+     give. Verified: every non-array is now refused by
+     `..._Conditions_is_array`, by name.
+
+     **One behaviour changed on purpose.** A numeric field name,
+     `[{"field": 5}]`, is now refused where the first version would have
+     taken it (`->>` made it the text `5`). A field name is a string;
+     the admin form only ever sends one.
+
+     **Run against a real Postgres 16**, which the container has and
+     which nothing here had ever used: 0239 through all three of its
+     paths (absent, in use and left active, retired), both migrations
+     twice for idempotency, and 25 shapes of `Conditions` inserted with
+     the violated constraint named each time. 0239's "only rules that
+     name nothing else" is now a demonstrated fact rather than a claim —
+     the bare rule went, the one scoping an operator and the one scoping
+     Off-site stayed.
+
+     **New check: `checkmigrationsql.mjs`.** Every `CHECK (` expression
+     in every migration, balanced-matched rather than regexed because
+     this one spans ten lines, scanned for a subquery or any of fifteen
+     set-returning functions. Comments and string literals are stripped
+     first — both passes matter, and 0239 proves it twice: its own
+     comment quotes a `SELECT`, and its NOTICE hands the user a query to
+     run.
+
+     That NOTICE also produced the session's fifth check that passed on
+     the fault. "Does 0239 still look at what was drawn?" was asked as
+     `/"GIS_Feature"/`, and the suggested query in the notice text
+     answers it — so a mutation pointing the count at the wrong table
+     walked through. It now matches the count INTO `n_drawn` and,
+     separately, that `n_drawn` decides something. Found by mutating,
+     which is the only reason it is not still there.
+
+     Sixteen mutations, each confirmed to fail the check and one
+     confirmed to pass: the illegal constraint present only in a
+     comment, which is the shape that has caught me four times this
+     session.
+
+     **Not done:** running the migrations as part of the suite. It would
+     need a Postgres binary on whoever's machine runs `npm test`, and a
+     check that skips when one is absent is a check that passes on the
+     fault. The static scan catches the class; the real run is a thing
+     to do here, before handing one over, and is now written down.
+
+220. **The rule pane is one list of criteria.** Asked for, about the
+     right-hand pane: "the Operator dropdown box should be a Rule
+     Criteria… The Site dropdown box should be a criteria… I do not need
+     the Utility dropdown box as I do not understand how this is having
+     any bearing on the style", the same for Layer and Point Role, and
+     one bug — "when I add a Condition, when I pick one of the fields
+     from the dropdown box, I cannot change my selection - I need to
+     delete the condition."
+
+     Also, and this had been wrong in writing for a while: **the
+     scrollable left pane is the list of FEATURES, not the list of
+     rules.** The rules are what the right-hand pane edits once a feature
+     is picked.
+
+     **All seven boxes were doing one job.** They narrowed the rule, and
+     ANDed together while they did it. Only the storage made three of
+     them look like something else: Operator and Site are columns on
+     GIS_Style with their own weights, conditions are the jsonb list 0240
+     added, and a person reading the screen has no reason to know that.
+     So Operator and Site are criteria in the same list as everything
+     else, and `styleCriteria.js` puts them back in their columns on
+     save.
+
+     **Nothing on any drawing moved.** Same columns, same weights, same
+     `styleMatches`. A rule opened and saved untouched comes back
+     identical and scores identically, which is the first thing
+     `checkstylecriteria` tests, on rules shaped like the live ones.
+
+     **The one silent failure this could have had.** An Operator
+     criterion left sitting in `Conditions` is matched against the
+     feature's Attributes, which carry no `Organisation_ID` — so it would
+     save cleanly, read correctly on screen and match nothing at all,
+     for ever. `fromCriteria` is the only thing that writes a rule back
+     and hoisting them out is its whole job. Tested by matching a
+     feature, not only by reading the row back.
+
+     **Layer, utility and role are gone from the pane and kept on the
+     rule.** This is the dangerous half. Rule 11 is `Layer_Key = plot`
+     and rule 20 is `Feature_Role = plot`: dropping the value because
+     the dropdown went away would broaden both and change every plot on
+     every drawing. Nothing clears them on its own. A rule that has one
+     says so in words — "Also limited to layer plot" — with a button to
+     remove that limit deliberately, because the complaint was not
+     understanding what those boxes did, and a screen that hides a fact
+     about what a rule matches is lying rather than simplifying.
+
+     **The bug was the datalist.** The field was an `<input list>`, and a
+     datalist filters its suggestions by what is already in the box — so
+     a box holding `Build_Status` suggested `Build_Status` and nothing
+     else, and the only way out was to delete the row. It is a `<select>`
+     now, with "Something else…" keeping the promise that any key a
+     feature carries can be named. The value control follows the field:
+     the operators by name, the statuses by name, on/off site, free text
+     otherwise. Changing the field clears the value — `changeField`, in
+     the module, because "Site = planned" is a rule that matches nothing
+     and nothing would have said so.
+
+     Line type and Supply type were not in the report and are unchanged.
+     The inspector keeps all six of its own controls: it describes a
+     FEATURE, which has a layer and a role, and it has to be able to
+     explain the rules that are scoped to them.
+
+     **A new check that renders.** `checkstylespane.mjs` mounts the real
+     component over a stubbed API and drives it — opens a rule, changes a
+     criterion twice, adds a second, saves, and reads what would have
+     been sent. It exists because no test of a pure module could have
+     seen this bug: there was nothing wrong with the module. esbuild and
+     jsdom, both already devDependencies, 2.3 seconds, and it cleans up
+     after itself.
+
+     Thirteen mutations against the rendered check and twenty-one against
+     the module one. **One of them exposed a blind spot worth recording:**
+     a `<select>` whose value is not among its options reports `""` in
+     the DOM, so a stale value hidden behind it is invisible to the
+     screen — "keep the old value when the field changes" passed the DOM
+     assertion and would have saved `Build_Status = 7`. Asked of the save
+     instead, where it shows.
+
+     **`Site` and `Off_Site` are different facts and now read as such.**
+     `Site (from the boundary)` is worked out from the boundary polygons
+     when a line is drawn; `Off site (set by hand)` is the boolean
+     somebody sets for a commercial arrangement. They do not have to
+     agree — buildStatus.js explains at length, having been caught by it —
+     and they sit one line apart in the same list, so identical labels
+     were a trap.
+
+     **Two checks that passed on the fault, both found by mutation.**
+     `checkstylecriteria` scored the draft directly and called an empty
+     rule 48, because "" is not null and the endpoint is what turns ""
+     into NULL; and it reported styleCriteria.js "reaching for
+     styleMatches", which it does in a comment, to say the matching is
+     unchanged. That is the comment trap for the fifth time this session.
+
+     `checkimports` caught the new check importing a path that does not
+     exist from where it sits — the entry file it GENERATES imports the
+     pane, relative to the folder it is written into. Composed through a
+     variable now, which is also what it is.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

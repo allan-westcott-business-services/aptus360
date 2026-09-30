@@ -121,6 +121,41 @@ export function isServiceFeature(f, lineTypes = []) {
    trench list. A main set to "existing" or a trench set to "live" is a
    value from the wrong list, which is what keeping them apart is meant
    to prevent. */
+/* ── What the status field is CALLED, for this feature ──
+
+   The editor draws three status controls and two of them are labelled
+   "Status" — a main's and a service's — while the general one is "Build
+   status". Reported from the style editor's criteria builder, which
+   offered "Build status" for an electric main: "it is not showing the
+   'Status' field as it is showing 'Build Status'."
+
+   The label belonged to the JSX in three places, so anything else that
+   wanted to name the field had to guess. It is here now, beside the
+   function that decides which stages the same feature can be at,
+   because they are the same question asked twice — and a screen that
+   names a field differently from the editor that owns it is a screen
+   describing something else.
+
+   ── This is not only a label ──
+
+   A main's stages are `planned`, `aslaid`, `live`. The general list's
+   are `existing`, `planned`, `remove`, `asbuilt`. **`aslaid` and
+   `asbuilt` are different keys for the same words**, and both are in
+   use — STAGES_NEEDING_GROUND below lists both for that reason. So a
+   rule built against the general list and applied to a main matched
+   nothing at all, for ever, and nothing said so. Asking `statusesFor`
+   is what stops that; this pairs the name with it so there is one call
+   to make and not two. */
+export function statusFieldFor(feature, lineTypes = []) {
+  const main = isMainFeature(feature, lineTypes);
+  const service = isServiceFeature(feature, lineTypes);
+  return {
+    key: "Build_Status",
+    label: main || service ? "Status" : "Build status",
+    options: statusesFor(feature, lineTypes),
+  };
+}
+
 export function statusesFor(feature, lineTypes = []) {
   /* Asked FIRST. An incumbent main is not matched by isMainFeature (its
      key does not end `_main`), but its trench is not matched by

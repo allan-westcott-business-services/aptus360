@@ -7,7 +7,7 @@ import {
   toCriteria, fromCriteria, fieldOptions, valuesFor, isColumnField, changeField,
   preservedScope, labelFor, PRESERVED, OTHER,
 } from "./styleCriteria.js";
-import { BUILD_STATUSES } from "../gis/buildStatus.js";
+import { statusFieldFor } from "../gis/buildStatus.js";
 import Banner from "../../components/Banner.jsx";
 import { listGisStyles, saveGisStyle, deleteGisStyle } from "../../api/gis.js";
 import { getLookups } from "../../api/lookups.js";
@@ -311,7 +311,7 @@ export default function GisStylesAdmin() {
   const tree = useMemo(
     () => sectionsOf(subjects, {
       layerLabels: Object.fromEntries(
-        layers.map((l) => [l.Layer_Key, l.Label ?? l.Layer_Name]).filter(([, v]) => v)),
+        layers.map((l) => [l.Layer_Key, l.Label]).filter(([, v]) => v)),
     }),
     [subjects, layers],
   );
@@ -319,6 +319,33 @@ export default function GisStylesAdmin() {
     (key) => subjects.find((x) => x.key === key) ?? null, [subjects]);
 
   const subject = subjectOfKey(selected);
+
+  /* ── The feature, as the drawing would hold one ──
+
+     Enough of a feature for the editor's own rules to answer questions
+     about it: which stages it can be at, and what its status field is
+     called. Reported from the criteria builder, which offered "Build
+     status" and the general stage list for an electric main — whose
+     editor says "Status" and offers Planned, As-Laid and Live.
+
+     Not cosmetic. A main stores `aslaid` and the general list writes
+     `asbuilt`, so a criterion built the old way matched nothing at all
+     and nothing said so. */
+  const asFeature = useMemo(() => (subject && {
+    Feature_Type: subject.Feature_Role ? "point" : "line",
+    Feature_Role: subject.Feature_Role ?? null,
+    Layer_Key: subject.Layer_Key ?? null,
+    Attributes: subject.Line_Type ? { Line_Type: subject.Line_Type } : {},
+  }) || null, [subject]);
+
+  const statusField = useMemo(
+    () => (asFeature ? statusFieldFor(asFeature, lineTypes) : null),
+    [asFeature, lineTypes],
+  );
+  /* One object through all three: the field list, a field's name and the
+     values it takes are the same question asked of the same feature. */
+  const fieldCtx = useMemo(
+    () => ({ operators, statusField }), [operators, statusField]);
 
   /* ── What this style is derived from ──
 
@@ -563,7 +590,15 @@ export default function GisStylesAdmin() {
         && (SUPPLY_TYPES.find(([k]) => k === row.Supply_Type)?.[1] ?? row.Supply_Type),
       ...(Array.isArray(row.Conditions) ? row.Conditions : [])
         .filter((c) => c && c.field)
-        .map((c) => `${labelFor(c.field)} = ${c.value ?? ""}`),
+        /* By the name the value goes by, not its key. A tab reading
+           "Status = asbuilt" is the stored spelling, and the whole point
+           of asking the feature what its stages are called is that a
+           person should not have to know it. */
+        .map((c) => {
+          const vals = valuesFor(c.field, fieldCtx);
+          const name = vals?.find(([k]) => String(k) === String(c.value))?.[1];
+          return `${labelFor(c.field, fieldCtx)} = ${name ?? c.value ?? ""}`;
+        }),
     ].filter(Boolean);
     return parts.length ? parts.join(" \u00b7 ") : (row.Style_Name || "Variation");
   };
@@ -926,8 +961,8 @@ export default function GisStylesAdmin() {
                   </p>
                   <div className="gs-conds">
                     {criteria.map((c, i) => {
-                      const opts = fieldOptions(criteria, i);
-                      const vals = valuesFor(c.field, { operators, statuses: BUILD_STATUSES });
+                      const opts = fieldOptions(criteria, i, fieldCtx);
+                      const vals = valuesFor(c.field, fieldCtx);
                       const typing = !!c.other && !c.field;
                       return (
                         <div className="gs-cond" key={i}>
@@ -966,7 +1001,7 @@ export default function GisStylesAdmin() {
                             onClick={() => removeCriterion(i)}>&times;</button>
                           {c.field && !isColumnField(c.field) && (
                             <span className="gs-cond-note">
-                              read from the feature&rsquo;s {labelFor(c.field)}
+                              read from the feature&rsquo;s {labelFor(c.field, fieldCtx)}
                             </span>
                           )}
                         </div>

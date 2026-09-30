@@ -101,7 +101,11 @@ export function buildSubjects({
     add({
       key: `lt:${t.Type_Key}`,
       kind: "lt",
-      label: t.Label ?? t.Type_Name ?? titleCase(t.Type_Key),
+      /* `Label` is the column. There is no `Type_Name` — that was a
+         guess at a schema nobody had looked at, and a fallback to a
+         column that does not exist is a line of code that says the
+         opposite of the truth to whoever reads it next. */
+      label: t.Label ?? titleCase(t.Type_Key),
       detail: t.Type_Key,
       Layer_Key: layer,
       Line_Type: t.Type_Key,
@@ -149,7 +153,7 @@ export function buildSubjects({
       const ly = layers.find((l) => l.Layer_Key === lk);
       add({
         key, kind: "layer",
-        label: `Everything on the ${ly?.Label ?? ly?.Layer_Name ?? titleCase(lk)} layer`,
+        label: `Everything on the ${ly?.Label ?? titleCase(lk)} layer`,
         detail: lk, Layer_Key: lk, Line_Type: null, Feature_Role: null,
         section: sectionOf({ Layer_Key: lk }, { lineTypes }),
       }).rules.push(row);

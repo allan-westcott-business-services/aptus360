@@ -101,15 +101,41 @@ export const CRITERIA_FIELDS = [
   ...CONDITION_FIELDS.map((c) => ({ ...c, column: false })),
 ];
 
-export const labelFor = (field) =>
-  CRITERIA_FIELDS.find((c) => c.field === field)?.label ?? field;
+/* ── The catalogue, as this FEATURE names its fields ──
+
+   Reported: "it is not showing me the exact fields that exist in the
+   Electric Main editor. For example, it is not showing the 'Status'
+   field as it is showing 'Build Status'."
+
+   The status field is called "Status" on a main and on a service, and
+   "Build status" on everything else, and `statusFieldFor` in
+   buildStatus.js is what knows that — beside the function that decides
+   which stages the same feature can be at, because it is the same
+   question. Passed in rather than imported so this file stays testable
+   without the drawing code behind it. */
+export function criteriaFieldsFor({ statusField = null } = {}) {
+  if (!statusField) return CRITERIA_FIELDS;
+  return CRITERIA_FIELDS.map((c) => (c.field === statusField.key
+    ? { ...c, label: statusField.label } : c));
+}
+
+export const labelFor = (field, ctx = {}) =>
+  criteriaFieldsFor(ctx).find((c) => c.field === field)?.label ?? field;
 
 /* The values a field can take, or null when it is anything you can type.
 
    The lists come in from the caller: this module is arranged to be
    testable without the canvas, and reaching into buildStatus.js for the
    statuses would drag the drawing code in behind it. */
-export function valuesFor(field, { operators = [], statuses = [] } = {}) {
+export function valuesFor(field, { operators = [], statusField = null } = {}) {
+  /* The stages THIS feature can be at, not all of them.
+
+     A main's are planned / aslaid / live; the general list's are
+     existing / planned / remove / asbuilt. `aslaid` and `asbuilt` are
+     different keys for the same words and both are in use, so a
+     criterion built from the general list and applied to a main matched
+     nothing at all — for ever, and silently. */
+  const statuses = statusField?.options ?? [];
   if (field === "Organisation_ID") {
     return operators.map((o) => [String(o.Organisation_ID), o.Name]);
   }
@@ -121,8 +147,8 @@ export function valuesFor(field, { operators = [], statuses = [] } = {}) {
        adding here and to whatever writes it, in the same change. */
     return [["nrs", "Non-residential supply"]];
   }
-  if (field === "Build_Status") {
-    return statuses.map((s) => [s.key, s.label]);
+  if (statusField && field === statusField.key) {
+    return statuses.length ? statuses.map((s) => [s.key, s.label]) : null;
   }
   /* The hand-set commercial flag. Written as a JSON boolean, compared as
      text by the cascade, so the values offered are the text of it. */
@@ -215,14 +241,15 @@ export function changeField(criteria = [], i = 0, choice = "") {
 
    Two criteria on one field cannot both hold, so offering the same field
    twice offers a rule that never matches. */
-export function fieldOptions(criteria = [], i = 0) {
+export function fieldOptions(criteria = [], i = 0, ctx = {}) {
+  const fields = criteriaFieldsFor(ctx);
   const taken = new Set(
     criteria
       .map((c, j) => (j === i ? null : String(c?.field ?? "")))
       .filter((f) => f),
   );
   const mine = String(criteria[i]?.field ?? "");
-  const out = CRITERIA_FIELDS.filter((c) => c.field === mine || !taken.has(c.field));
+  const out = fields.filter((c) => c.field === mine || !taken.has(c.field));
   /* A field typed in by hand, or one saved before it was offered, is
      still the row's value and has to be selectable. */
   if (mine && !out.some((c) => c.field === mine)) {

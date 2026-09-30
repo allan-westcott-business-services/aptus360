@@ -622,10 +622,10 @@ export default function GisStylesAdmin() {
       <style>{CSS}</style>
       <h2 className="admin-title">GIS Styles</h2>
       <p className="gs-note">
-        What each object looks like on the canvas, and at which zooms. Rules stack:
-        the most specific match wins field by field, so an operator&rsquo;s rule can set
-        just a colour and inherit the rest. Leave a scope field on &ldquo;Any&rdquo; and it
-        stops narrowing.
+        Pick a feature on the left, set its default style, and add a variation for
+        each case that differs. A variation sets only what changes &mdash; leave a
+        field blank and it comes from the default, which is what the canvas does
+        too: styles stack, and the most specific match wins field by field.
       </p>
       {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
       {status && <Banner kind="ok">{status}</Banner>}
@@ -808,15 +808,17 @@ export default function GisStylesAdmin() {
                       background: swatch?.Colour || "#e2e8f0",
                       height: Math.max(2, Math.min(10, Number(swatch?.Width_Px) || 3)),
                     }} />
-                    <span className="gs-nm">
-                      {sub.label}
-                      {/* A feature with no default draws in its line
-                          type's own colour. Said here, because a blank
-                          swatch reads as a rule somebody has not
-                          finished rather than one nobody has written. */}
-                      {!sub.dflt && <span className="gs-nodef">no default</span>}
-                    </span>
+                    <span className="gs-nm">{sub.label}</span>
+                    {/* On the line below the name, not beside it: most
+                        features have no default yet, and a badge next to
+                        every name wrapped the long ones round it —
+                        "Property boundary point" and "Heavy duty
+                        cut-out" both broke in two. A blank swatch on its
+                        own reads as a rule somebody has not finished
+                        rather than one nobody has written, so it is
+                        still said. */}
                     <span className="gs-scope">
+                      {!sub.dflt && <span className="gs-nodef">no default</span>}
                       {sub.detail}
                       {sub.variations.length > 0
                         && ` \u00b7 ${sub.variations.length} variation`
@@ -1007,7 +1009,7 @@ export default function GisStylesAdmin() {
                     be drawn and Clear is the way back to inheriting —
                     without which a variation that only changes the dash
                     would silently carry a colour too. */}
-                <div className="fld">
+                <div className="fld gs-colfld">
                   <label htmlFor="gs-col">Colour</label>
                   <div className="gs-colrow">
                     <input id="gs-col" type="color"
@@ -1033,7 +1035,7 @@ export default function GisStylesAdmin() {
                     the canvas default when nothing sets one. The Clear
                     button is how it gets back to blank once a picker
                     has been used, since a colour input has no empty. */}
-                <div className="fld">
+                <div className="fld gs-colfld">
                   <label htmlFor="gs-lblcol">Label colour</label>
                   <div className="gs-colrow">
                     <input id="gs-lblcol" type="color"
@@ -1321,9 +1323,9 @@ const CSS = `
 /* A rule inside an item, stepped in far enough to read as belonging to
    it and not so far that the swatches stop lining up. */
 .gs-in { padding-left: 22px; }
-.gs-conds { margin-bottom: 12px; }
-.gs-cond { display: grid; grid-template-columns: 1fr 14px 1fr 26px; gap: 4px 6px;
-  align-items: center; margin-bottom: 7px; }
+.gs-conds { margin-bottom: 16px; }
+.gs-cond { display: grid; grid-template-columns: 1fr 14px 1fr 26px; gap: 5px 8px;
+  align-items: center; margin-bottom: 10px; }
 .gs-cond input, .gs-cond select { width: 100%; font-size: 12.5px; }
 /* Which half of the cascade this criterion is asked of, on its own line
    so the row above it stays three boxes wide. */
@@ -1343,23 +1345,75 @@ const CSS = `
   padding: 5px 10px; cursor: pointer; font: 600 12px inherit; color: var(--accent); }
 .gs-cond-add:hover { background: var(--accent-light); }
 .gs-cond-none { font-size: 11.5px; color: var(--muted); font-style: italic; margin: 0 0 6px; }
-.gs-detail { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px;
+.gs-detail { border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px 20px;
   min-height: 420px; }
+
+/* ── The feature being styled, and its styles ──
+
+   These six classes shipped with no rules at all, which is what "some
+   of the fields are cramped together" was: the header, the tab row and
+   the badges fell back to the browser's own margins and ran into each
+   other and into the form below. */
+.gs-subject { display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; padding-bottom: 14px; margin-bottom: 16px;
+  border-bottom: 1px solid var(--border); }
+.gs-subject-h { margin: 0 0 3px; font-size: 15px; font-weight: 700; color: var(--text); }
+.gs-subject-d { margin: 0; font-size: 11.5px; color: var(--muted); }
+/* The default and its variations, as one row of tabs. Wrapping rather
+   than scrolling: a feature with six variations should show six, and a
+   tab somebody cannot see is a style nobody will edit. */
+.gs-tabs { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 18px; }
+.gs-tab { display: inline-flex; align-items: center; gap: 6px; background: var(--white);
+  border: 1px solid var(--border); border-radius: 999px; padding: 6px 13px;
+  cursor: pointer; font: 600 12px inherit; color: var(--muted); }
+.gs-tab:hover { border-color: var(--accent); color: var(--text); }
+.gs-tab.on { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+/* "No default" on the list, "not set" on the tab: the same fact, and
+   it has to read as a state rather than as part of the name. */
+.gs-nodef { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  background: var(--bg); border: 1px solid var(--border); color: var(--muted);
+  border-radius: 3px; padding: 1px 4px; white-space: nowrap; }
+/* Before the key on the list, after the name on a tab. */
+.gs-scope .gs-nodef { margin-right: 6px; }
+.gs-tab .gs-nodef { margin-left: 2px; }
+.gs-tab.on .gs-nodef { background: var(--white); }
 .gs-pick { color: var(--muted); font-size: 13px; text-align: center; padding: 150px 20px; }
-.gs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 11px; }
-.gs-colrow { display: flex; gap: 6px; }
+/* A column wider than 160px, and more air between rows than between
+   columns: a label sits directly above its box, so rows need the gap
+   that tells one field from the next. */
+.gs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 18px 16px; margin-bottom: 4px; }
+.gs-colrow { display: flex; gap: 8px; align-items: center; }
+/* Two columns wide. A colour field is a swatch, a value and a way back
+   to inheriting, and in one column "inherits #facc15" was cut off at
+   "inherits #fac" — which is a box that says nothing. */
+.gs-colfld { grid-column: span 2; }
+@media (max-width: 900px) { .gs-colfld { grid-column: span 1; } }
 .gs-colrow input[type=color] { width: 40px; padding: 2px; flex: none; }
 /* A heading and its note spanning the whole form grid, so a group of
    related fields reads as a group rather than as more of the same. */
-.gs-span { grid-column: 1 / -1; margin-top: 6px; }
+.gs-span { grid-column: 1 / -1; margin-top: 10px; }
+/* Each heading starts a group, and a group needs to look like one. The
+   first in the pane keeps its place. */
+/* Every heading starts a group and needs the air to say so. Not
+   first-of-type: the style-name field is a div, so the FIRST heading is
+   also the first p.panel-label among its siblings and lost its gap,
+   which put "Applies when" hard against the box above it.
+
+   No backticks in here. This stylesheet is a template literal and one
+   of them ends it early, which is the fault checkcss was written for —
+   and which this comment caused on its first draft. */
+.gs-detail .panel-label { margin-top: 26px; margin-bottom: 9px; }
+.gs-detail .gs-span .panel-label { margin-top: 0; }
+.gs-detail .hint { margin-top: 0; }
 .gs-span .panel-label { margin-bottom: 2px; }
 .gs-check { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500;
-  text-transform: none; letter-spacing: 0; color: var(--text); margin: 9px 0 0; }
+  text-transform: none; letter-spacing: 0; color: var(--text); margin: 14px 0 0; }
 
 .gs-pct { font-size: 10.5px; color: var(--muted); margin-top: 3px; display: block; }
 .gs-hint { margin: -4px 0 8px; max-width: 76ch; }
-.gs-preview { display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
-  border: 1px solid var(--border); border-radius: var(--radius); padding: 11px; }
+.gs-preview { display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
 .gs-preview canvas { border-radius: 4px; }
 .gs-slider { flex: 1; min-width: 190px; }
 .gs-slider label { margin-bottom: 5px; }

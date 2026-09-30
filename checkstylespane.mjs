@@ -186,7 +186,13 @@ export const getLookups = async () => ({
        catalogue is read rather than the rules. */
     const trench = names.find((n) => n.includes("Mains Trench"));
     if (!trench) fail("a feature nobody has styled is missing from the list");
-    else if (!/no default/i.test(trench)) {
+    /* Asked of the whole row rather than of the name, which is where the
+       badge used to sit — it moved to the line below to stop it wrapping
+       long names round it, and an assertion pinned to one span reports a
+       layout change as a missing fact. */
+    else if (!/no default/i.test(
+      $$("button.gs-item").find((b) => b.textContent.includes("Mains Trench"))
+        ?.textContent ?? "")) {
       fail("a feature with no default style does not say so, so a blank swatch "
         + "reads as an unfinished rule rather than an unwritten one");
     }

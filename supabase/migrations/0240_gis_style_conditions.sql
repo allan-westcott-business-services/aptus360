@@ -49,6 +49,16 @@ END $$;
 -- Every entry names a field. A condition with no field narrows nothing
 -- and would be scored for while never matching, which is a rule that
 -- silently outranks its neighbours and does nothing.
+--
+-- Postgres will not take a subquery in a CHECK constraint (0A000), so
+-- "every entry is well formed" is asked the only way a constraint can
+-- ask it: pull out the entries that ARE well formed and require that
+-- there are as many of them as there are entries. jsonb_path_query_array
+-- is immutable, which is what a constraint needs; a subquery over
+-- jsonb_array_elements is not, at any cost.
+--
+-- strict, deliberately: in lax mode the path unwraps a nested array and
+-- [[{"field":"a"}]] would read as a well-formed entry.
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -60,11 +70,17 @@ BEGIN
       ADD CONSTRAINT "GIS_Style_Conditions_have_fields"
       CHECK (
         "Conditions" IS NULL
-        OR NOT EXISTS (
-          SELECT 1 FROM jsonb_array_elements("Conditions") AS e
-           WHERE jsonb_typeof(e) <> 'object'
-              OR coalesce(e ->> 'field', '') = ''
-        )
+        -- Not an array: the constraint above rejects it. Said here too
+        -- so jsonb_array_length is never handed a scalar to throw on,
+        -- because the order two constraints are checked in is not ours.
+        OR jsonb_typeof("Conditions") <> 'array'
+        OR jsonb_array_length(
+             jsonb_path_query_array(
+               "Conditions",
+               'strict $[*] ? (@.type() == "object"'
+               ' && @.field.type() == "string" && @.field <> "")'
+             )
+           ) = jsonb_array_length("Conditions")
       );
   END IF;
 END $$;

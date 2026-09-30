@@ -107,8 +107,13 @@ function conditionMatches(cond, subject) {
 }
 
 /* The fields a style can carry. Anything null on a row is inherited
-   from the row below it rather than overriding with a blank. */
-const FIELDS = [
+   from the row below it rather than overriding with a blank.
+
+   Exported because the admin asks the same question of a rule — which
+   of these it sets itself and which it takes from underneath — and a
+   second list would be a screen that says a variation overrides
+   something the canvas does not, or misses one it does. */
+export const FIELDS = [
   "Colour", "Label_Colour", "Dashed", "Dash_Pattern", "Symbol",
   "Width_Px", "Width_M", "Scale_Width", "Min_Width_Px", "Max_Width_Px",
   "Symbol_Size_Px", "Symbol_Size_M", "Scale_Symbol", "Min_Symbol_Px", "Max_Symbol_Px",

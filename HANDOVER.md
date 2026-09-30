@@ -9640,6 +9640,100 @@ characters is a hundred lines of prose and no rules at all.
      adds "The trench prints if it is on the screen", because a person
      who has read the old one needs telling.
 
+223. **GIS Styles: features on the left, a default style and its
+     variations on the right.** Asked for: "The Add Rule button should
+     not be in the left hand pane as these are the Features that I want
+     to apply the styles to. The left hand pane should not contain
+     rules. In the styles pane, I need to be able to set a DEFAULT style
+     and every other style variation should be derived from the default
+     style" — with the example of an on-site electric cable that is n
+     pixels, yellow and dashed, going continuous when the build status
+     is Live and purple off site.
+
+     **The cascade already worked that way. The screen did not.** Rules
+     stack and the most specific wins field by field, so a variation
+     that sets only a colour has always inherited the rest. What the
+     screen showed was a list of RULES, so "Off site" and "Plots (layer
+     default)" read as features, and every rule's form showed every
+     field with a value in it — which made a variation look like a whole
+     style and, worse, made it into one on save.
+
+     **The left pane is built from the catalogue now.** `gis-styles`
+     serves `GIS_Layer` and `GIS_Line_Type` beside the rules; the screen
+     used to derive both from the rules themselves, which can only name
+     things somebody has already styled. A line type nobody had written
+     a rule about was invisible on the one screen that exists to style
+     it, with no way to reach it. It is listed now, marked "no default".
+
+     Layers and the drawing itself are not features and are offered only
+     where a rule already names one — real, in use, editable, and not
+     invited. Site-wide sits at the top, as agreed, because it is what
+     everything else is an exception to. Nothing was rewritten.
+
+     **Three faults that were writing themselves into every rule.** The
+     rendered check found two of them and they are the same shape:
+
+     - `BLANK.Dashed`, `Scale_Width`, `Scale_Symbol` and `Marker_Rotate`
+       were `false`/`true`, and `resolveStyle` overrides on anything not
+       null. So every rule written on this screen set "not dashed"
+       explicitly, and **a dashed default could never survive a
+       variation over it** — exactly the case asked about, with the
+       change happening whether or not anybody wanted it.
+     - `BLANK.Colour` was `#64748b`, so every variation repainted its
+       feature slate grey.
+     - `checkjsxescapes` caught `\u2014` inside two quoted JSX
+       attributes, where JSX never unescapes it.
+
+     All four switches are three-state selects now — Inherits, yes, no —
+     because a checkbox has two states where the cascade has three.
+     Colour starts blank with the inherited colour in the picker and a
+     Clear button back.
+
+     **What a variation inherits is asked of the canvas.** Not "the
+     default rule", which would be a guess: a variation on an electric
+     main also sits under the electric layer and under anything
+     site-wide. `inheritedStyle` resolves the real cascade over every
+     rule but the one being edited, with the variation's own criteria
+     applied — so an off-site variation is shown inheriting the off-site
+     answer. Every box says "inherits <value>" and **the preview folds
+     the inherited style underneath the draft**, because the file's own
+     note says a swatch that lies about the plan is worse than no
+     swatch.
+
+     `styleSubjects.js` may reach `gisStyle.js` where `styleTree.js`
+     deliberately may not: that one decides where a rule is drawn on a
+     screen and must not be able to change which rule wins; this one
+     reports what the canvas would draw and must not have a second
+     opinion about it.
+
+     **Supply type stopped being a box.** With the feature fixed by the
+     left-hand list, a Line type box was a way of pointing a rule at a
+     different feature, and Supply type belongs with Site and Operator
+     as a criterion. It is one now.
+
+     **A variation must name a criterion before it saves.** Without one
+     it is the default under another name, and the cascade would apply
+     whichever had the higher id — so it would quietly replace the
+     default it was meant to vary.
+
+     **Several rules that narrow nothing.** The cascade applies them in
+     id order and the last wins, so the last IS the default and the
+     others are named in the pane rather than hidden. Asserted against
+     `resolveStyle` rather than against the id, so the screen cannot
+     disagree with the drawing about which one is the default.
+
+     **Checks.** `checkstylesubjects` (17 mutations) for the model, and
+     `checkstylespane` rewritten around the new screen (15 mutations).
+     Four of its assertions passed on the fault first time and were
+     tightened: an empty criteria builder looks exactly like no builder;
+     "Site-wide exists" is not "Site-wide is first"; and nothing checked
+     what a form contains BEFORE somebody types in it, which is where
+     the two BLANK faults lived. `checkhooks` and `checkdeadzone` caught
+     the inheritance memo reading state declared below it, twice, while
+     the block was being moved.
+
+     Suite 188 of 208, the same 20 failures as before.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

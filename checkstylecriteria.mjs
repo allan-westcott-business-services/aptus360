@@ -125,11 +125,17 @@ const stored = (row) => Object.fromEntries(
     Layer_Key: "electric",
     Attributes: { Line_Type: "elec_main", Build_Status: "planned", Site: "Off-site" },
   }, layers);
-  if (!styleMatches({ ...saved, Is_Active: true }, subject, { organisationId: 7 })) {
+  /* Matched as the database will hold it. A column the criteria list
+     does not mention is cleared to "", and the endpoint turns "" into
+     NULL before it writes — a "" scope column would match nothing at
+     all, which is what this asserted before `stored` was applied here
+     and Supply_Type joined the column criteria. */
+  const asHeld = { ...stored(saved), Is_Active: true };
+  if (!styleMatches(asHeld, subject, { organisationId: 7 })) {
     fail("the rule built from criteria does not match the feature it describes");
   }
   /* And the operator half has to bite. */
-  if (styleMatches({ ...saved, Is_Active: true }, subject, { organisationId: 9 })) {
+  if (styleMatches(asHeld, subject, { organisationId: 9 })) {
     fail("the rule matched another operator's standard, so the Operator "
       + "criterion is not being applied");
   }

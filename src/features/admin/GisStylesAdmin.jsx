@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { buildTree } from "./styleTree.js";
+import {
+  buildSubjects, sectionsOf, inheritedStyle, overriddenFields, subjectKeyOf,
+  isVariation,
+} from "./styleSubjects.js";
 import {
   toCriteria, fromCriteria, fieldOptions, valuesFor, isColumnField, changeField,
   preservedScope, labelFor, PRESERVED, OTHER,
@@ -35,16 +38,56 @@ const asPct = (v) => {
     : `\u2248 ${Math.round(n * PCT_PER_PX_PER_M)}% zoom`;
 };
 
+/* ── A switch that can also say "not set" ──
+
+   Dashed, the two draw-to-scale switches and the marker's rotation were
+   checkboxes, and a checkbox has two states where the cascade has
+   three: on, off, and nothing — where nothing means "whatever the style
+   beneath me says".
+
+   That is not a nicety. `BLANK` started them at false and `resolveStyle`
+   overrides on anything that is not null, so every rule written on this
+   screen was setting Dashed = false explicitly. A dashed default with a
+   variation over it could never stay dashed: the variation said solid
+   without anybody choosing solid. Exactly the case that was asked
+   about — "if the build status changes from Planned to Live then the
+   line type may change to Continuous" — with the change happening
+   whether or not it was wanted. */
+function TriState({ id, label, value, onChange, inherited, yes, no }) {
+  const unset = value === "" || value == null;
+  const inheritedAs = inherited == null ? null : (inherited ? yes : no);
+  return (
+    <div className="fld">
+      <label htmlFor={id}>{label}</label>
+      <select id={id} value={unset ? "" : (value ? "y" : "n")}
+        onChange={(e) => onChange(e.target.value === "" ? "" : e.target.value === "y")}>
+        <option value="">
+          {inheritedAs ? `Inherits \u2014 ${inheritedAs}` : "Inherits"}
+        </option>
+        <option value="y">{yes}</option>
+        <option value="n">{no}</option>
+      </select>
+    </div>
+  );
+}
+
 const BLANK = {
   Style_Name: "", Layer_Key: "", Line_Type: "", Feature_Role: "",
   Supply_Type: "", Utility_ID: "", Organisation_ID: "", Site: "",
-  Colour: "#64748b", Label_Colour: "", Dashed: false, Dash_Pattern: "", Symbol: "",
-  Width_Px: "", Width_M: "", Scale_Width: false,
+  /* "" and not false: see TriState. false is a decision and overrides
+     the style beneath; "" is the absence of one. */
+  /* Colour starts blank for the same reason the switches do. It was
+     "#64748b", so every style written here set slate grey explicitly —
+     and a variation that changed only the dash repainted the cable with
+     it. The picker shows what would be inherited instead, and Clear is
+     the way back. */
+  Colour: "", Label_Colour: "", Dashed: "", Dash_Pattern: "", Symbol: "",
+  Width_Px: "", Width_M: "", Scale_Width: "",
   Min_Width_Px: "", Max_Width_Px: "", Symbol_Size_Px: "",
-  Symbol_Size_M: "", Scale_Symbol: false, Min_Symbol_Px: "", Max_Symbol_Px: "",
+  Symbol_Size_M: "", Scale_Symbol: "", Min_Symbol_Px: "", Max_Symbol_Px: "",
   Min_Scale: "", Max_Scale: "", Label_Min_Scale: "",
   Marker_Text: "", Marker_Symbol: "", Marker_Interval_M: "", Marker_Size_Px: "",
-  Marker_Colour: "", Marker_Rotate: true, Marker_Offset_Px: "", Marker_Min_Gap_Px: "",
+  Marker_Colour: "", Marker_Rotate: "", Marker_Offset_Px: "", Marker_Min_Gap_Px: "",
   Sort_Order: 0, Is_Active: true, Notes: "",
   /* Not null: the builder edits a list, and a rule that starts as null
      would need every caller to remember that. Empty and null are the
@@ -134,6 +177,14 @@ export default function GisStylesAdmin() {
   const [utilities, setUtilities] = useState([]);
   const [operators, setOperators] = useState([]);
   const [selected, setSelected] = useState(null);
+  /* `selected` is a FEATURE, because that is what the left-hand list
+     holds now. `editId` says which of its styles is in the form — the
+     default, one of its variations, or a new one not yet saved. Two
+     pieces of state rather than one, because "which feature" outlives
+     "which of its rules": moving between a default and its variations
+     must not lose the feature. */
+  const [editId, setEditId] = useState(null);
+  const [editKind, setEditKind] = useState("default");
   const [draft, setDraft] = useState(BLANK);
   const [previewScale, setPreviewScale] = useState(4);
   const [loading, setLoading] = useState(true);
@@ -145,6 +196,12 @@ export default function GisStylesAdmin() {
     try {
       const r = await listGisStyles();
       setRows(r.rows || []);
+      /* The catalogue, so the left-hand list can name things nobody has
+         styled yet. An older deployment returns neither, and the effect
+         below falls back to naming what the rules themselves mention —
+         which is all this screen could ever do before. */
+      setLayers(r.layers || []);
+      setLineTypes(r.lineTypes || []);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -159,19 +216,32 @@ export default function GisStylesAdmin() {
           .map((o) => [o.Organisation_ID, o])).values()]);
       })
       .catch((e) => setError(e.message));
-    /* Layers and line types come from the canvas endpoint, which needs a
-       project. Reading them from the styles already saved keeps this
-       screen self-contained; anything not yet styled can still be typed
-       in by key. */
   }, [load]);
 
+  /* Where the catalogue could not be read, the rules are the only
+     evidence of what exists. Keys rather than rows, which is what the
+     datalists want and what this held before the endpoint served the
+     real thing. */
   useEffect(() => {
-    setLayers([...new Set(rows.map((r) => r.Layer_Key).filter(Boolean))]);
-    setLineTypes([...new Set(rows.map((r) => r.Line_Type).filter(Boolean))]);
-  }, [rows]);
+    if (!lineTypes.length && rows.length) {
+      setLineTypes([...new Set(rows.map((r) => r.Line_Type).filter(Boolean))]
+        .map((k) => ({ Type_Key: k })));
+    }
+  }, [rows, lineTypes.length]);
 
-  const isNew = selected === "new";
-  const editing = isNew || selected != null;
+  const layerKeys = useMemo(
+    () => (layers.length
+      ? layers.map((l) => l.Layer_Key ?? l).filter(Boolean)
+      : [...new Set(rows.map((r) => r.Layer_Key).filter(Boolean))]),
+    [layers, rows],
+  );
+  const typeKeys = useMemo(
+    () => lineTypes.map((t) => t.Type_Key ?? t).filter(Boolean),
+    [lineTypes],
+  );
+
+  const isNew = editId === "new";
+  const editing = editId != null;
 
   /* ── The inspector: the question people actually bring here ──
 
@@ -214,41 +284,118 @@ export default function GisStylesAdmin() {
 
   /* What the preview draws: the row being edited on its own, since the
      cascade it sits in depends on which feature it lands on. */
+  /* ── The left-hand list is FEATURES ──
+
+     "The Add Rule button should not be in the left hand pane as these
+     are the Features that I want to apply the styles to. The left hand
+     pane should not contain rules."
+
+     So it is built from the CATALOGUE — every line type and every role
+     the drawing can hold — and the rules are hung off them. A feature
+     nobody has styled is listed, with no default style yet, which is
+     the point: it was previously unreachable on the one screen that
+     exists to style it.
+
+     Layers and the drawing itself are not features, and appear only
+     where a rule already names one: they are real and in use, and this
+     keeps them editable without inviting more of them. */
+  const subjects = useMemo(
+    () => buildSubjects({
+      rows,
+      lineTypes,
+      layers,
+      roles: ROLES.filter(([k]) => k).map(([key, label]) => ({ key, label })),
+    }),
+    [rows, lineTypes, layers],
+  );
+  const tree = useMemo(
+    () => sectionsOf(subjects, {
+      layerLabels: Object.fromEntries(
+        layers.map((l) => [l.Layer_Key, l.Label ?? l.Layer_Name]).filter(([, v]) => v)),
+    }),
+    [subjects, layers],
+  );
+  const subjectOfKey = useCallback(
+    (key) => subjects.find((x) => x.key === key) ?? null, [subjects]);
+
+  const subject = subjectOfKey(selected);
+
+  /* ── What this style is derived from ──
+
+     Not "the default rule", which would be a guess: a variation on an
+     electric main also sits under whatever the electric layer says and
+     under anything site-wide. `inheritedStyle` asks what the canvas
+     would draw for this feature if this rule did not exist, over every
+     other rule — so the answer on screen is the answer on the drawing.
+
+     Computed for the default too. It usually inherits nothing, and
+     where it does — a layer rule beneath it — saying so is the point. */
+  const inherits = useMemo(
+    () => (subject
+      ? inheritedStyle(subject, {
+        rows,
+        excludeId: isNew ? null : editId,
+        criteria: Array.isArray(draft.Conditions) ? draft.Conditions : [],
+      })
+      : {}),
+    [subject, rows, isNew, editId, draft.Conditions],
+  );
+  /* The inherited value, or null where nothing beneath sets one. */
+  const inh = (f) => (inherits[f] == null || inherits[f] === "" ? null : inherits[f]);
+  const inhText = (f, fallback) => {
+    const v = inh(f);
+    return v == null ? fallback : `inherits ${v}`;
+  };
+
   const preview = useMemo(() => {
     const num = (v) => (v === "" || v == null ? null : Number(v));
+    /* ── The preview draws what the canvas would ──
+
+       "A swatch that lies about what you'll get on the plan would be
+       worse than no swatch", says the top of this file, and a variation
+       that sets only a colour would otherwise preview as a thin solid
+       line — because everything it inherits reads as blank here.
+
+       So the inherited style goes underneath the draft, field by field,
+       exactly as the cascade folds it. What is drawn below is what the
+       drawing will show. */
+    const d = { ...inherits };
+    for (const [k, v] of Object.entries(draft)) {
+      if (v !== "" && v != null) d[k] = v;
+    }
     return appearance({
-      Colour: draft.Colour || null,
+      Colour: d.Colour || null,
       /* Blank means inherit, so it is stored as null rather than as an
          empty string — the cascade tests for null and "" is a value. */
-      Label_Colour: draft.Label_Colour || null,
-      Dashed: !!draft.Dashed,
-      Dash_Pattern: draft.Dash_Pattern || null,
-      Symbol: draft.Symbol || null,
-      Width_Px: num(draft.Width_Px),
-      Width_M: num(draft.Width_M),
-      Scale_Width: !!draft.Scale_Width,
-      Min_Width_Px: num(draft.Min_Width_Px),
-      Max_Width_Px: num(draft.Max_Width_Px),
-      Symbol_Size_Px: num(draft.Symbol_Size_Px),
-      Symbol_Size_M: num(draft.Symbol_Size_M),
-      Scale_Symbol: !!draft.Scale_Symbol,
-      Min_Symbol_Px: num(draft.Min_Symbol_Px),
-      Max_Symbol_Px: num(draft.Max_Symbol_Px),
-      Min_Scale: num(draft.Min_Scale),
-      Max_Scale: num(draft.Max_Scale),
-      Label_Min_Scale: num(draft.Label_Min_Scale),
+      Label_Colour: d.Label_Colour || null,
+      Dashed: !!d.Dashed,
+      Dash_Pattern: d.Dash_Pattern || null,
+      Symbol: d.Symbol || null,
+      Width_Px: num(d.Width_Px),
+      Width_M: num(d.Width_M),
+      Scale_Width: !!d.Scale_Width,
+      Min_Width_Px: num(d.Min_Width_Px),
+      Max_Width_Px: num(d.Max_Width_Px),
+      Symbol_Size_Px: num(d.Symbol_Size_Px),
+      Symbol_Size_M: num(d.Symbol_Size_M),
+      Scale_Symbol: !!d.Scale_Symbol,
+      Min_Symbol_Px: num(d.Min_Symbol_Px),
+      Max_Symbol_Px: num(d.Max_Symbol_Px),
+      Min_Scale: num(d.Min_Scale),
+      Max_Scale: num(d.Max_Scale),
+      Label_Min_Scale: num(d.Label_Min_Scale),
       /* The preview has to see these or it shows a plain line while the
          canvas shows a lettered one. */
-      Marker_Text: draft.Marker_Text || null,
-      Marker_Symbol: draft.Marker_Symbol || null,
-      Marker_Interval_M: num(draft.Marker_Interval_M),
-      Marker_Size_Px: num(draft.Marker_Size_Px),
-      Marker_Colour: draft.Marker_Colour || null,
-      Marker_Rotate: !!draft.Marker_Rotate,
-      Marker_Offset_Px: num(draft.Marker_Offset_Px),
-      Marker_Min_Gap_Px: num(draft.Marker_Min_Gap_Px),
+      Marker_Text: d.Marker_Text || null,
+      Marker_Symbol: d.Marker_Symbol || null,
+      Marker_Interval_M: num(d.Marker_Interval_M),
+      Marker_Size_Px: num(d.Marker_Size_Px),
+      Marker_Colour: d.Marker_Colour || null,
+      Marker_Rotate: !!d.Marker_Rotate,
+      Marker_Offset_Px: num(d.Marker_Offset_Px),
+      Marker_Min_Gap_Px: num(d.Marker_Min_Gap_Px),
     }, previewScale);
-  }, [draft, previewScale]);
+  }, [draft, inherits, previewScale]);
 
   useEffect(() => {
     const cv = canvasRef.current;
@@ -268,7 +415,7 @@ export default function GisStylesAdmin() {
       return;
     }
 
-    if (draft.Symbol) {
+    if (draft.Symbol || inherits.Symbol) {
       ctx.beginPath();
       symbolPath(ctx, preview.symbol, w / 2, h / 2, preview.symbolPx);
       if (STROKE_ONLY.has(preview.symbol)) {
@@ -293,15 +440,61 @@ export default function GisStylesAdmin() {
       ctx.stroke();
       ctx.setLineDash([]);
     }
-  }, [preview, draft.Symbol, editing]);
+  }, [preview, draft.Symbol, inherits.Symbol, editing]);
 
-  function open(row) {
-    setSelected(row ? row.GIS_Style_ID : "new");
-    /* toCriteria folds Operator and Site into the criteria list and
-       blanks their columns, so while the rule is open its scope lives in
-       one place. save() undoes it. */
-    setDraft(row ? toCriteria({ ...BLANK, ...Object.fromEntries(
-      Object.entries(row).map(([k, v]) => [k, v == null ? "" : v])) }) : BLANK);
+  /* ── What is open ──
+
+     `selected` is a FEATURE, because that is what the left-hand list
+     holds now. `editId` says which of its styles is in the form: the
+     default, one of its variations, or a new one not yet saved. Two
+     pieces of state rather than one, because "which feature" outlives
+     "which of its rules" — moving between a default and its variations
+     must not lose the feature. */
+
+  const asDraft = (row) => toCriteria({
+    ...BLANK,
+    ...Object.fromEntries(Object.entries(row ?? {})
+      .map(([k, v]) => [k, v == null ? "" : v])),
+  });
+
+  /* A style that names this feature and nothing else. The scope columns
+     come from the SUBJECT rather than from a form, which is what makes
+     it that feature's style: there is no longer a box to name a
+     different one in. */
+  const blankFor = (sub, kind) => asDraft({
+    ...BLANK,
+    Layer_Key: sub?.kind === "layer" ? sub.Layer_Key : "",
+    Line_Type: sub?.Line_Type ?? "",
+    Feature_Role: sub?.Feature_Role ?? "",
+    Style_Name: kind === "variation"
+      ? `${sub?.label ?? "Style"} \u2014 variation`
+      : (sub?.label ?? ""),
+  });
+
+  function openRule(row, kind) {
+    setEditId(row?.GIS_Style_ID ?? "new");
+    setEditKind(kind);
+    setDraft(row ? asDraft(row) : blankFor(subjectOfKey(selected), kind));
+    setError("");
+  }
+
+  function openSubject(key) {
+    const sub = subjectOfKey(key);
+    setSelected(key);
+    setEditKind("default");
+    setEditId(sub?.dflt?.GIS_Style_ID ?? "new");
+    setDraft(sub?.dflt ? asDraft(sub.dflt) : blankFor(sub, "default"));
+    setError("");
+  }
+
+  /* Opening a rule from the inspector, which names rules and not
+     features: find the feature it belongs to, then the rule within it. */
+  function openStyleRow(row) {
+    const key = subjectKeyOf(row);
+    setSelected(key);
+    setEditKind(isVariation(row) ? "variation" : "default");
+    setEditId(row.GIS_Style_ID);
+    setDraft(asDraft(row));
     setError("");
   }
 
@@ -309,7 +502,15 @@ export default function GisStylesAdmin() {
     setDraft((d) => ({ ...d, [col]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
 
   async function save() {
-    if (!draft.Style_Name.trim()) return setError("A rule needs a name.");
+    if (!draft.Style_Name.trim()) return setError("A style needs a name.");
+    /* A variation that narrows nothing is the default wearing another
+       name, and the cascade would apply whichever has the higher id —
+       so it would quietly replace the default it was meant to vary. */
+    if (editKind === "variation"
+        && !criteria.some((c) => c && String(c.field ?? "").trim() !== "")) {
+      return setError("A variation needs at least one criterion. "
+        + "Without one it is the default style, not a variation of it.");
+    }
     try {
       /* Operator and Site come back out of the criteria list and into
          their own columns, and a criterion naming no field is dropped —
@@ -325,8 +526,7 @@ export default function GisStylesAdmin() {
       await saveGisStyle({
         ...body,
         Style_Name: body.Style_Name.trim(),
-      }, isNew ? undefined : selected);
-      setSelected(null);
+      }, isNew ? undefined : editId);
       await load();
       setStatus("Saved");
       setTimeout(() => setStatus(""), 4000);
@@ -337,37 +537,36 @@ export default function GisStylesAdmin() {
     if (!window.confirm(`Delete "${row.Style_Name}"? Objects it styled fall back to the rule beneath it.`)) return;
     try {
       await deleteGisStyle(row.GIS_Style_ID);
-      setSelected(null);
+      setEditId(null);
       await load();
     } catch (e) { setError(e.message); }
   }
 
-  /* ── Sections and items, not one flat list ──
 
-     Asked for. Every rule sat at the same level, so "off-site electric
-     mains for this IDNO" had the same standing on screen as
-     "electric", and finding one meant reading scope lines down a list
-     that grows every time anybody narrows anything.
+  /* A variation of the feature that is open: the same scope columns, and
+     a criteria list to fill in. It is not saved until somebody does. */
+  function addVariation() {
+    setEditKind("variation");
+    setEditId("new");
+    setDraft(blankFor(subject, "variation"));
+    setError("");
+  }
 
-     The arranging is styleTree.js: separate, pure, and tested on its
-     own — and deliberately unable to reach the cascade. Which rule WINS
-     is still scored in gisStyle.js from the scope columns; this only
-     decides where a rule is drawn. A grouping that could change a
-     drawing would be a rendering change with teeth. */
-  const tree = useMemo(
-    () => buildTree(rows, { roleLabels: Object.fromEntries(ROLES.filter(([k]) => k)) }),
-    [rows],
-  );
-
-  /* Shut by default. The point of the exercise is a short list, and
-     opening everything on arrival would put the long one back. An item
-     holding one rule has nothing to fold and never shows a twisty. */
-  const [openItems, setOpenItems] = useState(() => new Set());
-  const toggleItem = (key) => setOpenItems((o) => {
-    const next = new Set(o);
-    if (next.has(key)) next.delete(key); else next.add(key);
-    return next;
-  });
+  /* A variation named by what it applies to, which is the only thing
+     that tells two of them apart. Its Style_Name is a label somebody
+     typed and is often the feature's name repeated. */
+  const criteriaLine = (row) => {
+    const parts = [
+      row.Organisation_ID && opName(row.Organisation_ID),
+      row.Site,
+      row.Supply_Type
+        && (SUPPLY_TYPES.find(([k]) => k === row.Supply_Type)?.[1] ?? row.Supply_Type),
+      ...(Array.isArray(row.Conditions) ? row.Conditions : [])
+        .filter((c) => c && c.field)
+        .map((c) => `${labelFor(c.field)} = ${c.value ?? ""}`),
+    ].filter(Boolean);
+    return parts.length ? parts.join(" \u00b7 ") : (row.Style_Name || "Variation");
+  };
 
   /* The rule's criteria, edited as one list — Operator and Site
      included. Held on the draft like every other field so Save carries
@@ -394,30 +593,27 @@ export default function GisStylesAdmin() {
      seeded against a layer or a role, because a rule that only applies
      on the plot layer is doing that whether or not there is a control
      for it. */
-  const hidden = editing
-    ? preservedScope(draft, { roleName, utilityName: utName })
+  /* Scope with no control on the screen — but NOT the columns the
+     feature itself is named from. A rule on the Meter role carries
+     Feature_Role because that is which feature it is, and reporting
+     that as a limit somebody should consider removing would put the
+     notice on every rule and empty it of meaning. */
+  const hidden = editing && subject
+    ? preservedScope(
+      Object.fromEntries(Object.entries(draft).map(([k, v]) => [
+        k,
+        (k === "Feature_Role" && subject.Feature_Role)
+          || (k === "Line_Type" && subject.Line_Type)
+          || (k === "Layer_Key" && subject.kind === "layer") ? "" : v,
+      ])),
+      { roleName, utilityName: utName },
+    )
     : [];
   const clearHidden = () => setDraft((d) => {
     const next = { ...d };
     for (const k of PRESERVED) next[k] = "";
     return next;
   });
-
-  const scopeOf = (r) => [
-    r.Organisation_ID && opName(r.Organisation_ID),
-    r.Site, r.Line_Type, r.Feature_Role,
-    /* Named in the scope line, or the non-residential rule reads as a
-       second identical Meter rule with no way to tell which is which —
-       which is exactly what this screen showed until now. */
-    r.Supply_Type && (SUPPLY_TYPES.find(([k]) => k === r.Supply_Type)?.[1] ?? r.Supply_Type),
-    r.Layer_Key, r.Utility_ID && utName(r.Utility_ID),
-    /* Said in the list, or a rule narrowed by a condition reads as an
-       identical copy of the one it narrows — which is the exact fault
-       Supply_Type had before it was named here. */
-    ...(Array.isArray(r.Conditions) ? r.Conditions : [])
-      .filter((c) => c && c.field)
-      .map((c) => `${c.field} = ${c.value ?? ""}`),
-  ].filter(Boolean).join(" \u00B7 ") || "Everything";
 
   if (loading) return <div className="loading">Loading styles&hellip;</div>;
 
@@ -439,10 +635,10 @@ export default function GisStylesAdmin() {
           the inspector's own suggestions only worked while a rule
           happened to be open. */}
       <datalist id="gs-lts">
-        {lineTypes.map((t) => <option key={t} value={t} />)}
+        {typeKeys.map((t) => <option key={t} value={t} />)}
       </datalist>
       <datalist id="gs-layers">
-        {layers.map((l) => <option key={l} value={l} />)}
+        {layerKeys.map((l) => <option key={l} value={l} />)}
       </datalist>
 
       <div className="gs-insp" style={{ margin: "10px 0 14px" }}>
@@ -537,7 +733,7 @@ export default function GisStylesAdmin() {
                         </td>
                         <td style={{ padding: "4px 6px" }}>
                           <button className="btn ghost" style={{ padding: "1px 6px" }}
-                            onClick={() => open(s)}>{s.Style_Name}</button>
+                            onClick={() => openStyleRow(s)}>{s.Style_Name}</button>
                         </td>
                         <td style={{ padding: "4px 6px" }}>{score}</td>
                         <td style={{ padding: "4px 6px" }}>
@@ -587,67 +783,46 @@ export default function GisStylesAdmin() {
       </div>
 
       <div className="gs-split">
+        {/* ── Features, not rules ──
+
+            No "Add a rule" here: a feature is a thing the drawing can
+            hold, and you do not add one from a styles screen. Adding a
+            style belongs beside the styles, in the pane that shows
+            them. */}
         <div className="gs-list">
-          <button className="gs-new" onClick={() => open(null)}>+ Add a rule</button>
-          {rows.length === 0 && (
+          {tree.length === 0 && (
             <p className="gs-empty">
-              No rules yet. Run migration 0051 to seed them from the current line types.
+              Nothing to style. Run migration 0051 to seed the line types.
             </p>
           )}
           {tree.map((section) => (
             <div className="gs-sec" key={section.key}>
               <p className="gs-sec-h">{section.label}</p>
-              {section.items.map((item) => {
-                /* One rule is not a group. It shows as itself, so the
-                   commonest case costs no extra click. */
-                const lone = item.rows.length === 1;
-                const isOpen = lone || openItems.has(`${section.key}/${item.key}`);
-                const head = item.rows[0];
+              {section.subjects.map((sub) => {
+                const swatch = sub.dflt ?? sub.variations[0] ?? null;
                 return (
-                  <div className="gs-grp" key={item.key}>
-                    {!lone && (
-                      <button className={isOpen ? "gs-head open" : "gs-head"}
-                        aria-expanded={isOpen}
-                        onClick={() => toggleItem(`${section.key}/${item.key}`)}>
-                        <span className="gs-sw" style={{
-                          background: head?.Colour || "#cbd5e1",
-                          height: Math.max(2, Math.min(10, Number(head?.Width_Px) || 3)),
-                        }} />
-                        <span className="gs-nm">{item.label}</span>
-                        <span className="gs-count">
-                          {item.rows.length}
-                          {item.variants > 0 && ` \u00b7 ${item.variants} variation`}
-                          {item.variants > 1 ? "s" : ""}
-                        </span>
-                        <span className="gs-chev" aria-hidden="true">{isOpen ? "\u2212" : "+"}</span>
-                      </button>
-                    )}
-                    {isOpen && item.rows.map((r) => (
-                      <button key={r.GIS_Style_ID}
-                        className={[
-                          selected === r.GIS_Style_ID ? "gs-item on" : "gs-item",
-                          lone ? "" : "gs-in",
-                        ].filter(Boolean).join(" ")}
-                        onClick={() => open(r)}>
-                        <span className="gs-sw" style={{
-                          background: r.Colour || "#cbd5e1",
-                          height: Math.max(2, Math.min(10, Number(r.Width_Px) || 3)),
-                        }} />
-                        <span className="gs-nm">
-                          {r.Style_Name}
-                          {r.Is_Active === false && <span className="gs-off">off</span>}
-                        </span>
-                        <span className="gs-scope">{scopeOf(r)}</span>
-                        {(r.Min_Scale || r.Max_Scale) && (
-                          <span className="gs-zoom">
-                            {r.Min_Scale ? `\u2265${r.Min_Scale}` : ""}
-                            {r.Min_Scale && r.Max_Scale ? " " : ""}
-                            {r.Max_Scale ? `\u2264${r.Max_Scale}` : ""}
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
+                  <button key={sub.key}
+                    className={selected === sub.key ? "gs-item on" : "gs-item"}
+                    onClick={() => openSubject(sub.key)}>
+                    <span className="gs-sw" style={{
+                      background: swatch?.Colour || "#e2e8f0",
+                      height: Math.max(2, Math.min(10, Number(swatch?.Width_Px) || 3)),
+                    }} />
+                    <span className="gs-nm">
+                      {sub.label}
+                      {/* A feature with no default draws in its line
+                          type's own colour. Said here, because a blank
+                          swatch reads as a rule somebody has not
+                          finished rather than one nobody has written. */}
+                      {!sub.dflt && <span className="gs-nodef">no default</span>}
+                    </span>
+                    <span className="gs-scope">
+                      {sub.detail}
+                      {sub.variations.length > 0
+                        && ` \u00b7 ${sub.variations.length} variation`
+                        + (sub.variations.length > 1 ? "s" : "")}
+                    </span>
+                  </button>
                 );
               })}
             </div>
@@ -655,135 +830,169 @@ export default function GisStylesAdmin() {
         </div>
 
         <div className="gs-detail">
-          {!editing ? (
-            <div className="gs-pick">Choose a rule, or add one.</div>
+          {!subject ? (
+            <div className="gs-pick">Choose a feature on the left.</div>
           ) : (
             <>
-              <div className="fld">
-                <label htmlFor="gs-name">Rule name</label>
-                <input id="gs-name" value={draft.Style_Name} onChange={set("Style_Name")}
-                  placeholder="e.g. Northern Powergrid gas main" />
-              </div>
+              {/* ── The feature, then its styles ──
 
-              <p className="panel-label">Applies to</p>
-              <div className="gs-grid">
-                <div className="fld">
-                  <label htmlFor="gs-lt">Line type</label>
-                  <input id="gs-lt" list="gs-lts" value={draft.Line_Type} onChange={set("Line_Type")}
-                    placeholder="Any" />
+                  "In the styles pane, I need to be able to set a DEFAULT
+                  style and every other style variation should be derived
+                  from the default style."
+
+                  So the pane is headed by the thing being styled — which
+                  is not editable here, because it is what the left-hand
+                  list chose — and then its default style, with each
+                  variation beside it. Adding a style happens here, where
+                  the styles are, rather than above the feature list. */}
+              <div className="gs-subject">
+                <div>
+                  <p className="gs-subject-h">{subject.label}</p>
+                  <p className="gs-subject-d">
+                    {subject.kind === "lt" ? `Line type ${subject.detail}`
+                      : subject.kind === "role" ? `Point role ${subject.detail}`
+                        : subject.kind === "layer" ? `Every feature on the ${subject.detail} layer`
+                          : "Every feature on the drawing"}
+                    {subject.unlisted && " \u00b7 not in the current catalogue"}
+                  </p>
                 </div>
-                {/* What kind of supply a point is, where that is not the
-                    same question as what role it plays.
-
-                    A non-residential supply IS a meter to the network —
-                    it attaches, takes a service, counts in the joints
-                    and the BOM — so it keeps the meter role, and this is
-                    the only thing that can tell it apart. Above the role
-                    in specificity, below Site.
-
-                    Only meaningful on a meter, and offered anyway rather
-                    than hidden behind the role: a field that appears and
-                    disappears as another one changes is harder to find
-                    than one that is always there and says "Any". */}
-                <div className="fld">
-                  <label htmlFor="gs-supply">Supply type</label>
-                  <select id="gs-supply" value={draft.Supply_Type} onChange={set("Supply_Type")}>
-                    {SUPPLY_TYPES.map(([k, name]) => (
-                      <option key={k} value={k}>{name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* ── One list of criteria ──
-
-                  Asked for: Operator and Site "should be a Rule
-                  Criteria", and Utility, Layer and Point Role are gone
-                  because "I do not understand how this is having any
-                  bearing on the style".
-
-                  They were all doing the same job — narrowing the rule —
-                  and only the storage made three of them look different.
-                  Operator and Site are still COLUMNS with their own
-                  weights, still matched by the same styleMatches, and
-                  styleCriteria.js puts them back there on save. Nothing
-                  about any drawing changes because the boxes moved.
-
-                  The field is a select, not an input with a datalist.
-                  That was the bug: a datalist filters its suggestions by
-                  what is already typed, so a box holding Build_Status
-                  offered Build_Status and nothing else, and the only way
-                  out was to delete the row. */}
-              <p className="panel-label">Rule criteria</p>
-              <p className="hint gs-hint">
-                Every criterion has to hold for the rule to apply, and the more
-                it names the more specific it is. A rule with none applies
-                wherever the line type above matches.
-              </p>
-              <div className="gs-conds">
-                {criteria.map((c, i) => {
-                  const opts = fieldOptions(criteria, i);
-                  const vals = valuesFor(c.field, { operators, statuses: BUILD_STATUSES });
-                  const typing = !!c.other && !c.field;
-                  return (
-                    <div className="gs-cond" key={i}>
-                      {typing ? (
-                        <input aria-label={`Criterion ${i + 1} field`} autoFocus
-                          value={c.field ?? ""} placeholder="Field name, as the feature holds it"
-                          onChange={(e) => setCriterion(i, { field: e.target.value })} />
-                      ) : (
-                        <select aria-label={`Criterion ${i + 1} field`}
-                          value={c.field ?? ""}
-                          onChange={(e) => pickField(i, e.target.value)}>
-                          <option value="">Choose a field&hellip;</option>
-                          {opts.map((f) => (
-                            <option key={f.field} value={f.field}>{f.label}</option>
-                          ))}
-                          <option value={OTHER}>Something else&hellip;</option>
-                        </select>
-                      )}
-                      <span className="gs-cond-eq">=</span>
-                      {vals ? (
-                        <select aria-label={`Criterion ${i + 1} value`}
-                          value={c.value ?? ""}
-                          onChange={(e) => setCriterion(i, { value: e.target.value })}>
-                          <option value="">Choose&hellip;</option>
-                          {vals.map(([k, name]) => (
-                            <option key={k} value={k}>{name}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input aria-label={`Criterion ${i + 1} value`}
-                          value={c.value ?? ""} placeholder="Value"
-                          onChange={(e) => setCriterion(i, { value: e.target.value })} />
-                      )}
-                      <button className="gs-cond-x" type="button"
-                        aria-label={`Remove criterion ${i + 1}`}
-                        onClick={() => removeCriterion(i)}>&times;</button>
-                      {c.field && !isColumnField(c.field) && (
-                        <span className="gs-cond-note">
-                          read from the feature&rsquo;s {labelFor(c.field)}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-                <button className="gs-cond-add" type="button" onClick={addCriterion}>
-                  + Add a criterion
+                <button className="btn accent" type="button" onClick={addVariation}>
+                  + Add a variation
                 </button>
               </div>
 
-              {/* Scope the screen no longer offers a box for, and which
-                  is still narrowing the rule.
+              <div className="gs-tabs" role="tablist">
+                <button role="tab" type="button"
+                  aria-selected={editKind === "default"}
+                  className={editKind === "default" ? "gs-tab on" : "gs-tab"}
+                  onClick={() => openRule(subject.dflt, "default")}>
+                  Default style
+                  {!subject.dflt && <span className="gs-nodef">not set</span>}
+                </button>
+                {subject.variations.map((v) => (
+                  <button key={v.GIS_Style_ID} role="tab" type="button"
+                    aria-selected={editId === v.GIS_Style_ID}
+                    className={editId === v.GIS_Style_ID ? "gs-tab on" : "gs-tab"}
+                    onClick={() => openRule(v, "variation")}>
+                    {criteriaLine(v)}
+                  </button>
+                ))}
+                {editKind === "variation" && isNew && (
+                  <button role="tab" type="button" aria-selected className="gs-tab on">
+                    New variation
+                  </button>
+                )}
+              </div>
 
-                  Stated rather than hidden, and never cleared on its
-                  own: a rule scoped to the plot layer applies only
-                  there whether or not there is a control for it, and
-                  dropping the value because the dropdown went away would
-                  broaden the rule and change what is drawn. */}
+              {/* A feature can carry more than one rule that narrows
+                  nothing. The cascade applies them in id order and the
+                  last wins field by field, so the last IS the default —
+                  and the others are named rather than hidden, because a
+                  rule this screen does not show is one nobody can edit
+                  while it goes on styling the drawing. */}
+              {subject.alsoDefault.length > 0 && (
+                <p className="gs-hidden">
+                  <strong>Also applies with no criteria:</strong>{" "}
+                  {subject.alsoDefault.map((r) => r.Style_Name).join(", ")}.
+                  {" "}The default above wins wherever they disagree.
+                  {subject.alsoDefault.map((r) => (
+                    <button key={r.GIS_Style_ID} className="btn ghost sm" type="button"
+                      onClick={() => openRule(r, "default")}>
+                      Open {r.Style_Name}
+                    </button>
+                  ))}
+                </p>
+              )}
+
+              <div className="fld">
+                <label htmlFor="gs-name">Style name</label>
+                <input id="gs-name" value={draft.Style_Name} onChange={set("Style_Name")}
+                  placeholder={subject.label} />
+              </div>
+
+              {/* Criteria belong to a variation. A default is what the
+                  feature looks like when nothing else applies, and a
+                  default with a criterion on it is a variation wearing
+                  the wrong name — so the builder is not offered here,
+                  rather than offered and then argued with. */}
+              {editKind === "variation" ? (
+                <>
+                  <p className="panel-label">Applies when</p>
+                  <p className="hint gs-hint">
+                    Every criterion has to hold. Everything this variation does
+                    not set comes from the default above it.
+                  </p>
+                  <div className="gs-conds">
+                    {criteria.map((c, i) => {
+                      const opts = fieldOptions(criteria, i);
+                      const vals = valuesFor(c.field, { operators, statuses: BUILD_STATUSES });
+                      const typing = !!c.other && !c.field;
+                      return (
+                        <div className="gs-cond" key={i}>
+                          {typing ? (
+                            <input aria-label={`Criterion ${i + 1} field`} autoFocus
+                              value={c.field ?? ""} placeholder="Field name, as the feature holds it"
+                              onChange={(e) => setCriterion(i, { field: e.target.value })} />
+                          ) : (
+                            <select aria-label={`Criterion ${i + 1} field`}
+                              value={c.field ?? ""}
+                              onChange={(e) => pickField(i, e.target.value)}>
+                              <option value="">Choose a field&hellip;</option>
+                              {opts.map((f) => (
+                                <option key={f.field} value={f.field}>{f.label}</option>
+                              ))}
+                              <option value={OTHER}>Something else&hellip;</option>
+                            </select>
+                          )}
+                          <span className="gs-cond-eq">=</span>
+                          {vals ? (
+                            <select aria-label={`Criterion ${i + 1} value`}
+                              value={c.value ?? ""}
+                              onChange={(e) => setCriterion(i, { value: e.target.value })}>
+                              <option value="">Choose&hellip;</option>
+                              {vals.map(([k, name]) => (
+                                <option key={k} value={k}>{name}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input aria-label={`Criterion ${i + 1} value`}
+                              value={c.value ?? ""} placeholder="Value"
+                              onChange={(e) => setCriterion(i, { value: e.target.value })} />
+                          )}
+                          <button className="gs-cond-x" type="button"
+                            aria-label={`Remove criterion ${i + 1}`}
+                            onClick={() => removeCriterion(i)}>&times;</button>
+                          {c.field && !isColumnField(c.field) && (
+                            <span className="gs-cond-note">
+                              read from the feature&rsquo;s {labelFor(c.field)}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <button className="gs-cond-add" type="button" onClick={addCriterion}>
+                      + Add a criterion
+                    </button>
+                    {criteria.length === 0 && (
+                      <p className="gs-cond-none">
+                        A variation with no criteria is the default. Name at least one,
+                        or this will not save.
+                      </p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <p className="hint gs-hint">
+                  What this feature looks like when nothing more specific applies.
+                  Every variation starts from here and changes only what differs.
+                </p>
+              )}
+
+              {/* Scope the screen no longer offers a box for, and which
+                  is still narrowing the rule. */}
               {hidden.length > 0 && (
                 <p className="gs-hidden">
-                  <strong>Also limited to</strong> {hidden.join(" · ")}.
+                  <strong>Also limited to</strong> {hidden.join(" \u00B7 ")}.
                   {" "}This is how the seeded rules were written and it still
                   narrows this one.
                   <button className="btn ghost sm" type="button" onClick={clearHidden}>
@@ -791,15 +1000,25 @@ export default function GisStylesAdmin() {
                   </button>
                 </p>
               )}
-
               <p className="panel-label">Looks like</p>
               <div className="gs-grid">
+                {/* Blank inherits, here as everywhere. A colour input
+                    has no empty state, so the swatch shows what would
+                    be drawn and Clear is the way back to inheriting —
+                    without which a variation that only changes the dash
+                    would silently carry a colour too. */}
                 <div className="fld">
                   <label htmlFor="gs-col">Colour</label>
                   <div className="gs-colrow">
-                    <input id="gs-col" type="color" value={draft.Colour || "#64748b"}
+                    <input id="gs-col" type="color"
+                      value={draft.Colour || inh("Colour") || "#64748b"}
                       onChange={set("Colour")} />
-                    <input value={draft.Colour} onChange={set("Colour")} placeholder="#64748b" />
+                    <input value={draft.Colour} onChange={set("Colour")}
+                      placeholder={inhText("Colour", "#64748b")} />
+                    <button className="btn ghost sm" type="button"
+                      onClick={() => setDraft((d) => ({ ...d, Colour: "" }))}>
+                      Clear
+                    </button>
                   </div>
                 </div>
 
@@ -821,7 +1040,7 @@ export default function GisStylesAdmin() {
                       value={draft.Label_Colour || "#0f172a"}
                       onChange={set("Label_Colour")} />
                     <input value={draft.Label_Colour} onChange={set("Label_Colour")}
-                      placeholder="inherits" />
+                      placeholder={inhText("Label_Colour", "inherits")} />
                     <button className="btn ghost sm"
                       onClick={() => setDraft((d) => ({ ...d, Label_Colour: "" }))}>
                       Clear
@@ -831,20 +1050,20 @@ export default function GisStylesAdmin() {
                 <div className="fld">
                   <label htmlFor="gs-sym">Symbol (points)</label>
                   <select id="gs-sym" value={draft.Symbol} onChange={set("Symbol")}>
-                    <option value="">Not a point</option>
+                    <option value="">{inhText("Symbol", "Not a point")}</option>
                     {SYMBOLS.map((x) => <option key={x} value={x}>{x}</option>)}
                   </select>
                 </div>
+                <TriState id="gs-dashed" label="Line" value={draft.Dashed}
+                  onChange={(v) => setDraft((d) => ({ ...d, Dashed: v }))}
+                  inherited={inherits.Dashed} yes="Dashed" no="Continuous" />
                 <div className="fld">
                   <label htmlFor="gs-dash">Dash pattern</label>
                   <input id="gs-dash" value={draft.Dash_Pattern} onChange={set("Dash_Pattern")}
-                    placeholder="9,6" disabled={!draft.Dashed} />
+                    placeholder={inhText("Dash_Pattern", "9,6")}
+                    disabled={!(draft.Dashed === "" ? inherits.Dashed : draft.Dashed)} />
                 </div>
               </div>
-              <label className="gs-check">
-                <input type="checkbox" checked={!!draft.Dashed} onChange={set("Dashed")} />
-                Dashed
-              </label>
 
               {/* Symbol size, the same shape as Width below it.
 
@@ -855,63 +1074,66 @@ export default function GisStylesAdmin() {
                   stop it vanishing at site level or covering the plot at
                   full zoom. */}
               <p className="panel-label">Symbol size</p>
-              <label className="gs-check">
-                <input type="checkbox" checked={!!draft.Scale_Symbol}
-                  onChange={set("Scale_Symbol")} />
-                Draw to scale &mdash; grows and shrinks with the zoom
-              </label>
               <div className="gs-grid">
+                <TriState id="gs-scalesym" label="Size" value={draft.Scale_Symbol}
+                  onChange={(v) => setDraft((d) => ({ ...d, Scale_Symbol: v }))}
+                  inherited={inherits.Scale_Symbol}
+                  yes={"To scale \u2014 grows with the zoom"} no="Fixed pixels" />
                 <div className="fld">
                   <label htmlFor="gs-symsize">Fixed size (px)</label>
                   <input id="gs-symsize" type="number" step="1" value={draft.Symbol_Size_Px}
-                    onChange={set("Symbol_Size_Px")} placeholder="6"
-                    disabled={!!draft.Scale_Symbol} />
+                    onChange={set("Symbol_Size_Px")} placeholder={inhText("Symbol_Size_Px", "6")}
+                    disabled={!!(draft.Scale_Symbol === "" ? inherits.Scale_Symbol : draft.Scale_Symbol)} />
                 </div>
                 <div className="fld">
                   <label htmlFor="gs-symm">Real size (m)</label>
                   <input id="gs-symm" type="number" step="0.05" value={draft.Symbol_Size_M}
-                    onChange={set("Symbol_Size_M")} placeholder="0.6"
-                    disabled={!draft.Scale_Symbol} />
+                    onChange={set("Symbol_Size_M")} placeholder={inhText("Symbol_Size_M", "0.6")}
+                    disabled={!(draft.Scale_Symbol === "" ? inherits.Scale_Symbol : draft.Scale_Symbol)} />
                 </div>
                 <div className="fld">
                   <label htmlFor="gs-minsym">Never smaller than (px)</label>
                   <input id="gs-minsym" type="number" step="0.5" value={draft.Min_Symbol_Px}
-                    onChange={set("Min_Symbol_Px")} placeholder="3"
-                    disabled={!draft.Scale_Symbol} />
+                    onChange={set("Min_Symbol_Px")} placeholder={inhText("Min_Symbol_Px", "3")}
+                    disabled={!(draft.Scale_Symbol === "" ? inherits.Scale_Symbol : draft.Scale_Symbol)} />
                 </div>
                 <div className="fld">
                   <label htmlFor="gs-maxsym">Never larger than (px)</label>
                   <input id="gs-maxsym" type="number" step="1" value={draft.Max_Symbol_Px}
-                    onChange={set("Max_Symbol_Px")} placeholder="18"
-                    disabled={!draft.Scale_Symbol} />
+                    onChange={set("Max_Symbol_Px")} placeholder={inhText("Max_Symbol_Px", "18")}
+                    disabled={!(draft.Scale_Symbol === "" ? inherits.Scale_Symbol : draft.Scale_Symbol)} />
                 </div>
               </div>
 
               <p className="panel-label">Width</p>
-              <label className="gs-check">
-                <input type="checkbox" checked={!!draft.Scale_Width} onChange={set("Scale_Width")} />
-                Draw to scale &mdash; use the real width on the ground
-              </label>
               <div className="gs-grid">
+                <TriState id="gs-scalew" label="Width" value={draft.Scale_Width}
+                  onChange={(v) => setDraft((d) => ({ ...d, Scale_Width: v }))}
+                  inherited={inherits.Scale_Width}
+                  yes={"To scale \u2014 the real width on the ground"} no="Fixed pixels" />
                 <div className="fld">
                   <label htmlFor="gs-wpx">Fixed width (px)</label>
                   <input id="gs-wpx" type="number" step="0.5" value={draft.Width_Px}
-                    onChange={set("Width_Px")} disabled={!!draft.Scale_Width} />
+                    onChange={set("Width_Px")} disabled={!!(draft.Scale_Width === "" ? inherits.Scale_Width : draft.Scale_Width)} 
+                    placeholder={inhText("Width_Px", "inherits")} />
                 </div>
                 <div className="fld">
                   <label htmlFor="gs-wm">Real width (m)</label>
                   <input id="gs-wm" type="number" step="0.05" value={draft.Width_M}
-                    onChange={set("Width_M")} disabled={!draft.Scale_Width} />
+                    onChange={set("Width_M")} disabled={!(draft.Scale_Width === "" ? inherits.Scale_Width : draft.Scale_Width)} 
+                    placeholder={inhText("Width_M", "inherits")} />
                 </div>
                 <div className="fld">
                   <label htmlFor="gs-minw">Never thinner than (px)</label>
                   <input id="gs-minw" type="number" step="0.5" value={draft.Min_Width_Px}
-                    onChange={set("Min_Width_Px")} />
+                    onChange={set("Min_Width_Px")} 
+                    placeholder={inhText("Min_Width_Px", "inherits")} />
                 </div>
                 <div className="fld">
                   <label htmlFor="gs-maxw">Never thicker than (px)</label>
                   <input id="gs-maxw" type="number" step="1" value={draft.Max_Width_Px}
-                    onChange={set("Max_Width_Px")} />
+                    onChange={set("Max_Width_Px")} 
+                    placeholder={inhText("Max_Width_Px", "inherits")} />
                 </div>
               </div>
 
@@ -935,19 +1157,19 @@ export default function GisStylesAdmin() {
                 <div className="fld">
                   <label htmlFor="gs-min">Hide below</label>
                   <input id="gs-min" type="number" step="0.5" value={draft.Min_Scale}
-                    onChange={set("Min_Scale")} placeholder="no limit" />
+                    onChange={set("Min_Scale")} placeholder={inhText("Min_Scale", "no limit")} />
                   <span className="gs-pct">{asPct(draft.Min_Scale)}</span>
                 </div>
                 <div className="fld">
                   <label htmlFor="gs-max">Hide above</label>
                   <input id="gs-max" type="number" step="0.5" value={draft.Max_Scale}
-                    onChange={set("Max_Scale")} placeholder="no limit" />
+                    onChange={set("Max_Scale")} placeholder={inhText("Max_Scale", "no limit")} />
                   <span className="gs-pct">{asPct(draft.Max_Scale)}</span>
                 </div>
                 <div className="fld">
                   <label htmlFor="gs-lbl">Drop the label below</label>
                   <input id="gs-lbl" type="number" step="0.5" value={draft.Label_Min_Scale}
-                    onChange={set("Label_Min_Scale")} placeholder="always show" />
+                    onChange={set("Label_Min_Scale")} placeholder={inhText("Label_Min_Scale", "always show")} />
                   <span className="gs-pct">{asPct(draft.Label_Min_Scale)}</span>
                 </div>
                 <div className="gs-span">
@@ -961,7 +1183,7 @@ export default function GisStylesAdmin() {
                 <div className="fld">
                   <label htmlFor="gs-mtext">Letter or number</label>
                   <input id="gs-mtext" maxLength={3} value={draft.Marker_Text}
-                    onChange={set("Marker_Text")} placeholder="E" />
+                    onChange={set("Marker_Text")} placeholder={inhText("Marker_Text", "E")} />
                 </div>
                 <div className="fld">
                   <label htmlFor="gs-msym">Or a symbol</label>
@@ -976,37 +1198,37 @@ export default function GisStylesAdmin() {
                   <label htmlFor="gs-mint">Every (m)</label>
                   <input id="gs-mint" type="number" step="0.5" min="0.5"
                     value={draft.Marker_Interval_M}
-                    onChange={set("Marker_Interval_M")} placeholder="10" />
+                    onChange={set("Marker_Interval_M")} placeholder={inhText("Marker_Interval_M", "10")} />
                 </div>
                 <div className="fld">
                   <label htmlFor="gs-msize">Size (px)</label>
                   <input id="gs-msize" type="number" value={draft.Marker_Size_Px}
-                    onChange={set("Marker_Size_Px")} placeholder="11" />
+                    onChange={set("Marker_Size_Px")} placeholder={inhText("Marker_Size_Px", "11")} />
                 </div>
                 <div className="fld">
                   <label htmlFor="gs-mcol">Marker colour</label>
                   <input id="gs-mcol" value={draft.Marker_Colour}
-                    onChange={set("Marker_Colour")} placeholder="follows the line" />
+                    onChange={set("Marker_Colour")}
+                    placeholder={inhText("Marker_Colour", "follows the line")} />
                 </div>
                 <div className="fld">
                   <label htmlFor="gs-moff">Offset from the line (px)</label>
                   <input id="gs-moff" type="number" value={draft.Marker_Offset_Px}
-                    onChange={set("Marker_Offset_Px")} placeholder="0" />
+                    onChange={set("Marker_Offset_Px")} placeholder={inhText("Marker_Offset_Px", "0")} />
                 </div>
                 <div className="fld">
                   <label htmlFor="gs-mgap">Thin out below (px apart)</label>
                   <input id="gs-mgap" type="number" value={draft.Marker_Min_Gap_Px}
-                    onChange={set("Marker_Min_Gap_Px")} placeholder="28" />
+                    onChange={set("Marker_Min_Gap_Px")} placeholder={inhText("Marker_Min_Gap_Px", "28")} />
                   <p className="hint">
                     Zoomed out, markers this close together become a smear, so the
                     interval doubles rather than crowding.
                   </p>
                 </div>
-                <label className="gs-check">
-                  <input type="checkbox" checked={!!draft.Marker_Rotate}
-                    onChange={set("Marker_Rotate")} />
-                  Turn the marker along the line
-                </label>
+                <TriState id="gs-mrot" label="Marker angle" value={draft.Marker_Rotate}
+                  onChange={(v) => setDraft((d) => ({ ...d, Marker_Rotate: v }))}
+                  inherited={inherits.Marker_Rotate}
+                  yes="Turned along the line" no="Upright" />
 
                 <div className="fld">
                   <label htmlFor="gs-sort">Sort order</label>

@@ -51,6 +51,17 @@ export const COLUMN_CRITERIA = [
     hint: "the standard in force on the project",
   },
   {
+    field: "Supply_Type",
+    label: "Supply type",
+    /* What kind of supply a point is, where the role does not say it. A
+       non-residential supply IS a meter to the network — it attaches,
+       takes a service and counts in the bill — so it keeps the meter
+       role, and this is the only thing that tells it apart. It had its
+       own box under "Applies to" until the feature list made that box a
+       way of pointing a rule at a different feature. */
+    hint: "where the role does not say it",
+  },
+  {
     field: "Site",
     /* Named for where it comes from, because the other off-site fact is
        one line below it in the same list. `Site` is worked out from the
@@ -104,6 +115,11 @@ export function valuesFor(field, { operators = [], statuses = [] } = {}) {
   }
   if (field === "Site") {
     return [["On-site", "On site"], ["Off-site", "Off site"]];
+  }
+  if (field === "Supply_Type") {
+    /* The only value the application writes (0194). A second one wants
+       adding here and to whatever writes it, in the same change. */
+    return [["nrs", "Non-residential supply"]];
   }
   if (field === "Build_Status") {
     return statuses.map((s) => [s.key, s.label]);

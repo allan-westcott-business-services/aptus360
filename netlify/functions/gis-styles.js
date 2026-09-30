@@ -33,10 +33,37 @@ export default withAuth(async function handler(req) {
 
   try {
     if (req.method === "GET") {
-      const { data, error } = await db.from("GIS_Style").select(S)
-        .order("Sort_Order").order("GIS_Style_ID");
-      if (error) throw error;
-      return json({ rows: data || [] });
+      /* ── The rules, and the things they can be written about ──
+
+         The screen lists FEATURES and hangs styles off them, so it needs
+         to know what can be drawn — not merely what somebody has already
+         styled. It used to derive both lists from the rules themselves
+         (`[...new Set(rows.map(r => r.Layer_Key))]`), which can only ever
+         name the things that already have a rule: a line type nobody has
+         styled was invisible on the one screen that exists to style it,
+         and there was no way to reach it.
+
+         The catalogue is served by the canvas endpoint too, but that one
+         takes a project and this screen has none — the styles are the
+         organisation's, not a project's. Two small tables, fetched
+         beside the rules rather than on a second round trip.
+
+         Active only, and in the drawing's own order, so the list reads
+         the same here as it does on the canvas menus. */
+      const [st, ly, lt] = await Promise.all([
+        db.from("GIS_Style").select(S).order("Sort_Order").order("GIS_Style_ID"),
+        db.from("GIS_Layer").select("*").eq("Is_Active", true).order("Sort_Order"),
+        db.from("GIS_Line_Type").select("*").eq("Is_Active", true).order("Sort_Order"),
+      ]);
+      if (st.error) throw st.error;
+      /* A catalogue that cannot be read is not a reason to withhold the
+         rules: the screen falls back to naming the subjects the rules
+         themselves mention, which is what it did before this existed. */
+      return json({
+        rows: st.data || [],
+        layers: ly.data || [],
+        lineTypes: lt.data || [],
+      });
     }
 
     if (req.method === "POST") {

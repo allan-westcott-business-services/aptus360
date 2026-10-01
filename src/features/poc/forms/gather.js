@@ -2,6 +2,7 @@ import { getProject } from "../../../api/projects.js";
 import { listNrs } from "../../../api/nrs.js";
 import { listPlots } from "../../../api/plots.js";
 import { adminList } from "../../../api/admin.js";
+import { loadSplit } from "./loadSplit.js";
 
 /* Everything the operator forms need, gathered once.
 
@@ -40,22 +41,12 @@ export async function gatherFormData({ poc, projectId, lookups }) {
   const nameOf = (list, idKey, nameKey, id) =>
     (list || []).find((x) => Number(x[idKey]) === Number(id))?.[nameKey] ?? "";
 
-  /* The load split.
-
-     Domestic comes from the plot count and whatever is left over;
-     commercial from the project's non-residential supplies. The total is
-     the figure agreed on the application itself, so where it is set it
-     wins \u2014 the parts are derived from it rather than the other way
-     round, which is how the two come to disagree on a printed form. */
-  const commercialCount = nrsRows.length;
-  const commercialKva = nrsRows.reduce(
-    (a, n) => a + (parseFloat(n.Load_kVA ?? n.Non_Residential_kVA) || 0), 0);
-  const domesticCount = poc.Plot_Count ?? plotRows.length ?? "";
-  const totalKva = poc.Requested_kVA ?? "";
-  const domesticKva =
-    totalKva !== "" && commercialKva
-      ? Math.max(0, Number(totalKva) - commercialKva)
-      : (totalKva !== "" && !commercialKva ? totalKva : "");
+  /* The load split: which supplies belong on this application, what
+     they come to, and how that adds up with the domestic figure. The
+     rules are in loadSplit.js, where a check can reach them — this file
+     imports the API layer and cannot be loaded outside Vite. */
+  const { commercialCount, commercialKva, domesticCount, domesticKva, totalKva } =
+    loadSplit({ poc, nrsRows, plotRows });
 
   return {
     pocId: poc.POC_Application_ID,

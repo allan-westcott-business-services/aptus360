@@ -12,6 +12,7 @@ import Banner from "../../components/Banner.jsx";
 import { listGisStyles, saveGisStyle, deleteGisStyle } from "../../api/gis.js";
 import { getLookups } from "../../api/lookups.js";
 import { appearance, symbolPath, STROKE_ONLY, SYMBOLS, explainStyle } from "../../lib/gisStyle.js";
+import { GROUP_FIELD } from "../../lib/styleGroups.js";
 
 /* Styling rules for the GIS canvas.
 
@@ -642,7 +643,14 @@ export default function GisStylesAdmin() {
       row.Supply_Type
         && (SUPPLY_TYPES.find(([k]) => k === row.Supply_Type)?.[1] ?? row.Supply_Type),
       ...(Array.isArray(row.Conditions) ? row.Conditions : [])
-        .filter((c) => c && c.field)
+        /* The group's own condition is left out. It is the rule's
+           SCOPE — which feature this is about — and every variation of
+           that feature carries it, so putting it on the pill adds
+           "Line_Type_Group = elec_cable_main" to all of them and says
+           nothing that tells one from another. The same reason
+           `Line_Type` has never been on a pill: it is what the
+           left-hand list already chose. */
+        .filter((c) => c && c.field && c.field !== GROUP_FIELD)
         /* By the name the value goes by, not its key. A tab reading
            "Status = asbuilt" is the stored spelling, and the whole point
            of asking the feature what its stages are called is that a

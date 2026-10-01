@@ -82,6 +82,51 @@ const CSS = `
 .ef-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 14px 16px; align-items: end; }
 .ef-grid .fld { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+
+/* ── The checkbox rule this screen was borrowing ──
+
+   "Add a space between any check boxes and its label on the config
+   form." There was no space because there was no rule: \`fe-check\` is
+   defined in FeatureEditor.jsx, whose stylesheet is injected by THAT
+   component and exists only while it is mounted. On an admin page it is
+   not, so every checkbox here fell back to the browser's own inline
+   layout and sat against its text.
+
+   The same trap this file's own header describes about \`gs-grid\`,
+   made again with a different class. A class defined inside another
+   component's stylesheet is not a shared class, however shared the name
+   looks.
+
+   Copied rather than imported, because there is nothing to import from:
+   these are template literals, not stylesheets. The values match
+   FeatureEditor's so the two screens do not drift apart visually. */
+.fe-check { display: flex; align-items: center; gap: 7px; font-size: 12.5px;
+  font-weight: 600; color: var(--text); cursor: pointer; margin: 2px 0 10px; }
+.fe-check input { width: 15px; height: 15px; accent-color: var(--accent);
+  cursor: pointer; flex: none; }
+
+/* ── The answer rows ──
+
+   "Make the 'THEN GO TO' dropdown box 3 times wide and make the
+   'REMOVE' button just wide enough to accept the label."
+
+   The shared grid is \`auto-fit, minmax(190px, 1fr)\` — every column the
+   same — which suits the question rows above, where the three fields
+   are of comparable importance. On an answer row it is wrong twice: the
+   jump target is a sentence ("Section 4 - Temporary Supplies: Electric:
+   What load do you need?") truncated into a 190px box, and Remove is
+   six characters stretched across the same width.
+
+   So the answer rows get their own tracks: the answer, three times that
+   for the jump, and the button at its own size. \`minmax(0, 3fr)\` and
+   not \`3fr\`, because a grid track's automatic minimum is its content
+   and a long option would otherwise push the row wider than the pane
+   instead of truncating inside it. */
+.ef-options .ef-grid { grid-template-columns:
+  minmax(150px, 1fr) minmax(0, 3fr) auto; }
+/* An \`auto\` track is already the button's own width, so nothing has to
+   shrink it; this only stops a long label wrapping inside it. */
+.ef-options .ef-grid .btn { white-space: nowrap; }
 .ef-grid .fld > label { font: 700 10.5px inherit; color: var(--muted);
   text-transform: uppercase; letter-spacing: .04em; }
 .ef-grid input, .ef-grid select { width: 100%; }

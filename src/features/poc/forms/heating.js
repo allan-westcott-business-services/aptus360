@@ -80,26 +80,33 @@ export function heatingSummary({ plots = [], heatSources = [] } = {}) {
 
   const pumps = kinds.heatpump;
 
-  /* ── kW per Pump ──
+  /* ── How many pumps, and what they come to ──
 
-     "Use the kVA value that is shown in the Plot table." That column is
-     the PLOT's load, not the heat pump's own rating — on an air source
-     plot 0097 composes it as the gas base plus half the fitted unit —
-     and it is what was asked for.
+     Reported: "I have updated ten plots to have ASHP as their heating
+     source but the ENW POC Application form is only showing one and it
+     is not calculating the sum of the ASHP load."
 
-     Only where every plot with a pump carries the same figure. A single
-     number in a box that is right for forty plots and wrong for twenty
-     five reads as definitive and is not, so where they differ the box
-     is left blank and the comment says what the spread is. The engineer
-     reading it can ask; a wrong number they do not know is wrong, they
-     cannot. */
-  const pumpKvas = [...new Set(pumps.map(kvaOf).filter((n) => n != null))];
-  const heatPumpKva = pumpKvas.length === 1 ? round2(pumpKvas[0]) : "";
+     Both were decisions taken here, and both were wrong. The count was
+     pinned to 1 because the table ABOVE this one is headed "Number per
+     property", and that heading was read across to a table that says
+     only "Number of Pumps" — an inference about somebody else's form,
+     made from an adjacent heading, when the answer wanted was the plain
+     one: ten plots on heat pumps is ten pumps.
 
-  /* The form asks "Number of Pumps" against "per property" in the table
-     above it: one property, one pump. The number of PROPERTIES goes in
-     the comment, where it is not mistaken for a per-property figure. */
-  const heatPumpCount = pumps.length ? 1 : "";
+     And the load is the SUM across them, not a per-plot figure. Asking
+     for the maximum power required is asking what the site draws.
+
+     Summing also disposes of the problem the old version had to work
+     around. A single per-plot figure is only true when every plot
+     carries the same one, so mixed models left the box blank; a total
+     is correct whatever the mix. The spread still goes in the comment,
+     because a reader may want to know the ten are not identical. */
+  const pumpKvas = pumps.map(kvaOf).filter((n) => n != null);
+  const heatPumpKva = pumpKvas.length
+    ? round2(pumpKvas.reduce((a, n) => a + n, 0))
+    : "";
+
+  const heatPumpCount = pumps.length || "";
 
   const bits = [];
   const say = (n, what) => `${n} ${n === 1 ? "plot" : "plots"} ${what}`;
@@ -109,9 +116,14 @@ export function heatingSummary({ plots = [], heatSources = [] } = {}) {
   if (kinds.other.length) bits.push(say(kinds.other.length, "on another heat source"));
   if (kinds.unset.length) bits.push(say(kinds.unset.length, "with no heat source set"));
 
-  if (pumps.length && pumpKvas.length > 1) {
-    const lo = round2(Math.min(...pumpKvas));
-    const hi = round2(Math.max(...pumpKvas));
+  /* The spread, where there is one. Asked of the DISTINCT figures: the
+     list is no longer deduplicated now that it is summed, so ten
+     identical plots would otherwise read "between 3.4 and 3.4 kVA
+     each", which is a sentence about nothing. */
+  const distinctKvas = [...new Set(pumpKvas)];
+  if (distinctKvas.length > 1) {
+    const lo = round2(Math.min(...distinctKvas));
+    const hi = round2(Math.max(...distinctKvas));
     bits.push(`heat pump plots draw between ${lo} and ${hi} kVA each`);
   }
 

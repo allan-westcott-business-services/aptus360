@@ -19,7 +19,10 @@
    the rest. */
 
 import { useEffect, useMemo, useState } from "react";
-import { sheetOf, nextFrom, pathOf, missingAnswers } from "./enquiryFlow.js";
+import {
+  sheetOf, afterQuestion, pathOf, missingAnswers, currentQuestion,
+} from "./enquiryFlow.js";
+import { disabledIds, toggle } from "./exclusiveChoice.js";
 /* The app's own client, which carries the session token and turns an
    error body into a message. */
 import { http } from "../../api/client.js";
@@ -168,18 +171,29 @@ function renderAnswer(q, answers, setAnswers, onFile, busy) {
   }
   if (q.Kind === "choice_many") {
     const chosen = [].concat(value || []).map(String);
+    /* An answer can rule the others out — "No - we do not require any"
+       beside "Yes, electric" and "Yes, water" (0243). Both the clearing
+       and the disabling come from exclusiveChoice.js rather than being
+       written out twice here: a box this screen disables while the
+       selection still holds it is an answer nobody can see and nobody
+       can remove, submitted with the sheet. */
+    const off = disabledIds(q.options, chosen);
     return (
       <div className="pt-choices">
-        {q.options.map((o) => (
-          <label key={o.Enquiry_Option_ID} className="pt-check">
-            <input type="checkbox"
-              checked={chosen.includes(String(o.Enquiry_Option_ID))}
-              onChange={(e) => set(e.target.checked
-                ? [...chosen, String(o.Enquiry_Option_ID)]
-                : chosen.filter((x) => x !== String(o.Enquiry_Option_ID)))} />
-            {o.Label}
-          </label>
-        ))}
+        {q.options.map((o) => {
+          const id = String(o.Enquiry_Option_ID);
+          const ruledOut = off.has(id);
+          return (
+            <label key={o.Enquiry_Option_ID}
+              className={ruledOut ? "pt-check pt-check-off" : "pt-check"}>
+              <input type="checkbox"
+                checked={chosen.includes(id)}
+                disabled={ruledOut}
+                onChange={(e) => set(toggle(q.options, chosen, id, e.target.checked))} />
+              {o.Label}
+            </label>
+          );
+        })}
       </div>
     );
   }
@@ -225,13 +239,26 @@ export default function DeveloperPortal({ onSignOut, who }) {
   const [here, setHere] = useState(null);
   const [done, setDone] = useState(false);
 
+  /* ── Where somebody is, and what to do when that is lost ──
+
+     `here` is a question id. It used to fall back to `sheet[0]` when
+     the id was not in the sheet, which re-asked question one and read
+     as the form restarting — reported after the third question, and
+     the reason was a jump to a question that had since been retired.
+
+     `afterQuestion` no longer hands out an id the sheet does not
+     have, so this should not arise. Where it does — a sheet reloaded
+     under somebody mid-answer, say — the honest recovery is where the
+     ANSWERS say they are, not the beginning. Going back to question
+     one throws away a form somebody is halfway through. */
   const current = useMemo(() => {
     if (done) return null;
     if (!sheet.length) return null;
-    if (here == null) return sheet[0];
+    if (here == null) return currentQuestion(sheet, answers) ?? sheet[0];
     return sheet.find((q) => String(q.Enquiry_Question_ID) === String(here))
+      ?? currentQuestion(sheet, answers)
       ?? sheet[0];
-  }, [sheet, here, done]);
+  }, [sheet, here, done, answers]);
 
   /* What has been answered, up to but not including the question being
      answered now \u2014 so the trail above reads as a conversation and the
@@ -306,12 +333,14 @@ export default function DeveloperPortal({ onSignOut, who }) {
      the branching \u2014 and an answer that ends the sheet ends it here. */
   function nextQuestion() {
     if (!current) return;
-    const step = nextFrom(current, answers);
-    if (step === "end") { setDone(true); return; }
-    if (step != null) { setHere(step); return; }
-    const i = sheet.indexOf(current);
-    const after = i >= 0 ? sheet[i + 1] : null;
-    if (after) setHere(after.Enquiry_Question_ID); else setDone(true);
+    /* The same rule the trail above is drawn with. It used to be
+       written out again here, and the two disagreed about a jump whose
+       target is not in the sheet: the trail ended, this one set the
+       position to the missing id, and the lookup then fell back to the
+       first question. */
+    const step = afterQuestion(sheet, current, answers);
+    if (step.end) { setDone(true); return; }
+    setHere(step.question.Enquiry_Question_ID);
   }
 
   /* Back to the last question answered. Its answer is kept: somebody
@@ -985,6 +1014,12 @@ const CSS = `
   cursor: pointer; }
 .pt-check input { width: 16px; height: 16px; margin: 0; flex: none;
   accent-color: var(--accent); }
+/* Ruled out by an answer that cannot be held with this one. Faded and
+   not-allowed rather than hidden: a box that vanishes takes the reader
+   back to wondering what the question offered, and the point of doing
+   this in one question is that the whole choice stays on screen. */
+.pt-check-off { opacity: .45; cursor: not-allowed; }
+.pt-check-off input { cursor: not-allowed; }
 .pt-sheet input[type="text"], .pt-sheet input:not([type]), .pt-sheet textarea,
 .pt-sheet input[type="number"], .pt-sheet input[type="date"] { width: 100%; }
 .pt-branch { margin: 22px 0 8px; font-size: 14px; font-weight: 700;

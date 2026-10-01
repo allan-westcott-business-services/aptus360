@@ -514,8 +514,12 @@ export default withAuth(async function handler(req, context, user) {
       if (ids.length) {
         const { data: os, error: oErr } = await db
           .from("Enquiry_Option")
+          /* `Is_Exclusive` (0243): an answer that rules the others out,
+             so the sheet can ask "do you need any, and which" once
+             rather than twice. A column absent from this list arrives
+             undefined and the rule silently never fires. */
           .select("Enquiry_Option_ID,Enquiry_Question_ID,Label,Sort_Order,"
-            + "Next_Question_ID,Ends_Form,Is_Active")
+            + "Next_Question_ID,Ends_Form,Is_Active,Is_Exclusive")
           .in("Enquiry_Question_ID", ids)
           .eq("Is_Active", true);
         if (oErr) throw oErr;

@@ -30,7 +30,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
-import { moveQuestion, moveSection, moveToSection } from "./sheetOrder.js";
+import {
+  moveQuestion, moveSection, moveToSection, placeInSection, NEW,
+} from "./sheetOrder.js";
 
 /* The `Kind` values, exactly as the database's own check constraint
    spells them:
@@ -83,6 +85,13 @@ const CSS = `
 .ef-grid .fld > label { font: 700 10.5px inherit; color: var(--muted);
   text-transform: uppercase; letter-spacing: .04em; }
 .ef-grid input, .ef-grid select { width: 100%; }
+/* The exclusive switch sits on its own line under the answer rather
+   than as a fourth column: the grid is auto-fit and a checkbox dropped
+   into it gets a 190px track it does not need, which pushes the Then-go-to
+   select onto the next row on a narrow screen. Full width, and the
+   checkbox keeps its own size because the rule above would stretch it. */
+.ef-grid .ef-excl { grid-column: 1 / -1; margin-top: -4px; }
+.ef-grid .ef-excl input { width: 16px; }
 
 /* A section: a card with room inside it, and clear space to the next. */
 .ef-section { border: 1px solid var(--border); border-radius: 10px;
@@ -299,6 +308,8 @@ export default function EnquiryFormsAdmin() {
   /* A section is the text on a question, so adding one means adding a
      question that carries it. There is nothing to create on its own,
      and a section with no questions in it would have nowhere to live. */
+  /* A new section goes at the END of the sheet, so the end of the whole
+     sheet IS the end of its section and the two orders agree. */
   const addSection = () => run(async () => {
     await adminCreate("Enquiry_Question", {
       Enquiry_Form_ID: formId, Section: "New section",
@@ -310,11 +321,35 @@ export default function EnquiryFormsAdmin() {
     setActiveTab("New section");
   });
 
-  const addQuestion = (g) => run(() => adminCreate("Enquiry_Question", {
-    Enquiry_Form_ID: formId, Section: g.title, Question: "New question",
-    Kind: "text", Is_Required: false, Is_Active: true,
-    Sort_Order: (inOrder.length + 1) * 10,
-  }));
+  /* ── A new question goes at the end of ITS SECTION ──
+
+     It used to take `(inOrder.length + 1) * 10` — the end of the whole
+     sheet — while being given the section it was added to. Add one to
+     the first section and it lands last by Sort_Order, and the two
+     orders part company: this screen lists questions grouped by
+     section, the portal walks Sort_Order alone, so a jump this screen
+     calls "later" sends somebody BACKWARDS. Which is the shape of
+     "after the third question it jumps back to the first".
+
+     So it is placed after the last question in its own section, and
+     everything after it shifts up — the same renumbering a drag does,
+     through the same module. */
+  const addQuestion = (g) => run(async () => {
+    const { Sort_Order, writes } = placeInSection(sheet, g.title);
+    const created = await adminCreate("Enquiry_Question", {
+      Enquiry_Form_ID: formId, Section: g.title, Question: "New question",
+      Kind: "text", Is_Required: false, Is_Active: true, Sort_Order,
+    });
+    /* Everything after it shifts up so the gaps go back to ten and the
+       next add has room. The write against NEW is the one for the row
+       just created, which already has the order it asked for. */
+    for (const w of writes) {
+      const id = w.id === NEW ? created?.Enquiry_Question_ID : w.id;
+      if (id && Number(w.Sort_Order) !== Number(Sort_Order)) {
+        await adminUpdate("Enquiry_Question", id, { Sort_Order: w.Sort_Order });
+      }
+    }
+  });
 
   const addOption = (q) => run(() => adminCreate("Enquiry_Option", {
     Enquiry_Question_ID: q.Enquiry_Question_ID, Label: "New answer",
@@ -650,6 +685,25 @@ export default function EnquiryFormsAdmin() {
                               onClick={() => run(() => adminUpdate("Enquiry_Option",
                                 o.Enquiry_Option_ID, { Is_Active: false }))}>Remove</button>
                           </div>
+                          {/* An answer that cannot be held with any other
+                              — "No, we do not require any" beside "Yes,
+                              electric" and "Yes, water". Choosing it
+                              clears and disables the rest, so one
+                              question asks what used to take two.
+
+                              Offered only where the answers can be
+                              combined. On a single-choice question they
+                              already exclude each other, and a switch
+                              that does nothing is a switch somebody
+                              sets and then wonders about. */}
+                          {q.Kind === "choice_many" && (
+                            <label className="fe-check ef-excl">
+                              <input type="checkbox" checked={!!o.Is_Exclusive}
+                                onChange={(e) =>
+                                  saveO(o, { Is_Exclusive: e.target.checked })} />
+                              Nothing else can be chosen with this
+                            </label>
+                          )}
                         </div>
                       ))}
                       <button className="btn ghost" disabled={busy}

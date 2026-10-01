@@ -7,7 +7,7 @@ import { contingencyFor, contingencyNote } from "./contingency.js";
 import {
   parseIds, serialiseIds, claimedElsewhere, nrsClaimedElsewhere,
   plotChoices, toggleChoice, pruneChoices, selectionState, NONE,
-  rangeBetween, rangeNote, selectAll,
+  rangeBetween, rangeNote, selectAll, nrsForUtility,
 } from "./interimPlots.js";
 import { listNrs } from "../../api/nrs.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
@@ -543,9 +543,10 @@ export default function POCApplicationsTab({ projectId }) {
 
   /* The supplies on this utility. A feeder pillar is applied for on the
      electric application, not the gas one. */
-  const utilNrs = f.Utility_ID
-    ? nrs.filter((n) => Number(n.Utility_ID) === Number(f.Utility_ID))
-    : [];
+  /* A supply's utilities are a SET since 0196 — `Utility_IDs`. The
+     singular column this used to read was dropped in August, so the
+     filter had been matching nothing at all. */
+  const utilNrs = nrsForUtility(nrs, f.Utility_ID);
 
   /* Supplies already on another application for this utility. */
   const nrsClaimed = nrsClaimedElsewhere(rows, {

@@ -50,6 +50,50 @@ export function serialiseIds(ids = []) {
     .join(",");
 }
 
+/* ── Which utilities a non-residential supply takes ──
+
+   Reported: "In the Project > POC Application, the Non Residential
+   Supply loads are not being picked up in the form." The box read 0.0
+   and "no non-residential supplies on this utility", on a project that
+   has them.
+
+   A supply took ONE utility until 0196, which replaced the column with
+   the `NRS_Utility` set — a pumping station takes a three-phase supply
+   AND a water connection, and one column could never say both. The
+   column was dropped on 28 August.
+
+   The POC screen was never moved across. It filtered on `n.Utility_ID`,
+   which the endpoint does not even select any more, so every row
+   answered `undefined`; `Number(undefined)` is NaN and NaN matches
+   nothing. The filter therefore came back empty for every project and
+   every utility — not "no supplies on electric", but no supplies, ever,
+   since August.
+
+   Here rather than in the component so a check can ask it without
+   mounting a screen, and so the next reader of a supply's utilities has
+   one place to find them. */
+export const utilityIdsOf = (nrsRow) =>
+  (Array.isArray(nrsRow?.Utility_IDs) ? nrsRow.Utility_IDs : [])
+    .map(Number)
+    .filter(Number.isFinite);
+
+/* Does this supply take that utility?
+
+   A supply with no utilities takes none — it is not a wildcard. An
+   empty set is what a half-saved record looks like, and reading it as
+   "all of them" would put a water-only supply's load on an electric
+   application. */
+export function nrsTakesUtility(nrsRow, utilityId) {
+  if (utilityId == null || utilityId === "") return false;
+  const want = Number(utilityId);
+  if (!Number.isFinite(want)) return false;
+  return utilityIdsOf(nrsRow).includes(want);
+}
+
+/* The supplies on a project that take a given utility. */
+export const nrsForUtility = (rows = [], utilityId) =>
+  rows.filter((r) => nrsTakesUtility(r, utilityId));
+
 /* Non-residential supplies already on another application.
 
    The same rule as plots, against a different column. A feeder pillar

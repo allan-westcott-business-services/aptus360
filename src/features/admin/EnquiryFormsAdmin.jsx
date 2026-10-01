@@ -127,6 +127,9 @@ const CSS = `
 /* An \`auto\` track is already the button's own width, so nothing has to
    shrink it; this only stops a long label wrapping inside it. */
 .ef-options .ef-grid .btn { white-space: nowrap; }
+/* The prompt sits under its own switch, full width like the switch, so
+   the two read as one setting rather than as a stray field in the row. */
+.ef-grid .ef-prompt { grid-column: 1 / -1; max-width: 420px; margin-top: -6px; }
 .ef-grid .fld > label { font: 700 10.5px inherit; color: var(--muted);
   text-transform: uppercase; letter-spacing: .04em; }
 .ef-grid input, .ef-grid select { width: 100%; }
@@ -748,6 +751,30 @@ export default function EnquiryFormsAdmin() {
                                   saveO(o, { Is_Exclusive: e.target.checked })} />
                               Nothing else can be chosen with this
                             </label>
+                          )}
+                          {/* An answer that asks for more — "Other,
+                              please specify". Offered on radio and
+                              checkbox alike, because the question it
+                              answers is the same either way, and the
+                              prompt only once there is a box to
+                              label. */}
+                          <label className="fe-check ef-excl">
+                            <input type="checkbox" checked={!!o.Needs_Detail}
+                              onChange={(e) =>
+                                saveO(o, { Needs_Detail: e.target.checked })} />
+                            Ask for more detail when this is chosen
+                          </label>
+                          {o.Needs_Detail && (
+                            <div className="fld ef-prompt">
+                              <label htmlFor={`op-${o.Enquiry_Option_ID}`}>
+                                Label for that box
+                              </label>
+                              <input id={`op-${o.Enquiry_Option_ID}`}
+                                defaultValue={o.Detail_Prompt || ""}
+                                placeholder="Please specify"
+                                onBlur={(e) => e.target.value !== (o.Detail_Prompt || "")
+                                  && saveO(o, { Detail_Prompt: e.target.value || null })} />
+                            </div>
                           )}
                         </div>
                       ))}

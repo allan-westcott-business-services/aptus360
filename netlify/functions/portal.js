@@ -519,7 +519,8 @@ export default withAuth(async function handler(req, context, user) {
              rather than twice. A column absent from this list arrives
              undefined and the rule silently never fires. */
           .select("Enquiry_Option_ID,Enquiry_Question_ID,Label,Sort_Order,"
-            + "Next_Question_ID,Ends_Form,Is_Active,Is_Exclusive")
+            + "Next_Question_ID,Ends_Form,Is_Active,Is_Exclusive,"
+            + "Needs_Detail,Detail_Prompt")
           .in("Enquiry_Question_ID", ids)
           .eq("Is_Active", true);
         if (oErr) throw oErr;

@@ -23,6 +23,9 @@ import {
   sheetOf, afterQuestion, pathOf, missingAnswers, currentQuestion,
 } from "./enquiryFlow.js";
 import { disabledIds, toggle } from "./exclusiveChoice.js";
+import {
+  detailPrompt, wantingDetail, detailsMissing, answerText, pruneDetails,
+} from "./answerDetail.js";
 /* The app's own client, which carries the session token and turns an
    error body into a message. */
 import { http } from "../../api/client.js";
@@ -104,8 +107,20 @@ function Node({ n, depth = 0, onUpload, onDownload, busy }) {
 /* The control a question is answered with.
 
    One place, keyed on the Kind the database stores. */
-function renderAnswer(q, answers, setAnswers, onFile, busy) {
-  const set = (v) => setAnswers((a) => ({ ...a, [q.Enquiry_Question_ID]: v }));
+function renderAnswer(q, answers, setAnswers, onFile, busy, details, setDetails) {
+  /* Changing a choice drops any detail typed against an answer that is
+     no longer chosen. Somebody who ticks "Other", types a figure and
+     then picks "Standard" has withdrawn the figure, and carrying it
+     would submit a sentence they cannot see on the screen. */
+  const set = (v) => {
+    setAnswers((a) => ({ ...a, [q.Enquiry_Question_ID]: v }));
+    if (q.options?.length) {
+      setDetails((d) => ({
+        ...d, [q.Enquiry_Question_ID]:
+          pruneDetails(q.options, v, d[q.Enquiry_Question_ID]),
+      }));
+    }
+  };
   const value = answers[q.Enquiry_Question_ID] ?? "";
 
   if (q.Kind === "long_text") {
@@ -155,6 +170,27 @@ function renderAnswer(q, answers, setAnswers, onFile, busy) {
       </div>
     );
   }
+  /* ── The box an answer asks for ──
+
+     Under the choices rather than beside one, so the layout is the same
+     whether one answer wants detail or three do, and the same for a
+     radio as for a checkbox. */
+  const mine = details?.[q.Enquiry_Question_ID] ?? {};
+  const detailBoxes = (chosen) => wantingDetail(q.options ?? [], chosen).map((o) => (
+    <div className="pt-detail" key={`d${o.Enquiry_Option_ID}`}>
+      <label htmlFor={`pt-d${o.Enquiry_Option_ID}`}>{detailPrompt(o)}</label>
+      <input id={`pt-d${o.Enquiry_Option_ID}`}
+        value={mine[String(o.Enquiry_Option_ID)] ?? ""}
+        onChange={(e) => setDetails((d) => ({
+          ...d,
+          [q.Enquiry_Question_ID]: {
+            ...(d[q.Enquiry_Question_ID] ?? {}),
+            [String(o.Enquiry_Option_ID)]: e.target.value,
+          },
+        }))} />
+    </div>
+  ));
+
   if (q.Kind === "choice_one") {
     return (
       <div className="pt-choices">
@@ -166,6 +202,7 @@ function renderAnswer(q, answers, setAnswers, onFile, busy) {
             {o.Label}
           </label>
         ))}
+        {detailBoxes(value)}
       </div>
     );
   }
@@ -194,6 +231,7 @@ function renderAnswer(q, answers, setAnswers, onFile, busy) {
             </label>
           );
         })}
+        {detailBoxes(chosen)}
       </div>
     );
   }
@@ -217,6 +255,12 @@ export default function DeveloperPortal({ onSignOut, who }) {
      decide what to do with, and nobody asked for drafts. */
   const [enquiry, setEnquiry] = useState(null);
   const [answers, setAnswers] = useState({});
+  /* The text typed into the boxes an answer asks for, keyed by question
+     and then by option. Held beside `answers` rather than folded into
+     it: the flow reads `answers` to decide what comes next, and a
+     question whose answer changed shape would have to be understood by
+     enquiryFlow, missingAnswers and pathOf alike. */
+  const [details, setDetails] = useState({});
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(null);
 
@@ -364,6 +408,12 @@ export default function DeveloperPortal({ onSignOut, who }) {
          is still in flight would send an enquiry whose answer points
          at nothing. */
       if (current.Kind === "file") return !!a.path;
+      /* An answer that asks for more is not answered until it has it.
+         "Other - please specify" on its own says the standard did not
+         suit and nothing about what does. */
+      if (current.options?.length
+        && detailsMissing(current.options, a,
+          details[current.Enquiry_Question_ID]).length) return false;
       return true;
     })()
     : true;
@@ -414,10 +464,6 @@ export default function DeveloperPortal({ onSignOut, who }) {
         .filter((q) => answers[q.Enquiry_Question_ID] != null)
         .map((q) => {
           const a = answers[q.Enquiry_Question_ID];
-          const labels = (v) => q.options
-            .filter((o) => [].concat(v).map(String)
-              .includes(String(o.Enquiry_Option_ID)))
-            .map((o) => o.Label).join(", ");
           return {
             questionId: q.Enquiry_Question_ID,
             questionText: q.Question,
@@ -430,7 +476,12 @@ export default function DeveloperPortal({ onSignOut, who }) {
                enquiry up, and 2026-09-18 in a sentence reads as a
                reference number. Unambiguous either way, which
                dd/mm/yy would not be. */
-            answer: q.options?.length ? labels(a)
+            /* Each chosen label, with whatever was typed against it
+               written after it: "Other - please specify: 11 kVA three
+               phase". One sentence, because an answer has to read on
+               its own beside the question years from now. */
+            answer: q.options?.length
+              ? answerText(q.options, a, details[q.Enquiry_Question_ID])
               : q.Kind === "date" ? dateText(a)
                 /* A document's answer READS as its file name, so an
                    enquiry makes sense to whoever picks it up without
@@ -743,7 +794,7 @@ export default function DeveloperPortal({ onSignOut, who }) {
                         <p className="pt-quiet">{current.Help_Text}</p>
                       )}
                       {renderAnswer(current, answers, setAnswers,
-                        attachToAnswer, busy)}
+                        attachToAnswer, busy, details, setDetails)}
                     </div>
                   ) : (
                     <p className="pt-quiet">
@@ -1020,6 +1071,12 @@ const CSS = `
    this in one question is that the whole choice stays on screen. */
 .pt-check-off { opacity: .45; cursor: not-allowed; }
 .pt-check-off input { cursor: not-allowed; }
+/* The box an answer asks for. Indented under the choices so it reads as
+   belonging to the one above it, and labelled, because a bare box after
+   "Other" leaves somebody guessing what is wanted. */
+.pt-detail { display: flex; flex-direction: column; gap: 5px;
+  margin: 4px 0 2px 26px; max-width: 420px; }
+.pt-detail label { font-size: 12px; font-weight: 700; color: var(--muted); }
 .pt-sheet input[type="text"], .pt-sheet input:not([type]), .pt-sheet textarea,
 .pt-sheet input[type="number"], .pt-sheet input[type="date"] { width: 100%; }
 .pt-branch { margin: 22px 0 8px; font-size: 14px; font-weight: 700;

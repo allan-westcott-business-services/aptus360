@@ -176,6 +176,7 @@ export default function GisStylesAdmin() {
   const [lineTypes, setLineTypes] = useState([]);
   const [utilities, setUtilities] = useState([]);
   const [operators, setOperators] = useState([]);
+  const [voltageRatings, setVoltageRatings] = useState([]);
   const [selected, setSelected] = useState(null);
   /* `selected` is a FEATURE, because that is what the left-hand list
      holds now. `editId` says which of its styles is in the form — the
@@ -214,6 +215,11 @@ export default function GisStylesAdmin() {
         setUtilities(lk.utilities || []);
         setOperators([...new Map((lk.orgOperators || [])
           .map((o) => [o.Organisation_ID, o])).values()]);
+        /* LV, HV, HV+, EHV, from the table that owns them. Typed by
+           hand until now, which meant a rule could say "hv" or "11kV"
+           or anything else and match nothing — the catalogue is the
+           only thing that knows the spelling. */
+        setVoltageRatings(lk.voltageRatings || []);
       })
       .catch((e) => setError(e.message));
   }, [load]);
@@ -359,8 +365,8 @@ export default function GisStylesAdmin() {
   /* One object through all three: the field list, a field's name and the
      values it takes are the same question asked of the same feature. */
   const fieldCtx = useMemo(
-    () => ({ operators, statusField, group: groupKey }),
-    [operators, statusField, groupKey]);
+    () => ({ operators, statusField, group: groupKey, voltageRatings }),
+    [operators, statusField, groupKey, voltageRatings]);
 
   /* ── What this style is derived from ──
 

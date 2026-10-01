@@ -159,8 +159,37 @@ export const labelFor = (field, ctx = {}) =>
    The lists come in from the caller: this module is arranged to be
    testable without the canvas, and reaching into buildStatus.js for the
    statuses would drag the drawing code in behind it. */
-export function valuesFor(field, { operators = [], statusField = null } = {}) {
+export function valuesFor(field, {
+  operators = [], statusField = null, voltageRatings = [],
+} = {}) {
   if (field === VOLTAGE_FIELD) return VOLTAGES;
+  /* ── The cable's rating, from the table that owns it ──
+
+     "When setting a criteria where the criteria is the Voltage Rating,
+     this choice of voltage ratings should not be added with free text
+     but instead should be a dropdown box from the table
+     voltage_rating."
+
+     Typed by hand until now, which is a criterion nobody can get right
+     twice: "HV", "hv" and "11kV" are three rules, two of which match
+     nothing, and the screen said nothing about which spelling the
+     catalogue uses.
+
+     The RATING's own text is stored rather than its id. A style rule is
+     read by people — in the tab that names the variation, and in a
+     database somebody will query one day — and `Voltage = 2` says
+     nothing. The ids are a foreign key between catalogue tables; this
+     is not one of those.
+
+     Not the same question as the HV/LV a cable group is split by. That
+     one is which run this is, and comes from the line type; this is
+     what the cable laid in it is rated for, and a run at one voltage
+     may legitimately be laid in cable rated for a higher one. */
+  if (field === "Voltage") {
+    return voltageRatings.length
+      ? voltageRatings.map((v) => [String(v.Voltage_Rating), String(v.Voltage_Rating)])
+      : null;
+  }
   /* The stages THIS feature can be at, not all of them.
 
      A main's are planned / aslaid / live; the general list's are

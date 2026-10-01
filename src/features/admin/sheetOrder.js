@@ -85,6 +85,39 @@ export function moveToSection(groups, questionId, title) {
   return { groups: kept, writes: renumber(kept) };
 }
 
+/* ── Where a NEW question goes ──
+
+   At the end of its own section, not at the end of the sheet.
+
+   It used to take `(inOrder.length + 1) * 10` while being given the
+   section it was added to, so a question added to the first section
+   landed last by Sort_Order. That parts the two orders: the editor
+   lists questions grouped by section, the portal walks Sort_Order
+   alone, and a jump the editor offers as "later" then sends somebody
+   BACKWARDS — which reads as the form jumping back to the start.
+
+   Returns the Sort_Order to create it with, and the renumbering that
+   puts the gaps back to ten afterwards. Here rather than in the screen
+   because it is a rule about the data, and a rule written inside a
+   component is one no check can reach without a browser. */
+export function placeInSection(groups, title) {
+  const g = groups.find((x) => x.title === title);
+  const last = g?.questions?.[g.questions.length - 1] ?? null;
+  const Sort_Order = last ? Number(last.Sort_Order) + 5 : 5;
+
+  /* The renumber is computed as though it were already there, so the
+     caller can create it and then apply these. */
+  const after = groups.map((x) => (x.title === title
+    ? { ...x, questions: [...x.questions, { Enquiry_Question_ID: NEW, Sort_Order }] }
+    : x));
+  return { Sort_Order, writes: renumber(after), groups: after };
+}
+
+/* The placeholder id `placeInSection` uses for the question that does
+   not exist yet. The caller drops writes against it — the row is
+   created with the Sort_Order it returns. */
+export const NEW = -1;
+
 /* A section (a tab) dragged to a new place among the others.
 
    Sections have no order of their own: they appear in the order

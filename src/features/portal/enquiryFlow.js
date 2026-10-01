@@ -95,6 +95,50 @@ export function nextFrom(q, answers) {
   return null;
 }
 
+/* ── What comes after this question, resolved against the sheet ──
+
+   Reported: "after the third question it is jumping back to the first
+   question even though the workflow is not set to do this."
+
+   `nextFrom` answers what the FORM says — an id, "end", or nothing. It
+   cannot answer what the SHEET can do, because it is not given the
+   sheet. So the two callers each resolved it themselves and resolved it
+   differently: `pathOf` ended the walk on a target it could not find,
+   while the portal set its position to the id anyway and then fell back
+   to `sheet[0]` when it looked it up — which re-asked question one and
+   read as the form restarting.
+
+   A target that is not in the sheet is not a reason to restart and not
+   a reason to stop. It is a jump to a question that has since been
+   retired — the portal is served active questions only, and nothing
+   clears inbound pointers when one is stood down — so it means what an
+   absent pointer means: carry on in order.
+
+   One function, used by both, so they cannot disagree again. */
+export function afterQuestion(sheet = [], q = null, answers = {}) {
+  if (!q) return { end: true };
+  const step = nextFrom(q, answers);
+  if (step === "end") return { end: true };
+
+  if (step != null) {
+    const target = sheet.find(
+      (x) => String(x.Enquiry_Question_ID) === String(step));
+    if (target) return { question: target };
+    /* Named rather than swallowed: a form pointing at a question that
+       is no longer there is something somebody should fix, and the only
+       place it can be noticed is here. */
+    return { ...inOrderAfter(sheet, q), dangling: step };
+  }
+
+  return inOrderAfter(sheet, q);
+}
+
+function inOrderAfter(sheet, q) {
+  const i = sheet.indexOf(q);
+  const after = i >= 0 ? sheet[i + 1] ?? null : null;
+  return after ? { question: after } : { end: true };
+}
+
 /* The questions somebody has actually been walked through, in order,
    given the answers so far.
 
@@ -102,7 +146,6 @@ export function nextFrom(q, answers) {
    question whose answer is missing leads nowhere, because where it
    leads is what the answer decides. */
 export function pathOf(sheet = [], answers = {}) {
-  const byId = new Map(sheet.map((q) => [String(q.Enquiry_Question_ID), q]));
   const path = [];
   const seen = new Set();
 
@@ -120,12 +163,9 @@ export function pathOf(sheet = [], answers = {}) {
     const a = answerFor(answers, current);
     if (a == null || a === "") break;          // this is the one to answer
 
-    const next = nextFrom(current, answers);
-    if (next === "end") break;
-    if (next != null) { current = byId.get(String(next)) ?? null; continue; }
-
-    const i = sheet.indexOf(current);
-    current = i >= 0 ? sheet[i + 1] ?? null : null;
+    const step = afterQuestion(sheet, current, answers);
+    if (step.end) break;
+    current = step.question;
   }
 
   return path;

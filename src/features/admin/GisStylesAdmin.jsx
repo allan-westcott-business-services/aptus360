@@ -1417,9 +1417,35 @@ export default function GisStylesAdmin() {
 
 const CSS = `
 .gs-note { font-size: 12.5px; color: var(--muted); margin: -10px 0 14px; max-width: 82ch; }
-.gs-split { display: grid; grid-template-columns: 300px 1fr; gap: 18px; align-items: start; }
+/* ── Both panes end at the same place ──
+
+   "why is the feature panel not extending to the bottom of the screen
+   as the rule panel is?"
+
+   Because of two things here, and measuring said so: \`align-items:
+   start\` left the list hugging its own content instead of filling the
+   row, and \`max-height: 78vh\` capped it anyway. With a cable open the
+   rule pane came to 1211px and the list stopped at 722 — 489px of
+   nothing beside a tall form.
+
+   Stretching the list to match the rule pane was tried first and
+   measured: the gap closed, and the page grew from 1386px to 1493,
+   because an auto-sized grid row takes the TALLER item's content and
+   the list had become that item. \`min-height: 0\` does not prevent it —
+   that removes the automatic minimum, not the max-content contribution.
+   With a real catalogue of two dozen features the list would size the
+   page and the rule pane would stretch to follow it, which is the same
+   fault pointing the other way.
+
+   So the list is pinned instead. It reaches the bottom of the screen,
+   stays there while the rule pane scrolls past it, and cannot size the
+   row because its height is the viewport's rather than its content's —
+   which also means the feature you are styling is never scrolled off
+   the screen while you edit it. */
+.gs-split { display: grid; grid-template-columns: 300px 1fr; gap: 18px;
+  align-items: start; }
 .gs-list { border: 1px solid var(--border); border-radius: var(--radius); padding: 9px;
-  max-height: 78vh; overflow-y: auto; }
+  position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
 .gs-new { width: 100%; background: none; border: 1px dashed var(--border); border-radius: 6px;
   padding: 7px; margin-bottom: 8px; cursor: pointer; font: 600 12.5px inherit; color: var(--accent); }
 .gs-new:hover { background: var(--accent-light); }

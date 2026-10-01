@@ -1,5 +1,5 @@
 import { AREAS, firstViewOf } from "../../lib/navigation.js";
-import { visibleAreas, firstGrantedView } from "../../lib/access.js";
+import { areaVisible, firstGrantedView } from "../../lib/access.js";
 import { areaVars } from "../../lib/colour.js";
 
 /* The landing page: one square per area of the business.
@@ -18,15 +18,37 @@ import { areaVars } from "../../lib/colour.js";
 
 
 
+/* ── A section somebody has no access to is shown, in grey ──
+
+   Asked for: "I want to restrict access to the main 8 sections by
+   showing them as grey / monochrome buttons if they do not have access
+   to that section."
+
+   This replaced hiding them, which is what went in first. Hiding is the
+   tidier instinct and it is the worse one here: eight squares is the
+   shape of the business, and a person who sees five of them has no way
+   to tell whether Commercial does not apply to their job, has not been
+   built, or is simply not theirs — so they ask nobody and assume the
+   app is smaller than it is. A grey square says there IS a Commercial
+   section and it is not yours, which is a thing somebody can act on.
+
+   Grey by the same route the colour arrives: the square's colour is
+   data, fed in as custom properties, so a locked one is fed a neutral
+   instead of being filtered. `filter: grayscale()` would have left the
+   label at full strength and greyed the logo colours by accident. */
+
+/* The neutral a locked square is drawn in. The same slate the
+   not-built-yet placeholder badge falls back to, so "not for you" and
+   "not here yet" read as the same kind of absence rather than as two
+   different warnings. */
+const LOCKED_COLOUR = "#94a3b8";
+
 /* `keys` is the menu access this person has been granted, or null where
    access control is off — the unconfigured sample-data mode, which has
    no login and so nobody to grant anything to. See lib/access.js. */
 export default function HomePage({ onOpen, keys = null }) {
-  /* Only the sections somebody has something in. An area square that
-     opens on a refusal is worse than no square: it offers a part of the
-     business and then says no, and whoever pressed it reports a fault
-     rather than asking for access. */
-  const areas = keys ? visibleAreas(keys) : AREAS;
+  /* Every section, always. Which of them OPEN is the question. */
+  const open = (area) => (keys ? areaVisible(keys, area) : true);
   /* And the screen it opens on is the first one they HAVE, not the
      first one that exists — otherwise Design sends a draughtsman who
      only has the canvas to the projects list and a refusal. */
@@ -44,19 +66,37 @@ export default function HomePage({ onOpen, keys = null }) {
       </header>
 
       <div className="home-grid">
-        {areas.map((area) => (
+        {AREAS.map((area) => {
+          const allowed = open(area);
+          return (
             <button
               key={area.id}
               type="button"
-              className="area-sq"
+              className={allowed ? "area-sq" : "area-sq locked"}
+              /* `disabled` rather than an onClick that declines.
+                 A disabled button takes no click, no Enter and no tab
+                 stop, so there is one state to get right instead of a
+                 handler that has to remember to refuse — and the shell
+                 still refuses the view underneath either way. */
+              disabled={!allowed}
+              /* Said on hover as well as drawn, because grey alone is a
+                 convention somebody has to already know. */
+              title={allowed ? undefined
+                : `${area.label} — you have not been given access to this section`}
               /* The colour is per area and comes from data, so it cannot
                  live in the stylesheet. Everything else does. */
-              style={areaVars(area.colour)}
+              style={areaVars(allowed ? area.colour : LOCKED_COLOUR)}
               onClick={() => onOpen(openAt(area))}
             >
               <span className="area-name">{area.label}</span>
+              {/* Spelled out under the name on the locked ones. The
+                  grey carries it for anybody who knows the convention;
+                  this is for everybody else, and it is the difference
+                  between asking for access and reporting a fault. */}
+              {!allowed && <span className="area-locked">No access</span>}
             </button>
-          ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -86,9 +126,17 @@ const CSS = `
 /* The square. The outline is the identity of the area, so it is 2px and
    in full colour rather than a hairline that would read as a generic
    card border. */
+/* A column with a gap, so a locked square can carry "No access" under
+   its name; with one child it behaves exactly as it did. It also brings
+   this rule into line with the audience landing page, which has stacked
+   a name over a blurb all along — checkportallanding.mjs holds the two
+   squares to the same declarations, and the comment is out here rather
+   than inside the braces because that check reads the rule as text and
+   a comment in the middle of it counts as a difference. */
 .area-sq {
   position: relative; aspect-ratio: 1; min-height: 110px;
-  display: flex; align-items: center; justify-content: center;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px;
   text-align: center;
   padding: 14px;
   background: var(--white);
@@ -112,6 +160,40 @@ const CSS = `
 .area-name {
   font-size: 15.5px; font-weight: 700; line-height: 1.3;
   letter-spacing: -0.01em; text-wrap: balance;
+}
+
+/* ── A section this person has not been given ──
+
+   Drawn rather than hidden, so the shape of the business is the same
+   for everybody and a missing section reads as "not yours" instead of
+   "not there". The neutral comes in through the same custom properties
+   the colour does, so the border and the wash follow automatically;
+   what is left here is the flattening — no lift, no shadow, a lighter
+   label — and taking the hover and focus behaviour off, because a
+   square that lifts under the pointer is a square that invites a
+   press. */
+.area-sq.locked {
+  /* The 16% tint rather than the 6% wash the live squares hover to: a
+     faint grey fill is what reads as switched off, where near-white
+     reads as an ordinary square that has simply lost its colour. */
+  background: var(--sq-tint);
+  color: var(--muted);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+.area-sq.locked .area-name { font-weight: 600; opacity: .75; }
+/* :hover and :active are listed again because the rules above them set
+   a transform and a shadow, and a disabled button still receives hover
+   in every browser. */
+.area-sq.locked:hover, .area-sq.locked:active {
+  background: var(--sq-tint);
+  transform: none;
+  box-shadow: none;
+}
+
+.area-locked {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--muted); opacity: .85;
 }
 
 @media (max-width: 560px) {

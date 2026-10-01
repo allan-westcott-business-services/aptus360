@@ -64,9 +64,26 @@ export async function gatherFormData({ poc, projectId, lookups }) {
     projectRef: project?.Project_Ref ?? "",
     siteName: project?.Site_Name ?? "",
     siteAddress: project?.Site_Address ?? "",
-    postcode: project?.Post_Code ?? "",
-    easting: project?.Easting ?? "",
-    northing: project?.Northing ?? "",
+    /* ── The column names, as the Project table spells them ──
+
+       Reported: an ENW application asks for the eastings, northings and
+       post code, and the printed form came out blank in all three.
+
+       These read `Post_Code`, `Easting` and `Northing`. The table has
+       `Postcode`, `Eastings` and `Northings` — 0001 — and the endpoint
+       has been selecting those three correctly all along. So the data
+       arrived and three property reads missed it, every one of them by
+       a letter: an underscore that is not there and two plurals that
+       are.
+
+       Nothing failed. `project?.Easting` on a row without that key is
+       `undefined`, `?? ""` turns it into a blank, and a blank is
+       exactly what an unfilled form field looks like — so the form
+       printed, looked finished, and went to the operator with the site
+       location missing. */
+    postcode: project?.Postcode ?? "",
+    easting: project?.Eastings ?? "",
+    northing: project?.Northings ?? "",
 
     applicantName: applicant.Person_Name ?? "",
     applicantEmail: applicant.Email ?? "",

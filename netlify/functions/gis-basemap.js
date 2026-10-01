@@ -1,4 +1,5 @@
 import { supabase, json, fail, withAuth } from "./_supabase.js";
+import { denyUnlessMenu } from "./_access.js";
 
 const B = [
   "Basemap_ID","Project_ID","File_Name","Storage_Path","Image_Url",
@@ -13,11 +14,19 @@ const W = new Set(B.split(",").filter((x) => !["Basemap_ID", "Project_ID"].inclu
 const pick = (o) =>
   Object.fromEntries(Object.entries(o).filter(([k]) => W.has(k)).map(([k, v]) => [k, v === "" ? null : v]));
 
-export default withAuth(async function handler(req, context) {
+export default withAuth(async function handler(req, context, user) {
   const db = supabase();
   const projectId = context?.params?.projectId;
 
   try {
+    /* Placing, scaling and calibrating the basemap is drawing work, and
+       BasemapSetup lives inside the canvas. The read is left open for
+       the same reason gis.js leaves its read open. See _access.js. */
+    if (req.method !== "GET") {
+      const no = await denyUnlessMenu(user, "gis-canvas");
+      if (no) return no;
+    }
+
     if (req.method === "GET") {
       const { data, error } = await db.from("GIS_Basemap")
         .select(B).eq("Project_ID", projectId).maybeSingle();

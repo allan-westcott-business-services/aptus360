@@ -12,6 +12,7 @@
    body is a body: coordinates must be National Grid, and the size is
    capped so one bad file cannot fill a row. */
 import { supabase, json, fail, withAuth, whoIs } from "./_supabase.js";
+import { denyUnlessMenu } from "./_access.js";
 
 const O = [
   "Overlay_ID", "Project_ID", "Kind", "File_Name", "Linework",
@@ -41,6 +42,14 @@ export default withAuth(async function handler(req, context, user) {
   if (!Number.isFinite(projectId)) return json({ error: "Which project?" }, 400);
 
   try {
+    /* Overlays and the grid link are only ever added or moved from the
+       canvas, so a write wants the canvas grant. The read stays open —
+       see gis.js for why the drawing's reads are not gated. */
+    if (req.method !== "GET") {
+      const no = await denyUnlessMenu(user, "gis-canvas");
+      if (no) return no;
+    }
+
     if (req.method === "GET") {
       const [ov, ln] = await Promise.all([
         db.from("GIS_Overlay").select(O).eq("Project_ID", projectId).order("Overlay_ID"),

@@ -1,4 +1,5 @@
 import { supabase, currentUser, json, fail, withAuth } from "./_supabase.js";
+import { denyUnlessMenu } from "./_access.js";
 
 /* The undo journal: reading the history back, adding to it, and moving
    the pointer.
@@ -25,6 +26,15 @@ export default withAuth(async function handler(req, context) {
   const userId = user?.id ?? null;
 
   try {
+    /* The history itself is only ever written by the canvas. The GET is
+       left open for the same reason gis.js leaves its read open: it
+       costs nothing and nothing else is harmed by a screen that can
+       list what was undone. See _access.js. */
+    if (req.method !== "GET") {
+      const no = await denyUnlessMenu(user, "gis-canvas");
+      if (no) return no;
+    }
+
     if (req.method === "GET") {
       const q = db.from("GIS_Undo").select(C)
         .eq("Project_ID", projectId)

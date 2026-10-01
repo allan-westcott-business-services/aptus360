@@ -1,4 +1,5 @@
 import { supabase, json, fail, withAuth } from "./_supabase.js";
+import { denyUnlessMenu } from "./_access.js";
 
 /* Generic reference-data CRUD, driven by an allow-list.
 
@@ -281,7 +282,7 @@ const TABLES = {
 const nullEmpty = (o) =>
   Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v === "" ? null : v]));
 
-export default withAuth(async function handler(req, context) {
+export default withAuth(async function handler(req, context, user) {
   const table = context?.params?.table;
   const meta = TABLES[table];
   if (!meta) return json({ error: `Table "${table}" is not editable here.` }, 404);
@@ -291,6 +292,29 @@ export default withAuth(async function handler(req, context) {
   const id = url.searchParams.get("id");
 
   try {
+    /* ── The grant table guards itself ──
+
+       Menu access decides what a person may open, and it is edited
+       through this generic endpoint like any other admin table — so
+       without this, anybody with a session could grant themselves the
+       GIS Canvas by posting one row, and the whole arrangement would be
+       a suggestion. Writing the thing that decides access is itself an
+       admin act, so it takes the Admin grant.
+
+       Only this table, and only writes. The rest of the endpoint is
+       left exactly as it was: tightening forty reference tables at the
+       same time is a separate decision with a separate way of going
+       wrong, and it is in the handover as the next thing rather than
+       smuggled in here.
+
+       Reads are open because People & Roles has to show the current
+       ticks to whoever is looking at the screen, and the screen itself
+       is behind the Admin grant. */
+    if (table === "Person_Menu_Visible" && req.method !== "GET") {
+      const no = await denyUnlessMenu(user, "admin");
+      if (no) return no;
+    }
+
     if (req.method === "GET") {
       const { data, error } = await db.from(table).select("*").order(meta.order);
       if (error) throw error;

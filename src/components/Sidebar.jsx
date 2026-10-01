@@ -1,4 +1,5 @@
 import { findArea } from "../lib/navigation.js";
+import { grantedItems } from "../lib/access.js";
 import { alpha } from "../lib/colour.js";
 
 /* The menu for one area.
@@ -126,13 +127,23 @@ const SIDEBAR_CSS = `
 }
 `;
 
-export default function Sidebar({ view, onNavigate, onHome, collapsed, onToggle }) {
+export default function Sidebar({ view, keys = null, onNavigate, onHome, collapsed, onToggle }) {
   const area = findArea(view);
 
   /* No area means the landing page, which has no menu. The shell does
      not mount the sidebar there, so this is belt and braces against a
      remembered view from an older build resolving to nothing. */
   if (!area) return null;
+
+  /* What this person has been granted in this area, plus the screens
+     that are not built yet — those hold nothing, cannot be ticked in
+     People & Roles because it only offers built pages, and would
+     otherwise disappear from the app for everybody, quietly taking the
+     migration progress board with them. See lib/access.js.
+
+     `keys` null means access control is off, which is the unconfigured
+     sample-data mode and nothing else. */
+  const items = keys ? grantedItems(keys, area) : area.items;
 
   return (
     <>
@@ -158,7 +169,7 @@ export default function Sidebar({ view, onNavigate, onHome, collapsed, onToggle 
         </div>
 
         <nav className="sidebar-nav" aria-label={`${area.label} screens`}>
-          {area.items.map((item) => {
+          {items.map((item) => {
             const cls = [
               "nav-item",
               view === item.view ? "active" : "",

@@ -52,6 +52,7 @@ import {
   isHrView, hrModuleFor, hrViewFor,
   HOME_VIEW, ALL_VIEWS, findArea, isProjectView, PROJECT_VIEWS, projectsViewFor,
 } from "./lib/navigation.js";
+import { isGranted, allowedViews, hasAnyGrant } from "./lib/access.js";
 
 /* Placeholder for views not yet migrated. Keeping these visible rather than
    hiding them means the sidebar doubles as a progress board. */
@@ -77,6 +78,33 @@ function NotBuilt({ view }) {
         {item?.note && <p>{item.note}</p>}
         <p className="placeholder-progress">
           {builtCount()} of {totalCount()} screens migrated
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* A screen this person has not been granted.
+
+   Said plainly and with the way out on it. The alternative — rendering
+   nothing, or silently bouncing somebody to the landing page — reads as
+   a fault in the screen, and the person reports the GIS Canvas as
+   broken rather than asking for access to it. The screen is named for
+   the same reason: "you do not have access" with no subject is a
+   message somebody cannot act on. */
+function NoAccess({ view, onHome }) {
+  const item = findNavItem(view);
+  return (
+    <div className="card">
+      <div className="placeholder">
+        <h2>{item?.label ?? "That screen"}</h2>
+        <p>
+          You have not been given access to this screen. If you need it,
+          ask the office to grant it under Admin &rarr; People &amp; Roles
+          &rarr; Menu Access.
+        </p>
+        <p>
+          <button className="btn ghost" onClick={onHome}>All sections</button>
         </p>
       </div>
     </div>
@@ -110,19 +138,42 @@ function useBlockPageZoom() {
    placeholder, which is a real screen and a legitimate place to be. */
 const VIEWS = ALL_VIEWS;
 
-function Shell() {
+/* ── `keys` ──
+
+   The menu keys this person has been granted, from /api/access, or NULL
+   meaning access control is OFF — which happens in exactly one place,
+   the unconfigured sample-data mode below where there is no login at
+   all and so nobody to grant anything to.
+
+   Null is never the answer to a FAILED grant check. Gate refuses to
+   render rather than passing it, for the reason written against the
+   /portal/me call: a routing fault that falls through to "everything"
+   is an access fault. */
+function Shell({ keys = null }) {
   useBlockPageZoom();
+  /* Every view this person may be in. The remembered view is checked
+     against this rather than against every view the build has, which is
+     what makes a REVOKED grant take effect: the shell restores whatever
+     screen somebody was last on, so without it the canvas would go on
+     opening for them after the tick came off. */
+  const myViews = keys ? allowedViews(keys) : VIEWS;
   /* Where the user was. A reload took everyone to the projects list
      whatever they had open, which on a page that is slow to get back to
      is the whole navigation done again for the sake of pressing F5. */
-  const [view, setView] = useState(() => recallOneOf("view", VIEWS, HOME_VIEW));
+  const [view, setView] = useState(() => recallOneOf("view", myViews, HOME_VIEW));
   useEffect(() => remember("view", view), [view]);
 
   /* Somewhere else in the app has asked for the canvas — the outline
      design tab, wanting to show the design it is describing. The payload
      is left for the canvas to collect; all the shell has to do is put it
-     on screen. */
-  useEffect(() => onOpenGis(() => setView("gis-canvas")), []);
+     on screen.
+
+     Guarded, because this is a second way in: a project tab offering a
+     button to the drawing would otherwise open the canvas for somebody
+     who has not been granted it, with no menu item anywhere in sight. */
+  useEffect(() => onOpenGis(() => {
+    if (!keys || isGranted(keys, "gis-canvas")) setView("gis-canvas");
+  }), [keys]);
 
   /* The mouse wheel does not edit numbers.
 
@@ -162,9 +213,21 @@ function Shell() {
   const [collapsed, setCollapsed] = useState(false);
 
   let content;
+  /* ── One refusal in front of the whole chain ──
+
+     Every path that sets a view is guarded already: the menu offers
+     only what is granted, the remembered view is filtered against
+     `myViews`, and the canvas intent asks first. This is here anyway,
+     because each of those is a separate guard in a separate file and
+     the next way in will be written by somebody who has not read them.
+     A check in front of the renderer is the one that cannot be
+     forgotten. */
+  if (keys && !isGranted(keys, view)) {
+    content = <NoAccess view={view} onHome={() => setView(HOME_VIEW)} />;
+  }
   /* No card wrapper: the landing page is the whole screen, and a white
      panel behind eight white squares would put a border round nothing. */
-  if (view === HOME_VIEW) content = <HomePage onOpen={setView} />;
+  else if (view === HOME_VIEW) content = <HomePage onOpen={setView} keys={keys} />;
   /* One screen, opened from five sections. The area it was opened from
      decides which project tabs are offered — see Admin → Project Tabs. */
   else if (isProjectView(view)) {
@@ -225,6 +288,7 @@ function Shell() {
       {showSidebar && (
         <Sidebar
           view={view}
+          keys={keys}
           onNavigate={setView}
           onHome={() => setView(HOME_VIEW)}
           collapsed={collapsed}
@@ -309,6 +373,10 @@ function Gate() {
      visit it is state, which is all it needs to be. */
   const [audience, setAudience] = useState(null);
   const [who, setWho] = useState(null);
+  /* What this account may open, from /api/access. Null until answered.
+     See the note on Shell's `keys`: a failure must never read as
+     "everything". */
+  const [grants, setGrants] = useState(null);
 
   /* Who the ACCOUNT says this is. Asked once a session exists, and
      only then: it is the answer that routes, so nothing routes until
@@ -334,6 +402,21 @@ function Gate() {
       /* No "asking" flag any more: nothing reads it, and a state
          nobody reads is a state somebody will one day wire back into a
          render and blank the page with again. */
+    return () => { live = false; };
+  }, [session, authEnabled, field]);
+
+  /* And what they may open. Asked in the same breath as who they are,
+     and on the same terms: a failed answer is named, not guessed at,
+     because the two ways of guessing are both wrong — "everything" hands
+     the business to whoever happened to be signed in when the database
+     hiccuped, and "nothing" tells a draughtsman their access has been
+     taken away when it has not. */
+  useEffect(() => {
+    if (!session || !authEnabled || field) return undefined;
+    let live = true;
+    http.get("/access")
+      .then((r) => { if (live) setGrants({ keys: r?.keys ?? [], personId: r?.personId ?? null }); })
+      .catch((e) => { if (live) setGrants({ keys: null, failed: e.message }); });
     return () => { live = false; };
   }, [session, authEnabled, field]);
 
@@ -457,5 +540,63 @@ function Gate() {
     );
   }
 
-  return <Shell />;
+  /* ── Staff, and what they may open ──
+
+     Checked here rather than inside the shell because this is the last
+     point at which nothing has been rendered yet. A developer or a DNO
+     has already been answered above and never reaches this: their
+     portal has no menu and no grants to read.
+
+     Not yet answered: the same wait as /portal/me. Brief, and on the
+     same request round as the account check. */
+  if (!grants) return <div className="boot">Loading&hellip;</div>;
+
+  if (grants.failed) {
+    return (
+      <div className="boot">
+        We could not check which screens you are allowed to open, so we
+        have not opened the app. Please try again in a moment.
+        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>{grants.failed}</div>
+        <div style={{ marginTop: 14 }}>
+          <button className="btn ghost" onClick={() => window.location.reload()}>
+            Try again
+          </button>
+          <button className="btn ghost" onClick={() => { setAudience(null); signOut(); }}>
+            Sign out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /* Granted nothing at all. Said here rather than left to the landing
+     page to render as an empty grid, which looks like a page that
+     failed to load — and naming the screen somebody needs to be ticked
+     into is the difference between a message they can act on and one
+     they report as a fault. */
+  if (!hasAnyGrant(grants.keys)) {
+    return (
+      <div className="boot">
+        <p>
+          Your account has no screens yet, so there is nothing to open.
+        </p>
+        <p>
+          Ask the office to grant you access under Admin &rarr; People &amp;
+          Roles &rarr; Menu Access.
+          {grants.personId == null && (
+            <>
+              {" "}
+              Your sign-in address is not against anybody on the staff
+              list, which is the first thing to put right.
+            </>
+          )}
+        </p>
+        <button className="btn ghost" onClick={() => { setAudience(null); signOut(); }}>
+          Sign out
+        </button>
+      </div>
+    );
+  }
+
+  return <Shell keys={grants.keys} />;
 }

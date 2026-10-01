@@ -1,15 +1,21 @@
 import { supabase, json, fail, withAuth } from "./_supabase.js";
+import { denyUnlessMenu } from "./_access.js";
 
 /* Create any plots in the range that don't exist yet, then hand the whole
    range back ready to place. Its own path for the same reason as
    gis-plots: no ordering to get wrong. */
-export default withAuth(async function handler(req, context) {
+export default withAuth(async function handler(req, context, user) {
   const db = supabase();
   const projectId = context?.params?.projectId;
 
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   try {
+    /* Creates plot features on the drawing. Canvas work. See
+       _access.js. */
+    const no = await denyUnlessMenu(user, "gis-canvas");
+    if (no) return no;
+
     const {
       numbers = [], property_config_id = null, heat_source_id = null,
       developer_id = null,

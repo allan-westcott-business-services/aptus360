@@ -1,4 +1,5 @@
 import { AREAS, firstViewOf } from "../../lib/navigation.js";
+import { visibleAreas, firstGrantedView } from "../../lib/access.js";
 import { areaVars } from "../../lib/colour.js";
 
 /* The landing page: one square per area of the business.
@@ -17,7 +18,20 @@ import { areaVars } from "../../lib/colour.js";
 
 
 
-export default function HomePage({ onOpen }) {
+/* `keys` is the menu access this person has been granted, or null where
+   access control is off — the unconfigured sample-data mode, which has
+   no login and so nobody to grant anything to. See lib/access.js. */
+export default function HomePage({ onOpen, keys = null }) {
+  /* Only the sections somebody has something in. An area square that
+     opens on a refusal is worse than no square: it offers a part of the
+     business and then says no, and whoever pressed it reports a fault
+     rather than asking for access. */
+  const areas = keys ? visibleAreas(keys) : AREAS;
+  /* And the screen it opens on is the first one they HAVE, not the
+     first one that exists — otherwise Design sends a draughtsman who
+     only has the canvas to the projects list and a refusal. */
+  const openAt = (area) => (keys ? firstGrantedView(keys, area) : firstViewOf(area));
+
   return (
     <div className="home">
       <style>{CSS}</style>
@@ -30,7 +44,7 @@ export default function HomePage({ onOpen }) {
       </header>
 
       <div className="home-grid">
-        {AREAS.map((area) => (
+        {areas.map((area) => (
             <button
               key={area.id}
               type="button"
@@ -38,7 +52,7 @@ export default function HomePage({ onOpen }) {
               /* The colour is per area and comes from data, so it cannot
                  live in the stylesheet. Everything else does. */
               style={areaVars(area.colour)}
-              onClick={() => onOpen(firstViewOf(area))}
+              onClick={() => onOpen(openAt(area))}
             >
               <span className="area-name">{area.label}</span>
             </button>

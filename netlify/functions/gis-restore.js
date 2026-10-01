@@ -1,4 +1,5 @@
 import { supabase, json, fail, withAuth } from "./_supabase.js";
+import { denyUnlessMenu } from "./_access.js";
 
 /* Putting feature rows back exactly as they were.
 
@@ -23,12 +24,17 @@ const F = "Feature_ID,Project_ID,Layer_Key,Feature_Type,Geometry,Label,Attribute
 const W = new Set(F.split(","));
 const pick = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => W.has(k)));
 
-export default withAuth(async function handler(req, context) {
+export default withAuth(async function handler(req, context, user) {
   const db = supabase();
   const projectId = context?.params?.projectId;
 
   try {
     if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+
+    /* Puts deleted features back. Undo is part of drawing, so it wants
+       the same grant drawing does. See _access.js. */
+    const no = await denyUnlessMenu(user, "gis-canvas");
+    if (no) return no;
 
     const { rows = [] } = await req.json();
     if (!rows.length) return json({ restored: 0, rows: [] });

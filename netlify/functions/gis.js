@@ -1,16 +1,33 @@
 import { supabase, json, fail, withAuth } from "./_supabase.js";
+import { denyUnlessMenu } from "./_access.js";
 
 const F = "Feature_ID,Project_ID,Layer_Key,Feature_Type,Geometry,Label,Attributes,Plot_ID,Feature_Role";
 const W = new Set(F.split(",").filter((x) => x !== "Feature_ID"));
 const pick = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => W.has(k)));
 
-export default withAuth(async function handler(req, context) {
+export default withAuth(async function handler(req, context, user) {
   const db = supabase();
   const projectId = context?.params?.projectId;
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
 
   try {
+    /* ── Drawing needs the GIS Canvas grant; reading does not ──
+
+       Only the canvas writes features, so a write is somebody drawing
+       and the grant decides whether they may. The GET is deliberately
+       left open to any signed-in account, because it is not only the
+       canvas that reads a drawing: the call-offs list and the call-offs
+       tab both read the features to work out what is on site. Gating
+       the read would take the GIS Canvas tick away from Operations and
+       break two screens that have nothing to do with drawing.
+
+       See _access.js for why this is checked here at all when the menu
+       item is already hidden. */
+    if (req.method !== "GET") {
+      const no = await denyUnlessMenu(user, "gis-canvas");
+      if (no) return no;
+    }
     if (req.method === "GET") {
       const [f, l, t, st, su, ut, dr, df, lr] = await Promise.all([
         db.from("GIS_Feature").select(F).eq("Project_ID", projectId).order("Feature_ID"),

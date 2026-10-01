@@ -1,9 +1,10 @@
 import { supabase, json, fail, withAuth } from "./_supabase.js";
+import { denyUnlessMenu } from "./_access.js";
 
 /* Network operations. Each is a graph walk or a distance search across
    the whole drawing, so they run in the database rather than as a
    sequence of calls over HTTP. */
-export default withAuth(async function handler(req, context) {
+export default withAuth(async function handler(req, context, user) {
   const db = supabase();
   const projectId = context?.params?.projectId;
   const op = new URL(req.url).searchParams.get("op");
@@ -11,6 +12,11 @@ export default withAuth(async function handler(req, context) {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   try {
+    /* Placing joints, tracing and assigning meters all write to the
+       drawing, and only the canvas asks for them. See _access.js. */
+    const no = await denyUnlessMenu(user, "gis-canvas");
+    if (no) return no;
+
     if (op === "joints") {
       const { data, error } = await db.rpc("gis_place_joints", {
         p_project: Number(projectId), p_tol: 0.3,

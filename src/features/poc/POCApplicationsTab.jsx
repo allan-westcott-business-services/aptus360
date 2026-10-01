@@ -7,7 +7,7 @@ import { contingencyFor, contingencyNote } from "./contingency.js";
 import {
   parseIds, serialiseIds, claimedElsewhere, nrsClaimedElsewhere,
   plotChoices, toggleChoice, pruneChoices, selectionState, NONE,
-  rangeBetween, rangeNote, selectAll, nrsForUtility,
+  rangeBetween, rangeNote, selectAll, nrsForUtility, inPlotOrder,
 } from "./interimPlots.js";
 import { listNrs } from "../../api/nrs.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
@@ -125,6 +125,19 @@ export default function POCApplicationsTab({ projectId }) {
   const [openFilter, setOpenFilter] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [plots, setPlots] = useState([]);
+  /* ── In plot-number order, not the order they were created ──
+
+     The endpoint returns `Plot_ID` order and the pill shows
+     `Plot_Number`, so a site whose numbers were not entered in order
+     read 1, 4, 5 … 62, 2, 3, 20. `byPlotNumber` is the database's own
+     ordering rule from 0053.
+
+     Used for the RANGE and SELECT ALL as well as the pills, not only
+     for what is drawn: both of those work on the order the plots are
+     in, so ordering the display alone would leave "select range" taking
+     a run that looks arbitrary on screen — and "the order the plots are
+     shown" is what `rangeBetween` already says it follows. */
+  const orderedPlots = useMemo(() => inPlotOrder(plots), [plots]);
   /* The project's non-residential supplies.
 
      Their load is summed rather than typed, so the figure on a POC
@@ -472,7 +485,7 @@ export default function POCApplicationsTab({ projectId }) {
      when you change the utility is a consequence. */
   useEffect(() => {
     if (!isInterim || !f.Utility_ID) return;
-    const pr = pruneChoices(interimSelected, plots, { claimed: interimClaimed });
+    const pr = pruneChoices(interimSelected, orderedPlots, { claimed: interimClaimed });
     if (!pr.dropped) return;
     set("Interim_Plot_IDs")(serialiseIds(pr.ids));
     setError(`${pr.dropped} plot(s) removed \u2014 no longer available on this utility.`);
@@ -500,7 +513,7 @@ export default function POCApplicationsTab({ projectId }) {
         ));
         return;
       }
-      const r = rangeBetween(plots, rangeAnchor, id, {
+      const r = rangeBetween(orderedPlots, rangeAnchor, id, {
         claimed: interimClaimed, selected: interimSelected, target: interimTarget,
       });
       set("Interim_Plot_IDs")(serialiseIds(r.ids));
@@ -946,7 +959,7 @@ export default function POCApplicationsTab({ projectId }) {
                       </button>
                       <button type="button" className="rng"
                         onClick={() => {
-                          const r = selectAll(plots, {
+                          const r = selectAll(orderedPlots, {
                             claimed: interimClaimed, target: interimTarget,
                           });
                           set("Interim_Plot_IDs")(serialiseIds(r.ids) || NONE);
@@ -991,7 +1004,7 @@ export default function POCApplicationsTab({ projectId }) {
                 ) : (
                   <>
                     <div className="ipl-grid">
-                      {plotChoices(plots, interimSelected, {
+                      {plotChoices(orderedPlots, interimSelected, {
                         claimed: interimClaimed,
                         /* The cap does not lock chips while a range is
                            being picked: the far end of a range is often

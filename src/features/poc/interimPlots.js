@@ -150,6 +150,58 @@ export function claimedElsewhere(applications = [], { utilityId, exceptId, typeN
   return out;
 }
 
+/* ── The order plots read in ──
+
+   Reported: "when an Electric, Interim POC is selected, the Plot pills
+   are not showing in true numerical order." They were in `Plot_ID`
+   order — the order the endpoint returns and the order they were
+   created in — while the pill shows `Plot_Number`. On a site where the
+   numbers were not entered in order that reads as 1, 4, 5, … 62, 2, 3,
+   20, which is nobody's idea of a plot list.
+
+   ── Mirroring the rule, not inventing one ──
+
+   The database already answers this, in 0053 and again in 0059:
+
+       ORDER BY NULLIF(regexp_replace("Plot_Number", '\\D', '', 'g'), '')::bigint
+                  NULLS LAST,
+                "Plot_Number"
+
+   Digits only, compared as a number; anything with no digits in it goes
+   last; ties broken on the text as written. That handles `12` sorting
+   after `2` where a text sort puts it after `11`, and it keeps a plot
+   called `Plot A` from disappearing to the top.
+
+   Written to match that statement rather than to a second opinion about
+   what plot order means — two orderings of the same list is how a
+   screen and a report come to disagree about which plot is first.
+
+   `Plot_Number` is text in the schema, which is why the digits have to
+   be pulled out rather than the column simply compared. */
+const plotDigits = (p) => {
+  const digits = String(p?.Plot_Number ?? "").replace(/\D/g, "");
+  return digits === "" ? null : Number(digits);
+};
+
+export function byPlotNumber(a, b) {
+  const na = plotDigits(a);
+  const nb = plotDigits(b);
+  /* NULLS LAST. A plot with no number at all still has to sit
+     somewhere, and the end is where it cannot be mistaken for plot
+     zero. */
+  if (na == null && nb == null) {
+    return String(a?.Plot_Number ?? "").localeCompare(String(b?.Plot_Number ?? ""));
+  }
+  if (na == null) return 1;
+  if (nb == null) return -1;
+  if (na !== nb) return na - nb;
+  return String(a?.Plot_Number ?? "").localeCompare(String(b?.Plot_Number ?? ""));
+}
+
+/* The same list, in that order. A copy, because sorting the array the
+   caller holds in state would mutate it and React would not notice. */
+export const inPlotOrder = (plots = []) => [...plots].sort(byPlotNumber);
+
 /* What the panel should show for each plot.
 
    Returned as a plan rather than rendered, so the rules can be checked

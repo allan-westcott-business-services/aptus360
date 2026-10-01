@@ -13,7 +13,14 @@
    beats one naming the line type alone, whatever order they were
    entered in. */
 
-const WEIGHT = {
+import { derivedAttributes } from "./styleGroups.js";
+
+/* Exported because it is the list of what narrows a rule, and the
+   database's own idea of that — `gis_style_scope_uniq` — has fallen
+   behind it twice: Site was never in the index, and Conditions was not
+   added when 0240 arrived. Two rules the cascade tells apart could not
+   both be saved. The check reads this rather than a copy. */
+export const WEIGHT = {
   Organisation_ID: 32,
   Line_Type: 8,
   Feature_Role: 4,
@@ -159,12 +166,31 @@ export function styleScore(style) {
    layer, which is where 0051 put it — a feature doesn't carry one. */
 export function subjectOf(feature, layers = []) {
   const layer = layers.find((l) => l.Layer_Key === feature.Layer_Key);
+  const lineType = feature.Attributes?.Line_Type ?? null;
+  /* ── A line type's group, as something the feature carries ──
+
+     Four line types are one thing to style — an electric mains cable is
+     HV or LV, ours or the incumbent's, and somebody styling one has one
+     thing in mind. `styleGroups.js` says which, and says why there.
+
+     Derived rather than stored, so no drawing changes and no migration
+     runs: the cable still holds `elec_hv` and everything that reads a
+     line type goes on reading the same value.
+
+     Derived UNDER what the feature actually carries, never over it. A
+     derived key that shadowed a stored one would quietly rewrite every
+     rule anybody had written about the real attribute, and it would do
+     it to drawings nobody had touched. The keys are chosen not to
+     collide; this is what makes that true rather than intended. */
+  const derived = derivedAttributes(lineType);
   return {
     /* What the feature carries, for conditions to be asked of. The
        named fields below stay as they are: they are what the columns
        match on, and a condition naming one of them reads the same
        value through here. */
-    Attributes: feature.Attributes ?? {},
+    Attributes: derived
+      ? { ...derived, ...(feature.Attributes ?? {}) }
+      : (feature.Attributes ?? {}),
     Layer_Key: feature.Layer_Key ?? null,
     Line_Type: feature.Attributes?.Line_Type ?? null,
     Feature_Role: feature.Feature_Role ?? null,

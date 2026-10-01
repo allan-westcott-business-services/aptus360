@@ -33,6 +33,7 @@
    a rule back, and hoisting them out is its whole job. */
 
 import { CONDITION_FIELDS } from "../../lib/gisStyle.js";
+import { GROUP_FIELD, VOLTAGE_FIELD, VOLTAGES } from "../../lib/styleGroups.js";
 
 /* The criteria that are columns, and so are matched by `styleMatches`
    against something other than the feature's Attributes.
@@ -113,9 +114,40 @@ export const CRITERIA_FIELDS = [
    which stages the same feature can be at, because it is the same
    question. Passed in rather than imported so this file stays testable
    without the drawing code behind it. */
-export function criteriaFieldsFor({ statusField = null } = {}) {
-  if (!statusField) return CRITERIA_FIELDS;
-  return CRITERIA_FIELDS.map((c) => (c.field === statusField.key
+/* ── A group's own axis ──
+
+   "A mains cable can be HV or LV; Planned, Existing (incumbent), To be
+   Removed or Live; On Site or Off Site."
+
+   Stage is `Build_Status` and site is the `Site` column, both already
+   here. Voltage is the one thing neither of them can say, because the
+   drawing says it with the line type — `elec_hv` against `elec_main` —
+   and a group rule deliberately names no line type.
+
+   Offered only on a group, and only on groups that have it: a
+   criterion on the list for a feature it cannot be true of is a rule
+   somebody can write that matches nothing. */
+const VOLTAGE_CRITERION = {
+  field: VOLTAGE_FIELD,
+  label: "Voltage",
+  hint: "HV or LV, from the cable type",
+};
+
+/* Which criteria this FEATURE can be narrowed by.
+
+   `group` is the group key when a group is open and null otherwise.
+   Passed in rather than worked out here, for the reason the whole file
+   is arranged this way: this module stays testable without the drawing
+   code or the subject tree behind it. */
+export function criteriaFieldsFor({ statusField = null, group = null } = {}) {
+  const base = group ? [...CRITERIA_FIELDS, VOLTAGE_CRITERION] : CRITERIA_FIELDS;
+  /* The group's own condition is scope, not a criterion. It is written
+     by the save path and it is not somebody's to choose, remove or
+     point at another value — doing any of those turns the rule into one
+     about a different feature, or about nothing. */
+  const offered = base.filter((c) => c.field !== GROUP_FIELD);
+  if (!statusField) return offered;
+  return offered.map((c) => (c.field === statusField.key
     ? { ...c, label: statusField.label } : c));
 }
 
@@ -128,6 +160,7 @@ export const labelFor = (field, ctx = {}) =>
    testable without the canvas, and reaching into buildStatus.js for the
    statuses would drag the drawing code in behind it. */
 export function valuesFor(field, { operators = [], statusField = null } = {}) {
+  if (field === VOLTAGE_FIELD) return VOLTAGES;
   /* The stages THIS feature can be at, not all of them.
 
      A main's are planned / aslaid / live; the general list's are
@@ -173,6 +206,11 @@ export function toCriteria(row = {}) {
   }
   for (const c of Array.isArray(row.Conditions) ? row.Conditions : []) {
     if (!c) continue;
+    /* The group condition is what the rule is ABOUT. It is kept out of
+       the editable list the same way `Line_Type` is, and put back by
+       `fromCriteria` — a row somebody could point at another value is a
+       row that can silently restyle a different feature. */
+    if (c.field === GROUP_FIELD) continue;
     criteria.push({ field: String(c.field ?? ""), value: c.value ?? "" });
   }
   const draft = { ...row, Conditions: criteria };
@@ -190,15 +228,22 @@ export function toCriteria(row = {}) {
    A column named twice keeps the last one. Not reachable from the
    screen, which does not offer a field another row already uses, but
    defined rather than left to whichever way the loop happens to run. */
-export function fromCriteria(draft = {}) {
+export function fromCriteria(draft = {}, { group = null } = {}) {
   const out = { ...draft };
   for (const c of COLUMN_CRITERIA) out[c.field] = "";
 
   const conds = [];
+  /* First, so a rule's own scope reads first wherever the row is
+     printed. `toCriteria` took it out of the editable list; this is the
+     only thing that puts it back, and a group rule saved without it is
+     a rule about the whole electric layer — every service included. */
+  if (group) conds.push({ field: GROUP_FIELD, value: String(group) });
   for (const r of Array.isArray(draft.Conditions) ? draft.Conditions : []) {
     if (!r) continue;
     const field = String(r.field ?? "").trim();
     if (field === "") continue;
+    /* Never twice, however it got into the list. */
+    if (field === GROUP_FIELD) continue;
     if (isColumnField(field)) {
       out[field] = r.value ?? "";
       continue;

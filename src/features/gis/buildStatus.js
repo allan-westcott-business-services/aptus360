@@ -156,6 +156,63 @@ export function statusFieldFor(feature, lineTypes = []) {
   };
 }
 
+/* ── The stages a GROUP of line types can be at ──
+
+   "A mains cable can be ... Planned, Existing (incumbent), To be
+   Removed or Live."
+
+   All four, and they are four because a group spans line types that
+   each offer their own list: ours are planned / aslaid / live, the
+   incumbent's are existing / remove. A rule is written about the group,
+   so the stages it can name are every stage any member can be at.
+
+   The union and not a new list. Each entry keeps the key, label and
+   colour the member's own list gives it, so a criterion written here
+   matches what the drawing stores — which is the whole of the
+   `aslaid` / `asbuilt` fault that `statusesFor` exists to prevent, and
+   a fifth hand-written list would be the place to make it again.
+
+   As-Laid is in it. It was not in the report's four, but it is a stage
+   our cables genuinely reach and it gates whether one can go Live; a
+   list that omitted it would be a cable nobody could style between
+   laying it and energising it. */
+export function statusesForTypes(typeKeys = [], lineTypes = []) {
+  const seen = new Map();
+  for (const key of typeKeys) {
+    const feature = {
+      Feature_Type: "line",
+      Layer_Key: lineTypes.find((t) => t.Type_Key === key)?.Layer_Key ?? null,
+      Attributes: { Line_Type: key },
+    };
+    for (const s of statusesFor(feature, lineTypes)) {
+      if (!seen.has(s.key)) seen.set(s.key, s);
+    }
+  }
+  return [...seen.values()];
+}
+
+/* The status field for a group, named the way its members' editors name
+   it. Every member of a cable group is a main, so it is "Status" — but
+   asked rather than assumed, so a group of something else gets the word
+   its own editor uses. */
+export function statusFieldForTypes(typeKeys = [], lineTypes = []) {
+  const asFeature = (key) => ({
+    Feature_Type: "line",
+    Layer_Key: lineTypes.find((t) => t.Type_Key === key)?.Layer_Key ?? null,
+    Attributes: { Line_Type: key },
+  });
+  const named = typeKeys.every((k) => {
+    const f = asFeature(k);
+    return isMainFeature(f, lineTypes) || isServiceFeature(f, lineTypes)
+      || isExistingLineType(k);
+  });
+  return {
+    key: "Build_Status",
+    label: named ? "Status" : "Build status",
+    options: statusesForTypes(typeKeys, lineTypes),
+  };
+}
+
 export function statusesFor(feature, lineTypes = []) {
   /* Asked FIRST. An incumbent main is not matched by isMainFeature (its
      key does not end `_main`), but its trench is not matched by

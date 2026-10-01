@@ -7,7 +7,7 @@ import {
   toCriteria, fromCriteria, fieldOptions, valuesFor, isColumnField, changeField,
   preservedScope, labelFor, PRESERVED, OTHER,
 } from "./styleCriteria.js";
-import { statusFieldFor } from "../gis/buildStatus.js";
+import { statusFieldFor, statusFieldForTypes } from "../gis/buildStatus.js";
 import Banner from "../../components/Banner.jsx";
 import { listGisStyles, saveGisStyle, deleteGisStyle } from "../../api/gis.js";
 import { getLookups } from "../../api/lookups.js";
@@ -338,14 +338,29 @@ export default function GisStylesAdmin() {
     Attributes: subject.Line_Type ? { Line_Type: subject.Line_Type } : {},
   }) || null, [subject]);
 
-  const statusField = useMemo(
-    () => (asFeature ? statusFieldFor(asFeature, lineTypes) : null),
-    [asFeature, lineTypes],
-  );
+  /* The group this feature is, or null. One value, read by the criteria
+     list, the status list and the save path, so the three cannot
+     disagree about whether a group is open. */
+  const groupKey = subject?.kind === "group" ? subject.detail : null;
+
+  const statusField = useMemo(() => {
+    /* ── A group's stages are every stage any member can be at ──
+
+       Asked of the member TYPES rather than of one made-up feature. A
+       group spans our cables and the incumbent's, whose lists do not
+       overlap — planned / aslaid / live against existing / remove — so
+       describing the group as a single feature would offer whichever
+       list that one feature happened to land on and silently drop the
+       other two stages. "A mains cable can be Planned, Existing
+       (incumbent), To be Removed or Live" is all of them. */
+    if (groupKey) return statusFieldForTypes(subject?.members ?? [], lineTypes);
+    return asFeature ? statusFieldFor(asFeature, lineTypes) : null;
+  }, [groupKey, subject, asFeature, lineTypes]);
   /* One object through all three: the field list, a field's name and the
      values it takes are the same question asked of the same feature. */
   const fieldCtx = useMemo(
-    () => ({ operators, statusField }), [operators, statusField]);
+    () => ({ operators, statusField, group: groupKey }),
+    [operators, statusField, groupKey]);
 
   /* ── What this style is derived from ──
 
@@ -490,7 +505,11 @@ export default function GisStylesAdmin() {
      different one in. */
   const blankFor = (sub, kind) => asDraft({
     ...BLANK,
-    Layer_Key: sub?.kind === "layer" ? sub.Layer_Key : "",
+    /* A group carries the layer its members live on, which is the only
+       scope column a group rule has: the group condition does the rest
+       and `fromCriteria` writes it. */
+    Layer_Key: sub?.kind === "layer" || sub?.kind === "group"
+      ? (sub.Layer_Key ?? "") : "",
     Line_Type: sub?.Line_Type ?? "",
     Feature_Role: sub?.Feature_Role ?? "",
     Style_Name: kind === "variation"
@@ -549,7 +568,11 @@ export default function GisStylesAdmin() {
          thing that must not happen: conditions are matched against the
          feature's Attributes, which carry no Organisation_ID, so it
          would save cleanly, look right and match nothing. */
-      const { GIS_Style_ID, ...body } = fromCriteria(draft);
+      /* `groupKey` puts the group's own condition back on the rule. It
+         was kept out of the editable list so nobody could point it at
+         another value, and a group rule saved without it would be a
+         rule about the whole electric layer — every service included. */
+      const { GIS_Style_ID, ...body } = fromCriteria(draft, { group: groupKey });
       await saveGisStyle({
         ...body,
         Style_Name: body.Style_Name.trim(),
@@ -560,11 +583,35 @@ export default function GisStylesAdmin() {
     } catch (e) { setError(e.message); }
   }
 
+  /* Deleting the rule that is OPEN, which is `editId` and has not been
+     `selected` since the rebuild — `selected` became the feature key
+     ("lt:elec_hv"), and no style's id has ever equalled one. So the
+     button handed this `undefined` and the line below threw on
+     `row.Style_Name` instead of deleting anything: the screen's only
+     way to remove a rule, unreachable, while the rule went on styling
+     the drawing.
+
+     Guarded as well as fixed. A delete button that finds no row has
+     been handed the wrong id, and saying so beats throwing in a
+     handler nobody is catching. */
   async function remove(row) {
+    if (!row) {
+      setError("That rule could not be found, so nothing was deleted. "
+        + "Reload the screen and try again.");
+      return;
+    }
     if (!window.confirm(`Delete "${row.Style_Name}"? Objects it styled fall back to the rule beneath it.`)) return;
     try {
       await deleteGisStyle(row.GIS_Style_ID);
+      /* Back to the feature list rather than to the feature, which may
+         not survive the delete: a layer or a whole drawing is listed
+         only where a rule already names one, so removing the last rule
+         about it removes the thing from the list — and a right-hand
+         pane headed by a feature the left-hand list no longer offers is
+         a screen arguing with itself. Clearing both means the list is
+         what somebody sees next, refreshed. */
       setEditId(null);
+      setSelected(null);
       await load();
     } catch (e) { setError(e.message); }
   }
@@ -639,7 +686,11 @@ export default function GisStylesAdmin() {
         k,
         (k === "Feature_Role" && subject.Feature_Role)
           || (k === "Line_Type" && subject.Line_Type)
-          || (k === "Layer_Key" && subject.kind === "layer") ? "" : v,
+          /* A group's layer is which feature it is, exactly as a role's
+             column is on a role rule, so it is not reported as a limit
+             somebody might want to lift. */
+          || (k === "Layer_Key"
+            && (subject.kind === "layer" || subject.kind === "group")) ? "" : v,
       ])),
       { roleName, utilityName: utName },
     )
@@ -886,10 +937,13 @@ export default function GisStylesAdmin() {
                 <div>
                   <p className="gs-subject-h">{subject.label}</p>
                   <p className="gs-subject-d">
-                    {subject.kind === "lt" ? `Line type ${subject.detail}`
-                      : subject.kind === "role" ? `Point role ${subject.detail}`
-                        : subject.kind === "layer" ? `Every feature on the ${subject.detail} layer`
-                          : "Every feature on the drawing"}
+                    {subject.kind === "group"
+                      ? `${subject.members?.length ?? 0} cable types · `
+                        + `${(subject.members ?? []).join(", ")}`
+                      : subject.kind === "lt" ? `Line type ${subject.detail}`
+                        : subject.kind === "role" ? `Point role ${subject.detail}`
+                          : subject.kind === "layer" ? `Every feature on the ${subject.detail} layer`
+                            : "Every feature on the drawing"}
                     {subject.unlisted && " \u00b7 not in the current catalogue"}
                   </p>
                 </div>
@@ -927,6 +981,33 @@ export default function GisStylesAdmin() {
                   and the others are named rather than hidden, because a
                   rule this screen does not show is one nobody can edit
                   while it goes on styling the drawing. */}
+              {/* ── Rules about ONE cable type, which outrank all of this ──
+
+                  A rule naming `elec_hv` scores Line_Type = 8; a group
+                  default scores the layer plus the group condition = 5.
+                  So an older per-type rule beats the default somebody
+                  has just written here, and a screen that did not say
+                  so would be the screen the report is about: a style
+                  set, and the drawing ignoring it.
+
+                  Named, openable and deletable rather than hidden or
+                  quietly folded in, because clearing them is the only
+                  way to make this feature's default actually win. */}
+              {(subject.typeRules?.length ?? 0) > 0 && (
+                <p className="gs-hidden gs-outranks">
+                  <strong>Outranks everything below:</strong>{" "}
+                  {subject.typeRules.length === 1 ? "one rule names" : "these rules name"}
+                  {" "}a single cable type, which is a narrower claim than this
+                  feature and wins wherever they disagree.
+                  {subject.typeRules.map((r) => (
+                    <button key={r.GIS_Style_ID} className="btn ghost sm" type="button"
+                      onClick={() => openRule(r, isVariation(r) ? "variation" : "default")}>
+                      {r.Style_Name || r.Line_Type} ({r.Line_Type})
+                    </button>
+                  ))}
+                </p>
+              )}
+
               {subject.alsoDefault.length > 0 && (
                 <p className="gs-hidden">
                   <strong>Also applies with no criteria:</strong>{" "}
@@ -1304,7 +1385,8 @@ export default function GisStylesAdmin() {
                 <span className="gs-spacer" />
                 {!isNew && (
                   <button className="btn ghost danger"
-                    onClick={() => remove(rows.find((r) => r.GIS_Style_ID === selected))}>
+                    onClick={() => remove(rows.find(
+                      (r) => String(r.GIS_Style_ID) === String(editId)))}>
                     Delete
                   </button>
                 )}
@@ -1371,6 +1453,10 @@ const CSS = `
   font-size: 11.5px; color: var(--text); background: var(--bg);
   border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px;
   margin: 0 0 12px; }
+/* A rule that beats everything on this pane. Warmer than the plain
+   notice above, because it is not describing the rule being edited —
+   it is saying the rule being edited will lose. */
+.gs-outranks { border-color: #fcd34d; background: #fffbeb; }
 .gs-cond-eq { text-align: center; color: var(--muted); font-weight: 700; }
 .gs-cond-x { border: 1px solid var(--border); background: var(--white); border-radius: 5px;
   width: 26px; height: 26px; cursor: pointer; color: var(--muted); font-size: 15px;

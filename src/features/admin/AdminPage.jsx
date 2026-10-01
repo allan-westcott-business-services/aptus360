@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { ADMIN_TABLES } from "../../lib/adminTables.js";
+import { canAdminTab, firstAdminTab } from "../../lib/adminTabs.js";
 import { adminList } from "../../api/admin.js";
 import GenericTable from "./GenericTable.jsx";
 import PropertyConfigAdmin from "./PropertyConfigAdmin.jsx";
@@ -25,7 +26,12 @@ import AdminMenuAdmin from "./AdminMenuAdmin.jsx";
 
 /* Admin shell: a list of reference tables on the left, the editor on the
    right. Mirrors the original app's admin panel. */
-export default function AdminPage() {
+/* `keys` is this person's menu access, or null where access control is
+   off (the unconfigured sample-data mode). Admin is granted a tab at a
+   time — see src/lib/adminTabs.js — so this page shows the tabs they
+   hold and nothing else, and the endpoint behind each one checks the
+   same grant for itself. */
+export default function AdminPage({ keys = null }) {
   /* Headings are rows in the same list, so anything that walks it for a
      screen has to step over both kinds. */
   /* What appears in the menu.
@@ -105,9 +111,48 @@ export default function AdminPage() {
     return [...out, ...pinned];
   }, [arrangement]);
 
-  const first = menu.find(isScreen);
-  const [active, setActive] = useState(ADMIN_TABLES.find(isScreen).key);
-  const table = menu.find((t) => isScreen(t) && t.key === active) ?? first;
+  /* ── Only the tabs this person has ──
+
+     Applied after the arrangement above rather than inside it, so the
+     order somebody set in Menu Layout is the order they see, with the
+     tabs they do not hold simply absent. A heading left with nothing
+     under it goes too: "Utilities" above a gap reads as a screen that
+     failed to load rather than as one they were not given. */
+  const mine = useMemo(() => {
+    if (!keys) return menu;
+    const kept = menu.filter((t) => !isScreen(t) || canAdminTab(keys, t.key));
+    /* A heading is worth keeping only if a screen follows it before the
+       next heading does. */
+    return kept.filter((t, i) => {
+      if (isScreen(t)) return true;
+      for (let j = i + 1; j < kept.length; j += 1) {
+        if (isScreen(kept[j])) return true;
+        return false;
+      }
+      return false;
+    });
+  }, [menu, keys]);
+
+  const first = mine.find(isScreen);
+  const [active, setActive] = useState(() =>
+    (keys ? firstAdminTab(keys) : null) ?? ADMIN_TABLES.find(isScreen).key);
+  const table = mine.find((t) => isScreen(t) && t.key === active) ?? first;
+
+  /* Granted the screen and none of its tabs. Only reachable by holding
+     the plain `admin` key from before tabs existed, since a tab grant
+     is what puts Admin in the menu at all — said plainly rather than
+     drawn as an empty page with a menu beside it. */
+  if (!first) {
+    return (
+      <div className="placeholder">
+        <h2>Admin</h2>
+        <p>
+          You have not been given any Admin tabs. Ask for the ones you
+          need under Admin &rarr; People &amp; Roles &rarr; Menu Access.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="admin-shell">
@@ -128,7 +173,7 @@ export default function AdminPage() {
           a screen from one section to another is a cut and paste, not a
           restructure. */}
       <nav className="admin-nav">
-        {menu.map((t, i) =>
+        {mine.map((t, i) =>
           t.separator ? (
             <p className="admin-sep" key={`sep${i}`}>{t.label}</p>
           ) : t.group ? (

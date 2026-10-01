@@ -1,5 +1,6 @@
 import { supabase, json, fail, withAuth } from "./_supabase.js";
 import { denyUnlessMenu } from "./_access.js";
+import { ownerOfTable, adminKeyFor } from "./_adminOwners.js";
 
 /* Generic reference-data CRUD, driven by an allow-list.
 
@@ -292,26 +293,30 @@ export default withAuth(async function handler(req, context, user) {
   const id = url.searchParams.get("id");
 
   try {
-    /* ── The grant table guards itself ──
+    /* ── A write takes the grant for the tab that owns the table ──
 
-       Menu access decides what a person may open, and it is edited
-       through this generic endpoint like any other admin table — so
-       without this, anybody with a session could grant themselves the
-       GIS Canvas by posting one row, and the whole arrangement would be
-       a suggestion. Writing the thing that decides access is itself an
-       admin act, so it takes the Admin grant.
+       Admin is granted a tab at a time, and the Admin page shows only
+       the tabs somebody holds. That is markup: every one of these
+       tables is edited through this one endpoint, which asked for a
+       valid session and nothing else, so anybody signed in could write
+       the VAT rates or the status workflow with a single request.
 
-       Only this table, and only writes. The rest of the endpoint is
-       left exactly as it was: tightening forty reference tables at the
-       same time is a separate decision with a separate way of going
-       wrong, and it is in the handover as the next thing rather than
-       smuggled in here.
+       The map covers only the tables an Admin TAB writes. This endpoint
+       whitelists 158, and most belong to HR, vehicles, NCRs and
+       call-offs — gating those behind an Admin grant would refuse an HR
+       manager booking leave. A table with no owner is left exactly as
+       it was; see the handover for that wider hole.
 
-       Reads are open because People & Roles has to show the current
-       ticks to whoever is looking at the screen, and the screen itself
-       is behind the Admin grant. */
-    if (table === "Person_Menu_Visible" && req.method !== "GET") {
-      const no = await denyUnlessMenu(user, "admin");
+       `Person_Menu_Visible` is in the map under People & Roles, which
+       is the point: it decides what everybody may open, so writing it
+       is granted by the one tab that is meant to.
+
+       Reads stay open. A screen has to show what is there before
+       somebody can change it, and the screens are already behind their
+       own grants. */
+    const owner = req.method === "GET" ? null : ownerOfTable(table);
+    if (owner) {
+      const no = await denyUnlessMenu(user, adminKeyFor(owner));
       if (no) return no;
     }
 

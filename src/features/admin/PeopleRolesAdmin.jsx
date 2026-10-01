@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
 import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
 import { NAV_SECTIONS } from "../../lib/navigation.js";
+import { ADMIN_VIEW, ADMIN_PREFIX, adminGroups, adminKeyFor }
+  from "../../lib/adminTabs.js";
 
 /* People and roles, master-detail rather than a matrix.
 
@@ -215,10 +217,60 @@ export default function PeopleRolesAdmin() {
      round trips and ten chances to miss one. Written one row at a time
      because that is what the endpoint takes; the failure of one is
      reported rather than the rest being abandoned. */
+  /* Does this person hold this key?
+
+     Admin is the one special case, and it mirrors src/lib/access.js:
+     holding any `admin:` tab IS holding Admin, because a tab grant is
+     what puts the screen in the menu. Written here too rather than
+     imported, because this screen asks about a person who is not the
+     one signed in. */
+  const has = (personId, key) => menuVisible.some((x) =>
+    Number(x.Person_ID) === Number(personId) && x.Menu_Key === key)
+    || (key === ADMIN_VIEW && menuVisible.some((x) =>
+      Number(x.Person_ID) === Number(personId)
+      && String(x.Menu_Key).startsWith(ADMIN_PREFIX)));
+
+  /* Grant or revoke a list of keys in one go, which is what every
+     "Grant all" button on this tab does — a section, the whole of
+     Admin, or one of Admin's groups. One row at a time because the
+     admin endpoint writes one row at a time; the point of the button is
+     the decision, not the round trips. */
+  async function setKeys(personId, keys, grant, busyKey) {
+    setBusy(busyKey);
+    try {
+      const mine = menuVisible.filter((x) => Number(x.Person_ID) === Number(personId));
+      const added = [];
+      const removedIds = [];
+      for (const key of keys) {
+        const existing = mine.find((x) => x.Menu_Key === key);
+        if (grant && !existing) {
+          added.push(await adminCreate("Person_Menu_Visible", {
+            Person_ID: personId, Menu_Key: key,
+          }));
+        } else if (!grant && existing) {
+          await adminDelete("Person_Menu_Visible", existing.Person_Menu_Visible_ID);
+          removedIds.push(existing.Person_Menu_Visible_ID);
+        }
+      }
+      setMenuVisible((xs) => [
+        ...xs.filter((x) => !removedIds.includes(x.Person_Menu_Visible_ID)),
+        ...added,
+      ]);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(null); }
+  }
+
   async function toggleSection(personId, section, grant) {
     setBusy(`sec:${section.id}`);
     try {
-      const keys = section.items.filter((i) => i.built).map((i) => i.view);
+      /* Admin expands into its tabs: granting the section means
+         granting what the section contains, and what Admin contains is
+         forty-nine tabs rather than one screen. */
+      const keys = section.items.filter((i) => i.built).flatMap((i) =>
+        (i.view === ADMIN_VIEW
+          ? adminGroups().flatMap((g) => g.tabs.map((t) => adminKeyFor(t.key)))
+          : [i.view]));
       const mine = menuVisible.filter((x) => Number(x.Person_ID) === Number(personId));
       const added = [];
       const removedIds = [];
@@ -892,9 +944,8 @@ export default function PeopleRolesAdmin() {
                       {NAV_SECTIONS.map((sec) => {
                         const items = sec.items.filter((i) => i.built);
                         if (!items.length) return null;
-                        const on = items.filter((i) => menuVisible.some((x) =>
-                          Number(x.Person_ID) === Number(current.Person_ID)
-                          && x.Menu_Key === i.view)).length;
+                        const on = items.filter((i) =>
+                          has(current.Person_ID, i.view)).length;
                         return (
                           <div className="pr-menu-sec" key={sec.id}>
                             <div className="pr-menu-head">
@@ -912,9 +963,75 @@ export default function PeopleRolesAdmin() {
                               </button>
                             </div>
                             {items.map((i) => {
-                              const granted = menuVisible.some((x) =>
-                                Number(x.Person_ID) === Number(current.Person_ID)
-                                && x.Menu_Key === i.view);
+                              const granted = has(current.Person_ID, i.view);
+                              /* ── Admin is granted a tab at a time ──
+
+                                 One tick used to hand over all
+                                 forty-nine tabs, People & Roles and
+                                 Portal Accounts included — which is to
+                                 say, the ability to grant access and
+                                 the ability to create logins for people
+                                 outside the business. So Admin shows
+                                 its tabs instead of a tick, and the row
+                                 above them counts rather than
+                                 toggling. */
+                              if (i.view === ADMIN_VIEW) {
+                                const tabs = adminGroups();
+                                const all = tabs.flatMap((g) => g.tabs);
+                                const got = all.filter((t) =>
+                                  has(current.Person_ID, adminKeyFor(t.key))).length;
+                                return (
+                                  <div className="pr-admin" key={i.view}>
+                                    <div className="pr-admin-head">
+                                      <span className="pr-row-label">{i.label}</span>
+                                      <span className="pr-menu-count">
+                                        {got} of {all.length}
+                                      </span>
+                                      <button className="pr-menu-all"
+                                        disabled={busy === "admin:all"}
+                                        onClick={() => setKeys(current.Person_ID,
+                                          all.map((t) => adminKeyFor(t.key)),
+                                          got < all.length, "admin:all")}>
+                                        {got < all.length ? "Grant all" : "Revoke all"}
+                                      </button>
+                                    </div>
+                                    {tabs.map((g) => {
+                                      const mineOn = g.tabs.filter((t) =>
+                                        has(current.Person_ID, adminKeyFor(t.key))).length;
+                                      return (
+                                        <div className="pr-admin-grp" key={g.label}>
+                                          <div className="pr-admin-grp-head">
+                                            <strong>{g.label}</strong>
+                                            <button className="pr-menu-all"
+                                              disabled={busy === `admin:${g.label}`}
+                                              onClick={() => setKeys(current.Person_ID,
+                                                g.tabs.map((t) => adminKeyFor(t.key)),
+                                                mineOn < g.tabs.length, `admin:${g.label}`)}>
+                                              {mineOn < g.tabs.length ? "Grant all" : "Revoke all"}
+                                            </button>
+                                          </div>
+                                          {g.tabs.map((t) => {
+                                            const key = adminKeyFor(t.key);
+                                            const on2 = has(current.Person_ID, key);
+                                            return (
+                                              <button key={key}
+                                                className={on2 ? "pr-row on" : "pr-row"}
+                                                disabled={busy === `mv:${key}`}
+                                                aria-pressed={on2}
+                                                onClick={() => toggleMenu(current.Person_ID, key)}>
+                                                <span className={on2 ? "box on" : "box"}>
+                                                  {on2 ? "\u2713" : ""}
+                                                </span>
+                                                <span className="pr-row-label">{t.label}</span>
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              }
                               return (
                                 <button key={i.view}
                                   className={granted ? "pr-row on" : "pr-row"}
@@ -1115,6 +1232,23 @@ const CSS = `
   border-radius: 5px; cursor: pointer; font: 600 10px inherit; padding: 2px 8px;
   color: var(--accent); }
 .pr-menu-all:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── Admin's own tabs, nested under it ──
+
+   Indented and ruled down the left so forty-nine rows read as being
+   inside Admin rather than as more screens in the section. The rule is
+   what stops the eye losing the nesting halfway down a list this long,
+   and it is why this is not simply a flat list with longer labels. */
+.pr-admin { margin: 2px 0 6px; }
+.pr-admin-head { display: flex; align-items: center; gap: 8px;
+  padding: 4px 0 5px; }
+.pr-admin-head .pr-row-label { font-weight: 700; font-size: 12.5px; flex: 0 1 auto; }
+.pr-admin-grp { margin: 0 0 8px 10px; padding-left: 10px;
+  border-left: 2px solid var(--border); }
+.pr-admin-grp-head { display: flex; align-items: center; gap: 8px;
+  margin: 6px 0 3px; }
+.pr-admin-grp-head strong { font-size: 10.5px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em; }
 .pr-todo p:last-child { font-size: 12.5px; color: var(--muted); line-height: 1.65;
   margin: 6px 0 0; }
 .pr-sep { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); }

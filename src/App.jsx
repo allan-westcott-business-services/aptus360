@@ -233,7 +233,7 @@ function Shell({ keys = null }) {
   else if (isProjectView(view)) {
     content = <div className="card"><ProjectsPage areaKey={PROJECT_VIEWS[view]} /></div>;
   }
-  else if (view === "admin") content = <div className="card"><AdminPage /></div>;
+  else if (view === "admin") content = <div className="card"><AdminPage keys={keys} /></div>;
   else if (view === "plot-connections") content = <div className="card"><PlotConnectionsPage /></div>;
   else if (view === "gis-canvas") content = <div className="card"><GISCanvasPage /></div>;
   else if (view === "generate-av-invoices") content = <div className="card"><GenerateAvInvoices /></div>;

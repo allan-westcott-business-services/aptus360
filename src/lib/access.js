@@ -55,6 +55,7 @@
    part. */
 
 import { AREAS, HOME_VIEW, findArea } from "./navigation.js";
+import { ADMIN_VIEW, hasAnyAdminTab } from "./adminTabs.js";
 
 /* The grants as a set, from whatever the endpoint answered with.
 
@@ -82,6 +83,14 @@ export function isGranted(keys, view) {
   const item = area.items.find((i) => i.view === view);
   if (!item) return false;
 
+  /* Admin is granted a tab at a time (adminTabs.js), so holding any one
+     of them IS holding the screen. Two ticks for one decision would
+     fail silently: somebody grants Dig Rates, the Admin button does not
+     appear, and nothing on screen says the screen itself was the thing
+     that was missing. The plain `admin` key still counts, for anybody
+     holding it from before the tabs existed. */
+  if (view === ADMIN_VIEW && hasAnyAdminTab(keys)) return true;
+
   if (item.built) return grantSet(keys).has(String(view));
   /* A placeholder, which holds nothing — allowed as far as the area it
      belongs to is. */
@@ -95,8 +104,11 @@ export function isGranted(keys, view) {
    showing. Built items only — an area of nothing but coming-soon
    screens is not somewhere to be sent. */
 export function areaVisible(keys, area) {
-  const set = grantSet(keys);
-  return area.items.some((i) => i.built && set.has(String(i.view)));
+  /* Through isGranted rather than straight at the set, so a section
+     whose only granted screen is Admin — held as `admin:Dig_Rate`
+     rather than as `admin` — still lights up. Safe from looping: the
+     built branch of isGranted never comes back here. */
+  return area.items.some((i) => i.built && isGranted(keys, i.view));
 }
 
 /* The areas to offer on the landing page. */
@@ -105,8 +117,7 @@ export const visibleAreas = (keys) => AREAS.filter((a) => areaVisible(keys, a));
 /* The items to show in an area's menu: what is granted, plus the
    placeholders, in the order navigation.js lists them. */
 export function grantedItems(keys, area) {
-  const set = grantSet(keys);
-  return area.items.filter((i) => (i.built ? set.has(String(i.view)) : true));
+  return area.items.filter((i) => (i.built ? isGranted(keys, i.view) : true));
 }
 
 /* Where an area opens. The first screen in it the person actually has,
@@ -115,8 +126,7 @@ export function grantedItems(keys, area) {
    refusal. Null if they have nothing here, which the landing page is
    already not offering. */
 export function firstGrantedView(keys, area) {
-  const set = grantSet(keys);
-  const item = area.items.find((i) => i.built && set.has(String(i.view)));
+  const item = area.items.find((i) => i.built && isGranted(keys, i.view));
   return item ? item.view : null;
 }
 

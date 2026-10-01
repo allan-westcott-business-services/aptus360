@@ -3,6 +3,7 @@ import { listNrs } from "../../../api/nrs.js";
 import { listPlots } from "../../../api/plots.js";
 import { adminList } from "../../../api/admin.js";
 import { loadSplit } from "./loadSplit.js";
+import { heatingSummary } from "./heating.js";
 
 /* Everything the operator forms need, gathered once.
 
@@ -47,6 +48,12 @@ export async function gatherFormData({ poc, projectId, lookups }) {
      imports the API layer and cannot be loaded outside Vite. */
   const { commercialCount, commercialKva, domesticCount, domesticKva, totalKva } =
     loadSplit({ poc, nrsRows, plotRows });
+
+  /* The heating boxes and the heat pump row. Classified by the heat
+     source's NAME, the way 0097 and `takesHeatPump` both do it, because
+     the ids are whatever the lookup was seeded with and somebody can
+     rename one in Admin. */
+  const heating = heatingSummary({ plots: plotRows, heatSources: lookups?.heatSources || [] });
 
   return {
     pocId: poc.POC_Application_ID,
@@ -110,7 +117,17 @@ export async function gatherFormData({ poc, projectId, lookups }) {
     siteContactPhone: "",
     siteContactEmail: "",
     connectionDate: "",
-    heatPumpCount: "",
+
+    /* How the properties are heated, rolled up from the plots. This was
+       `heatPumpCount: ""` and sat in the block above for fields "this
+       database has nowhere to keep" — it has somewhere: every plot
+       carries a heat source, and the ones on a pump carry a model. */
+    heatElectric: heating.electric,
+    heatGas: heating.gas,
+    heatOther: heating.other,
+    heatPumpCount: heating.heatPumpCount,
+    heatPumpKva: heating.heatPumpKva,
+    heatingNote: heating.note,
 
     connectionType: poc.Connection_Type ?? "",
     applicationDate: poc.Application_Date ?? "",

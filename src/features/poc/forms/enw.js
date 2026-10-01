@@ -256,13 +256,30 @@ function page1(d) {
 }
 
 /* ── Page 2: heating, motors, vehicle chargers ──────────────────── */
+/* The heating boxes and the pump row are rolled up from the plots by
+   `heating.js` — every plot carries a heat source, and the ones on a
+   pump carry a model. More than one box can be ticked, because a site
+   part gas and part air source is an ordinary thing.
+
+   The pump row fills the first two cells only. How often a unit starts
+   in an hour and what it draws starting are facts about the equipment
+   that no part of this database holds, and the form says itself what to
+   do about that: "if you don't know the full details, tell us what you
+   know in the comments section". A blank line somebody fills in beats a
+   plausible figure nobody checks.
+
+   Note that these comments live OUTSIDE the template literal below. A
+   JSX-style brace-and-star comment inside it is not a comment at all —
+   this file builds HTML by interpolation, not JSX, so the words would
+   print on the form. Written out rather than shown, because the closing
+   sequence would end this comment here. */
 function page2(d) {
   const blank = (n) => Array.from({ length: n }, () => `<td>${field("")}</td>`).join("");
   return `<div class="pg">
     <div class="grn">Heating type</div>
     <div class="ln"><span class="l">How will your property/ies be heated?</span>
-      <span class="v">${box(false, "Electric")}&nbsp;&nbsp;${box(false, "Gas")}
-      &nbsp;&nbsp;${box(false, "Other")}</span></div>
+      <span class="v">${box(!!d.heatElectric, "Electric")}&nbsp;&nbsp;${box(!!d.heatGas, "Gas")}
+      &nbsp;&nbsp;${box(!!d.heatOther, "Other")}</span></div>
     <div class="note" style="font-weight:400;">(i.e. oil, off peak we storage,
       instantaneous wet central heating, etc)</div>
 
@@ -282,7 +299,8 @@ function page2(d) {
         <th>Starting<br>Current</th></tr></thead>
       <tbody>
         <tr><td>Air/Ground Source Heat Pump</td>
-          <td>${field(d.heatPumpCount)}</td>${blank(3)}</tr>
+          <td>${field(d.heatPumpCount)}</td>
+          <td>${field(d.heatPumpKva)}</td>${blank(2)}</tr>
       </tbody>
     </table>
     <div class="note">If you are installing Heat Pumps you will need to complete the

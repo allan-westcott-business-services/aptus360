@@ -239,8 +239,9 @@ function page1(d) {
       <thead><tr><th style="width:26%"></th><th style="width:20%">Number of<br>Connections</th>
         <th style="width:20%">Load (kVA)</th><th>Comments</th></tr></thead>
       <tbody>
-        <tr><td>Commercial</td><td class="v">${field(d.commercialCount)}</td>
-          <td class="v">${field(d.commercialKva)}</td><td>${field("")}</td></tr>
+        <tr><td>Non-Residential Supplies</td><td class="v">${field(d.commercialCount)}</td>
+          <td class="v">${field(d.commercialKva)}</td>
+          <td>${field(d.commercialNote)}</td></tr>
         <tr><td>Domestic</td><td class="v">${field(d.domesticCount)}</td>
           <td class="v">${field(d.domesticKva)}</td><td>${field("")}</td></tr>
         <tr class="tot"><td>TOTAL</td><td class="v">${field(d.totalConnections)}</td>

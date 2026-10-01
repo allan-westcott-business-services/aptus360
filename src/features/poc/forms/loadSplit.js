@@ -45,7 +45,44 @@
 
 import { nrsForUtility, parseIds } from "../interimPlots.js";
 
-export function loadSplit({ poc = {}, nrsRows = [], plotRows = [] } = {}) {
+/* ── What the supplies ARE, for the Comments column ──
+
+   Asked for: "add the number and type of NRS in the Comments field",
+   with the example "1 x Fiber Cabinet, 1 x Temporary Building Supply".
+
+   By the SUB-TYPE's label, not by `Supply_Ref`. The reference is a
+   site shorthand — the ones on this project read "TBS" and "Fibre
+   cabinet" — and a network operator reading "2 x TBS" has to ask what
+   that is. The sub-type is the thing's name.
+
+   Grouped and counted rather than listed one per line: five identical
+   feeder pillars are "5 x Feeder pillar", and a column sized for one
+   line of comment is not where a schedule belongs.
+
+   A supply with no sub-type set falls back to what somebody typed about
+   it, and then to a plain word. Something has to name it: a count that
+   silently omits a supply makes the comment disagree with the Number of
+   Connections beside it. */
+export function suppliesByType(rows = [], subTypes = []) {
+  const labelOf = (r) => {
+    const sub = subTypes.find(
+      (s) => String(s.NRS_Sub_Type_ID) === String(r?.NRS_Sub_Type_ID));
+    return sub?.Label || r?.Description || r?.Supply_Ref || "Supply";
+  };
+
+  /* First-seen order, so the comment reads in the order the supplies
+     were entered rather than in whatever order a Map happens to give. */
+  const counts = new Map();
+  for (const r of rows) {
+    const label = labelOf(r);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return [...counts].map(([label, n]) => `${n} x ${label}`).join(", ");
+}
+
+export function loadSplit({
+  poc = {}, nrsRows = [], plotRows = [], nrsSubTypes = [],
+} = {}) {
   /* The same two rules the POC screen narrows by, imported rather than
      copied: which supplies take this utility, and which ids an interim
      application named. A form that counted them differently from the
@@ -69,6 +106,9 @@ export function loadSplit({ poc = {}, nrsRows = [], plotRows = [] } = {}) {
   return {
     commercialCount: onThisApplication.length,
     commercialKva,
+    /* Only the supplies actually on this application, so the comment
+       cannot name one the count beside it does not include. */
+    commercialNote: suppliesByType(onThisApplication, nrsSubTypes),
     domesticCount: poc.Plot_Count ?? plotRows.length ?? "",
     domesticKva,
     /* The parts as they are stored, and the total as their sum. Blank

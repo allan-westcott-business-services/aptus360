@@ -46,8 +46,10 @@ export async function gatherFormData({ poc, projectId, lookups }) {
      they come to, and how that adds up with the domestic figure. The
      rules are in loadSplit.js, where a check can reach them — this file
      imports the API layer and cannot be loaded outside Vite. */
-  const { commercialCount, commercialKva, domesticCount, domesticKva, totalKva } =
-    loadSplit({ poc, nrsRows, plotRows });
+  const {
+    commercialCount, commercialKva, commercialNote, domesticCount, domesticKva, totalKva,
+  } =
+    loadSplit({ poc, nrsRows, plotRows, nrsSubTypes: lookups?.nrsSubTypes || [] });
 
   /* The heating boxes and the heat pump row. Classified by the heat
      source's NAME, the way 0097 and `takesHeatPump` both do it, because
@@ -99,6 +101,10 @@ export async function gatherFormData({ poc, projectId, lookups }) {
     domesticCount,
     domesticKva,
     commercialCount: commercialCount || "",
+    /* "1 x Fibre cabinet, 1 x Temporary building supply" — what the
+       supplies on this application are, for the form's Comments
+       column. */
+    commercialNote,
     commercialKva: commercialKva || "",
     totalKva,
     totalConnections:

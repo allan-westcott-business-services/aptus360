@@ -138,6 +138,61 @@ export function drawnBounds(features = []) {
     w: maxX - minX, h: maxY - minY };
 }
 
+/* How far the background plan reaches, in metres of ground.
+
+   ── Why this exists ──
+
+   The zoom floor is worked out from the drawing's own extents, so you
+   cannot zoom out past the point where your work fills the window.
+   That was right as far as it went and wrong in the case people
+   actually hit: it counted only the FEATURES.
+
+   Drop a site plan in, draw one trench, and the floor is set by the
+   trench. On drawing 35 that is a single 50 m run spanning 41 m by 29 m,
+   which in a normal window is a floor of about 26 pixels per metre — the
+   widest possible view is some 54 metres across, and the plan you are
+   working from cannot be seen.
+
+   The plan is part of the drawing. It is positioned at Origin_X,
+   Origin_Y and is as big as its pixels times Metres_Per_Pixel.
+
+   ── Rotation is ignored ──
+
+   A rotated plan sweeps a larger box than this returns. Left alone: it
+   is at most a plan whose corners sit slightly outside the view at the
+   furthest zoom, where the alternative is trigonometry in a function
+   whose only job is to stop somebody being trapped. */
+export function backdropBounds(basemap, size) {
+  const mpp = Number(basemap?.Metres_Per_Pixel);
+  if (!basemap || !Number.isFinite(mpp) || mpp <= 0) return null;
+  const w = Number(size?.width);
+  const h = Number(size?.height);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  const minX = Number(basemap.Origin_X) || 0;
+  const minY = Number(basemap.Origin_Y) || 0;
+  const maxX = minX + w * mpp;
+  const maxY = minY + h * mpp;
+  return { minX, minY, maxX, maxY,
+    centre: [(minX + maxX) / 2, (minY + maxY) / 2],
+    w: maxX - minX, h: maxY - minY };
+}
+
+/* Two extents as one. Either may be missing — a drawing with no plan
+   behind it, or a plan with nothing drawn on it yet, and the second is
+   the case that matters most: before anything is drawn there is no
+   feature to derive a floor from at all. */
+export function unionBounds(a, b) {
+  if (!a) return b || null;
+  if (!b) return a;
+  const minX = Math.min(a.minX, b.minX);
+  const minY = Math.min(a.minY, b.minY);
+  const maxX = Math.max(a.maxX, b.maxX);
+  const maxY = Math.max(a.maxY, b.maxY);
+  return { minX, minY, maxX, maxY,
+    centre: [(minX + maxX) / 2, (minY + maxY) / 2],
+    w: maxX - minX, h: maxY - minY };
+}
+
 /* The scale that fits the work on the sheet, rounded UP to one of the
    standard ones.
 

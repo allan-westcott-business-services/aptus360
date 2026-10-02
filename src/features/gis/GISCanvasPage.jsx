@@ -145,7 +145,7 @@ import {
   msdbLoad,
 } from "./msdb.js";
 import { HV_LINE_TYPES } from "./hvRing.js";
-import { drawnBounds } from "./printSheet.js";
+import { drawnBounds, backdropBounds, unionBounds } from "./printSheet.js";
 import { savePdf, printPdf } from "./printPdf.js";
 import { inLightingView } from "./lightingView.js";
 import { utilityMenuPress, utilityTint } from "./utilityMenu.js";
@@ -10642,21 +10642,40 @@ export default function GISCanvasPage() {
      in it, or none, the extents say nothing useful, and a limit derived
      from nothing would lock somebody at whatever zoom they happened to
      be at. */
+  /* ── What the drawing covers: the work AND the plan behind it ──
+
+     The features alone were not enough. Reported: a drawing with one
+     50 m trench on it could not be zoomed out past about 54 metres
+     across, because the trench was the whole of the extent as far as
+     this was concerned — and the site plan it was drawn over could not
+     be seen at all.
+
+     The plan is part of the drawing. Including it also fixes the case
+     before anything is drawn, where there were no features to derive a
+     floor from and the fallback locked the zoom wherever it stood. */
+  const sheetBounds = useCallback(() => unionBounds(
+    drawnBounds(features),
+    backdropBounds(basemap, isPdfMap ? pdf.size
+      : (bgImage ? { width: bgImage.naturalWidth, height: bgImage.naturalHeight } : null)),
+  ), [features, basemap, isPdfMap, pdf.size, bgImage]);
+
   const fitScale = useCallback(() => {
     const wrap = wrapRef.current;
-    const b = drawnBounds(features);
+    const b = sheetBounds();
     if (!wrap || !b || b.w <= 0 || b.h <= 0) return 0.05;
     const r = wrap.getBoundingClientRect();
     if (!r.width || !r.height) return 0.05;
     const fit = Math.min(r.width / (b.w * 1.08), r.height / (b.h * 1.08));
     return Math.max(MIN_SCALE, Math.min(MAX_SCALE, fit));
-  }, [features]);
+  }, [sheetBounds]);
 
   /* Everything on screen, at the closest zoom that shows all of it. The
      one gesture that always gets somebody back. */
   const zoomToExtent = useCallback(() => {
     const wrap = wrapRef.current;
-    const b = drawnBounds(features);
+    /* The same extent the floor uses, or the button and the wheel would
+       disagree about where the edge of the drawing is. */
+    const b = sheetBounds();
     if (!wrap || !b) return;
     const r = wrap.getBoundingClientRect();
     const s = fitScale();
@@ -10665,7 +10684,7 @@ export default function GISCanvasPage() {
       x: r.width / 2 - b.centre[0] * s,
       y: r.height / 2 - b.centre[1] * s,
     });
-  }, [features, fitScale]);
+  }, [sheetBounds, fitScale]);
 
   /* Registered natively with passive:false — React's onWheel is passive,
      so preventDefault there is ignored and a trackpad pinch zooms the
@@ -28476,7 +28495,10 @@ export default function GISCanvasPage() {
       {bomOpen && projectId && (
         <BomModal
           projectId={projectId}
-          projectName={project?.Project_Name ?? project?.Project_Ref}
+          /* `Project_Name` is not a column, so this has always
+             resolved to the ref. Said plainly rather than left as a
+             dead first term that reads as the intended value. */
+          projectName={project?.Project_Ref}
           /* Dig and lay time, worked out here because the model that
              produces it lives here. gis_bom counts what is drawn; the
              hours follow from how big the trench is, which is

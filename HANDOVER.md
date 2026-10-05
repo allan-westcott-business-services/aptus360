@@ -11228,3 +11228,52 @@ plus generic table editors.
      and 256 - is what made this run at all: it confirmed 0233 had run,
      so log_project_changes no longer names a dropped column. Without
      that the import could not have inserted a single row.
+
+260. **The tenders, run end to end — and a status gap that would have
+     flattened 3,773 projects.**
+
+     Loaded as three SQL parts (1.6 MB is too much for one paste; 574 KB
+     each matches the contract loader that worked). 5,454 rows, 5,454
+     distinct ids.
+
+     **Part 1 is better than it was before the organisations existed.**
+     With customers migrated, the site+customer route works properly:
+
+       no contract - becomes its own project    3,789
+       same site and customer                   1,540
+       tender reference on the contract           112
+       AMBIGUOUS - several projects match          13
+
+     1,652 merge against the 1,159 measured when customers were not yet
+     in. The 13 ambiguous are listed by name and matched to nothing.
+
+     **Part 2: 1,159 projects filled in from their tender, 1,140 now
+     carrying a real received date** instead of the 1900-01-01 stand-in.
+
+     **Part 3 failed the same way the contracts did** - 523 tenders
+     carry no Tender_Status_ID and Project_Status_ID is NOT NULL. Fixed
+     the same way: COALESCE to the first TENDER-stage status by
+     Sort_Order, because these are tenders.
+
+     **But then it ran, and every one of the 3,773 got that fallback** -
+     "tender_status" has no rows in Legacy_Lookup_Map at all. The
+     namespace is separate from the contract 'status' kind, which is
+     good design and means the contract mapping did nothing for these.
+     13 distinct tender statuses, with id 2 alone covering 3,297 of
+     5,454.
+
+     So part 3 must not run until the tender statuses are mapped, or
+     3,773 projects arrive on one status. Parts 1 and 2 are safe now;
+     part 2 never touches a status.
+
+     **Totals with the whole chain run: 5,727 projects** - 1,926 from
+     contracts, 1,159 of those merged with a tender, 3,773 tender-only,
+     plus the 28 that were already there. Zero duplicate references.
+     Matches the 5,699 measured in September.
+
+     **And the test harness, finally built properly.** Three runs failed
+     one missing column at a time - Tender_Base_Points, the points
+     columns, the Tender-stage statuses - so the Project table is now
+     generated from projects.js's own PROJECT_COLUMNS, all 50 of them,
+     plus the NOT NULLs and constraints read off pg_constraint. Guessing
+     a column at a time is what made those three runs fail.

@@ -217,8 +217,23 @@ SELECT
   NULLIF(btrim(a."Date_Sent"), '')::date,
   NULLIF(btrim(a."Secured_Date"), '')::date,
   NULLIF(btrim(a."Status_Changed_Date"), '')::date,
-  (SELECT lm."New_ID" FROM "Legacy_Lookup_Map" lm
-    WHERE lm."Kind" = 'tender_status' AND lm."Legacy_ID" = btrim(a."Tender_Status_ID")),
+  /* ── Project_Status_ID is NOT NULL, and 523 tenders have no status ──
+     The same fault the contract import had, in the other file:
+       ERROR: 23502: null value in column "Project_Status_ID"
+     523 of the 5,454 carry no Tender_Status_ID at all, so the lookup
+     finds nothing and the insert is refused.
+     Falls back to the first TENDER-stage status by Sort_Order - these
+     are tenders, so a tender status, not the contract default the other
+     file uses. Chosen by order rather than by name so it follows the
+     board. The Notes say so, because a default nobody is told about is
+     a figure somebody will later believe. */
+  COALESCE(
+    (SELECT lm."New_ID" FROM "Legacy_Lookup_Map" lm
+      WHERE lm."Kind" = 'tender_status' AND lm."Legacy_ID" = btrim(a."Tender_Status_ID")),
+    (SELECT ps."Project_Status_ID" FROM "Project_Status" ps
+      WHERE ps."Stage" = 'Tender'
+      ORDER BY ps."Sort_Order"
+      LIMIT 1)),
   (SELECT lm."New_ID" FROM "Legacy_Lookup_Map" lm
     WHERE lm."Kind" = 'region' AND lm."Legacy_ID" = btrim(a."Region_ID")),
   NULLIF(btrim(a."Sub_Region_ID"), '')::bigint,

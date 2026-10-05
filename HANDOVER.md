@@ -10916,3 +10916,65 @@ plus generic table editors.
      code goes on the customer role's `Reference`, which is where
      0249's resolution reads it; two homes for one value is how they
      drift apart.
+
+254. **A ten-customer trial, and it found two faults in 253 within
+     minutes.** "Can a small import of just 10 records be done first" —
+     yes, and it earned its keep immediately. Both faults were real, in
+     the FULL import, and only visible because ten rows are few enough
+     to read every one.
+
+     **Fault 1: a claimed organisation arrived with no address.** 2.1
+     refuses to overwrite a maintained address, which is right. But the
+     three organisations in the trial that match something already here
+     — Taylor Wimpey, Countryside, Rowland — had EMPTY addresses, so
+     there was nothing to protect and nothing arrived either. Now 2.1b
+     fills on COALESCE: a value somebody set is untouchable, a NULL is
+     filled from the head office.
+
+     **Fault 2: and no Audacia code.** Rowland Homes came out with no
+     code although its Customer_Ref is ROW01. It already held a
+     customer role, so 2.3's guard correctly skipped it — and that
+     role's Reference was empty. Reference is exactly what 0249's
+     fallback reads, so those contracts would have resolved nothing.
+     Now 2.1c fills an empty Reference. After the fix the trial shows
+     TAY06, COU07 and ROW01 where it showed three dashes.
+
+     **Then running it twice found a third.** 2.1b reported UPDATE 2 on
+     a second run: its condition asked "is any column null", which
+     stays true for the two whose head office has no postcode either,
+     so it rewrote the same values and reported a change that had not
+     happened. Guarded per column on the SOURCE being non-null, and a
+     second run is now silent.
+
+     **And the undo had a NULL trap.** `"Notes" NOT LIKE '%trial.'` is
+     NULL — not true — when Notes is NULL, and the claimed
+     organisations have no Notes. So the un-claim matched none of the
+     very rows it exists for: it reported UPDATE 0 and left
+     Legacy_Customer_ID set, which would make a later full import treat
+     them as already done and skip them. COALESCE round it, and the
+     main import's undo carries the same fix — it used IS DISTINCT
+     FROM, which happens to work on NULL, so it was right by luck of a
+     different operator rather than by design.
+
+     **The ten were chosen, not taken off the top.** Persimmon (16
+     branches), Taylow Wimpey (12, and a name match), Bellway (8, no
+     code at all, two branches sharing a name), Countryside (6, a
+     match), BDW (6, named "Redrow - ...", only 3 with a town), Story
+     (3, and 77 contracts behind it — the most of any customer), then
+     Rowland, Eccleston and R.P Tyson on one branch each, and customer
+     4, whose name is the "DO NOT TENDER FOR" warning and whose branch
+     has no address. Three of the ten match, so both paths run.
+
+     Verified: baseline 419/0/422/0 → trial 426/55/429/7 → undo →
+     419/0/422/0 exactly, nothing left claimed. Trial, undo and then
+     the full import on top still gives 509/623/509.
+
+     **A fourth weak assertion of my own, same shape as the other
+     two.** The address-fill test matched if ANY of the four columns was
+     guarded, so mutating only Town left three matches and it passed.
+     It counts all four now. That is three times in two sessions that
+     "does the shape appear" has passed a mutation — the lesson is to
+     count, not to match.
+
+     Eight more mutations, all caught. Suite 190 of 214, the same 24
+     failures main has on its own.

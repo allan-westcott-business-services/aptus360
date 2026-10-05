@@ -124,6 +124,63 @@ UPDATE "Organisation" o
    AND r.verdict = 'matches one already here by name'
    AND o."Legacy_Customer_ID" IS NULL;
 
+-- 2.1b Fill in what those ones are MISSING, and only that.
+--
+-- Found by the ten-customer trial, which is what a trial is for. The
+-- three claimed organisations in it came out with no town and no
+-- county: 2.1 refuses to overwrite a maintained address, and their
+-- addresses were empty, so there was nothing to protect and nothing
+-- arrived either.
+--
+-- COALESCE on every column, so a value somebody has set is untouchable
+-- and only a NULL is filled. The head office's address, as in 2.2.
+UPDATE "Organisation" o
+   SET "Address_1" = COALESCE(o."Address_1", h.address_1),
+       "Town"      = COALESCE(o."Town",      h.town),
+       "County"    = COALESCE(o."County",    h.county),
+       "Postcode"  = COALESCE(o."Postcode",  h.postcode)
+  FROM "Legacy_Organisation_Resolved" r
+  LEFT JOIN LATERAL (
+    SELECT b.address_1, b.town, b.county, b.postcode
+      FROM "Legacy_Branch_Resolved" b
+     WHERE b.legacy_customer_id = r.legacy_id
+     ORDER BY b.is_head_office DESC, b.legacy_branch_id
+     LIMIT 1
+  ) h ON true
+ WHERE o."Organisation_ID" = r.organisation_id
+   AND o."Legacy_Customer_ID" = r.legacy_id
+   /* Only where there is something to put in. Asking merely "is any
+      column null" fired again on a second run for the two whose head
+      office has no postcode either: it rewrote the same values and
+      reported UPDATE 2, which reads as a change when nothing changed.
+      Found by running it twice. */
+   AND ((o."Address_1" IS NULL AND h.address_1 IS NOT NULL)
+     OR (o."Town"      IS NULL AND h.town      IS NOT NULL)
+     OR (o."County"    IS NULL AND h.county    IS NOT NULL)
+     OR (o."Postcode"  IS NULL AND h.postcode  IS NOT NULL));
+
+-- 2.1c And give an existing customer role its Audacia code, where it
+--      has none.
+--
+-- The same trial finding. Rowland Homes came out with no code although
+-- its Customer_Ref is ROW01: it already held a customer role, so 2.3's
+-- guard correctly skipped it, and that role's Reference was empty.
+--
+-- Reference is the column 0249's resolution falls back to when the
+-- legacy keys are absent, so an empty one costs those contracts their
+-- match. Only filled where empty - a reference somebody has typed is
+-- theirs.
+UPDATE "Organisation_Role" ro
+   SET "Reference" = NULLIF(btrim(COALESCE(c."Customer_Ref", '')), '')
+  FROM "Organisation" o, "Legacy_Customer_Import" c
+ WHERE ro."Organisation_ID" = o."Organisation_ID"
+   AND o."Legacy_Customer_ID" = NULLIF(btrim(c."Customer_ID"), '')::bigint
+   AND ro."Organisation_Type_ID" = (SELECT t."Organisation_Type_ID"
+                                      FROM "Organisation_Type" t
+                                     WHERE t."Type_Key" = 'customer')
+   AND btrim(COALESCE(ro."Reference", '')) = ''
+   AND btrim(COALESCE(c."Customer_Ref", '')) <> '';
+
 -- 2.2 Create the ones that are not here.
 --
 -- ── The address comes from the head office ──
@@ -325,10 +382,21 @@ SELECT
 -- The 13 claimed organisations are NOT deleted - they were here first.
 -- The first statement only un-claims them.
 --
+-- Matched on the Notes this import writes, with COALESCE around it: the
+-- claimed organisations have no Notes, and NULL IS DISTINCT FROM 'x' is
+-- true, so the original form here would have un-claimed the right rows
+-- by luck of a different operator. The trial's version used NOT LIKE
+-- and silently matched nothing. Spelled out rather than relying on
+-- either.
+--
 -- UPDATE "Organisation" SET "Legacy_Customer_ID" = NULL
 --  WHERE "Legacy_Customer_ID" IS NOT NULL
---    AND "Notes" IS DISTINCT FROM 'Imported from the original app''s Customer '
---                              || "Legacy_Customer_ID" || '.';
+--    AND COALESCE("Notes", '') NOT LIKE 'Imported from the original app%';
+--
+-- Note what this does NOT undo: 2.1b and 2.1c filled in an address and
+-- a role reference where they were empty. Nothing records which were
+-- null beforehand, so they stay - and nothing was overwritten to put
+-- them there.
 --
 -- DELETE FROM "Organisation_Contact" oc
 --  USING "Organisation_Branch" b

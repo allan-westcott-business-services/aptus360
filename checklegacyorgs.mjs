@@ -276,6 +276,89 @@ const colsOf = (s) => s.slice(0, s.indexOf(")") + 1);
   }
 }
 
+// ─── 8. The ten-customer trial, and the two faults it found ───
+//
+// Asked for before the full import: "can a small import of just 10
+// records be done first". It earned its keep twice over - both of the
+// following were real faults in the FULL import that only showed up
+// when ten rows were small enough to read.
+{
+  const trialRaw = src("./trial_import_10_customers.sql");
+  const trial = code("./trial_import_10_customers.sql");
+
+  /* The ten are named once, in a view, so changing them changes the
+     whole trial rather than four statements out of five. */
+  if (!/CREATE OR REPLACE VIEW "Trial_Ten_Customers"/.test(trial)) {
+    fail("the trial does not name its ten customers in one view, so the list "
+      + "has to be kept in step by hand across every statement");
+  }
+  const ids = (trial.match(/'\d+'/g) || []).length;
+  if (ids < 10) {
+    fail(`the trial's view names ${ids} ids where it should name ten`);
+  }
+
+  /* Fault 1: a claimed organisation got no address. 2.1 refuses to
+     overwrite, and theirs were empty, so nothing arrived either. */
+  for (const [file, s] of [["the import", sql], ["the trial", trial]]) {
+    if (!/"Town"\s*=\s*COALESCE\(o\."Town"/.test(s)) {
+      fail(`${file} does not fill in a claimed organisation's missing address, `
+        + `so the three that match come out with no town or county`);
+    }
+    /* And the fill must only fire when there is something to put in,
+       or a second run reports a change that did not happen. */
+    /* All four columns, counted. Asking whether the shape appears at
+       all is satisfied by one survivor - mutating only the Town line
+       left address_1, county and postcode matching, and the test passed
+       a fill that would fire on an empty source for Town. The same
+       weakness as the Type_Key assertion above, found the same way. */
+    const guarded = ["address_1", "town", "county", "postcode"]
+      .filter((c) => new RegExp(`IS NULL AND h\\.${c}\\s+IS NOT NULL`).test(s));
+    if (guarded.length < 4) {
+      fail(`${file}'s address fill is guarded on ${guarded.length} of 4 columns `
+        + `(${guarded.join(", ") || "none"}) - an unguarded one fires when the `
+        + `source is empty, so a second run reports rows updated when nothing `
+        + `changed`);
+    }
+    /* Fault 2: an existing customer role kept an empty Reference, which
+       is what 0249's code fallback reads. */
+    if (!/UPDATE "Organisation_Role"[\s\S]{0,600}"Reference" = /.test(s)) {
+      fail(`${file} does not give an existing customer role its Audacia code, `
+        + `so a claimed organisation resolves nothing by code`);
+    }
+  }
+
+  /* The undo's NULL trap. NULL NOT LIKE 'x' is NULL, not true, so an
+     un-claim written without COALESCE matches none of the very rows it
+     exists for - it reported UPDATE 0 and left Legacy_Customer_ID set,
+     which would make a later full import skip them as already done. */
+  for (const [file, s] of [["the import", sqlRaw], ["the trial", trialRaw]]) {
+    const unclaim = s.slice(s.indexOf('UPDATE "Organisation" SET "Legacy_Customer_ID" = NULL'));
+    if (!unclaim) { fail(`${file} has no un-claim in its undo`); continue; }
+    const stmtEnd = unclaim.indexOf(";");
+    const body = stmtEnd < 0 ? unclaim : unclaim.slice(0, stmtEnd);
+    if (!/COALESCE\("Notes", ''\)/.test(body)) {
+      fail(`${file}'s undo tests Notes without COALESCE - NULL NOT LIKE is NULL, `
+        + `so it un-claims none of the rows that have no Notes`);
+    }
+  }
+
+  /* And it has to be reversible at all, in the right order: contacts
+     before branches before roles before organisations. */
+  const order = ["Organisation_Contact", "Organisation_Branch",
+    "Organisation_Role", 'Organisation" WHERE'];
+  let at = -1;
+  for (const t of order) {
+    const i = trialRaw.indexOf(`DELETE FROM "${t}`, Math.max(at, trialRaw.indexOf("PART 4")));
+    if (i < 0) { fail(`the trial's undo does not delete from ${t}`); break; }
+    if (i < at) {
+      fail(`the trial's undo deletes ${t} out of order - a parent before its `
+        + `children leaves rows pointing at nothing`);
+      break;
+    }
+    at = i;
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The customers become organisations with a customer role, their branches "
     + "and their contacts; the 13 already here are claimed without being "

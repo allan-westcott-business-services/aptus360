@@ -451,24 +451,16 @@ END $$;
 --  AFTERWARDS — the tender file
 -- ════════════════════════════════════════════════════════════════════
 --
--- Load it into the same staging table with Source = 'tender', then the
--- question is which tenders are already here as contracts. The old
--- system linked them by Tender_Reference; this finds the overlap:
+-- NOT into this staging table. This section used to say to load it here
+-- with Source = 'tender', which predates 0252: the tender export has a
+-- table of its own, "Legacy_Tender_Import", because the two files do
+-- not share a column list. Nothing has read Source = 'tender' since.
+-- Follow the old instruction and 5,454 tender rows land among the
+-- contracts, where this import would try to make projects out of them.
 --
---   SELECT i."Tender_ID", i."Site_Name", p."Project_Ref", p."Site_Name"
---     FROM "Legacy_Project_Import" i
---     JOIN "Project" p ON p."Tender_Ref" = btrim(i."Tender_Reference")
---    WHERE i."Source" = 'tender'
---      AND COALESCE(btrim(i."Tender_Reference"), '') <> '';
---
--- Those get their Legacy_Tender_ID set rather than a second project:
---
---   UPDATE "Project" p SET "Legacy_Tender_ID" = NULLIF(btrim(i."Tender_ID"), '')::bigint
---     FROM "Legacy_Project_Import" i
---    WHERE i."Source" = 'tender'
---      AND p."Tender_Ref" = btrim(i."Tender_Reference")
---      AND p."Legacy_Tender_ID" IS NULL;
---
--- and the rest are imported by the same part 2, with Legacy_Tender_ID in
--- place of Legacy_Contract_ID. Send the tender file and I will write
--- that half against its actual columns rather than against a guess.
+-- The whole of that work is import_legacy_tenders.sql, which does more
+-- than the sketch that used to sit here: it matches a tender to the
+-- contract it became on three routes - the reference, a plot naming
+-- both, and site name with customer - and merges 1,159 of the 5,454
+-- rather than creating a second project. Run it after this file.
+

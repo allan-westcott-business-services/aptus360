@@ -6,6 +6,14 @@ const COLS = [
   "Service_Card_Submission_Date","Meter_Card_Submission_Date","Pack_Status_ID","Visit_Outcome",
   "IDNO_ID","Reference","AV_Value","AV_Invoice_Number","AV_Invoiced_Date","Self_Lay_Provider","Notes",
   "Dead_Jointed_Date","Visit_Outcome_ID","Team_ID",
+  /* When the service was planned to be jointed onto the main, and when
+     it was (0250). Listed here or they are neither saved nor returned —
+     recurring fault 4, and the symptom is a date that silently will not
+     stick rather than an error. */
+  "Planned_Jointing_Date","Actual_Jointing_Date",
+  /* Which connection in the original app this came from. What makes the
+     import re-runnable, and the only way to trace one back. */
+  "Legacy_Plot_Utility_ID",
 ].join(",");
 
 const WRITABLE = new Set(COLS.split(",").filter((c) => c !== "Plot_Utility_ID"));

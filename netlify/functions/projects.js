@@ -32,6 +32,21 @@ const PROJECT_COLUMNS = [
   "Tender_Base_Points", "Tender_Total_Points", "Manual_Base_Points",
   "Total_Design_Points", "Points_Breakdown",
   "Manual_Total_Points", "Points_Note",
+  /* ── From the original app (0247) ──
+
+     Tender_Quote_Value is what the whole job was quoted at. It is NOT
+     the per-utility money on Project_Scope and must not be summed with
+     it. Listed here or the field arrives undefined and the box on the
+     Details form opens empty on a project that has one — recurring
+     fault 4, and the symptom is silence rather than an error.
+
+     The two legacy ids are what the import writes so a project can be
+     traced back, and so the tender file can recognise a site the
+     contract file already created. */
+  "Tender_Quote_Value", "Legacy_Contract_ID", "Legacy_Tender_ID",
+  /* And who the customer was over there (0249), kept so a project can
+     be attached automatically once the customers are migrated. */
+  "Legacy_Customer_ID", "Legacy_Branch_ID",
 ].join(",");
 
 const SCOPE_COLUMNS = [

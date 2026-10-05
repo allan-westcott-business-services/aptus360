@@ -40,6 +40,21 @@ const COLS = [
   { key: "scsub",   label: "SC submitted", width: 128, type: "date", raw: (r) => r.Service_Card_Submission_Date },
   { key: "mcsub",   label: "MC submitted", width: 128, type: "date", raw: (r) => r.Meter_Card_Submission_Date },
   { key: "laid",    label: "As laid",    width: 128, type: "date", raw: (r) => r.As_Laid_Date },
+  /* ── Jointing, off by default ──
+
+     Imported from the original app, where a third of the connections
+     carry them (0250). Hidden to begin with rather than added to a grid
+     that is already thirteen columns wide — they are in the Columns
+     picker for anybody who wants them, which is what hiddenByDefault is
+     for, and this is the first thing to use it.
+
+     Declared here, between As laid and Photos, so when somebody turns
+     them on they appear where jointing belongs in the sequence of work
+     rather than at the far right. */
+  { key: "jplan",   label: "Jointing planned", width: 128, type: "date",
+    hiddenByDefault: true, raw: (r) => r.Planned_Jointing_Date },
+  { key: "jact",    label: "Jointed",    width: 128, type: "date",
+    hiddenByDefault: true, raw: (r) => r.Actual_Jointing_Date },
   { key: "photo",   label: "Photos",     width: 92,  type: "none", align: "center", raw: () => "" },
 ];
 
@@ -92,6 +107,8 @@ const BULK_FIELDS = [
   { field: "Service_Card_Submission_Date", label: "SC submitted", type: "date", col: "scsub" },
   { field: "Meter_Card_Submission_Date", label: "MC submitted", type: "date", col: "mcsub" },
   { field: "As_Laid_Date", label: "As laid", type: "date", col: "laid" },
+  { field: "Planned_Jointing_Date", label: "Jointing planned", type: "date", col: "jplan" },
+  { field: "Actual_Jointing_Date", label: "Jointed", type: "date", col: "jact" },
 ];
 
 export default function PlotConnectionsPage() {

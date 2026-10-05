@@ -11099,3 +11099,62 @@ plus generic table editors.
      honest source is the live database - `pg_trigger`, `pg_constraint`,
      `information_schema`. Ask it first next time, not after the second
      failure.
+
+257. **The lookup map, and three statuses the new system was missing.**
+     The contract import refuses to start while any old status id is
+     unmapped, and `Project.Project_Status_ID` is NOT NULL, so this was
+     the blocker. `Region_ID` is nullable, so region was never urgent.
+
+     **88 distinct lookup values in the contract file, but only 14 that
+     matter**: 7 statuses covering 1,895 rows and 7 regions covering all
+     1,926. The rest - 27 fire services, 35 IDNOs, 12 water incumbents -
+     resolve to null and are set by hand later. Heat source has no
+     values at all.
+
+     **Regions mapped themselves.** The old system had North West,
+     North West 1 and North West 2 as separate regions; the new one has
+     one North West, so all three fold in. South West has no equivalent
+     and its 4 contracts import without a region. Old 6 "Other" never
+     appears in the data.
+
+     **Statuses needed a decision, and it was the user's.** The old
+     contract lifecycle had seven statuses; the new Contract stage has
+     three. Three had no home:
+
+       Operationally Complete  1,049 contracts, 54% of them
+       MU Completed              122
+       Contract Revoked           23
+
+     Operationally Complete is NOT Commercially Complete - work
+     finished is not invoiced and closed - and Commercially Complete is
+     terminal, so landing 1,049 projects there would mark them done.
+     On Site is wrong the other way. Offered as three options with the
+     counts attached; the user chose to add the three rather than
+     compress, which keeps a distinction the business already draws.
+
+     Secured, Secured (LOI) and Secured (EOI) all become Mobilising:
+     won and not yet on site. The old system distinguished three
+     paperwork routes to being secured and nothing downstream reads it.
+
+     **Everything is matched BY NAME, not by id.** The ids in the file
+     would be a copy of what one query returned on one afternoon, and a
+     reseeded status table would point them at the wrong thing in
+     silence - which is the whole reason Legacy_Lookup_Map exists.
+     Sort_Order and Row_Colour are read off the existing Contract rows
+     too, so the new statuses sit in the right place in whatever
+     palette is in use.
+
+     **Two faults of my own, both caught by running it.** `v.sort`
+     referenced a column that lived in the lateral, not the VALUES
+     list. And the first version put Contract Revoked at 126, between
+     Operationally Complete and Commercially Complete - a revoked
+     contract is not a step on the way to completion. Terminal statuses
+     now go after the last one: 110, 120, 123, 126, 130, 140.
+
+     Verified against the real contract file: 14 map rows, 0 unmapped
+     statuses, the import's own guard passes, and a second run inserts
+     no statuses and rewrites the same map.
+
+     **Still open:** the contracts-first ordering decision, and the plot
+     file, which at 333,950 rows fits neither the Table Editor nor a
+     SQL paste and wants psql against the connection string.

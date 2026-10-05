@@ -271,8 +271,14 @@ const colsOf = (s) => s.slice(0, s.indexOf(")") + 1);
         + `twice duplicates every row`);
     }
   }
-  if (!/DELETE FROM "Organisation" WHERE "Legacy_Customer_ID" IS NOT NULL/.test(sqlRaw)) {
-    fail("the file does not say how to undo itself");
+  /* Matched on the Notes this import writes rather than on
+     Legacy_Customer_ID: deleting every organisation carrying a legacy
+     key would take the 13 that were already here with it, and they
+     were here first. */
+  if (!/DELETE FROM "Organisation" WHERE "Notes" LIKE 'Imported from the original app%'/
+    .test(sqlRaw)) {
+    fail("the file does not say how to undo itself, or its undo deletes "
+      + "organisations it did not create");
   }
 }
 
@@ -420,6 +426,78 @@ const colsOf = (s) => s.slice(0, s.indexOf(")") + 1);
     if (!new RegExp(`DROP VIEW IF EXISTS "${v}" CASCADE`).test(mig)) {
       fail(`0253 drops ${v} without CASCADE, so it cannot be re-run once the `
         + `trial has built a view on top of it`);
+    }
+  }
+}
+
+// ─── 10. The triggers on Organisation and Organisation_Branch ───
+//
+// Read off pg_trigger in the live database after the trial failed twice.
+// Neither was in the test schema, because that was built from the
+// endpoint's column lists - which say what is READ and nothing about
+// what the table DOES. A constraint and a trigger are both invisible
+// from JavaScript, and that is now twice this has cost a round trip.
+//
+//   organisation_default_branch  AFTER INSERT ON "Organisation",
+//     inserts a bare 'Head Office' branch. 411 of the 623 old branches
+//     are themselves called 'Head Office', so without 2.4a the trigger
+//     wins the name and the REAL branch is dropped in silence - and
+//     with it the key 1,036 contracts resolve through.
+//
+//   org_branch_keep_one  BEFORE DELETE, refuses to remove an
+//     organisation's last branch. Right for a person, wrong for an
+//     undo.
+{
+  const trialRaw = src("./trial_import_10_customers.sql");
+
+  for (const [file, s] of [["the import", sql], ["the trial", code("./trial_import_10_customers.sql")]]) {
+    /* Adopt the placeholder rather than collide with it. */
+    const adopt = /UPDATE "Organisation_Branch" x[\s\S]{0,900}?"Legacy_Branch_ID" = b\.legacy_branch_id/;
+    if (!adopt.test(s)) {
+      fail(`${file} does not adopt the branch organisation_default_branch `
+        + `creates, so every old branch called 'Head Office' - 411 of 623 - is `
+        + `dropped without a word`);
+    }
+    /* Only an unclaimed one, so a branch a person made is never taken. */
+    if (!/x\."Legacy_Branch_ID" IS NULL/.test(s)) {
+      fail(`${file}'s adoption does not check the branch is unclaimed, so it `
+        + `can take over one an earlier run or a person already owns`);
+    }
+    /* The placeholder cleanup must not reach an organisation that was
+       already here - Project, Project_Developer and Enquiry_Submission
+       all point at a branch. */
+    const del = s.slice(s.indexOf('DELETE FROM "Organisation_Branch" x'));
+    if (del) {
+      const stmt = del.slice(0, del.indexOf(";") + 1);
+      if (!/"Notes" LIKE 'Imported from the original app%'/.test(stmt)) {
+        fail(`${file} deletes the placeholder without restricting to `
+          + `organisations this import created - one on an organisation that `
+          + `was already here may be referenced by a project`);
+      }
+      if (!/EXISTS \(SELECT 1 FROM "Organisation_Branch" y/.test(stmt)) {
+        fail(`${file} deletes the placeholder without checking another branch `
+          + `remains, which org_branch_keep_one refuses`);
+      }
+    }
+  }
+
+  /* The undo has to suspend keep-one, and put it back. */
+  for (const [file, s] of [["the import", sqlRaw], ["the trial", trialRaw]]) {
+    const undo = s.slice(s.indexOf("PART 4"));
+    const off = /DISABLE TRIGGER org_branch_keep_one/.test(undo);
+    const on = /ENABLE TRIGGER org_branch_keep_one/.test(undo);
+    if (!off) {
+      fail(`${file}'s undo does not suspend org_branch_keep_one, so deleting an `
+        + `organisation's last branch raises and the undo stops half way`);
+    }
+    if (off && !on) {
+      fail(`${file}'s undo turns org_branch_keep_one off and never back on`);
+    }
+    /* And restore the placeholder, or a claimed organisation ends up
+       with fewer branches than it started with. */
+    if (!/INSERT INTO "Organisation_Branch" \("Organisation_ID", "Branch_Name"\)/.test(undo)) {
+      fail(`${file}'s undo does not put back the placeholder on an organisation `
+        + `left with none - measured 418 branches back where 419 began`);
     }
   }
 }

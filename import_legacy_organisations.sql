@@ -248,6 +248,38 @@ SELECT o."Organisation_ID",
                                            FROM "Organisation_Type" t
                                           WHERE t."Type_Key" = 'customer'));
 
+-- 2.4a Adopt the branch the database made for us.
+--
+-- "Organisation" has an AFTER INSERT trigger, organisation_default_branch,
+-- which creates a bare branch called 'Head Office' for every new
+-- organisation - the Organisations screen says so: "A Head Office
+-- branch is created automatically."
+--
+-- 411 of the 623 old branches are themselves called 'Head Office'. So
+-- for those the trigger gets there first, 2.4's name guard correctly
+-- refuses to insert a second row with the same name, and the REAL
+-- branch is silently dropped: no Legacy_Branch_ID, and therefore no
+-- link for the 1,036 contracts that resolve through exactly that key.
+--
+-- Measured before this step existed: the ten-customer trial inserted 52
+-- branches where 55 were expected, and the three missing were the three
+-- called 'Head Office'.
+--
+-- So the empty one is adopted rather than avoided. Only where it has no
+-- Legacy_Branch_ID, so a branch already claimed by an earlier run or
+-- created by a person is never taken over, and COALESCE on the address
+-- so nothing typed is overwritten.
+UPDATE "Organisation_Branch" x
+   SET "Legacy_Branch_ID" = b.legacy_branch_id,
+       "Address_1"        = COALESCE(x."Address_1", b.address_1),
+       "Town"             = COALESCE(x."Town",      b.town),
+       "Postcode"         = COALESCE(x."Postcode",  b.postcode)
+  FROM "Legacy_Branch_Resolved" b
+ WHERE x."Organisation_ID"  = b.organisation_id
+   AND x."Branch_Name"      = b.branch_name
+   AND x."Legacy_Branch_ID" IS NULL
+   AND b.legacy_branch_id   IS NOT NULL;
+
 -- 2.4 The branches.
 --
 -- Branch_Dropdown is left alone: it is maintained by
@@ -277,6 +309,40 @@ SELECT b.organisation_id,
    AND NOT EXISTS (SELECT 1 FROM "Organisation_Branch" x
                     WHERE x."Organisation_ID" = b.organisation_id
                       AND x."Branch_Name" = b.branch_name);
+
+-- 2.4b Remove the placeholder once real branches have arrived.
+--
+-- organisation_default_branch exists so an organisation always has one
+-- branch - org_branch_keep_one refuses to leave it with none. Once the
+-- import has brought the real ones, an empty 'Head Office' with no
+-- address and no legacy key is a row nobody put there and nobody wants
+-- in the picker.
+--
+-- Deleted only when ALL of these hold, so nothing a person made can be
+-- caught by it:
+--   * it carries no Legacy_Branch_ID, so 2.4a did not adopt it
+--   * it has no address at all
+--   * its organisation came from this import
+--   * and that organisation still has other branches, so the
+--     keep-one trigger has nothing to object to
+DELETE FROM "Organisation_Branch" x
+ USING "Organisation" o
+ WHERE o."Organisation_ID"   = x."Organisation_ID"
+   /* Only organisations this import CREATED. A placeholder made
+      seconds ago on a brand-new organisation cannot be referenced by
+      anything; one on an organisation that was already here might be -
+      Project, Project_Developer, Enquiry_Submission and the contacts
+      all point at a branch, and deleting a referenced row is how an
+      import breaks work somebody has done. Those keep their
+      placeholder, which is untidy and safe. */
+   AND o."Notes" LIKE 'Imported from the original app%'
+   AND o."Legacy_Customer_ID" IS NOT NULL
+   AND x."Legacy_Branch_ID"   IS NULL
+   AND x."Branch_Name"        = 'Head Office'
+   AND x."Address_1" IS NULL AND x."Town" IS NULL AND x."Postcode" IS NULL
+   AND EXISTS (SELECT 1 FROM "Organisation_Branch" y
+                WHERE y."Organisation_ID" = x."Organisation_ID"
+                  AND y."Organisation_Branch_ID" <> x."Organisation_Branch_ID");
 
 -- 2.5 The contacts, where the old customer recorded one.
 --
@@ -405,17 +471,43 @@ SELECT
 -- null beforehand, so they stay - and nothing was overwritten to put
 -- them there.
 --
+-- org_branch_keep_one refuses to delete an organisation's LAST branch,
+-- which is right for a person and wrong for an undo. Suspended around
+-- the branch delete, as 0231 did for the history trigger. If the DELETE
+-- fails the trigger stays off - run the ENABLE on its own first.
+--
 -- DELETE FROM "Organisation_Contact" oc
---  USING "Organisation_Branch" b
+--  USING "Organisation_Branch" b, "Organisation" o
 --  WHERE b."Organisation_Branch_ID" = oc."Organisation_Branch_ID"
+--    AND o."Organisation_ID" = b."Organisation_ID"
 --    AND b."Legacy_Branch_ID" IS NOT NULL
 --    AND oc."Notes" = 'Imported from the original app''s Customer record.';
 --
+-- ALTER TABLE "Organisation_Branch" DISABLE TRIGGER org_branch_keep_one;
 -- DELETE FROM "Organisation_Branch" WHERE "Legacy_Branch_ID" IS NOT NULL;
+-- ALTER TABLE "Organisation_Branch" ENABLE TRIGGER org_branch_keep_one;
 --
 -- DELETE FROM "Organisation_Role" ro
 --  USING "Organisation" o
 --  WHERE o."Organisation_ID" = ro."Organisation_ID"
---    AND o."Legacy_Customer_ID" IS NOT NULL;
+--    AND o."Notes" LIKE 'Imported from the original app%';
 --
--- DELETE FROM "Organisation" WHERE "Legacy_Customer_ID" IS NOT NULL;
+-- UPDATE "Organisation" SET "Legacy_Customer_ID" = NULL
+--  WHERE "Legacy_Customer_ID" IS NOT NULL
+--    AND COALESCE("Notes", '') NOT LIKE 'Imported from the original app%';
+--
+-- DELETE FROM "Organisation" WHERE "Notes" LIKE 'Imported from the original app%';
+--
+-- Finally, put back the placeholder on any organisation left with none.
+-- 2.4a ADOPTS an empty 'Head Office' where the old branch had the same
+-- name, so the delete above takes it with the rest and a claimed
+-- organisation ends up branchless - one short of where it started, and
+-- short of the invariant organisation_default_branch exists to keep.
+-- Measured: 418 branches back where 419 began.
+--
+-- INSERT INTO "Organisation_Branch" ("Organisation_ID", "Branch_Name")
+-- SELECT o."Organisation_ID", 'Head Office'
+--   FROM "Organisation" o
+--  WHERE NOT EXISTS (SELECT 1 FROM "Organisation_Branch" b
+--                     WHERE b."Organisation_ID" = o."Organisation_ID")
+--  ON CONFLICT DO NOTHING;

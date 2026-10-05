@@ -11034,3 +11034,68 @@ plus generic table editors.
      session.** `grep -cE "^ERROR"` reports zero against psql, which
      prefixes every error with `psql:file:line:`. It hid a failed
      migration for one round. `grep -ciE "error"` from here.
+
+256. **Two triggers nobody had told the test schema about, and 411
+     branches that would have vanished.** The ten-customer trial failed
+     twice against the live database. Reading `pg_trigger` found why.
+
+       organisation_default_branch  AFTER INSERT ON "Organisation",
+         inserts a bare 'Head Office' branch. The Organisations screen
+         says so in as many words: "A Head Office branch is created
+         automatically."
+
+       org_branch_keep_one  BEFORE DELETE, refuses to remove an
+         organisation's last branch.
+
+     **Why they were missed, twice.** The test schema was built from
+     `organisations.js`'s column lists. Those say what the endpoint
+     READS and nothing about what the table DOES, so a constraint and a
+     trigger are both invisible from the JavaScript. 255 was the same
+     lesson about a unique constraint; this is the same lesson about
+     triggers. The test schema now carries all four triggers and the
+     constraint, read off the live database, and both failures
+     reproduce on demand.
+
+     **The serious one.** 411 of the 623 old branches are themselves
+     called 'Head Office'. The trigger creates that name first, 2.4's
+     name guard then correctly refuses to insert a second row with it,
+     and the REAL branch is dropped without a word - no
+     Legacy_Branch_ID, and therefore no link for the 1,036 contracts
+     that resolve through exactly that key. Measured before the fix:
+     the trial inserted 52 branches where 55 were expected, and the
+     three missing were the three called 'Head Office'.
+
+     So 2.4a ADOPTS the placeholder instead of avoiding it - sets its
+     legacy id and fills its address on COALESCE - and only where it
+     carries no Legacy_Branch_ID, so nothing a person owns is taken
+     over. On the full import that is `UPDATE 411`, then 212 inserted.
+
+     **2.4b then clears the placeholder** where real branches arrived
+     and it is still empty, but ONLY on organisations this import
+     created. A placeholder on an organisation that was already here
+     may be referenced by a Project, a Project_Developer or an
+     Enquiry_Submission, and deleting a referenced row is how an import
+     breaks work somebody has done. 88 cleared on the full import; the
+     rest stay, untidy and safe.
+
+     **The undo was broken too** - it deleted branches before
+     organisations, and keep-one refuses the last one. Suspended around
+     the delete, as 0231 did for the history trigger, and the file says
+     to run the ENABLE on its own if the delete ever fails. It also now
+     puts back a placeholder on any organisation left with none:
+     measured 418 branches back where 419 began, because 2.4a had
+     adopted one on a claimed organisation and the undo took it.
+
+     Verified with the triggers in place: 419/419/422/0 -> trial ->
+     473 branches -> undo -> 419/419/422/0 exactly. Full import clean:
+     UPDATE 411, INSERT 212, DELETE 88, ending 509/623/509, and a
+     re-run is silent on all nine statements.
+
+     Seven more mutations, all caught. Suite 190 of 214.
+
+     **What I would do differently.** Three faults in a row came from
+     the same place: a test schema built from what the code reads. The
+     schema is not in this repo (0002-0049 are missing), so the only
+     honest source is the live database - `pg_trigger`, `pg_constraint`,
+     `information_schema`. Ask it first next time, not after the second
+     failure.

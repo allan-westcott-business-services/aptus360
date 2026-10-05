@@ -188,6 +188,40 @@ SELECT o."Organisation_ID",
                                          FROM "Organisation_Type" ty
                                         WHERE ty."Type_Key" = 'customer'));
 
+-- 2.4a Adopt the branch the database made for us.
+--
+-- "Organisation" has an AFTER INSERT trigger, organisation_default_branch,
+-- which creates a bare branch called 'Head Office' for every new
+-- organisation - the Organisations screen says so: "A Head Office
+-- branch is created automatically."
+--
+-- 411 of the 623 old branches are themselves called 'Head Office'. So
+-- for those the trigger gets there first, 2.4's name guard correctly
+-- refuses to insert a second row with the same name, and the REAL
+-- branch is silently dropped: no Legacy_Branch_ID, and therefore no
+-- link for the 1,036 contracts that resolve through exactly that key.
+--
+-- Measured before this step existed: the ten-customer trial inserted 52
+-- branches where 55 were expected, and the three missing were the three
+-- called 'Head Office'.
+--
+-- So the empty one is adopted rather than avoided. Only where it has no
+-- Legacy_Branch_ID, so a branch already claimed by an earlier run or
+-- created by a person is never taken over, and COALESCE on the address
+-- so nothing typed is overwritten.
+UPDATE "Organisation_Branch" x
+   SET "Legacy_Branch_ID" = b.legacy_branch_id,
+       "Address_1"        = COALESCE(x."Address_1", b.address_1),
+       "Town"             = COALESCE(x."Town",      b.town),
+       "Postcode"         = COALESCE(x."Postcode",  b.postcode)
+  FROM "Trial_Ten_Customers" t
+  JOIN "Organisation" o ON o."Legacy_Customer_ID" = t.legacy_id
+  JOIN "Legacy_Branch_Resolved" b ON b.legacy_customer_id = t.legacy_id
+ WHERE x."Organisation_ID"  = o."Organisation_ID"
+   AND x."Branch_Name"      = b.branch_name
+   AND x."Legacy_Branch_ID" IS NULL
+   AND b.legacy_branch_id   IS NOT NULL;
+
 -- 2.4 Their branches. Branch_Dropdown is left to its trigger.
 INSERT INTO "Organisation_Branch" (
   "Organisation_ID", "Branch_Name", "Address_1", "Town", "Postcode",
@@ -207,6 +241,40 @@ SELECT o."Organisation_ID",
    AND NOT EXISTS (SELECT 1 FROM "Organisation_Branch" x
                     WHERE x."Organisation_ID" = o."Organisation_ID"
                       AND x."Branch_Name" = b.branch_name);
+
+-- 2.4b Remove the placeholder once real branches have arrived.
+--
+-- organisation_default_branch exists so an organisation always has one
+-- branch - org_branch_keep_one refuses to leave it with none. Once the
+-- import has brought the real ones, an empty 'Head Office' with no
+-- address and no legacy key is a row nobody put there and nobody wants
+-- in the picker.
+--
+-- Deleted only when ALL of these hold, so nothing a person made can be
+-- caught by it:
+--   * it carries no Legacy_Branch_ID, so 2.4a did not adopt it
+--   * it has no address at all
+--   * its organisation came from this import
+--   * and that organisation still has other branches, so the
+--     keep-one trigger has nothing to object to
+DELETE FROM "Organisation_Branch" x
+ USING "Organisation" o
+ WHERE o."Organisation_ID"   = x."Organisation_ID"
+   /* Only organisations this import CREATED. A placeholder made
+      seconds ago on a brand-new organisation cannot be referenced by
+      anything; one on an organisation that was already here might be -
+      Project, Project_Developer, Enquiry_Submission and the contacts
+      all point at a branch, and deleting a referenced row is how an
+      import breaks work somebody has done. Those keep their
+      placeholder, which is untidy and safe. */
+   AND o."Notes" LIKE 'Imported from the original app%'
+   AND o."Legacy_Customer_ID" IS NOT NULL
+   AND x."Legacy_Branch_ID"   IS NULL
+   AND x."Branch_Name"        = 'Head Office'
+   AND x."Address_1" IS NULL AND x."Town" IS NULL AND x."Postcode" IS NULL
+   AND EXISTS (SELECT 1 FROM "Organisation_Branch" y
+                WHERE y."Organisation_ID" = x."Organisation_ID"
+                  AND y."Organisation_Branch_ID" <> x."Organisation_Branch_ID");
 
 -- 2.5 The contact the old record held, on the head office.
 INSERT INTO "Organisation_Contact" (
@@ -290,6 +358,24 @@ SELECT o."Organisation_ID", o."Name"
 -- this trial added it, which is why the role delete names the trial's
 -- own Notes-marked organisations rather than all ten.
 --
+-- ── org_branch_keep_one ──
+--
+-- "Organisation_Branch" has a BEFORE DELETE trigger refusing to remove
+-- an organisation's LAST branch: "An organisation must keep at least
+-- one branch - rename this one instead." Correct for a person on the
+-- Stakeholder tab; wrong for an undo, whose whole job is to put things
+-- back as they were, branchless organisations included.
+--
+-- So it is suspended around the branch delete, the way 0231 suspended
+-- the history trigger around its backfill. If the DELETE fails the
+-- trigger stays off - run the ENABLE on its own before doing anything
+-- else.
+--
+-- Note it also removes a placeholder that 2.4a ADOPTED on one of the
+-- three organisations that were already here. That row was empty when
+-- the trigger made it and is empty-equivalent now; the organisation is
+-- left with none, which is the state it was in before the trial.
+--
 -- DELETE FROM "Organisation_Contact" oc
 --  USING "Organisation_Branch" b, "Organisation" o
 --  WHERE b."Organisation_Branch_ID" = oc."Organisation_Branch_ID"
@@ -297,11 +383,15 @@ SELECT o."Organisation_ID", o."Name"
 --    AND o."Legacy_Customer_ID" IN (SELECT legacy_id FROM "Trial_Ten_Customers")
 --    AND oc."Notes" LIKE '%Ten-customer trial.';
 --
+-- ALTER TABLE "Organisation_Branch" DISABLE TRIGGER org_branch_keep_one;
+--
 -- DELETE FROM "Organisation_Branch" b
 --  USING "Organisation" o
 --  WHERE o."Organisation_ID" = b."Organisation_ID"
 --    AND o."Legacy_Customer_ID" IN (SELECT legacy_id FROM "Trial_Ten_Customers")
 --    AND b."Legacy_Branch_ID" IS NOT NULL;
+--
+-- ALTER TABLE "Organisation_Branch" ENABLE TRIGGER org_branch_keep_one;
 --
 -- DELETE FROM "Organisation_Role" ro
 --  USING "Organisation" o
@@ -310,20 +400,27 @@ SELECT o."Organisation_ID", o."Name"
 --
 -- COALESCE on the Notes, because NULL NOT LIKE '...' is NULL and not
 -- true: the three claimed organisations have no Notes, so the first
--- version of this matched none of them and reported UPDATE 0. Their
--- Legacy_Customer_ID stayed set, which would make a later full import
--- treat them as already done and skip them. Found by running the undo
--- and reading the row count.
+-- version of this matched none of them and reported UPDATE 0.
 --
 -- UPDATE "Organisation" SET "Legacy_Customer_ID" = NULL
 --  WHERE "Legacy_Customer_ID" IN (SELECT legacy_id FROM "Trial_Ten_Customers")
 --    AND COALESCE("Notes", '') NOT LIKE '%Ten-customer trial.';
 --
--- Note what this does NOT undo: 2.1b filled in the address of a claimed
--- organisation where it was empty, and nothing records which of those
--- columns were null beforehand, so they stay. That is the company's own
--- head-office address and no value was overwritten to put it there.
---
 -- DELETE FROM "Organisation" WHERE "Notes" LIKE '%Ten-customer trial.';
+--
+--
+-- Finally, put back the placeholder on any organisation left with none.
+-- 2.4a ADOPTS an empty 'Head Office' where the old branch had the same
+-- name, so the delete above takes it with the rest and a claimed
+-- organisation ends up branchless - one short of where it started, and
+-- short of the invariant organisation_default_branch exists to keep.
+-- Measured: 418 branches back where 419 began.
+--
+-- INSERT INTO "Organisation_Branch" ("Organisation_ID", "Branch_Name")
+-- SELECT o."Organisation_ID", 'Head Office'
+--   FROM "Organisation" o
+--  WHERE NOT EXISTS (SELECT 1 FROM "Organisation_Branch" b
+--                     WHERE b."Organisation_ID" = o."Organisation_ID")
+--  ON CONFLICT DO NOTHING;
 --
 -- DROP VIEW IF EXISTS "Trial_Ten_Customers";

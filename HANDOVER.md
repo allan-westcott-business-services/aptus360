@@ -10839,3 +10839,80 @@ plus generic table editors.
     defines. All cosmetic and all pre-existing — the Python checks never
     gated anything before this session, because the old `check` script
     ran them in a shell loop that discarded their exit codes.
+
+253. **Stage 1: the original app's Customers become Organisations.**
+     "Can we first focus on getting the Organisation data migrated? I
+     want to do this stage by stage." Right order, too — the contract
+     import resolves its customer through these rows, so nothing else
+     could work until they existed.
+
+     **Measured first, built second.** 509 customers and 623 branches
+     against the 419 organisations already here, of which only 14 hold
+     a customer role and 382 are Local Authorities.
+
+     The question that mattered was which key joins the contract export
+     to the customer. The Audacia code turned out to be the WRONG
+     answer: of the 537 codes in the contract file, 283 match
+     `Customer.Customer_Ref`, 274 match `Customer_Branch.Branch_Ref`,
+     and 177 match neither. The old PRIMARY KEYS are the right answer —
+     where present they resolve 100%:
+
+       old Branch_ID, exact, gives branch AND organisation    1,036
+       old Customer_ID, exact, organisation only                516
+       Audacia code against Branch_Ref                           40
+       Audacia code against Customer_Ref                         58
+       nothing to match on                                      276
+
+     1,552 of 1,926 on exact keys, and 1,036 of those land on a
+     SPECIFIC branch — which largely dissolves the "organisation has
+     several branches, pick one by hand" problem that 0248 worried
+     about. Confirmed after actually running the import: 1,036 / 516 /
+     374.
+
+     **What the measurements settled, so nothing had to be guessed.**
+     496 of the 509 need creating; 13 match by exact name and there are
+     ZERO duplicate names among the 509, so a name match is one
+     organisation or none. All 13 currently have **no branches at all**,
+     so they cannot be put on a project today; the import gives them
+     theirs. `Payment_Terms_Days` is 30 and `Letter_Grace_Days` is 15 on
+     every one of the 623 — a constant is a default nobody changed, so
+     dropping them loses nothing, and that is measured rather than
+     assumed. One name is an instruction rather than a company (`***
+     DO NOT TENDER FOR***PH Property Holdings Ltd`) and is imported
+     verbatim: somebody put that warning there, and moving it to a
+     Notes field nobody opens would hide it.
+
+     **The address rule has no edge case.** After discarding 'TBC' (5
+     rows), every branch has either no address (251) or two or more
+     lines (372) — not one in between. So the last line is the town and
+     the earlier ones are the street: Leyland, Newcastle Upon Tyne,
+     Ashington, Leicester and Wigan all land correctly. County has no
+     column on a branch, so the head office's county goes on the
+     ORGANISATION, which does have one — 260 of them.
+
+     **Files:** `0253_legacy_organisation_import.sql` (staging plus two
+     resolution views), `import_legacy_organisations.sql` (report,
+     create, verify, undo), `checklegacyorgs.mjs`.
+
+     Run from scratch on a fresh database: 509 organisations, 623
+     branches, 509 customer roles, 285 contacts, 372 branch towns, 477
+     roles carrying the Audacia code. A second run of part 2 inserts
+     nothing.
+
+     **Two of my own assertions were wrong and testing caught both.**
+     The fault-4 check failed on `Organisation_Role` writing
+     `Organisation_ID` — but organisations.js reads that table with
+     `select("*")`, so every column comes back and the narrow `ROLE`
+     list is only the update path; the check now skips tables read with
+     a star. And the Type_Key assertion passed when a mutation
+     hardcoded the type id, because the statement names Type_Key TWICE
+     — once to choose and once in its own re-run guard — so "does it
+     appear" was satisfied by the survivor. It counts now.
+
+     Twelve mutations, all caught. Suite 190 of 214 with the same 24
+     failures main has on its own.
+
+     **Not done here:** `Organisation.Code` is left alone. The Audacia
+     code goes on the customer role's `Reference`, which is where
+     0249's resolution reads it; two homes for one value is how they
+     drift apart.

@@ -133,7 +133,17 @@ CREATE INDEX IF NOT EXISTS "Legacy_Branch_Import_ID_IDX"
 --      wrong builder is invisible - but that is matching a SITE's
 --      customer, where this is matching a company to itself.
 
-DROP VIEW IF EXISTS "Legacy_Organisation_Resolved";
+-- CASCADE, because the ten-customer trial builds "Trial_Ten_Customers"
+-- on top of this one. Without it, re-running 0253 after the trial hits
+--
+--   ERROR: cannot drop view "Legacy_Organisation_Resolved" because
+--          other objects depend on it
+--   DETAIL: view "Trial_Ten_Customers" depends on it
+--
+-- which is exactly when you most want to re-run it: after the trial has
+-- shown you something that needs changing. The trial rebuilds its own
+-- view at the top of its part 1, so nothing is lost.
+DROP VIEW IF EXISTS "Legacy_Organisation_Resolved" CASCADE;
 
 CREATE VIEW "Legacy_Organisation_Resolved" AS
 SELECT i.*,
@@ -170,7 +180,8 @@ COMMENT ON VIEW "Legacy_Organisation_Resolved" IS
 -- So the import and the report cannot disagree about what an address
 -- collapses to, and so the rule can be read and argued with on its own.
 
-DROP VIEW IF EXISTS "Legacy_Branch_Resolved";
+-- CASCADE for the same reason, in case anything is built on this one.
+DROP VIEW IF EXISTS "Legacy_Branch_Resolved" CASCADE;
 
 CREATE VIEW "Legacy_Branch_Resolved" AS
 WITH cleaned AS (
@@ -205,7 +216,47 @@ SELECT c.*,
        (SELECT o."Organisation_ID" FROM "Organisation" o
          WHERE o."Legacy_Customer_ID" = c.legacy_customer_id)     AS organisation_id,
        (SELECT b2."Organisation_Branch_ID" FROM "Organisation_Branch" b2
-         WHERE b2."Legacy_Branch_ID" = c.legacy_branch_id)        AS existing_branch_id
+         WHERE b2."Legacy_Branch_ID" = c.legacy_branch_id)        AS existing_branch_id,
+       /* ── The name to insert, unique within the organisation ──
+
+          "Organisation_Branch" is UNIQUE on (Organisation_ID,
+          Branch_Name). Reported from use:
+
+            ERROR: 23505: duplicate key value violates unique constraint
+            "Organisation_Branch_Organisation_ID_Branch_Name_key"
+
+          One pair in the whole export collides - Bellway Homes has two
+          branches both called "West Midlands, Staffordshire" - and one
+          is enough to abort the insert for all 623.
+
+          An unnamed branch takes 'Head Office' or 'Branch', which is
+          what the screens sort and pick by; a blank cannot be chosen
+          from a list. Where that or a real name repeats, the second and
+          later ones carry something to tell them apart: the town, then
+          the postcode, then the old Branch_ID. Bellway's two have
+          neither town nor postcode, so they become "... (202)" and
+          "... (203)" - ugly but true, and a person can rename them. */
+       CASE WHEN row_number() OVER (
+                   PARTITION BY c.legacy_customer_id,
+                     COALESCE(NULLIF(btrim(COALESCE(c."Branch_Name", '')), ''),
+                              CASE WHEN lower(btrim(COALESCE(c."Head_Office", '')))
+                                        IN ('true', 't', '1', 'yes')
+                                   THEN 'Head Office' ELSE 'Branch' END)
+                   ORDER BY c.legacy_branch_id) = 1
+            THEN COALESCE(NULLIF(btrim(COALESCE(c."Branch_Name", '')), ''),
+                          CASE WHEN lower(btrim(COALESCE(c."Head_Office", '')))
+                                    IN ('true', 't', '1', 'yes')
+                               THEN 'Head Office' ELSE 'Branch' END)
+            ELSE COALESCE(NULLIF(btrim(COALESCE(c."Branch_Name", '')), ''),
+                          CASE WHEN lower(btrim(COALESCE(c."Head_Office", '')))
+                                    IN ('true', 't', '1', 'yes')
+                               THEN 'Head Office' ELSE 'Branch' END)
+                 || ' (' || COALESCE(
+                      NULLIF(btrim(COALESCE(c."Address4", c."Address3",
+                                            c."Address2", '')), ''),
+                      NULLIF(btrim(COALESCE(c."Postcode", '')), ''),
+                      c.legacy_branch_id::text) || ')'
+       END                                                        AS branch_name
   FROM cleaned c;
 
 COMMENT ON VIEW "Legacy_Branch_Resolved" IS

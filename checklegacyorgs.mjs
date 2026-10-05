@@ -359,6 +359,71 @@ const colsOf = (s) => s.slice(0, s.indexOf(")") + 1);
   }
 }
 
+// ─── 9. The unique constraint on (Organisation_ID, Branch_Name) ───
+//
+// Reported from use, part way through the trial:
+//
+//   ERROR: 23505: duplicate key value violates unique constraint
+//   "Organisation_Branch_Organisation_ID_Branch_Name_key"
+//
+// My test schema was built from the endpoint's column list, which does
+// not show constraints, so the stub had the columns and none of the
+// rules. One pair in the whole export collides - Bellway Homes has two
+// branches both called "West Midlands, Staffordshire" - and one is
+// enough to abort the insert for all 623.
+{
+  const bview = mig.slice(mig.indexOf('CREATE VIEW "Legacy_Branch_Resolved"'));
+  const trial = code("./trial_import_10_customers.sql");
+
+  /* The name must be made unique in the view, so both files get the
+     same answer and neither can drift. */
+  if (!/row_number\(\) OVER \(\s*PARTITION BY c\.legacy_customer_id/.test(bview)) {
+    fail("the branch name is not made unique within the organisation, so one "
+      + "repeated name aborts the insert for every branch");
+  }
+  /* And the discriminator has to end at something that cannot repeat.
+     Bellway's two have neither town nor postcode, so without the id as
+     the last resort they would still collide. */
+  if (!/legacy_branch_id::text\s*\)/.test(bview)) {
+    fail("the de-duplicated branch name does not fall back to the legacy "
+      + "Branch_ID, so two branches with no town and no postcode still clash");
+  }
+  /* Both inserts must use it rather than computing their own. */
+  for (const [file, ins] of [["the import", branchIns],
+    ["the trial", trial.slice(trial.indexOf('INSERT INTO "Organisation_Branch"'),
+      trial.indexOf(";", trial.indexOf('INSERT INTO "Organisation_Branch"')))]]) {
+    /* In the SELECT LIST, not merely somewhere in the statement: the
+       re-run guard below also says b.branch_name, so testing the whole
+       statement passed when the inserted column was swapped back to the
+       raw Branch_Name. Fourth time this shape of assertion has let a
+       mutation through. */
+    const selectList = ins.slice(ins.indexOf("SELECT"), ins.indexOf("FROM"));
+    if (!/b\.branch_name/.test(selectList)) {
+      fail(`${file}'s branch insert builds its own name instead of using the `
+        + `view's, so the two can disagree about what is unique`);
+    }
+    /* And skip a name already on that organisation, which is what makes
+       a run that stopped half way resumable rather than stuck. */
+    if (!/NOT EXISTS \(SELECT 1 FROM "Organisation_Branch" x[\s\S]{0,200}"Branch_Name" = b\.branch_name\)/
+      .test(ins)) {
+      fail(`${file}'s branch insert does not skip a name already on that `
+        + `organisation, so a part-finished run cannot be re-run`);
+    }
+  }
+
+  /* 0253 has to be re-runnable AFTER the trial, which is exactly when
+     it is wanted - the trial shows something that needs changing. The
+     trial's view is built on 0253's, so a plain DROP fails:
+       ERROR: cannot drop view "Legacy_Organisation_Resolved" because
+              other objects depend on it */
+  for (const v of ["Legacy_Organisation_Resolved", "Legacy_Branch_Resolved"]) {
+    if (!new RegExp(`DROP VIEW IF EXISTS "${v}" CASCADE`).test(mig)) {
+      fail(`0253 drops ${v} without CASCADE, so it cannot be re-run once the `
+        + `trial has built a view on top of it`);
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The customers become organisations with a customer role, their branches "
     + "and their contacts; the 13 already here are claimed without being "

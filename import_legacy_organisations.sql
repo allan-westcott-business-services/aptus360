@@ -261,15 +261,22 @@ INSERT INTO "Organisation_Branch" (
   "Is_Active", "Legacy_Branch_ID"
 )
 SELECT b.organisation_id,
-       COALESCE(NULLIF(btrim(COALESCE(b."Branch_Name", '')), ''),
-                CASE WHEN b.is_head_office THEN 'Head Office' ELSE 'Branch' END),
+       b.branch_name,
        b.address_1, b.town, b.postcode,
        true,
        b.legacy_branch_id
   FROM "Legacy_Branch_Resolved" b
  WHERE b.organisation_id IS NOT NULL
    AND b.legacy_branch_id IS NOT NULL
-   AND b.existing_branch_id IS NULL;
+   AND b.existing_branch_id IS NULL
+   /* And nothing already under that name on that organisation. The
+      unique constraint is on (Organisation_ID, Branch_Name), so a
+      branch somebody created by hand - or one a half-finished run left
+      behind - would abort the insert for every other row. Skipping it
+      makes a part-run resumable instead. */
+   AND NOT EXISTS (SELECT 1 FROM "Organisation_Branch" x
+                    WHERE x."Organisation_ID" = b.organisation_id
+                      AND x."Branch_Name" = b.branch_name);
 
 -- 2.5 The contacts, where the old customer recorded one.
 --

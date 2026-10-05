@@ -194,14 +194,19 @@ INSERT INTO "Organisation_Branch" (
   "Is_Active", "Legacy_Branch_ID"
 )
 SELECT o."Organisation_ID",
-       COALESCE(NULLIF(btrim(COALESCE(b."Branch_Name", '')), ''),
-                CASE WHEN b.is_head_office THEN 'Head Office' ELSE 'Branch' END),
+       b.branch_name,
        b.address_1, b.town, b.postcode, true, b.legacy_branch_id
   FROM "Trial_Ten_Customers" t
   JOIN "Organisation" o ON o."Legacy_Customer_ID" = t.legacy_id
   JOIN "Legacy_Branch_Resolved" b ON b.legacy_customer_id = t.legacy_id
  WHERE b.legacy_branch_id IS NOT NULL
-   AND b.existing_branch_id IS NULL;
+   AND b.existing_branch_id IS NULL
+   /* Nothing already under that name on that organisation - see the
+      note in import_legacy_organisations.sql 2.4. This is what lets a
+      run that stopped half way be run again. */
+   AND NOT EXISTS (SELECT 1 FROM "Organisation_Branch" x
+                    WHERE x."Organisation_ID" = o."Organisation_ID"
+                      AND x."Branch_Name" = b.branch_name);
 
 -- 2.5 The contact the old record held, on the head office.
 INSERT INTO "Organisation_Contact" (

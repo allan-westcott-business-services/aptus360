@@ -10978,3 +10978,59 @@ plus generic table editors.
 
      Eight more mutations, all caught. Suite 190 of 214, the same 24
      failures main has on its own.
+
+255. **A unique constraint my test schema did not have.** Reported from
+     use, part way through the ten-customer trial:
+
+       ERROR: 23505: duplicate key value violates unique constraint
+       "Organisation_Branch_Organisation_ID_Branch_Name_key"
+
+     **Why it was missed.** The test schema was built from
+     `organisations.js`'s column lists, which say what the endpoint
+     reads and nothing about what the table FORBIDS. So the stub had
+     every column and none of the rules, and a constraint cannot be
+     caught by a check that reads JavaScript. The constraint is now in
+     the test schema and the failure reproduces.
+
+     **One pair in the whole export collides** — Bellway Homes has two
+     branches both called "West Midlands, Staffordshire", and neither
+     has a town or a postcode. One pair is enough to abort the insert
+     for all 623. The name is now made unique in
+     `Legacy_Branch_Resolved`, so both files get the same answer: the
+     second and later copies take the town, then the postcode, then the
+     old Branch_ID, which cannot repeat. Bellway's become "West
+     Midlands, Staffordshire" and "... (203)".
+
+     **And both inserts now skip a name already on that organisation**,
+     which is what makes a run that stopped half way resumable rather
+     than stuck.
+
+     **A second bug, found while testing the recovery.** 0253 dropped
+     its views without CASCADE, and the trial builds
+     `Trial_Ten_Customers` on top of `Legacy_Organisation_Resolved`. So
+     once the trial had run, 0253 could not be re-run —
+
+       ERROR: cannot drop view "Legacy_Organisation_Resolved" because
+              other objects depend on it
+
+     — which is exactly when it is wanted, because the trial has just
+     shown you something that needs changing. Both drops CASCADE now,
+     and the trial rebuilds its own view at the top of part 1.
+
+     Verified: the half-finished state (organisations and roles there,
+     branches aborted) re-runs 0253 cleanly and then the trial fills in
+     the 55 branches and 7 contacts. Clean slate still gives 10/55/10
+     then 509/623/509.
+
+     **Fourth weak assertion of my own, same shape as the other three.**
+     "Does `b.branch_name` appear in the statement" passed when the
+     inserted column was swapped back, because the re-run guard also
+     says `b.branch_name`. It reads the SELECT list now. The pattern is
+     unmistakable: asking whether a string is present is not a test.
+
+     Seven more mutations, all caught.
+
+     **Also worth recording: my own error greps were wrong twice this
+     session.** `grep -cE "^ERROR"` reports zero against psql, which
+     prefixes every error with `psql:file:line:`. It hid a failed
+     migration for one round. `grep -ciE "error"` from here.

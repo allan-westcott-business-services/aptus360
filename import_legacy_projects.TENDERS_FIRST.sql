@@ -1,5 +1,9 @@
 -- ════════════════════════════════════════════════════════════════════
---  ALTERNATIVE ORDERING - NOT THE ONE TO RUN UNLESS YOU CHOOSE IT
+--  ALTERNATIVE ORDERING - NOT CHOSEN, KEPT FOR THE RECORD
+--
+--  DECIDED 5 Oct 2026: contracts first. This file is not the one to
+--  run. It is kept because the argument in it is real and the
+--  measurements are worth having if the question is ever reopened.
 -- ════════════════════════════════════════════════════════════════════
 --
 -- This is import_legacy_projects.sql rewritten to run AFTER

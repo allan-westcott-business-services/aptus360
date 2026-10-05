@@ -11158,3 +11158,22 @@ plus generic table editors.
      **Still open:** the contracts-first ordering decision, and the plot
      file, which at 333,950 rows fits neither the Table Editor nor a
      SQL paste and wants psql against the connection string.
+
+258. **Contracts first. Decided.** Open since 2 Oct, asked three times,
+     answered today with the measurements in front of it:
+
+       contracts first   5,699 projects    13 site+customer pairs held
+                                           by more than one project
+       tenders first     7,315 projects    1,697 such pairs
+
+     The gap is one number. The contract side can match only 86 of
+     1,926 to a tender by reference, where the tender side matches
+     1,159 on three routes - so running the contracts last means ~1,840
+     of them create a second project for a site a tender already holds.
+     The tenders-first file's own section 2.2 rules out the obvious fix:
+     every contract's site name matches a tender and 685 match more
+     than one.
+
+     `import_legacy_projects.sql` is unchanged - it was always
+     contracts-first. `import_legacy_projects.TENDERS_FIRST.sql` is
+     marked as not chosen and kept for the record.

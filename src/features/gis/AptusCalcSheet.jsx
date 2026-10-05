@@ -167,7 +167,11 @@ export default function AptusCalcSheet({
     rows,
     settings: head,
     scheme: {
-      title: project?.Project_Name ?? "",
+      /* The scheme's name, which is its SITE name. This read
+         `Project_Name`, which is not a column, so every sheet went out
+         with an empty title — silently, because an absent field and an
+         unnamed scheme look identical on the form. */
+      title: project?.Site_Name ?? "",
       aptusRef: project?.Project_Ref ?? "",
       dnoRef: project?.DNO_Ref ?? "",
     },
@@ -260,7 +264,8 @@ export default function AptusCalcSheet({
             <h3>Aptus Calc Sheet</h3>
             <p className="acs-sub">
               Volt drop and loop impedance information &middot;{" "}
-              {project?.Project_Name || `Project ${project?.Project_ID ?? ""}`}
+              {project?.Site_Name || project?.Display_Ref
+                || `Project ${project?.Project_ID ?? ""}`}
             </p>
           </div>
           <button className="fe-x" onClick={onClose} aria-label="Close">&times;</button>

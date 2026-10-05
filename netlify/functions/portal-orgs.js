@@ -130,9 +130,22 @@ export default withAuth(async function handler(req) {
 
       const ids = [...new Set((links || []).map((l) => Number(l.Project_ID)))];
       if (ids.length) {
+        /* `Project_Name` was here and does not exist. PostgREST refuses
+           the whole select over one unknown column, so the screen got
+           "column Project.Project_Name does not exist" and both
+           dropdowns stayed empty — organisations included, because they
+           are returned by the same call.
+
+           The same invented column is written up at the head of
+           portal.js, where it took the developer portal's project list
+           down for the same reason. A project is known by its SITE NAME
+           and by Display_Ref, the reference printed on everything a
+           developer has seen from us. Project_Ref comes too, as the
+           fallback the rest of the app uses where Display_Ref is not
+           generated yet. */
         const { data: projects, error: pErr } = await db
           .from("Project")
-          .select("Project_ID,Project_Name,Site_Name")
+          .select("Project_ID,Display_Ref,Project_Ref,Site_Name")
           .in("Project_ID", ids);
         if (pErr) throw pErr;
 

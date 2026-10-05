@@ -14,7 +14,7 @@
 
 SELECT step, verdict, detail FROM (
 
-  SELECT 1 AS step, 'Contracts staged' AS verdict,
+  SELECT 1::numeric AS step, 'Contracts staged' AS verdict,
          count(*)::text || ' rows' AS detail
     FROM "Legacy_Project_Import" WHERE "Source" = 'contract'
 
@@ -34,6 +34,38 @@ SELECT step, verdict, detail FROM (
                               WHERE m."Kind" = 'status'
                                 AND m."Legacy_ID" = btrim(i."Contract_Status_ID")
                                 AND m."New_ID" IS NOT NULL)) x
+
+  UNION ALL
+  -- ── The one this check originally missed ──
+  --
+  -- Step 2 asks whether every status that IS set has a mapping, and
+  -- says nothing about rows with no status at all. 31 contracts have
+  -- neither a Contract_Status_ID nor a Tender_Status_ID, the lookup
+  -- found nothing, and Project_Status_ID is NOT NULL:
+  --
+  --   ERROR: 23502: null value in column "Project_Status_ID"
+  --
+  -- which is how far it got before anybody noticed. The import now
+  -- gives those the first Contract-stage status and says so in the
+  -- project's Notes; this row is here so the number is seen first.
+  SELECT 2.5, 'Contracts with no status at all',
+         count(*)::text || ' rows - these take the first contract status, '
+           || 'and their Notes say so'
+    FROM "Legacy_Project_Import" i
+   WHERE i."Source" = 'contract'
+     AND btrim(COALESCE(i."Contract_Status_ID", '')) = ''
+     AND btrim(COALESCE(i."Tender_Status_ID", '')) = ''
+
+  UNION ALL
+  -- And that there IS a contract status to fall back to.
+  SELECT 2.6,
+         CASE WHEN EXISTS (SELECT 1 FROM "Project_Status" WHERE "Stage" = 'Contract')
+              THEN 'A default contract status exists'
+              ELSE 'STOPS IT - no Contract-stage status to fall back to' END,
+         COALESCE((SELECT ps."Status" FROM "Project_Status" ps
+                    WHERE ps."Stage" = 'Contract'
+                    ORDER BY ps."Sort_Order" LIMIT 1), 'none')
+           || ' is what a statusless contract will get'
 
   UNION ALL
   -- Region is nullable, so an unmapped one is a fact rather than a fault.

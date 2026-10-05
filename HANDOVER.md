@@ -11177,3 +11177,54 @@ plus generic table editors.
      `import_legacy_projects.sql` is unchanged - it was always
      contracts-first. `import_legacy_projects.TENDERS_FIRST.sql` is
      marked as not chosen and kept for the record.
+
+259. **31 contracts with no status, and a pre-flight that could not see
+     them.** Reported from use, part way through the contract import:
+
+       ERROR: 23502: null value in column "Project_Status_ID"
+
+     Project_Status_ID is NOT NULL. 31 of the 1,926 carry NEITHER a
+     Contract_Status_ID nor a Tender_Status_ID - none has a signed date
+     or a secured date either, so they are records the old system never
+     finished - and the lookup found nothing for them.
+
+     **It was visible in my own measurements and I walked past it.** The
+     table I wrote two messages earlier said the seven statuses cover
+     1,895 rows, against 1,926 contracts. That gap of 31 was on the
+     screen. Then preflight_contracts.sql asked only whether every
+     status that IS set has a mapping, which is the same blind spot
+     written down a second time.
+
+     Fixed in both places. The import COALESCEs to the first
+     Contract-stage status by Sort_Order - chosen by order rather than
+     by name, so it follows the board if anybody reorders it - and says
+     so in the project's Notes, because a default nobody is told about
+     is a figure somebody will later believe. The pre-flight now counts
+     them before the import runs, and checks a Contract-stage status
+     exists to fall back to.
+
+     **And a second stale tender instruction.** The import's AFTERWARDS
+     section still said to load the tender file into the same staging
+     table with Source = 'tender' - the same fault 0248 carried, in a
+     second file. 5,454 tender rows among the contracts, where this
+     import would try to make projects of them. Replaced with a pointer
+     to import_legacy_tenders.sql.
+
+     **Run for real against a Project table built to match the live
+     one** - the NOT NULL set, both unique constraints, a generated
+     Display_Ref, and 28 existing projects holding references in the
+     YYMM.NNN sequence. Result: 1,926 imported, 1,954 total, the 28
+     untouched, ZERO duplicate references, the 31 on Mobilising with
+     their note, 52 on the date stand-in, and a re-run inserting
+     nothing.
+
+     **1,615 of 1,926 land on a specific branch** - better than the
+     1,036 the branch key alone gives, because the import also settles
+     a branch wherever the organisation has exactly one. 311 have no
+     customer, down from 374, the difference being the Audacia code
+     fallback.
+
+     Reading pg_trigger and pg_constraint first - the lesson from 255
+     and 256 - is what made this run at all: it confirmed 0233 had run,
+     so log_project_changes no longer names a dropped column. Without
+     that the import could not have inserted a single row.

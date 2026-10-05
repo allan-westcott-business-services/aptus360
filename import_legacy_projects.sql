@@ -329,10 +329,29 @@ SELECT
            DATE '1900-01-01'),
   NULLIF(btrim(n."Secured_Date"), '')::date,
   NULLIF(btrim(n."Date_Signed"), '')::date,
-  (SELECT m."New_ID" FROM "Legacy_Lookup_Map" m
-    WHERE m."Kind" = 'status'
-      AND m."Legacy_ID" = COALESCE(NULLIF(btrim(n."Contract_Status_ID"), ''),
-                                   btrim(n."Tender_Status_ID"))),
+  /* ── Project_Status_ID is NOT NULL, and 31 contracts have no status ──
+     Reported from use:
+       ERROR: 23502: null value in column "Project_Status_ID"
+     Measured: 31 of the 1,926 carry NEITHER a Contract_Status_ID nor a
+     Tender_Status_ID, so the lookup finds nothing and the insert is
+     refused. None of them has a signed date or a secured date either -
+     they are records the old system never finished.
+     The guard above only checks the statuses that ARE set, and the
+     pre-flight made the same mistake, so this got as far as the import.
+     So: the first Contract-stage status by Sort_Order, which is
+     Mobilising - the job exists and has not started. Chosen by order
+     rather than by name, so it follows the board if somebody reorders
+     it. The Notes say the old system set no status, because a default
+     nobody is told about is a figure somebody will later believe. */
+  COALESCE(
+    (SELECT m."New_ID" FROM "Legacy_Lookup_Map" m
+      WHERE m."Kind" = 'status'
+        AND m."Legacy_ID" = COALESCE(NULLIF(btrim(n."Contract_Status_ID"), ''),
+                                     btrim(n."Tender_Status_ID"))),
+    (SELECT ps."Project_Status_ID" FROM "Project_Status" ps
+      WHERE ps."Stage" = 'Contract'
+      ORDER BY ps."Sort_Order"
+      LIMIT 1)),
   (SELECT m."New_ID" FROM "Legacy_Lookup_Map" m
     WHERE m."Kind" = 'fire_service' AND m."Legacy_ID" = btrim(n."Fire_Service_ID")),
   NULLIF(btrim(n."Tender_Quote_Value"), '')::numeric,
@@ -349,6 +368,12 @@ SELECT
      Only the facts that are lost otherwise. */
   NULLIF(concat_ws(E'\n',
     'Imported from the original app (Contract ' || btrim(n."Contract_ID") || ').',
+    /* Only on the 31 that had none. Said out loud so nobody reads the
+       status as something the old system recorded. */
+    CASE WHEN btrim(COALESCE(n."Contract_Status_ID", '')) = ''
+          AND btrim(COALESCE(n."Tender_Status_ID", '')) = ''
+      THEN 'The original app set no status on this contract. It has been '
+           || 'given the first contract status; check it.' END,
     'Date received is a stand-in: the original app kept it on the tender, '
       || 'not the contract.',
     /* WHO the customer is, on every project that has not got one

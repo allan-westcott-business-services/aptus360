@@ -60,7 +60,7 @@ import { originMissing,
 } from "./electric.js";
 import FeatureEditor from "./FeatureEditor.jsx";
 import { drawnLength, runLength, hasMeasured } from "./lengths.js";
-import { metersByPlot, outsideWay, wayColourOf } from "./linkWays.js";
+import { inputCableOf, metersByPlot, outsideWay, wayColourOf } from "./linkWays.js";
 import { traceTree, pointAlong } from "./traceWalk.js";
 
 /* What a line's label says about its length: the measured figure where
@@ -5954,30 +5954,40 @@ export default function GISCanvasPage() {
                  input — the trunk, which is the cable a designer is
                  usually tracing back.
 
-                 The colour of the cable that ENDS here and is not one
-                 of this box's outputs: that is the input by definition.
-                 Read from the feeder plan, which is what the canvas
-                 draws the run in, so the dot and the cable cannot
-                 disagree. */
-              const inInk = (() => {
-                const aP = f.Attributes?.Span_Anchor || f.Geometry?.[0];
-                if (!aP) return null;
-                for (const line of visible) {
-                  if (line.Feature_Type !== "line" || line.Layer_Key !== "electric") continue;
-                  if (!/main/i.test(String(line.Attributes?.Line_Type ?? ""))) continue;
-                  if (Number(line.Attributes?.Link_Box_ID) === Number(f.Feature_ID)
-                    && line.Attributes?.Link_Way != null) continue;
-                  const g2 = line.Geometry || [];
-                  if (g2.length < 2) continue;
-                  const ends = [g2[0], g2[g2.length - 1]];
-                  if (!ends.some((q2) =>
-                    Math.hypot(q2[0] - aP[0], q2[1] - aP[1]) <= SNAP_TOL)) continue;
-                  return feederPlan.get(Number(line.Feature_ID))?.colour
-                    ?? ringColours?.get?.(Number(line.Attributes?.Circuit_ID))
-                    ?? null;
-                }
-                return null;
-              })();
+                 Which cable that is used to be settled by measuring:
+                 walk the mains, take the first whose end falls within
+                 SNAP_TOL — 12 metres — of the box, excluding only this
+                 box's own outputs.
+
+                 Drawing 35 broke it. Two boxes, one per circuit,
+                 standing 1.73 m apart at the end of the POC trench. So
+                 each box's 12 m circle holds the OTHER box's input
+                 cable, and its output too, as well as its own, and the
+                 walk returned whichever came first by id: cable A1
+                 before cable B1. Box A1 was right by luck. Box B1 drew
+                 its input in circuit 1's green with circuit 2's orange
+                 cable sitting on it.
+
+                 The choosing is now inputCableOf() in linkWays.js,
+                 beside wayColourOf, which asks the drawing before the
+                 ruler and reads the circuit — see the reasoning there.
+                 It lives outside the canvas so it can be tested on a
+                 drawing rather than asserted as text: the check meant
+                 to cover this dot matched only the source line
+                 "Link_Way != null) continue;", which is why it stayed
+                 green through the whole fault.
+
+                 `visible` rather than `features`, so a hidden mains
+                 layer leaves the dot its default instead of naming a
+                 cable nobody can see. The ink comes from the feeder
+                 plan, which is what the canvas draws the run in, so the
+                 dot and the cable cannot disagree. */
+              const inCable = inputCableOf(f, visible, { tol: SNAP_TOL });
+              const inInk = inCable
+                ? (feederPlan.get(Number(inCable.Feature_ID))?.colour
+                   ?? ringColours?.get?.(Number(inCable.Attributes?.Circuit_ID))
+                   ?? null)
+                : null;
               dot(p.x - ux * half, p.y - uy * half, inInk);
               /* Outputs on the front face: centred for a 2 way, spread
                  for a 4 way. */

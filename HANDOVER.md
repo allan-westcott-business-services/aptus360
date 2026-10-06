@@ -11617,3 +11617,106 @@ plus generic table editors.
      deciding a re-lay, and making served-ness depend on cables is a
      decision with consequences beyond this fault. The check records
      the blind spot so whoever touches it reads why.
+
+265. **Two boxes 1.73 m apart, and the input dot took the wrong one's
+     cable.** Reported: "the input node of Link Box B1 is not picking
+     up the colour of the cable on its input."
+
+     The canvas settled which cable was on a box's input by measuring:
+     walk the mains, take the FIRST whose end falls within SNAP_TOL -
+     12 metres - of the box, excluding only that box's own outputs.
+
+     Drawing 35 has two link boxes, one per circuit, standing 1.73 m
+     apart at the end of the POC trench. Simulated against the export:
+     box B1's 12 m circle holds cable A1 at 1.73 m, cable A2 (the
+     other box's OUTPUT) at 1.73 m, its own cable B1 at 0.00 m and its
+     own output B2 at 0.00 m. The walk returns on id order, and 57970
+     (A1) precedes 57982 (B1). Box A1 was right by luck; box B1 drew
+     its input in circuit 1's green with circuit 2's orange cable on
+     it.
+
+     Three things wrong with measuring first:
+
+     Link_Way was tested against THIS box only, so the neighbour's
+     output - equally close - was a candidate. An input cable carries
+     no way at all, from any box.
+
+     The circuit was never consulted, though the box carries its own
+     Circuit_ID. A cable on another circuit cannot be its input.
+
+     And `Connects` already records which cable lands at the box, both
+     directions, exactly. Measuring was answering a question the
+     drawing had already answered.
+
+     `inputCableOf()` now lives in linkWays.js beside wayColourOf:
+     Connects first, then the NEAREST end inside the tolerance rather
+     than the first, with both filters applied throughout. Verified on
+     the export - B1's input resolves to #ff7300 and A1's to #1eed02,
+     the two circuit colours chosen on the POCs.
+
+     **Why checklinkbox.mjs stayed green through all of it.** It
+     asserts on this dot three times, and all three are regexes over
+     GISCanvasPage.jsx: that the dot call reads
+     `dot(p.x - ux * half, p.y - uy * half, inInk);`, that
+     `feederPlan.get(...)?.colour` appears, and that
+     `Link_Way != null) continue;` appears "so an output's cable cannot
+     be taken as the input". The third was pinning the very line whose
+     narrowness WAS the fault. Pinning the text of a routine says
+     nothing about the answer it gives.
+
+     So the rule was moved out of the 24,000-line component to be
+     runnable, and checklinkboxinput.mjs resolves it - 21 checks, two
+     boxes at the real coordinates with the real ids, each filter
+     isolated, and the feature list reversed to catch an answer that is
+     only ever first or last.
+
+     **Six mutations run; two survived first time, each masked by the
+     other mechanism.** Reverting nearest-end to first-found changed
+     nothing, because the decoy in that test was on another circuit and
+     the circuit filter removed it before any distance was compared.
+     Narrowing the output test back to this-box-only also survived,
+     because the neighbour's output was 1.73 m out and the real input
+     0 m, so the nearest rule covered for it. Both now have a case that
+     isolates them: same-circuit decoys for the distance rule, and the
+     neighbour's output placed exactly ON the box for the exclusion.
+
+     And my own replacement assertion in checklinkbox.mjs failed on
+     its first run - against my own comment, which quotes the old line.
+     An assertion that something is GONE has to read code only, so that
+     file now keeps a comment-stripped copy of the source for it.
+
+266. **Only one levels label, and that one is not a fault.** Reported
+     alongside the above: a levels label at link box A1 and none at
+     B1.
+
+     levelsByNode() skips a whole circuit whose origin is not fully
+     declared:
+
+         if (originMissing(r.model?.origin || station,
+           lookups?.transformerSizes || []).length) continue;
+
+     Run against the export:
+
+         Electric POC 1  Output "150"  Output_V 400   -> nothing missing
+         Electric POC 2  Output null   Output_V unset -> "the output
+                                                         voltage on the POC"
+
+     So circuit 2 is skipped, and every node on it - link box B1
+     included - has no figure to label. Circuit 1 keeps its levels.
+
+     Deliberate, and the comment there says so: a POC with no declared
+     voltage does not fail, it DEFAULTS to 400, and every label on the
+     circuit would then read better than the truth by the missing
+     amount. "A number on the drawing is read as a measurement; one
+     resting on an undeclared source is worse than a blank."
+
+     Fix is on the drawing, not in the code: set the output voltage on
+     Electric POC 2. Note that voltageOf(POC 2) already returns 400 -
+     that is the default, which is exactly why originMissing refuses to
+     accept it as declared.
+
+     Worth knowing: Levels_Offset is not the gate. Box A1 carries one
+     and B1 does not, which looks like the cause and is not - it only
+     says where a label somebody dragged should sit. Nothing on the
+     canvas says WHY a circuit has no levels; the Run Levels Check
+     panel does, "because a panel can carry words and a label cannot".

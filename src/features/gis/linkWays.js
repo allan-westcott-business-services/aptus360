@@ -88,3 +88,84 @@ export function wayColourOf(feature, features = []) {
     && Number(x.Feature_ID) === Number(boxId));
   return box?.Attributes?.Way_Colours?.[String(way)] || null;
 }
+
+/* ── Which cable is on a link box's INPUT ──
+ *
+ * The input is the one termination that does not say which cable it
+ * belongs to: the outputs each wear their way's colour, so the trunk —
+ * the cable a designer traces back — was the one dot drawn slate.
+ *
+ * Giving it the cable's colour means first deciding WHICH cable, and
+ * that was being done by measuring. The canvas walked the mains and
+ * took the first whose end fell within SNAP_TOL — 12 metres — of the
+ * box, excluding only that box's own outputs.
+ *
+ * Drawing 35 broke it. Two boxes, one per circuit, standing 1.73 m
+ * apart at the end of the POC trench. Each box's 12 m circle holds the
+ * other box's input cable and the other box's output as well as its
+ * own, and the walk returned whichever came first by id: cable A1
+ * before cable B1. Box A1 was right by luck. Box B1 drew its input in
+ * circuit 1's green with circuit 2's orange cable sitting on it.
+ *
+ * So the drawing is asked before the ruler:
+ *
+ *   1. `Connects`, either direction. It already records which cable
+ *      lands here and is exact.
+ *   2. Failing that, the NEAREST end inside the tolerance — not the
+ *      first one found, which is an ordering accident.
+ *
+ * and two filters apply to both, because neither can ever be the input:
+ *
+ *   * a cable carrying a way, from ANY box. The old test only
+ *     excluded this box's own outputs, so the neighbour's output was a
+ *     candidate. A way claimed through `Link_Connections` counts as
+ *     well — that is the editor's route — unless it says "in", which
+ *     is the input naming itself.
+ *   * a cable on another circuit, where both are known.
+ *
+ * Returns the cable feature, or null. The caller turns it into ink, so
+ * the dot and the run cannot disagree. */
+export function inputCableOf(box, features = [], opts = {}) {
+  const { tol = 12, isMain = (f) => /main/i.test(String(f?.Attributes?.Line_Type ?? "")) } = opts;
+  if (!box) return null;
+
+  const boxId = Number(box.Feature_ID);
+  const boxCct = box.Attributes?.Circuit_ID;
+  const anchor = box.Attributes?.Span_Anchor || box.Geometry?.[0];
+
+  const carriesAWay = (line) => {
+    if (line.Attributes?.Link_Way != null) return true;
+    const lc = line.Attributes?.Link_Connections || {};
+    return ["start", "end"].some((k) =>
+      lc[k] && lc[k].way != null && lc[k].way !== "in");
+  };
+
+  const sameCircuit = (line) => boxCct == null
+    || line.Attributes?.Circuit_ID == null
+    || Number(line.Attributes.Circuit_ID) === Number(boxCct);
+
+  const candidates = (features || []).filter((line) =>
+    line.Feature_Type === "line"
+    && line.Layer_Key === "electric"
+    && isMain(line)
+    && (line.Geometry || []).length >= 2
+    && !carriesAWay(line)
+    && sameCircuit(line));
+
+  const named = candidates.filter((line) =>
+    (line.Attributes?.Connects || []).map(Number).includes(boxId)
+    || (box.Attributes?.Connects || []).map(Number).includes(Number(line.Feature_ID)));
+  if (named.length) return named[0];
+
+  if (!anchor) return null;
+  let best = null;
+  let bestD = Infinity;
+  for (const line of candidates) {
+    const g = line.Geometry;
+    for (const q of [g[0], g[g.length - 1]]) {
+      const d = Math.hypot(q[0] - anchor[0], q[1] - anchor[1]);
+      if (d <= tol && d < bestD) { best = line; bestD = d; }
+    }
+  }
+  return best;
+}

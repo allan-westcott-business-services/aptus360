@@ -27,6 +27,16 @@ let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
 
 const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+/* The same source with comments taken out.
+   An assertion that something is GONE has to read code only: a comment
+   recording what the old line was — which is how this file's history is
+   kept — otherwise fails the check that the old line has gone. That
+   happened the moment the input walk was replaced and its reasoning
+   written down above the replacement. */
+const canvasCode = canvas
+  .replace(/\/\*[\s\S]*?\*\//g, " ")
+  .replace(/^[ \t]*\/\/.*$/gm, " ");
 const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
 
 /* Both ways are offered. They live under a "Link Box" branch that
@@ -81,9 +91,33 @@ if (!/feederPlan\.get\(Number\(line\.Feature_ID\)\)\?\.colour/.test(canvas)) {
   fail("the input dot's colour is not read from what the canvas draws the "
     + "cable in, so the two can disagree");
 }
-/* Not one of its own outputs: those are the front face. */
-if (!/Link_Way != null\) continue;/.test(canvas)) {
-  fail("an output's cable can be taken as the input");
+/* ── This used to assert the source line that WAS the fault ──
+
+   It read:
+
+     if (!/Link_Way != null\) continue;/.test(canvas))
+       fail("an output's cable can be taken as the input");
+
+   and it passed throughout the fault reported on drawing 35, because
+   the line it pinned tested Link_Way against THIS box only. The
+   neighbouring box 1.73 m away had its own input cable and its own
+   output inside the 12 m tolerance, and the walk took whichever came
+   first by id — so box B1 drew its input in circuit 1's green.
+
+   Pinning the text of a routine says nothing about the answer it
+   gives. The choosing now lives in inputCableOf() in linkWays.js so it
+   can be run, and checklinkboxinput.mjs resolves it against two boxes
+   at those coordinates. This is left as the structural half: that the
+   canvas delegates rather than keeping a second copy of the rule. */
+if (!/inputCableOf\(f, visible/.test(canvas)) {
+  fail("the canvas no longer asks inputCableOf which cable is on the input, "
+    + "so the rule has been inlined again and checklinkboxinput.mjs is "
+    + "testing something the drawing does not use");
+}
+if (/Link_Way != null\) continue;/.test(canvasCode)) {
+  fail("the old proximity walk is back: it takes the first cable within 12 m "
+    + "and excludes only this box's own outputs, which is what put circuit "
+    + "1's colour on box B1's input");
 }
 
 /* ── And the object picker shows a cable's real colour ──

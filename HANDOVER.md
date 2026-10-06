@@ -12298,3 +12298,28 @@ plus generic table editors.
 
      Pre-flight row 4.3 counts the repeats. It exists because rows 4 and
      4.2 both missed them.
+
+280. **159,286 plots on their projects, confirmed on their database.**
+
+         plots imported                    159,286
+         still waiting on the tenders      174,664
+         points trigger                    enabled
+
+     Every figure matches what was predicted from the file before it
+     ran, and part D recalculated exactly 1,915 projects - the count of
+     contracts with plots.
+
+     The 174,664 waiting are the tender half plus the 14 that will
+     never land: 4 with no plot number, 10 repeating a plot number on
+     their project. Part F names all 14 by contract.
+
+     **The connections are ready to go next and all of them land.**
+     Measured against the staged files: all 33,059 connections in the
+     2 Oct file belong to plots that now exist, none to tender plots,
+     and not one names a Plot_ID absent from the plot file. Split by
+     utility: 12,025 water, 11,286 electric, 9,748 gas - on the old
+     ids, which still need mapping like the others did.
+
+     Their live staging table holds 33,380 rather than 33,059, from the
+     fresher export they loaded this morning, so the extra 321 are
+     unmeasured here - the shape will be the same.

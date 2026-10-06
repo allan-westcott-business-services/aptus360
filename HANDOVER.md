@@ -11322,3 +11322,52 @@ plus generic table editors.
      needs psql rather than the SQL editor - 333,950 plots is too big
      for the editor as a CSV (mixed-case table name) and too big as
      INSERT statements (~80 MB).
+
+261. **Their live database answered, and the one duplicate reference is
+     still there.** `migration_status.sql` run against Supabase came
+     back matching the prediction row for row: 0.1 all seven
+     migrations in, stages 1 to 3 done (509/623, 14 lookup rows,
+     1,926 contracts, 1,615 with a customer), stage 4 not started at
+     all - the tender loader files were never run - stage 5 not
+     started, 311 with no customer as expected.
+
+     One difference. Row 9.1 reads **1**, not 0. That is the pair that
+     pre-dates all of this: "Test Site" and "Brierton Lane,
+     Hartlepool" both on the same reference, which the UNIQUE
+     constraint allows because both have a NULL Option_Letter and
+     Postgres treats two NULLs as different values. Said in September
+     that the test site could go; it never went.
+
+     `clear_duplicate_ref.sql` - three parts, one statement each.
+     Part 1 lists everything sharing a reference and says which came
+     from the old system. Part 2 says what hangs off the project part
+     3 would delete, with every child table found from pg_constraint
+     rather than from a list typed here, and what each foreign key
+     would do on delete - cascade, block, or orphan. Part 3 deletes
+     it, finding the project by rule rather than by id: it must share
+     a reference, carry no legacy id of either kind, and be named like
+     a test. Miss any one and it deletes nothing.
+
+     **Two faults in it, both found by running it rather than reading
+     it.**
+
+     Part 3 reported "1 still sharing a reference" immediately after
+     successfully deleting the only one. Everything in a statement sees
+     one snapshot, so a count in the same statement as a DELETE in a
+     CTE cannot see that DELETE, however it is written - it has to
+     subtract the rows the CTE returned. Run twice it looked right,
+     which is exactly how it would have been missed.
+
+     Part 2 came back with zero rows, which reads as "nothing hangs off
+     it" and is not the same claim: a schema with no foreign keys to
+     Project, and a rule that matched no project, give the identical
+     empty result. It now always returns two rows first - which project
+     part 3 would delete, and the total pointing at it - so an empty
+     table underneath them means something.
+
+     Tested in four states: no duplicate at all; a duplicate that is
+     not a test project (refuses, and both parts say why); the real
+     case end to end with part 3 run twice; and against three child
+     tables built with CASCADE, RESTRICT and SET NULL, which vfy did
+     not have, to prove the per-table counts and the delete actions
+     are read correctly.

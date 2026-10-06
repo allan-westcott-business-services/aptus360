@@ -11277,3 +11277,48 @@ plus generic table editors.
      generated from projects.js's own PROJECT_COLUMNS, all 50 of them,
      plus the NOT NULLs and constraints read off pg_constraint. Guessing
      a column at a time is what made those three runs fail.
+
+260. **One script that says where the migration is, and does not fall
+     over on a migration you have not run.** Asked for directly: "back
+     to the data migration. Where did we get up to ?"
+
+     `migration_status.sql` - one paste, one table, seventeen rows,
+     read-only. Stage 0 is which of 0247-0253 are in, stages 1 to 5 are
+     organisations, the lookup map, contracts, tenders, plots, and 9.1
+     and 9.2 are the two things worth watching.
+
+     **The first version of it was no use.** It asked
+     `Legacy_Plot_Import` and `Legacy_Tender_Import` for their row
+     counts directly, so on a database where 0251 and 0252 had not been
+     run it stopped at
+
+         ERROR: relation "Legacy_Plot_Import" does not exist
+
+     and said nothing about the eleven stages that WERE done - the one
+     question it exists to answer. A missing relation is a parse error,
+     so no CASE or COALESCE in the body can get round it. The counts
+     that depend on a later migration now go through
+     `query_to_xml('SELECT count(*) ...')`, which takes the query as
+     text, so nothing is resolved until `to_regclass` has said the
+     table is there. 0249 is deliberately not on the stage 0 list: the
+     keys it adds are what stage 1 counts, so if it were missing row
+     1.1 could not have been written.
+
+     Tested in three states against the verification database, all
+     returning one result set and no error: everything present; the
+     0250/0251/0252/0253 artefacts renamed away (0.1 names all four,
+     the stages that need them read "not yet"); and the state their
+     live database is probably in, tenders never imported, where 4.1
+     to 4.3 correctly read "not yet" rather than vacuously passing.
+
+     **Where it says the migration stands.** Stages 1 to 3 done - 509
+     organisations, 623 branches, 14 lookup rows, 1,926 contract
+     projects, 1,615 of them showing a customer, zero duplicate
+     references. Stage 4 tested end to end here and blocked on one
+     thing only: `tender_status` has no rows in `Legacy_Lookup_Map`, so
+     part 3 of the tender import would put all 3,773 tender-only
+     projects on a single status. Still waiting on the old system's
+     `Tender_Status` table, 13 ids and names. Stage 5 not started and
+     needs psql rather than the SQL editor - 333,950 plots is too big
+     for the editor as a CSV (mixed-case table name) and too big as
+     INSERT statements (~80 MB).

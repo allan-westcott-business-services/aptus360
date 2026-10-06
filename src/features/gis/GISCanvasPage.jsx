@@ -6056,9 +6056,21 @@ export default function GISCanvasPage() {
                 ctx.stroke();
                 ctx.restore();
               };
+              /* ── The input stub takes the same ink as the input dot ──
+
+                 This passed null for "in", so the leader from the input
+                 face out to where the cable lands drew slate while the
+                 dot at its own end had just been given the cable's
+                 colour. Two marks for one termination, disagreeing.
+
+                 Missed on the first pass at the input colour: that
+                 changed `inInk` and the dot, and the stub sits twenty
+                 lines further down reading its own hardcoded null, so
+                 nothing about the dot's fix reached it. Reported back
+                 as "Link Box B1 is still showing the wrong colour". */
               for (const way of landed) {
                 if (way === "?") continue;
-                stub(way, way === "in" ? null : (wayInk[way] || null));
+                stub(way, way === "in" ? inInk : (wayInk[way] || null));
               }
 
               outs.forEach((t, i) => {

@@ -114,6 +114,23 @@ if (!/inputCableOf\(f, visible/.test(canvas)) {
     + "so the rule has been inlined again and checklinkboxinput.mjs is "
     + "testing something the drawing does not use");
 }
+/* ── And the input STUB, not just the dot ──
+
+   The first fix for the input colour changed `inInk` and the dot, and
+   missed the stub twenty lines below: the dashed leader from the input
+   face out to where the cable lands passed a hardcoded null, so it drew
+   slate while the dot at its own end wore the cable's colour. Two marks
+   for one termination, disagreeing — and reported back as "Link Box B1
+   is still showing the wrong colour".
+
+   Both links on drawing 35 declare themselves with
+   Link_Connections way "in", so the input stub is drawn there: this is
+   the ordinary case, not an edge one. */
+if (!/stub\(way, way === "in" \? inInk :/.test(canvasCode)) {
+  fail("the link box's input stub does not take the input dot's colour, so "
+    + "the leader and the dot can disagree about the same termination");
+}
+
 if (/Link_Way != null\) continue;/.test(canvasCode)) {
   fail("the old proximity walk is back: it takes the first cable within 12 m "
     + "and excludes only this box's own outputs, which is what put circuit "

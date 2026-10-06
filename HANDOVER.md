@@ -11720,3 +11720,46 @@ plus generic table editors.
      says where a label somebody dragged should sit. Nothing on the
      canvas says WHY a circuit has no levels; the Run Levels Check
      panel does, "because a panel can carry words and a label cannot".
+
+267. **"Link Box B1 is still showing the wrong colour."** Two reasons,
+     and the first one is on me for not saying it plainly: **none of
+     265's fix is deployed.** It is on the PR branch, which is unmerged
+     and gated on 0241-0246. Their live site was running the same code
+     as before I touched it.
+
+     The second is a real gap in that fix, found while checking rather
+     than assumed. The input colour work changed `inInk` and the input
+     DOT. The input STUB - the dashed leader from the input face out to
+     where the cable lands - sits twenty lines further down and read its
+     own hardcoded null:
+
+         stub(way, way === "in" ? null : (wayInk[way] || null));
+
+     so it drew slate while the dot at its own end wore the cable's
+     colour. Two marks for one termination, disagreeing.
+
+     I first talked myself out of this mattering, reasoning that
+     `landed` only gains "in" from an explicit Link_Connections claim
+     and theirs would not have one. Checked it instead of asserting it,
+     and `landed` is `["?","in",1]` for BOTH boxes: every main on that
+     drawing carries a claim, the inputs saying
+     `{"end":{"box":57959,"way":"in"}}` and the outputs their way
+     number. So the input stub is drawn there, and it was slate.
+
+     **Which turned up something better than the fix 265 shipped.** A
+     cable saying `way: "in"` and naming this box is the drawing
+     stating outright which cable is on the input - and inputCableOf was
+     settling it by Connects and then by proximity, neither of which is
+     a declaration. Connects is rebuilt from what a cable TOUCHES, so a
+     cable passing near a box it has nothing to do with can be in its
+     list. The claim is a statement about what the cable IS.
+
+     So the order is now: a declaration naming THIS box, then Connects
+     either direction, then the nearest end inside the tolerance. 23
+     checks; the two new ones have a decoy that is both nearer AND in
+     the box's Connects, so only the declaration can answer, and a
+     second that declares itself the OTHER box's input. Both mutations
+     caught.
+
+     checklinkbox.mjs now also pins the stub, and that assertion was
+     mutation-tested by putting the hardcoded null back.

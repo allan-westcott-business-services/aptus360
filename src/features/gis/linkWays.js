@@ -152,6 +152,26 @@ export function inputCableOf(box, features = [], opts = {}) {
     && !carriesAWay(line)
     && sameCircuit(line));
 
+  /* ── A cable that SAYS it is the input ──
+   *
+   * `Link_Connections: { end: { box: 57959, way: "in" } }` is the cable
+   * declaring which box's input it lands on. Every main on drawing 35
+   * carries one, both the inputs and the outputs, so this is the
+   * ordinary case rather than an edge one — and it was being settled by
+   * Connects and proximity while the drawing held the answer outright.
+   *
+   * Ahead of Connects because the two are not the same kind of fact.
+   * Connects is rebuilt on every run from what a cable TOUCHES, so a
+   * cable passing close to a box it has nothing to do with can appear
+   * in its list. A way of "in" naming this box is a statement about
+   * what the cable IS. */
+  const declared = candidates.filter((line) => {
+    const lc = line.Attributes?.Link_Connections || {};
+    return ["start", "end"].some((k) =>
+      lc[k] && lc[k].way === "in" && Number(lc[k].box) === boxId);
+  });
+  if (declared.length) return declared[0];
+
   const named = candidates.filter((line) =>
     (line.Attributes?.Connects || []).map(Number).includes(boxId)
     || (box.Attributes?.Connects || []).map(Number).includes(Number(line.Feature_ID)));

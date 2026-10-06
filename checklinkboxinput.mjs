@@ -170,6 +170,43 @@ const BOX_B = [199.24, 155.64];           // 1.73 m from BOX_A
      inputCableOf(boxB, world)?.Label, "B1");
 }
 {
+  /* ── A cable that declares itself the input outranks everything ──
+
+     Every main on drawing 35 carries a Link_Connections claim — the
+     inputs say `way: "in"` and name their box, the outputs say their
+     way number. That is the drawing stating the answer outright, and it
+     was being settled by Connects and proximity instead.
+
+     Here the decoy is nearer AND in the box's Connects, so only the
+     declaration can give the right answer. */
+  const boxB = box(57959, 2, BOX_B, { Span_Label: "B1", Connects: [57970, 57982] });
+  const world = [
+    boxB,
+    main(57970, 2, POC1, BOX_B, { Label: "nearer, and in the box's Connects" }),
+    main(57982, 2, POC2, [199.24, 160.0], {
+      Label: "B1", Link_Connections: { end: { box: 57959, way: "in" } },
+    }),
+  ];
+  eq("a cable declaring itself this box's input beats Connects and distance",
+     inputCableOf(boxB, world)?.Label, "B1");
+}
+{
+  /* And a declaration naming ANOTHER box is not this box's input. */
+  const boxB = box(57959, 2, BOX_B, { Span_Label: "B1" });
+  const world = [
+    boxB,
+    main(57970, 2, POC1, BOX_B, {
+      Label: "declares itself the OTHER box's input",
+      Link_Connections: { end: { box: 57960, way: "in" } },
+    }),
+    main(57982, 2, POC2, BOX_B, {
+      Label: "B1", Link_Connections: { end: { box: 57959, way: "in" } },
+    }),
+  ];
+  eq("a declaration naming another box is not this box's input",
+     inputCableOf(boxB, world)?.Label, "B1");
+}
+{
   /* A way claimed through Link_Connections, which is the editor's
      route. "in" is the input naming itself and must NOT be excluded. */
   const boxB = box(57959, 2, BOX_B, { Span_Label: "B1" });

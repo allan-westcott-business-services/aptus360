@@ -11990,3 +11990,43 @@ plus generic table editors.
      connections file was ever uploaded. The 333,950 figure is a count
      from their old system that I had been carrying as though it were a
      file I had seen.
+
+272. **The plot file arrived, and it does not say what I claimed it
+     would.** 42.6 MB, 333,950 rows, all 41 columns present by name,
+     none missing and none extra. Column ORDER differs from the table -
+     Tender_ID is twelfth in the export and third in the staging table -
+     which is exactly the hazard the \copy column list exists for.
+
+     **The correction.** I told them loading this file first was what
+     would stop Tansey Green happening 1,377 times, because the tender
+     import's strongest match route reads a plot row carrying both a
+     Tender_ID and a Contract_ID. Counted it on the actual file:
+
+         rows with BOTH ids   773
+         contract only    158,527
+         tender only      174,650
+         neither                0
+
+         distinct (contract, tender) pairs proved:  20
+
+     **Twenty.** Not 1,377. And contract 380's plots carry no Tender_ID
+     at all, so the plot route does not match Tansey Green either.
+
+     I reasoned that from the code - the route exists, it reads this
+     file, therefore loading the file unlocks it - and never measured
+     how much the file actually contains. Same shape of error as the
+     merge gate at entry 268: inferring from structure instead of
+     counting. Staging the plots before the tender merge still costs
+     nothing and still gains those 20, so the order stands, but it is a
+     rounding error rather than the unlock I described.
+
+     The 1,377 tender-only projects sharing a site name with a contract
+     project remain unsolved, and now have no cheap route to solving
+     them. Route 3 (same site AND customer) is the only one with reach,
+     and it fails exactly where the contract has no customer - 311 of
+     them.
+
+     `load_plots.psql` loads both files, column lists written in the
+     exports' own header order. Tested end to end against both real
+     files: 333,950 and 33,059 rows, 2.4 seconds for the plots, columns
+     spot-checked in place afterwards.

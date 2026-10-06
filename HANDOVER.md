@@ -12519,3 +12519,63 @@ plus generic table editors.
        the unique constraint, and the app row was left exactly as it
        was. That second NOT EXISTS is the plot import's lesson applied
        before the failure rather than after it.
+
+284. **Part B failed on a foreign key, and my pre-flight never asked
+     about foreign keys at all.**
+
+         ERROR: insert or update on table "Plot_Utility" violates
+         foreign key constraint "Plot_Utility_IDNO_ID_fkey"
+         DETAIL: Key (IDNO_ID)=(925) is not present in table "IDNO".
+
+     `Plot_Utility.IDNO_ID` references a table called **IDNO**, not
+     Organisation. The view has been resolving the adopter to an
+     `Organisation_ID` and the import has been writing it into
+     `IDNO_ID`. That was wrong before 0256, before the aliases, before
+     any of today — it would have failed on the first adopter whatever
+     the mapping said.
+
+     `preflight_connections.sql` row 2 asked about NOT NULL columns,
+     2.1 about unique constraints and indexes, 2.2 about check
+     constraints, 2.3 about triggers. `contype` was tested for `'u'`,
+     `'p'` and `'c'`. Never `'f'`. **This is the plot import's lesson
+     landing in a new column of the same table**: there I patched the
+     constraint that had just broken and ran again, three times; here I
+     wrote a pre-flight that enumerated everything I had been bitten by
+     and nothing I had not.
+
+     **E_every_foreign_key.sql** answers the whole class instead of this
+     one key. It reads every FK off the catalogue and, for each, counts
+     how many of the values *the import would actually send through it*
+     are missing from the target — using the import's own expression per
+     column, so it catches IDNO_ID being fed an Organisation_ID rather
+     than just counting staged ids. Row 3.1 names any key the script
+     has no expression for, so a key I have not anticipated cannot pass
+     silently.
+
+     Validated against the six keys reproduced in the test cluster, and
+     it found the failure that was queued up behind this one:
+
+         3 IDNO_ID -> IDNO   14 of 17 distinct values are NOT in IDNO
+         3 Team_ID -> Team   65 of 65 distinct values are NOT in Team
+
+     **Team_ID was going to be the next error.** 0066 adds
+     `Team_ID bigint REFERENCES "Team"` and says of that table
+     "deliberately unseeded — the teams are yours to name". The import
+     writes the old system's raw Team_ID, which is the utility trap
+     exactly: an id carried across between two systems that reuse id
+     numbers for different things. With the FK it fails; without one it
+     would have pointed 33,052 connections at whichever teams got
+     created later.
+
+     Plot_ID, Utility_ID, Pack_Status_ID and Visit_Outcome_ID all came
+     back 0 of n, so those four are sound.
+
+     The shape of the fix depends on something I have still never seen:
+     Plot_Utility's actual column list. 0062, 0070 and 0120 each add an
+     `..._Organisation_ID` alongside a legacy `IDNO_ID` and say in terms
+     that new work should read the new one. If Plot_Utility already has
+     such a column the adopter belongs in it. Section 1 of the script
+     prints the column list, section 4 dumps the IDNO list with its
+     Organisation_ID links, and only the water undertakers and gas
+     transporters can have nowhere to go — IDNO is, by its name, a list
+     of IDNOs.

@@ -12203,3 +12203,19 @@ plus generic table editors.
      supplies an id only where it must. Tested against a plain column, an
      identity column, and run twice: two six-bed rows, not four, and 38
      map rows.
+
+277. **Lookups mapped on their database, cleanly.** All three heat
+     sources, 25 configs including the 6BD and 6BS that part 1 added,
+     and ten old codes left NOT MAPPED on 2,227 plots - COMM 1,606,
+     OTHER 486, then FP1, LLS1, TS1, TS3, PS3, PS1, LLS3, FP3, every
+     one of them flagged "AUTO-IMPORTED - review" in the old system.
+
+     Parts D and E of import_plots_safely.sql verified against the
+     verification cluster: the recalc loop returns a count, and the
+     trigger-state row reads "yes - enabled" after part C.
+
+     My test data for that run generated the same Legacy_Plot_ID for
+     three projects and hit `Plot_Legacy_Plot_UQ` - which is worth
+     recording as good news rather than a nuisance: there IS a unique
+     constraint on Legacy_Plot_ID, so a second run of the import cannot
+     double up the plots even if the NOT EXISTS guard were removed.

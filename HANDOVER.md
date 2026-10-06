@@ -12030,3 +12030,53 @@ plus generic table editors.
      exports' own header order. Tested end to end against both real
      files: 333,950 and 33,059 rows, 2.4 seconds for the plots, columns
      spot-checked in place afterwards.
+
+273. **The plots are staged. 333,950 of them, and the connections with
+     them.** Loaded over psql with \copy after a long and clumsy hour
+     of getting there - placeholder passwords typed literally twice,
+     an unterminated quote leaving them in dquote>, and a variable
+     interpolation of mine that does not work in \copy. Worth noting
+     how much of that was my doing: `[YOUR-PASSWORD]` I explained,
+     then wrote `TheActualPassword` in an example, which is the same
+     trap one step later. The connection form that finally worked is
+     the one with separate flags and an interactive password prompt -
+     no quoting, no URL escaping, nothing to substitute. That should
+     have been the first suggestion, not the fourth.
+
+     Connections came in at 33,380, not the 33,059 I predicted: their
+     Connections.csv is a fresher export than the one uploaded on
+     2 Oct. Plots matched exactly.
+
+     `preflight_plots.sql` - one paste, one result set, 14 rows,
+     replacing part 1's EIGHT separate SELECTs of which the editor
+     shows one. Measured on the real file:
+
+         plots staged                            333,950
+         each Plot_ID once                       yes
+         land now, matched on Contract_ID        159,300
+         waiting on the tender import            174,650
+         belonging to neither                          0
+
+     **Rows 4 and 4.1 are the ones that matter and are the ones I
+     cannot answer from here.** The Plot table is not created by any
+     committed migration - it pre-dates the baseline like 0221, 0222
+     and 0238 - so what is NOT NULL on it is not in the repository, and
+     the verification cluster's Plot table is a cut-down thing built
+     from an endpoint's column list, which is exactly the schema that
+     has already caused four failed runs this migration. Both rows read
+     the live catalogue, so their run is the one that answers.
+
+     **The real blocker is the lookups.** Legacy_Lookup_Map holds only
+     'status' and 'region'. The plot import reads three more kinds and
+     nothing has filled any of them:
+
+         property_config   35 distinct old ids   172,239 plots
+         heat_source        3                    195,704 plots
+         heat_pump          1                          1 plot
+
+     Unmapped is not fatal - the column lands empty - but 172,239 plots
+     with no property config is not an import anybody would accept. The
+     old ids are known from the file; what they MEAN is not, so the
+     next thing needed is the old system's Property_Config, Heat_Source
+     and Heat_Pump_Model tables, id and name, to match on name the way
+     the contract statuses were.

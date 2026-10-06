@@ -11521,3 +11521,99 @@ plus generic table editors.
      code a collision becomes a visible error instead of silent
      corruption, which is strictly better than today. The code is on
      the PR branch, still gated on 0241-0246.
+
+264. **Drawing 35: the mains are right, and every service cable is
+     gone.** Asked whether the POC-to-link-box-to-meter routing was
+     working. The routing is. The cables are not there.
+
+     What is on that drawing: 10 LV mains, 41 service trenches, 47
+     joints, 41 plot meters, **0 service cables**.
+
+     The mains are structured exactly as described. A1 runs POC 1 ->
+     Link Box 2 and B1 runs POC 2 -> Link Box 1, neither carrying a
+     Link_Way, which is right for the feed into a box. A2-A6 and B2-B4
+     all carry Link_Box_ID and Link_Way 1 and form a proper tree out
+     of their box. Both boxes take span label A1/B1 at Span_Seq 1,
+     with the feeder points lettered around them. A1 even records
+     KVA 82.3 over 23 meters, so the build sized for the meters it was
+     given.
+
+     Then: all 47 joints name Joint_Cables ids that are not on the
+     drawing - 48 distinct absent ids, 94 dangling references - and
+     all 41 meters are connected to nothing but their trench. The ids
+     are still sitting in the joints, which is the proof: those cables
+     were written, the database allocated their ids, and they were
+     removed afterwards.
+
+     Download Drawing is not the culprit - gis.js:33 selects every row
+     for the project with no filter at all, so the export is faithful.
+
+     **The cause, confirmed in the code.** GISCanvasPage.jsx, the
+     duplicate-trench sweep in Auto Service:
+
+         const keep = Number(drawn[rightOne].Feature_ID);
+         for (const f of mine) {
+           if (Number(f.Feature_ID) !== keep) copies.push(f);
+         }
+
+     `drawn` is the trenches stamped to the seed. `mine` is
+     stampedTo(sd) - EVERY line stamped to it, trenches and cables
+     together. So `keep` is one trench id and the loop pushes every
+     cable on the plot into `copies`, which is deleted at 23105-23118.
+     The `continue` straight after keeps the seed out of `mismatched`
+     and therefore inside `serviced`, so nothing is re-laid. One word.
+
+     **And why nobody saw it.** isServed() in autoService.js returns
+     true the moment any trench is stamped to the seed:
+
+         for (const t of trenches) {
+           if (Number(t.Attributes?.Seed_Feature_ID) === sid) return true;
+         }
+
+     It never looks at the cables. So all 41 stripped plots report
+     "already has a service trench", the next Auto Service lays
+     nothing, and the drawing sits there looking finished. That is
+     also why they cannot recover by re-running it.
+
+     **Recovery: Auto Lay Services**, per utility. layServices() works
+     from the service trenches, which are all still there, skips any
+     trench that already holds a cable, and its caller is the only
+     code that repairs a joint's Joint_Cables
+     (GISCanvasPage.jsx:20620-20637) - so it fixes the 47 orphaned
+     joints in the same pass. Its own comment already describes this
+     exact fault: "re-laying them replaced the cables with new rows,
+     leaving the joints naming ids that no longer exist."
+
+     **The suite could not see any of this.** checkautoservice,
+     checkservicejoint, checkservicejoints, checkservicetee,
+     checkservicemoved, checkservicesizes, checkservicetail - every
+     one works on the pure planner's return value or on a fixture that
+     already contains the cable. Not one asserts a cable ROW survives
+     a build, or that a joint's Joint_Cables resolve to anything. The
+     build was judged on what it planned, never on what was left.
+
+     checkservicecables.mjs is that check, and it takes a drawing path
+     so it can be pointed at any export: every joint's cable is on the
+     drawing, service joints have cables to hold, every meter is fed,
+     no service trench is dug for nothing. Clean on
+     drawing-2202-043 (84 cables, 84 meters); four failures on 35.
+
+     **My first version of it failed the healthy fixture on all 84
+     meters.** It read the meter's own Connects, and in
+     drawing-2202-043 every meter's Connects is empty - the CABLE
+     carries the link, cable 44416 naming meter 44306. A test a
+     known-good drawing fails is measuring the wrong thing, and it
+     would have been worthless the moment it went green on 35's
+     successor. It now reads from the cable's side and accepts either
+     direction, because the two drawings genuinely disagree about
+     which end holds the link.
+
+     Six of the thirteen drawing fixtures fail these invariants, which
+     is correct - they are hand-built partials. The script therefore
+     defaults to the one full real drawing and takes a path for the
+     rest, so checkall stays clean.
+
+     isServed is pinned rather than changed: it is load-bearing for
+     deciding a re-lay, and making served-ness depend on cables is a
+     decision with consequences beyond this fault. The check records
+     the blind spot so whoever touches it reads why.

@@ -22878,9 +22878,34 @@ export default function GISCanvasPage() {
              alone. Putting them in `mismatched` would delete the copies
              and then dig a fresh one, which is a longer way round to
              the same duplicate. */
+          /* ── `drawn`, not `mine` ──
+
+             `mine` is stampedTo(sd): EVERY line carrying this seed's
+             Seed_Feature_ID, which is the service trenches and the
+             service cables together. `keep` is a trench id, out of
+             `drawn`. So iterating `mine` here pushed every cable on
+             the plot into `copies` — and `copies` is deleted, with no
+             re-lay, because the `continue` below keeps the seed out of
+             `mismatched` and therefore inside `serviced`.
+
+             That is how drawing 35 came to hold 10 mains, 41 service
+             trenches, 47 joints and ZERO service cables, with all 47
+             joints naming Joint_Cables ids that no longer existed and
+             all 41 meters connected to nothing. The ids were still in
+             the joints, so the cables had been written and then
+             removed.
+
+             It hid because isServed() in autoService.js returns true
+             the moment ANY trench is stamped to the seed — it never
+             looks at the cables. So every stripped plot reported back
+             as "already has a service trench" and the next run laid
+             nothing.
+
+             Only the duplicate digs are copies. A cable is not a copy
+             of a trench. */
           const keep = Number(drawn[rightOne].Feature_ID);
-          for (const f of mine) {
-            if (Number(f.Feature_ID) !== keep) copies.push(f);
+          for (const t of drawn) {
+            if (Number(t.Feature_ID) !== keep) copies.push(t);
           }
         }
         continue;

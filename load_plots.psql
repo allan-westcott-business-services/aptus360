@@ -1,50 +1,75 @@
 -- ════════════════════════════════════════════════════════════════════
---  Load the plot and connection files with psql
+--  Load the plot and connection files into Supabase
 -- ════════════════════════════════════════════════════════════════════
 --
--- NOT for the Supabase SQL editor. \copy is a psql command — it reads a
--- file off YOUR computer, which is the whole point, and the web editor
--- has no access to your disk.
+-- NOT for the Supabase SQL editor. \copy is a psql command: it reads a
+-- file off YOUR computer, which is the point, and the web editor has no
+-- access to your disk.
 --
---   1. Edit the two paths below to where your CSVs actually are.
---   2. Connect:
---        psql "postgresql://postgres.xxxx:PASSWORD@aws-0-eu-west-2.pooler.supabase.com:5432/postgres"
---      (Supabase: Project Settings → Database → Connection string → psql.
---       Use the SESSION pooler or the direct connection, not the
---       transaction pooler — \copy holds one connection throughout.)
---   3. Run:  \i load_plots.psql
+-- ── How to run it ──
 --
--- Each \copy must stay on ONE line. psql reads a backslash command to
--- the end of the line, so a line break anywhere inside it breaks it.
+--   1. Put both CSVs and this file in one folder (Downloads is fine),
+--      and RENAME the two CSVs to exactly:
+--
+--          plots.csv        (the Plot_rows export, 42.6 MB)
+--          connections.csv  (Plot_Utility_rows_1.csv, 4.7 MB)
+--
+--      Renaming the files is easier than editing this one — see the
+--      note at the bottom for why you cannot just put a variable here.
+--
+--   2. In Terminal:
+--          cd ~/Downloads
+--          ls plots.csv connections.csv
+--      Both must be listed. If either says "No such file", the name is
+--      not right yet.
+--
+--   3. Connect:
+--          psql "<your connection string, in double quotes>"
+--
+--   4. Run:
+--          \i load_plots.psql
+
+-- ── Notes, if something goes wrong ──
+--
+-- Each \copy below must stay on ONE line. psql reads a backslash
+-- command to the end of the line, so a line break inside one breaks it.
 -- They are long; let them wrap on screen rather than tidying them.
---
--- Forward slashes work in Windows paths inside the quotes:
---   'C:/Users/you/Downloads/Plot_rows__1__1.csv'
 --
 -- The column lists are in YOUR CSVs' header order, which is not the
 -- order of the tables — Tender_ID is twelfth in the plot export and
--- third in the table. That is why each column is named: with the list in
--- the wrong order it loads postcodes into the KVA column and reports
--- success.
+-- third in the table. That is why every column is named: with the list
+-- in the wrong order it would load postcodes into the KVA column and
+-- report success.
 --
 -- Timed against the real 42.6 MB plot file: 2.4 seconds for all 333,950
--- rows.
+-- rows. Over the internet it will be slower, but minutes not hours.
 --
--- Safe to re-run only after emptying the table —
---   DELETE FROM "Legacy_Plot_Import";
--- — otherwise a second run doubles the rows. Nothing stops you; the
--- staging tables have no key to collide on, by design, because a file
--- that arrives in pieces has to be addable.
+-- Run it twice and you get the rows twice — the staging tables have no
+-- key to collide on, by design, so a file that arrives in pieces can be
+-- added to. To start over:
+--     DELETE FROM "Legacy_Plot_Import";
+--     DELETE FROM "Legacy_Connection_Import";
 
 \echo 'Loading plots...'
 
-\copy "Legacy_Plot_Import" ("Plot_ID", "Contract_ID", "Plot", "Plot_Ref", "House_Number", "Street_Name", "Town", "County", "Postcode", "Property_Config_ID", "Heat_Source_ID", "Tender_ID", "KVA_Load", "Branch_ID", "Self_Lay_Provider", "POC_Reference", "Electric_Self_Lay_Provider", "Electric_IDNO_ID", "Gas_Self_Lay_Provider", "Gas_IDNO_ID", "Water_Self_Lay_Provider", "Water_IDNO_ID", "Main_POC_Reference", "Interim_POC_Reference", "TBS_POC_Reference", "Electric_Main_POC_Reference", "Electric_Interim_POC_Reference", "Electric_TBS_POC_Reference", "Gas_Main_POC_Reference", "Gas_Interim_POC_Reference", "Gas_TBS_POC_Reference", "Water_Main_POC_Reference", "Water_Interim_POC_Reference", "Water_TBS_POC_Reference", "Heat_Pump_Model_ID", "PV", "Sust_Clean_Award", "Sust_Waste_Award", "Sust_Clean_Today", "Sust_Waste_Today", "MPAN") FROM 'C:/CHANGE/THIS/PATH/Plot_rows__1__1.csv' WITH (FORMAT csv, HEADER true)
+\copy "Legacy_Plot_Import" ("Plot_ID", "Contract_ID", "Plot", "Plot_Ref", "House_Number", "Street_Name", "Town", "County", "Postcode", "Property_Config_ID", "Heat_Source_ID", "Tender_ID", "KVA_Load", "Branch_ID", "Self_Lay_Provider", "POC_Reference", "Electric_Self_Lay_Provider", "Electric_IDNO_ID", "Gas_Self_Lay_Provider", "Gas_IDNO_ID", "Water_Self_Lay_Provider", "Water_IDNO_ID", "Main_POC_Reference", "Interim_POC_Reference", "TBS_POC_Reference", "Electric_Main_POC_Reference", "Electric_Interim_POC_Reference", "Electric_TBS_POC_Reference", "Gas_Main_POC_Reference", "Gas_Interim_POC_Reference", "Gas_TBS_POC_Reference", "Water_Main_POC_Reference", "Water_Interim_POC_Reference", "Water_TBS_POC_Reference", "Heat_Pump_Model_ID", "PV", "Sust_Clean_Award", "Sust_Waste_Award", "Sust_Clean_Today", "Sust_Waste_Today", "MPAN") FROM 'plots.csv' WITH (FORMAT csv, HEADER true)
 
 \echo 'Loading connections...'
 
-\copy "Legacy_Connection_Import" ("Plot_Utility_ID", "Plot_ID", "Utility_ID", "Programmed_Date", "Connection_Date", "Visit_Outcome", "Meter_Number", "Meter_Photos", "As_Laid_Date", "Adopter", "Team_ID", "Status_Of_Pack", "Service_Card_Submission_Date", "Days_To_Complete", "Smart_Meter", "IDNO_ID", "MPAN_MPRN", "Meter_Card_Submission_Date", "Joint_Type_ID", "Cable_Size_In", "Cable_Size_Out", "Joint_Picture_Path", "Source_Plot_Service_ID", "Self_Lay_Provider", "Dead_Jointed_Date", "Expected_Asset_Value", "Service_Card_File_Path", "Planned_Jointing_Date", "Actual_Jointing_Date") FROM 'C:/CHANGE/THIS/PATH/Plot_Utility_rows_1.csv' WITH (FORMAT csv, HEADER true)
+\copy "Legacy_Connection_Import" ("Plot_Utility_ID", "Plot_ID", "Utility_ID", "Programmed_Date", "Connection_Date", "Visit_Outcome", "Meter_Number", "Meter_Photos", "As_Laid_Date", "Adopter", "Team_ID", "Status_Of_Pack", "Service_Card_Submission_Date", "Days_To_Complete", "Smart_Meter", "IDNO_ID", "MPAN_MPRN", "Meter_Card_Submission_Date", "Joint_Type_ID", "Cable_Size_In", "Cable_Size_Out", "Joint_Picture_Path", "Source_Plot_Service_ID", "Self_Lay_Provider", "Dead_Jointed_Date", "Expected_Asset_Value", "Service_Card_File_Path", "Planned_Jointing_Date", "Actual_Jointing_Date") FROM 'connections.csv' WITH (FORMAT csv, HEADER true)
 
 -- What landed. 333,950 plots and 33,059 connections is a clean run.
 SELECT 'plots'       AS file, count(*) AS rows FROM "Legacy_Plot_Import"
 UNION ALL
 SELECT 'connections', count(*) FROM "Legacy_Connection_Import";
+
+-- ── Why the filenames are not variables ──
+--
+-- The obvious tidy-up is \set plotfile '...' at the top and
+-- FROM :'plotfile' below. It does not work: \copy is parsed by psql
+-- itself and does NOT expand variables, so it looks for a file
+-- literally called ":" and reports
+--
+--     :: No such file or directory
+--
+-- Tried it, ran it, got exactly that. Hence renaming the files.

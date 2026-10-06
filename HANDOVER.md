@@ -12359,3 +12359,77 @@ plus generic table editors.
      Also measured: 32,174 of 32,416 visit outcomes match a name, and
      2 (plot, utility) pairs repeat - trivial, and whether that matters
      depends on a unique index their database will report in row 2.1.
+
+282. **The pre-flight ran on their database and earned its keep.** Four
+     findings, two of which I had got wrong from my own copy.
+
+     **The utility ids agree, and it is not a coincidence I have to
+     trust.** Row 3.1 came back `1 -> Electric, 2 -> Gas, 3 -> Water`,
+     the same as my test seeding. But the staged data proves it without
+     reference to either table: old utility 1 carries a 13-digit
+     MPAN_MPRN (8,960 rows) and is adopted by ENW; old utility 2 carries
+     a 10-digit one (7,559 rows) and is adopted by Cadent; old utility 3
+     carries none at all and every adopter on it is a water company -
+     United Utilities, Severn Trent, Yorkshire Water, Welsh Water,
+     Anglian Water, NWL. MPAN is 13 digits and electricity, MPRN is 10
+     and gas, water has neither. The three map rows still get written
+     explicitly so the import does not rest on the fallback.
+
+     **I was wrong about the duplicates, by two orders of magnitude.**
+     I reported "2 (plot, utility) pairs repeat - trivial". Their
+     database says 283 pairs, 315 extra rows. I had computed mine
+     against `new_plot_id`, which is NULL for any connection whose plot
+     was not yet imported in my copy, so almost every duplicate was
+     hidden behind a NULL. Counting the raw staging instead gives 267
+     pairs and 299 extra rows in my own file - the same scale as theirs
+     all along. **A count filtered by a join is not a count of the
+     data.** Row 2.4 should have grouped on the raw `Plot_ID`.
+
+     This matters because row 2.1 reports `UNIQUE ("Plot_ID",
+     "Utility_ID")` on Plot_Utility. 315 rows will fail it.
+
+     What the duplicates are is clear once read: the old system kept one
+     row per VISIT, the new one keeps one row per plot per utility. Each
+     pair is an earlier `Aborted` visit with no connection date and no
+     meter, and a later `Completed` one with both. 225 of 267 groups
+     have exactly one dated row, 39 have none, 3 have more than one, and
+     the largest group is 3 rows. So the rule is to keep the dated
+     completed visit and drop the aborted attempt:
+     `ORDER BY (Connection_Date IS NOT NULL) DESC, Connection_Date DESC
+     NULLS LAST, Plot_Utility_ID DESC` and take rank 1. The visit
+     history is not representable in the new schema and is lost either
+     way; this loses the attempt rather than the outcome.
+
+     **Pack statuses: the new table only has two of the five states.**
+     Pack_Status holds Submitted and Accepted. The old data holds
+     Returned (22,076), Submitted (10,223), Pack In Progress (95),
+     Issued (54) and IT Issues (22). Unlike Visit_Outcome, the import
+     has no text column to fall back on - `Pack_Status_ID` is the only
+     place it goes - so 22,247 rows lose their status entirely unless
+     the four missing states are added first.
+
+     **The adopters are a naming problem, and a flat rename cannot fix
+     them.** Listing every organisation that carries an active network
+     role shows most of the unmatched names are present under their long
+     form: ENW is Electricity North West, NWL is Northumbrian Water,
+     Severn Trent is Severn Trent Water, Leep Utilities is Leep
+     Networks. Four are absent and need creating: IWNL, MUA, MUA Water,
+     Thames Water, Lastmile.
+
+     But **ESP is ambiguous and must be resolved per utility.** 2,827
+     ESP rows are on electricity, 2,669 on gas, 396 on water, and the
+     table holds three separate organisations - ESP Electricity (idno),
+     ES Pipelines (igt), ESP Water (iwu). The same is true of Lastmile.
+     So the alias map is keyed on (name, utility), not on name: look up
+     `Kind = 'adopter:' || utility_id` first, fall back to
+     `Kind = 'adopter'`.
+
+     **pu_pack_trg is still unread.** Row 2.3 reports a trigger firing
+     on every INSERT into Plot_Utility. It is not in the repository and
+     it is not in my test copy - the same gap that broke the plot import
+     three times, except this time it was found before the insert rather
+     than by it. `recalc_project_points` read 19.5 million rows when I
+     had guessed it was cheap. 33,367 rows are not going through an
+     unread trigger. `connections_detail.sql` fetches its definition and
+     its function body along with the pack statuses and the full
+     organisation picture, in one read-only statement.

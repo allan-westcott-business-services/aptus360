@@ -11876,3 +11876,71 @@ plus generic table editors.
      APP-created project off 2610.004 and leaves Tansey Green on a
      reference that was never its own, which is the wrong one of the
      two to move if 1906.054 can be given back.
+
+270. **Checking that 1906.054 was free reversed the recommendation I
+     had just given, and found something bigger.**
+
+     Asked which project should move to clear 2610.004, I recommended
+     giving Tansey Green its real 1906.054. Then checked whether that
+     reference was free, and in the verification database it is already
+     held - by **another project called "Tansey Green,
+     Kingswinford"**, created by part 3 of the tender import. The
+     tender became its own project because the merge did not match it
+     to the contract.
+
+     So handing 1906.054 over by hand makes things worse, not better.
+     The tender import keeps a tender's own reference only where
+
+         NOT EXISTS (SELECT 1 FROM "Project" p
+                      WHERE p."Project_Ref" = btrim(mine."Tender_Ref"))
+
+     so taking it first means tender 2182 gets a GENERATED reference
+     instead, and still creates a second Tansey Green. Leaving
+     1906.054 free is what lets the merge deliver it properly.
+
+     Revised recommendation: **move Bodnant Avenue to 2610.035** -
+     file 2 exactly as it was written. It is a project genuinely raised
+     in October 2026, so that reference is honest, and it unblocks 0254
+     today.
+
+     **The bigger finding. 1,377 of the 3,773 tender-only projects
+     share a site name with a contract-imported project, across 847
+     distinct sites.** Some of that is real - a site tendered, lost and
+     re-tendered, and "Halton Court, Runcorn" holds three references in
+     1906.0xx alone - but Tansey Green is plainly one job imported
+     twice.
+
+     The matching has three routes and two are unavailable right now:
+
+       1. "tender reference on the contract" - needs the contract's
+          Tender_Reference, which 77 of 1,926 rows have.
+       2. "a plot naming both" - reads Legacy_Plot_Import for a plot row
+          carrying BOTH a Tender_ID and a Contract_ID. This is the
+          strongest evidence there is, an explicit link in the old data,
+          and it is **completely dead until the plot file is staged**.
+       3. "same site and customer" - needs the contract to have a
+          customer. 311 do not, Tansey Green among them, which is why
+          all three routes missed it.
+
+     So the plot CSV being unloaded is not just stage 5 waiting its
+     turn - it is disabling the best of the three match routes, and
+     running tender part 3 before it is staged throws away matches that
+     the old data can prove. Could not confirm whether a plot row links
+     tender 2182 to contract 380: the plot file is not staged in the
+     verification database either, so that is a question for their data
+     rather than a claim.
+
+     **Revised order:**
+
+       1. file 2 - Bodnant Avenue to 2610.035, clearing the duplicate
+       2. migration 0254
+       3. stage the plot CSV into Legacy_Plot_Import (the load, not the
+          import) - this switches match route 2 on
+       4. load the tender files, run tender parts 1 and 2
+       5. restore Tender_Ref to Project_Ref where it is a real YYMM.NNN
+          and free - the decision taken at entry 269
+       6. tender part 3 last, after the status mapping
+
+     Reference restoration not written yet, deliberately: it should run
+     after the merge, and how much there is to restore depends on how
+     well the merge does once route 2 is alive.

@@ -1,4 +1,5 @@
 import { supabase, json, fail, withAuth, whoIs } from "./_supabase.js";
+import { allocateRef, isRefConflict, monthOf, refPrefix } from "./_refs.js";
 
 /* Columns are listed explicitly and in one place. If the schema moves, the
    query fails loudly at this boundary instead of being swallowed by a
@@ -185,12 +186,56 @@ export default withAuth(async function handler(req, context, user) {
       const body = await req.json();
       const { scopes = [], developer = null, ...project } = body;
 
-      const { data: created, error } = await db
-        .from("Project")
-        .insert(onlyColumns(nullEmpty(project)))
-        .select(PROJECT_COLUMNS)
-        .single();
-      if (error) throw error;
+      const row = onlyColumns(nullEmpty(project));
+
+      /* ── The reference is settled here, not in the form ──
+
+         The form is handed a reference when it MOUNTS and sends it back
+         when the user saves. That gap is as long as somebody takes over
+         the form, and a tab left open overnight makes it hours. On
+         6 Oct a project saved at 06:32 carried 2610.004, which the
+         contract import had taken at 14:21 the day before - and the
+         database accepted it, because the unique constraint counted the
+         two NULL option letters as different values. Two real projects
+         then shared a reference, which quietly breaks the options
+         endpoint, the revision lock in the projects list, and the plot
+         references built from it.
+
+         0254 makes that insert fail instead. This loop is what turns
+         the failure into the right answer: take the next free number
+         and try again, staying in the month the reference already
+         names so a form opened on the 31st does not jump to the 1st.
+
+         Only a reference collision is retried - isRefConflict checks
+         the constraint by name, so a duplicate contract number still
+         comes back to the user as an error, which is theirs to
+         resolve.
+
+         Six attempts, not unbounded: if six consecutive numbers are
+         taken by other inserts landing in between, something is wrong
+         that a seventh try will not fix, and the real error is more
+         use than a loop. */
+      let created = null;
+      let reassignedFrom = null;
+
+      if (!row.Project_Ref) row.Project_Ref = await allocateRef(db);
+
+      for (let attempt = 0; ; attempt++) {
+        const { data, error } = await db
+          .from("Project")
+          .insert(row)
+          .select(PROJECT_COLUMNS)
+          .single();
+
+        if (!error) { created = data; break; }
+        if (attempt >= 5 || !isRefConflict(error)) throw error;
+
+        const taken = row.Project_Ref;
+        row.Project_Ref = await allocateRef(db, monthOf(taken) ?? refPrefix());
+        /* The first collision is the one worth reporting: it names what
+           the user was shown. Later ones are this loop racing itself. */
+        if (reassignedFrom === null) reassignedFrom = taken;
+      }
 
       if (scopes.length) {
         const rows = scopes.map((s) => ({ ...s, Project_ID: created.Project_ID }));
@@ -258,7 +303,11 @@ export default withAuth(async function handler(req, context, user) {
         }
       }
 
-      return json(created, 201);
+      /* Ref_Reassigned_From is not a column - it is a note about this
+         one save, so the form can say the reference moved rather than
+         showing a different number than the user was looking at and
+         letting them work out why. Null on every ordinary create. */
+      return json({ ...created, Ref_Reassigned_From: reassignedFrom }, 201);
     }
 
     /* ── PATCH /api/projects/:id ───────────────────────────────── */

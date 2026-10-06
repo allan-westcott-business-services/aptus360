@@ -11403,3 +11403,121 @@ plus generic table editors.
      screen. Testing that case proved an empty-string pair cannot
      exist at all - the constraint catches it, since '' = ''. Only a
      NULL/NULL pair gets through, so that is what theirs is.
+
+263. **The duplicate was not old data. It happened this morning, and
+     the constraint meant to stop it has never once fired.**
+
+     show_duplicate_ref.sql named the pair:
+
+         3693  2610.004  Tansey Green, Kingswinford   contract 380
+                                                      05 Oct 14:21
+         3801  2610.004  Bodnant Avenue, Prestatyn    made in this app
+                                                      06 Oct 06:32
+
+     So a project entered in the app at half six this morning took a
+     reference an imported contract had held since yesterday
+     afternoon. Nothing refused it.
+
+     **Why the database allowed it.** 0001 created the table with
+     `UNIQUE ("Project_Ref", "Revision", "Option_Letter")` and
+     Postgres counts two NULLs as distinct. An ordinary project has no
+     option letter, so the third column is NULL on both rows and they
+     never collide. That index has only ever protected lettered
+     options - the one case that does not need it, because 0077's
+     next_option_letter() allocates those. A constraint that is never
+     violated looks like a constraint that works.
+
+     **Why the app handed out a taken number.** next-ref.js was asked
+     for a reference when the Add Project form MOUNTED and the number
+     was written when somebody saved. The gap is however long they
+     take over the form; a tab left open overnight makes it hours, and
+     the contract import ran straight through the middle of one. The
+     function's own comment claimed "two estimators creating a project
+     at the same moment must not be handed the same ref", which it
+     never delivered - the read and the write are separate HTTP
+     requests with no lock, no sequence and no retry.
+
+     It had a second fault nobody had hit yet: the next number came
+     from `.order("Project_Ref").limit(1)`, a TEXT ordering. Padded to
+     three digits that happens to match numeric order, but the
+     reference field is free text anybody can edit and the import
+     carries whatever the old system had. One '2610.9' in the month
+     sorts above '2610.012' and the next reference comes out 2610.010,
+     already in use.
+
+     **What two projects on one reference actually break**, which is
+     why this is not cosmetic: project-options.js treats everything
+     sharing (Project_Ref, Revision) as one option set, and its DELETE
+     path nulls Option_Letter across every row sharing the reference -
+     changing an unrelated project's Display_Ref. ProjectsList.jsx
+     locks "Edit Project" when a higher revision of the same reference
+     exists, so one project can make an unrelated one uneditable. And
+     plots.js builds Plot_Ref from the project reference, so the plots
+     collide too. None of it errors. It all degrades quietly.
+
+     **The fix, in four parts.**
+
+     `renumber_duplicate_project.sql` moves the app-created project to
+     the next free number in the month its reference names - never the
+     imported one, whose link back to contract 380 is what yesterday
+     bought - and records the change in its Notes.
+
+     `0254_project_ref_unique_nulls.sql` replaces the constraint with
+     `UNIQUE NULLS NOT DISTINCT`, after normalising empty option
+     letters to NULL (NULLS NOT DISTINCT makes two NULLs equal; it
+     does not make '' and NULL equal, and both are in the column). It
+     RAISEs with the references named while a duplicate exists rather
+     than letting Postgres name only the first one it trips over.
+
+     `netlify/functions/_refs.js` is new: refPrefix, monthOf,
+     allocateRef and isRefConflict in one place, because the reference
+     now has to be allocated twice and two copies of that arithmetic
+     would drift. allocateRef reads every reference in the month and
+     takes the NUMERIC maximum.
+
+     And projects.js POST retries on the collision - up to six
+     attempts, staying in the month the reference already names so a
+     form opened on the 31st does not jump to the 1st, and reporting
+     the first displaced reference back as Ref_Reassigned_From so the
+     form can say what happened instead of showing a different number
+     with no explanation. isRefConflict matches the constraint by
+     name, so a duplicate contract number still goes back to the user
+     as an error - renumbering the project would hide it.
+
+     **54 checks in checkprojectref.mjs, and three of them only exist
+     because a mutation survived.** Thirteen mutations run; ten were
+     caught first time.
+
+     Loosening the fallback to `text.includes("Project_Ref")` survived,
+     and the comment defending the strict version was wrong on its
+     face: it claimed Display_Ref contains Project_Ref as a substring,
+     which it does not - they share only "_Ref". The real case is a
+     constraint over the reference AND another column, where a new
+     reference fixes nothing and the insert is retried six times
+     before failing anyway. There is a test for that now, and the
+     comment says what is actually true.
+
+     Dropping the pre-0254 constraint name from REF_CONSTRAINTS also
+     survived, because every test for it carried the full key list in
+     `details` and the fallback caught it. PostgREST does not always
+     pass `details` through, and a database that has not run 0254 is
+     the live case, so there are now two tests with a message and no
+     details.
+
+     The third mutation - loosening allocateRef's regex to allow an
+     empty tail - was inert: '2610.' parses to NaN either way. Noted
+     rather than chased.
+
+     The error objects in those tests are not invented. They are the
+     exact message and detail text Postgres 16 produced against the
+     real schema with 0254 applied.
+
+     Build passes. The twenty-one check scripts that report problems
+     report the same problems with the change stashed - verified, not
+     assumed.
+
+     **Order to apply it.** renumber first, then 0254, then the code.
+     0254 is worth running before the deploy either way: without the
+     code a collision becomes a visible error instead of silent
+     corruption, which is strictly better than today. The code is on
+     the PR branch, still gated on 0241-0246.

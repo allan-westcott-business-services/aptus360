@@ -11371,3 +11371,35 @@ plus generic table editors.
      tables built with CASCADE, RESTRICT and SET NULL, which vfy did
      not have, to prove the per-table counts and the delete actions
      are read correctly.
+
+262. **Part 3 deleted nothing, which is the script working.** Their run
+     came back "nothing matched - either it is already gone, or the
+     duplicate is not a test project", with 1 duplicate still there.
+
+     So the pair is not the "Test Site" / "Brierton Lane" one assumed
+     from September. Either the test site went at some point, or the
+     two projects sharing a reference are something else - two
+     imported contracts is the obvious candidate, and that would need
+     a different decision from deleting one.
+
+     Worth noting that it refused rather than widening its aim. A
+     delete written as `WHERE "Project_ID" = 21` would have taken
+     whatever is sitting on 21 now.
+
+     `show_duplicate_ref.sql` is part 1 on its own, one statement, so
+     there is no confusion about which bit to paste. Two changes from
+     the version inside clear_duplicate_ref.sql:
+
+     `IS NOT DISTINCT FROM` on all three key columns, not just
+     Option_Letter. GROUP BY puts two NULLs in one group but `=`
+     against NULL is NULL, so a plain join can return nothing where
+     the grouping found a pair - it drops the very rows it exists to
+     show. Project_Ref and Revision are NOT NULL today so it changes
+     nothing now, but a column going nullable later should not break
+     this quietly.
+
+     And Option_Letter prints as (null) or (empty), because those are
+     different values to the unique constraint and identical on
+     screen. Testing that case proved an empty-string pair cannot
+     exist at all - the constraint catches it, since '' = ''. Only a
+     NULL/NULL pair gets through, so that is what theirs is.

@@ -31,6 +31,9 @@
    and the canvas disagreeing about how long a cable is would be worse
    than either being wrong on its own. */
 import { readFileSync, readdirSync } from "node:fs";
+import { measuredScale, runLength, drawnLength as drawn }
+  from "./src/features/gis/lengths.js";
+import { bomLabour } from "./src/features/gis/bomLabour.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -121,6 +124,102 @@ const flat = lengths.replace(/\s+/g, " ");
 if (/bill of materials reads it in SQL and is unaffected/.test(flat)) {
   fail("lengths.js still says the bill of materials is unaffected by the "
     + "split — it was not, which is the fault 0257 fixes");
+}
+
+/* ── The multiplier itself ──
+
+   1 where nobody measured, so every caller can multiply blind. */
+{
+  const at = (g, m) => ({
+    Feature_ID: 1, Feature_Type: "line", Geometry: g,
+    Attributes: m == null ? {} : { Measured_Length_m: m },
+  });
+  const hundred = [[0, 0], [100, 0]];
+  if (measuredScale(at(hundred, null)) !== 1) {
+    fail("measuredScale is not 1 on a line nobody measured — every drawing "
+      + "made before the box existed would change");
+  }
+  if (Math.abs(measuredScale(at(hundred, 150)) - 1.5) > 1e-9) {
+    fail("measuredScale does not come to measured over drawn");
+  }
+  for (const [what, f] of [["zero", at(hundred, 0)],
+                           ["a point", at([[0, 0]], 150)]]) {
+    if (measuredScale(f) !== 1) fail(`measuredScale is not 1 for ${what}`);
+  }
+  if (runLength(at(hundred, 150)) !== 150 || drawn(at(hundred, 150)) !== 100) {
+    fail("runLength and drawnLength no longer answer different questions");
+  }
+}
+
+/* ── The hours follow the measurement ──
+
+   Asked for in as many words: a measured length means more digging and
+   longer lengths to lay. Run through bomLabour rather than read out of
+   the source, because an import that is present and unused would pass
+   a source test and change no hours. */
+{
+  const LINE_TYPES = [
+    { Type_Key: "trench_main", Layer_Key: "trench", Label: "Mains Trench" },
+    { Type_Key: "elec_main", Layer_Key: "electric", Label: "Electric main" },
+  ];
+  const opts = {
+    lineTypes: LINE_TYPES,
+    surfaceTypes: [{ Surface_Key: "unmade", Label: "Unmade", Dig_Factor: 1.0 }],
+    utilities: [{ Utility_ID: 1, Utility: "Electric" }],
+  };
+  const site = (measured) => ([
+    {
+      Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
+      Geometry: [[0, 0], [100, 0]],
+      Attributes: {
+        Line_Type: "trench_main", Site: "On-site", Surface_Type: "unmade",
+        ...(measured == null ? {} : { Measured_Length_m: measured }),
+      },
+    },
+    {
+      Feature_ID: 2, Feature_Type: "line", Layer_Key: "electric",
+      Geometry: [[0, 0], [100, 0]],
+      Attributes: { Line_Type: "elec_main", Size: "95" },
+    },
+  ]);
+  const hoursOf = (rows, item) => rows
+    .filter((r) => r.item === item || r.item.startsWith(item))
+    .reduce((t, r) => t + r.quantity, 0);
+
+  const plain = bomLabour(site(null), opts);
+  const long = bomLabour(site(150), opts);
+
+  if (!hoursOf(plain, "Excavation") || !hoursOf(plain, "Laying")) {
+    fail("the labour fixture produced no hours at all — the rest of this "
+      + "case would pass on an empty bill");
+  } else {
+    /* Laying is length over a rate per utility, so it scales with the
+       measurement and nothing else.
+
+       Compared in HOURS against a tenth-of-an-hour tolerance rather
+       than as an exact ratio: bomLabour rounds every row to one
+       decimal before it reaches the bill, so 3.333 h is published as
+       3.3 and a ratio against it reads 1.515 for a change that is
+       exactly half. Asserting the ratio to 1.5 fails on the rounding
+       and says the code is wrong when the test is. */
+    const want = 1.5 * hoursOf(plain, "Laying");
+    const got = hoursOf(long, "Laying");
+    if (Math.abs(got - want) > 0.1) {
+      fail(`a trench drawn at 100 m and measured at 150 m lays ${got} hours `
+        + `where half as long again is ${want.toFixed(2)}`);
+    }
+    /* Excavation carries a fixed setup on top of the volume, so it
+       rises without rising by half. Anything at or below 1 means the
+       measurement never reached the dig. */
+    const dig = hoursOf(long, "Excavation") / hoursOf(plain, "Excavation");
+    if (!(dig > 1.0001)) {
+      fail("a measured trench digs no longer than the drawn one");
+    }
+    if (dig > 1.5 + 1e-6) {
+      fail(`excavation rose by ${dig.toFixed(3)} — more than the measurement, `
+        + "so something is scaled twice");
+    }
+  }
 }
 
 console.log(bad ? `checkbommeasured: ${bad} FAILED` : "checkbommeasured: all passed");

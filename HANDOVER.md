@@ -12731,3 +12731,46 @@ plus generic table editors.
      0257 is written from `0229_bom_no_annotation.sql`, the superset, so
      a database that got the other one picks up the annotation exclusion
      as well.
+
+288. **Allan: "measured length means more digging and longer lengths to
+     lay."** So the labour follows it too, and `measuredScale` moves to
+     lengths.js where it can be read once.
+
+     It already existed as a private closure inside feeder.js. Three
+     places need it now — the volt drop, the bill's labour rows and the
+     call-off estimator — and three private copies would be three
+     chances for them to read one trench three different ways, which is
+     the fault that split `Length_m` into two columns in the first
+     place. One copy, exported, with the drawn/measured distinction
+     stated where the other two length functions already live.
+
+     - **bomLabour.js** `lengthM: res.trenchM * measuredScale(trench)`.
+       digEstimate takes it from there: the volume is length x width x
+       depth and the laying is length over a rate per utility, so one
+       multiplier reaches both the digging and the laying.
+     - **spanContents.js** the same multiplier on top of the existing
+       span-against-sections `scale`, so a call-off and the bill cannot
+       quote different hours for the same trench.
+     - **trenchSize is deliberately NOT scaled.** It is a cross-section,
+       and `concurrentCount` reads a RATIO of content length to trench
+       length which the multiplier cancels out of. Scaling one side and
+       not the other is the only way to get that wrong, so neither is
+       scaled.
+
+     **checkbommeasured** gained behavioural cases - run through
+     `bomLabour`, not read out of the source, because an import that is
+     present and unused passes a source test and changes no hours.
+     Proven to fail: with the multiplier taken back out, both the
+     laying and the digging assertions go red.
+
+     **My first assertion was wrong and blamed the code.** I asserted
+     the laying ratio was exactly 1.5 and it came back 1.515, which
+     reads as a bug in the scaling. It is not: bomLabour rounds every
+     row to a tenth of an hour before it reaches the bill, so 3.333 h is
+     published as 3.3 and a ratio taken against the published figure is
+     off by the rounding. Compared in hours against a 0.1 tolerance
+     now, with why in the comment - a test that is wrong about the code
+     is worse than no test, because the next person fixes the code.
+
+     Whole suite before and after: no check fails that was not already
+     failing.

@@ -56,6 +56,7 @@
 
 import { contentsOf } from "./trenchContents.js";
 import { trenchSize } from "./trenchSize.js";
+import { measuredScale } from "./lengths.js";
 import { digEstimate } from "./digRate.js";
 import { contentsOptions } from "./spanContents.js";
 import { UTILITIES } from "../../lib/utilities.js";
@@ -127,8 +128,24 @@ export function bomLabour(features = [], opts = {}) {
     const surfaceKey = trench.Attributes?.Surface_Type ?? null;
     const existing = trench.Attributes?.Build_Status === "existing";
 
+    /* ── The run that will be dug, not the one on the plan ──
+
+       res.trenchM is the geometry. A trench measured at 330 m where
+       the plan shows 300 m is ten per cent more spoil out of the
+       ground and ten per cent more cable to pull through it, and the
+       bill is read by somebody booking a gang against those hours.
+
+       The size is left on the drawn figures on purpose. It is a
+       cross-section — what runs beside what — and concurrentCount
+       reads a RATIO of content length to trench length, which the
+       multiplier cancels out of. Scaling one side and not the other is
+       the only way to get that wrong, so neither is scaled.
+
+       digEstimate takes it from here: the volume is length x width x
+       depth, and the laying is length over the rate for each utility,
+       so one multiplier reaches both the digging and the laying. */
     const est = digEstimate({
-      lengthM: res.trenchM,
+      lengthM: res.trenchM * measuredScale(trench),
       size: trenchSize(items, { trenchM: res.trenchM }),
       surfaceKey,
       existing,

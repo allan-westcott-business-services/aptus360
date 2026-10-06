@@ -76,3 +76,34 @@ export function runLength(feature) {
 export function hasMeasured(feature) {
   return (Number(feature?.Attributes?.Measured_Length_m ?? 0) || 0) > 0;
 }
+
+/* How much longer the real run is than the drawing, as a multiplier.
+
+   1 where nobody has measured, so a caller can multiply unconditionally
+   and a drawing made before the box existed behaves exactly as it did.
+
+   ── What it is for ──
+
+   Some figures are not a length but are made OUT of one, spread along
+   it: the volume of spoil out of a trench, the hours to lay what is in
+   it, where a tee falls along a run. Those scale with the measurement
+   rather than reading it directly — a trench drawn at 300 m and
+   measured at 330 m is ten per cent more digging and ten per cent more
+   cable to pull, and a tee half way along is still half way along.
+
+   ── What it is NOT for ──
+
+   Anything asking how NEAR two things are. A measured length does not
+   move the trench: snapping, joining, which cables lie inside a length
+   and where a line is on the screen all stay geometric. The drawing
+   still shows what was drawn.
+
+   One copy, here, because feeder.js, bomLabour.js and spanContents.js
+   all need it and three private copies is three chances for the volt
+   drop, the bill and the call-off to read one trench three ways. */
+export function measuredScale(feature) {
+  const stated = Number(feature?.Attributes?.Measured_Length_m ?? 0) || 0;
+  if (!(stated > 0)) return 1;
+  const drawn = drawnLength(feature);
+  return drawn > 0 ? stated / drawn : 1;
+}

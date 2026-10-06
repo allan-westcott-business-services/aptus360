@@ -463,9 +463,26 @@ export default function ProjectDetailsForm({ projectId, onSaved }) {
               <Toggle checked={!!f.I_and_C} onChange={set("I_and_C")} label="Industrial &amp; commercial" />
             </div>
           </Field>
+          {/* ── The whole-job figure from the original app (0247) ──
+
+              Shown here beside the other quote fields, and labelled as
+              the tender figure rather than as "quote value", because the
+              hint below says quote values live per outline design and
+              this one does not. A field that arrives by import and
+              appears nowhere is a figure nobody can correct — which is
+              the fault the KPI date above was added to fix. */}
+          <Field label="Tender quote value" span={2}
+            hint="The whole job, as quoted in the original app">
+            <input type="number" step="0.01" inputMode="decimal"
+              value={f.Tender_Quote_Value ?? ""}
+              onChange={(e) => set("Tender_Quote_Value")(e.target.value === ""
+                ? null : e.target.value)} />
+          </Field>
         </div>
         <p className="hint">
-          Quote values are held per outline design, since each is quoted and won separately.
+          Quote values are held per outline design, since each is quoted and won
+          separately. The tender quote value above is the whole job as the
+          original app recorded it, and is not a total of them.
         </p>
       </Section>
 

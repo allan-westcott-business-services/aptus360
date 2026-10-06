@@ -23,6 +23,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { adminList, adminUpdate } from "../../api/admin.js";
 import { http } from "../../api/client.js";
+import { siteLabel } from "./siteLabel.js";
 
 const AUDIENCES = [
   ["developer", "Client developer"],
@@ -229,7 +230,7 @@ export default function PortalAccountsAdmin() {
                 </option>
                 {projectsFor.map((p) => (
                   <option key={p.Project_ID} value={p.Project_ID}>
-                    {p.Project_Name || p.Site_Name || `Project ${p.Project_ID}`}
+                    {siteLabel(p)}
                   </option>
                 ))}
               </select>

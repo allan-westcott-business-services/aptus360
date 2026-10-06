@@ -16,6 +16,9 @@ const PLOT_COLUMNS = [
      nor returned, and the screen shows a blank that looks like a plot
      with no gas rather than a column nobody wired up. */
   "Gas_Load_kW",
+  /* Which plot in the original app this came from (0250). What the
+     connection import joins on. */
+  "Legacy_Plot_ID",
 ].join(",");
 
 export default withAuth(async function handler(req, context) {

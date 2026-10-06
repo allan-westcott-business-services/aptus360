@@ -13,7 +13,8 @@
    The broader rule this holds: every field the create form writes has
    somewhere it can be edited. Checked against the create form's own
    REQUIRED list, so a field added there and forgotten here is caught. */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { siteLabel } from "./src/features/admin/siteLabel.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -91,6 +92,72 @@ const api = readFileSync("./netlify/functions/projects.js", "utf8");
   for (const k of ["KPI_Date", "BDD_KAM_ID", "Estimator_ID"]) {
     if (!new RegExp(`"${k}"`).test(api)) fail(`${k} is not loaded with the project`);
   }
+}
+
+/* ── Columns a project does not have ──
+
+   `Project_Name` and `Project_Number` were invented early and neither
+   exists. A project is known by its SITE NAME and by Display_Ref.
+
+   It has now bitten twice, in two different ways, which is why this is
+   a check rather than another comment:
+
+     READ, it is silent. `project?.Project_Name ?? ""` is undefined, the
+     fallback takes over, and the Aptus Calc Sheet went out with an
+     empty scheme title on every sheet without anybody noticing.
+
+     SELECTED, it takes the whole call down. PostgREST refuses a select
+     over one unknown column, so portal-orgs.js answered "column
+     Project.Project_Name does not exist" and Portal Accounts lost both
+     dropdowns — organisations included, which have nothing to do with
+     projects and came back from the same call.
+
+   Comments are stripped first, so the files explaining the fault do not
+   trip it. */
+{
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+  const files = [];
+  const walk = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const full = `${dir}/${e.name}`;
+      if (e.isDirectory()) { if (e.name !== "node_modules") walk(full); }
+      else if (/\.(js|jsx)$/.test(e.name)) files.push(full);
+    }
+  };
+  walk("./src");
+  walk("./netlify");
+  for (const f of files) {
+    const body = strip(readFileSync(f, "utf8"));
+    for (const dead of ["Project_Name", "Project_Number"]) {
+      if (new RegExp(`\\b${dead}\\b`).test(body)) {
+        fail(`${f} uses Project.${dead}, which is not a column \u2014 `
+          + "read it goes silently undefined, selected it refuses the whole call");
+      }
+    }
+  }
+}
+
+/* And a site always reads as something somebody can pick between. */
+{
+  const L = (o) => siteLabel(o);
+  if (L({ Display_Ref: "2607.014", Site_Name: "Cedar Trees" })
+    !== "2607.014 \u2014 Cedar Trees") {
+    fail("a site with both a ref and a name does not show both, so two "
+      + "schemes of the same name are one line twice");
+  }
+  if (L({ Project_Ref: "2607.014", Site_Name: "Cedar Trees" })
+    !== "2607.014 \u2014 Cedar Trees") {
+    fail("Project_Ref is not used where Display_Ref has not been generated");
+  }
+  if (L({ Display_Ref: "2607.014" }) !== "2607.014") fail("a ref alone does not show");
+  if (L({ Site_Name: "Cedar Trees" }) !== "Cedar Trees") fail("a name alone does not show");
+  /* The one that matters: never a blank option. This picker decides
+     what somebody outside the business may see, and two blank lines
+     are a choice made by guessing. */
+  if (L({ Project_ID: 34 }) !== "Project 34") {
+    fail("a site with neither a ref nor a name renders a blank option");
+  }
+  if (!L({}).trim()) fail("an empty row renders a blank option");
 }
 
 console.log(bad ? `\n${bad} problem(s)`

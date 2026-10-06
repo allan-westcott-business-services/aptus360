@@ -177,6 +177,30 @@ export default function AddProjectForm({ onCreated, onGoToPlots, onReset }) {
       <div className="done">
         <div className="done-tick">&#10003;</div>
         <h3>Project {saved.Project_Ref} created</h3>
+        {/* ── Why the reference can differ from the one on the form ──
+
+            The reference is fetched when this form mounts and written
+            when it saves, so a form left open while somebody else
+            creates a project — or while an import runs — is holding a
+            number that has since been taken. The server allocates a
+            fresh one at insert rather than refusing the save, and says
+            which it replaced.
+
+            Said out loud because the alternative is a confirmation
+            showing a different number than the user was looking at,
+            with nothing to explain it. On 6 Oct that gap let two real
+            projects onto 2610.004. */}
+        {/* kind="warn" because that is one of the four the stylesheet
+            actually has — error, muted, ok, warn. "info" renders with
+            no styling at all, silently, which is the same fault as the
+            twelve admin screens borrowing classes from other
+            components' stylesheets. */}
+        {saved.Ref_Reassigned_From && (
+          <Banner kind="warn">
+            <strong>The reference changed.</strong> {saved.Ref_Reassigned_From} was taken while
+            this form was open, so this project was saved as {saved.Project_Ref}.
+          </Banner>
+        )}
         <p>
           {scopes.length} outline design{scopes.length === 1 ? "" : "s"} added. It starts at Tender stage and can
           be promoted once secured.

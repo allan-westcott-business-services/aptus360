@@ -10839,3 +10839,1108 @@ plus generic table editors.
     defines. All cosmetic and all pre-existing — the Python checks never
     gated anything before this session, because the old `check` script
     ran them in a shell loop that discarded their exit codes.
+
+253. **Stage 1: the original app's Customers become Organisations.**
+     "Can we first focus on getting the Organisation data migrated? I
+     want to do this stage by stage." Right order, too — the contract
+     import resolves its customer through these rows, so nothing else
+     could work until they existed.
+
+     **Measured first, built second.** 509 customers and 623 branches
+     against the 419 organisations already here, of which only 14 hold
+     a customer role and 382 are Local Authorities.
+
+     The question that mattered was which key joins the contract export
+     to the customer. The Audacia code turned out to be the WRONG
+     answer: of the 537 codes in the contract file, 283 match
+     `Customer.Customer_Ref`, 274 match `Customer_Branch.Branch_Ref`,
+     and 177 match neither. The old PRIMARY KEYS are the right answer —
+     where present they resolve 100%:
+
+       old Branch_ID, exact, gives branch AND organisation    1,036
+       old Customer_ID, exact, organisation only                516
+       Audacia code against Branch_Ref                           40
+       Audacia code against Customer_Ref                         58
+       nothing to match on                                      276
+
+     1,552 of 1,926 on exact keys, and 1,036 of those land on a
+     SPECIFIC branch — which largely dissolves the "organisation has
+     several branches, pick one by hand" problem that 0248 worried
+     about. Confirmed after actually running the import: 1,036 / 516 /
+     374.
+
+     **What the measurements settled, so nothing had to be guessed.**
+     496 of the 509 need creating; 13 match by exact name and there are
+     ZERO duplicate names among the 509, so a name match is one
+     organisation or none. All 13 currently have **no branches at all**,
+     so they cannot be put on a project today; the import gives them
+     theirs. `Payment_Terms_Days` is 30 and `Letter_Grace_Days` is 15 on
+     every one of the 623 — a constant is a default nobody changed, so
+     dropping them loses nothing, and that is measured rather than
+     assumed. One name is an instruction rather than a company (`***
+     DO NOT TENDER FOR***PH Property Holdings Ltd`) and is imported
+     verbatim: somebody put that warning there, and moving it to a
+     Notes field nobody opens would hide it.
+
+     **The address rule has no edge case.** After discarding 'TBC' (5
+     rows), every branch has either no address (251) or two or more
+     lines (372) — not one in between. So the last line is the town and
+     the earlier ones are the street: Leyland, Newcastle Upon Tyne,
+     Ashington, Leicester and Wigan all land correctly. County has no
+     column on a branch, so the head office's county goes on the
+     ORGANISATION, which does have one — 260 of them.
+
+     **Files:** `0253_legacy_organisation_import.sql` (staging plus two
+     resolution views), `import_legacy_organisations.sql` (report,
+     create, verify, undo), `checklegacyorgs.mjs`.
+
+     Run from scratch on a fresh database: 509 organisations, 623
+     branches, 509 customer roles, 285 contacts, 372 branch towns, 477
+     roles carrying the Audacia code. A second run of part 2 inserts
+     nothing.
+
+     **Two of my own assertions were wrong and testing caught both.**
+     The fault-4 check failed on `Organisation_Role` writing
+     `Organisation_ID` — but organisations.js reads that table with
+     `select("*")`, so every column comes back and the narrow `ROLE`
+     list is only the update path; the check now skips tables read with
+     a star. And the Type_Key assertion passed when a mutation
+     hardcoded the type id, because the statement names Type_Key TWICE
+     — once to choose and once in its own re-run guard — so "does it
+     appear" was satisfied by the survivor. It counts now.
+
+     Twelve mutations, all caught. Suite 190 of 214 with the same 24
+     failures main has on its own.
+
+     **Not done here:** `Organisation.Code` is left alone. The Audacia
+     code goes on the customer role's `Reference`, which is where
+     0249's resolution reads it; two homes for one value is how they
+     drift apart.
+
+254. **A ten-customer trial, and it found two faults in 253 within
+     minutes.** "Can a small import of just 10 records be done first" —
+     yes, and it earned its keep immediately. Both faults were real, in
+     the FULL import, and only visible because ten rows are few enough
+     to read every one.
+
+     **Fault 1: a claimed organisation arrived with no address.** 2.1
+     refuses to overwrite a maintained address, which is right. But the
+     three organisations in the trial that match something already here
+     — Taylor Wimpey, Countryside, Rowland — had EMPTY addresses, so
+     there was nothing to protect and nothing arrived either. Now 2.1b
+     fills on COALESCE: a value somebody set is untouchable, a NULL is
+     filled from the head office.
+
+     **Fault 2: and no Audacia code.** Rowland Homes came out with no
+     code although its Customer_Ref is ROW01. It already held a
+     customer role, so 2.3's guard correctly skipped it — and that
+     role's Reference was empty. Reference is exactly what 0249's
+     fallback reads, so those contracts would have resolved nothing.
+     Now 2.1c fills an empty Reference. After the fix the trial shows
+     TAY06, COU07 and ROW01 where it showed three dashes.
+
+     **Then running it twice found a third.** 2.1b reported UPDATE 2 on
+     a second run: its condition asked "is any column null", which
+     stays true for the two whose head office has no postcode either,
+     so it rewrote the same values and reported a change that had not
+     happened. Guarded per column on the SOURCE being non-null, and a
+     second run is now silent.
+
+     **And the undo had a NULL trap.** `"Notes" NOT LIKE '%trial.'` is
+     NULL — not true — when Notes is NULL, and the claimed
+     organisations have no Notes. So the un-claim matched none of the
+     very rows it exists for: it reported UPDATE 0 and left
+     Legacy_Customer_ID set, which would make a later full import treat
+     them as already done and skip them. COALESCE round it, and the
+     main import's undo carries the same fix — it used IS DISTINCT
+     FROM, which happens to work on NULL, so it was right by luck of a
+     different operator rather than by design.
+
+     **The ten were chosen, not taken off the top.** Persimmon (16
+     branches), Taylow Wimpey (12, and a name match), Bellway (8, no
+     code at all, two branches sharing a name), Countryside (6, a
+     match), BDW (6, named "Redrow - ...", only 3 with a town), Story
+     (3, and 77 contracts behind it — the most of any customer), then
+     Rowland, Eccleston and R.P Tyson on one branch each, and customer
+     4, whose name is the "DO NOT TENDER FOR" warning and whose branch
+     has no address. Three of the ten match, so both paths run.
+
+     Verified: baseline 419/0/422/0 → trial 426/55/429/7 → undo →
+     419/0/422/0 exactly, nothing left claimed. Trial, undo and then
+     the full import on top still gives 509/623/509.
+
+     **A fourth weak assertion of my own, same shape as the other
+     two.** The address-fill test matched if ANY of the four columns was
+     guarded, so mutating only Town left three matches and it passed.
+     It counts all four now. That is three times in two sessions that
+     "does the shape appear" has passed a mutation — the lesson is to
+     count, not to match.
+
+     Eight more mutations, all caught. Suite 190 of 214, the same 24
+     failures main has on its own.
+
+255. **A unique constraint my test schema did not have.** Reported from
+     use, part way through the ten-customer trial:
+
+       ERROR: 23505: duplicate key value violates unique constraint
+       "Organisation_Branch_Organisation_ID_Branch_Name_key"
+
+     **Why it was missed.** The test schema was built from
+     `organisations.js`'s column lists, which say what the endpoint
+     reads and nothing about what the table FORBIDS. So the stub had
+     every column and none of the rules, and a constraint cannot be
+     caught by a check that reads JavaScript. The constraint is now in
+     the test schema and the failure reproduces.
+
+     **One pair in the whole export collides** — Bellway Homes has two
+     branches both called "West Midlands, Staffordshire", and neither
+     has a town or a postcode. One pair is enough to abort the insert
+     for all 623. The name is now made unique in
+     `Legacy_Branch_Resolved`, so both files get the same answer: the
+     second and later copies take the town, then the postcode, then the
+     old Branch_ID, which cannot repeat. Bellway's become "West
+     Midlands, Staffordshire" and "... (203)".
+
+     **And both inserts now skip a name already on that organisation**,
+     which is what makes a run that stopped half way resumable rather
+     than stuck.
+
+     **A second bug, found while testing the recovery.** 0253 dropped
+     its views without CASCADE, and the trial builds
+     `Trial_Ten_Customers` on top of `Legacy_Organisation_Resolved`. So
+     once the trial had run, 0253 could not be re-run —
+
+       ERROR: cannot drop view "Legacy_Organisation_Resolved" because
+              other objects depend on it
+
+     — which is exactly when it is wanted, because the trial has just
+     shown you something that needs changing. Both drops CASCADE now,
+     and the trial rebuilds its own view at the top of part 1.
+
+     Verified: the half-finished state (organisations and roles there,
+     branches aborted) re-runs 0253 cleanly and then the trial fills in
+     the 55 branches and 7 contacts. Clean slate still gives 10/55/10
+     then 509/623/509.
+
+     **Fourth weak assertion of my own, same shape as the other three.**
+     "Does `b.branch_name` appear in the statement" passed when the
+     inserted column was swapped back, because the re-run guard also
+     says `b.branch_name`. It reads the SELECT list now. The pattern is
+     unmistakable: asking whether a string is present is not a test.
+
+     Seven more mutations, all caught.
+
+     **Also worth recording: my own error greps were wrong twice this
+     session.** `grep -cE "^ERROR"` reports zero against psql, which
+     prefixes every error with `psql:file:line:`. It hid a failed
+     migration for one round. `grep -ciE "error"` from here.
+
+256. **Two triggers nobody had told the test schema about, and 411
+     branches that would have vanished.** The ten-customer trial failed
+     twice against the live database. Reading `pg_trigger` found why.
+
+       organisation_default_branch  AFTER INSERT ON "Organisation",
+         inserts a bare 'Head Office' branch. The Organisations screen
+         says so in as many words: "A Head Office branch is created
+         automatically."
+
+       org_branch_keep_one  BEFORE DELETE, refuses to remove an
+         organisation's last branch.
+
+     **Why they were missed, twice.** The test schema was built from
+     `organisations.js`'s column lists. Those say what the endpoint
+     READS and nothing about what the table DOES, so a constraint and a
+     trigger are both invisible from the JavaScript. 255 was the same
+     lesson about a unique constraint; this is the same lesson about
+     triggers. The test schema now carries all four triggers and the
+     constraint, read off the live database, and both failures
+     reproduce on demand.
+
+     **The serious one.** 411 of the 623 old branches are themselves
+     called 'Head Office'. The trigger creates that name first, 2.4's
+     name guard then correctly refuses to insert a second row with it,
+     and the REAL branch is dropped without a word - no
+     Legacy_Branch_ID, and therefore no link for the 1,036 contracts
+     that resolve through exactly that key. Measured before the fix:
+     the trial inserted 52 branches where 55 were expected, and the
+     three missing were the three called 'Head Office'.
+
+     So 2.4a ADOPTS the placeholder instead of avoiding it - sets its
+     legacy id and fills its address on COALESCE - and only where it
+     carries no Legacy_Branch_ID, so nothing a person owns is taken
+     over. On the full import that is `UPDATE 411`, then 212 inserted.
+
+     **2.4b then clears the placeholder** where real branches arrived
+     and it is still empty, but ONLY on organisations this import
+     created. A placeholder on an organisation that was already here
+     may be referenced by a Project, a Project_Developer or an
+     Enquiry_Submission, and deleting a referenced row is how an import
+     breaks work somebody has done. 88 cleared on the full import; the
+     rest stay, untidy and safe.
+
+     **The undo was broken too** - it deleted branches before
+     organisations, and keep-one refuses the last one. Suspended around
+     the delete, as 0231 did for the history trigger, and the file says
+     to run the ENABLE on its own if the delete ever fails. It also now
+     puts back a placeholder on any organisation left with none:
+     measured 418 branches back where 419 began, because 2.4a had
+     adopted one on a claimed organisation and the undo took it.
+
+     Verified with the triggers in place: 419/419/422/0 -> trial ->
+     473 branches -> undo -> 419/419/422/0 exactly. Full import clean:
+     UPDATE 411, INSERT 212, DELETE 88, ending 509/623/509, and a
+     re-run is silent on all nine statements.
+
+     Seven more mutations, all caught. Suite 190 of 214.
+
+     **What I would do differently.** Three faults in a row came from
+     the same place: a test schema built from what the code reads. The
+     schema is not in this repo (0002-0049 are missing), so the only
+     honest source is the live database - `pg_trigger`, `pg_constraint`,
+     `information_schema`. Ask it first next time, not after the second
+     failure.
+
+257. **The lookup map, and three statuses the new system was missing.**
+     The contract import refuses to start while any old status id is
+     unmapped, and `Project.Project_Status_ID` is NOT NULL, so this was
+     the blocker. `Region_ID` is nullable, so region was never urgent.
+
+     **88 distinct lookup values in the contract file, but only 14 that
+     matter**: 7 statuses covering 1,895 rows and 7 regions covering all
+     1,926. The rest - 27 fire services, 35 IDNOs, 12 water incumbents -
+     resolve to null and are set by hand later. Heat source has no
+     values at all.
+
+     **Regions mapped themselves.** The old system had North West,
+     North West 1 and North West 2 as separate regions; the new one has
+     one North West, so all three fold in. South West has no equivalent
+     and its 4 contracts import without a region. Old 6 "Other" never
+     appears in the data.
+
+     **Statuses needed a decision, and it was the user's.** The old
+     contract lifecycle had seven statuses; the new Contract stage has
+     three. Three had no home:
+
+       Operationally Complete  1,049 contracts, 54% of them
+       MU Completed              122
+       Contract Revoked           23
+
+     Operationally Complete is NOT Commercially Complete - work
+     finished is not invoiced and closed - and Commercially Complete is
+     terminal, so landing 1,049 projects there would mark them done.
+     On Site is wrong the other way. Offered as three options with the
+     counts attached; the user chose to add the three rather than
+     compress, which keeps a distinction the business already draws.
+
+     Secured, Secured (LOI) and Secured (EOI) all become Mobilising:
+     won and not yet on site. The old system distinguished three
+     paperwork routes to being secured and nothing downstream reads it.
+
+     **Everything is matched BY NAME, not by id.** The ids in the file
+     would be a copy of what one query returned on one afternoon, and a
+     reseeded status table would point them at the wrong thing in
+     silence - which is the whole reason Legacy_Lookup_Map exists.
+     Sort_Order and Row_Colour are read off the existing Contract rows
+     too, so the new statuses sit in the right place in whatever
+     palette is in use.
+
+     **Two faults of my own, both caught by running it.** `v.sort`
+     referenced a column that lived in the lateral, not the VALUES
+     list. And the first version put Contract Revoked at 126, between
+     Operationally Complete and Commercially Complete - a revoked
+     contract is not a step on the way to completion. Terminal statuses
+     now go after the last one: 110, 120, 123, 126, 130, 140.
+
+     Verified against the real contract file: 14 map rows, 0 unmapped
+     statuses, the import's own guard passes, and a second run inserts
+     no statuses and rewrites the same map.
+
+     **Still open:** the contracts-first ordering decision, and the plot
+     file, which at 333,950 rows fits neither the Table Editor nor a
+     SQL paste and wants psql against the connection string.
+
+258. **Contracts first. Decided.** Open since 2 Oct, asked three times,
+     answered today with the measurements in front of it:
+
+       contracts first   5,699 projects    13 site+customer pairs held
+                                           by more than one project
+       tenders first     7,315 projects    1,697 such pairs
+
+     The gap is one number. The contract side can match only 86 of
+     1,926 to a tender by reference, where the tender side matches
+     1,159 on three routes - so running the contracts last means ~1,840
+     of them create a second project for a site a tender already holds.
+     The tenders-first file's own section 2.2 rules out the obvious fix:
+     every contract's site name matches a tender and 685 match more
+     than one.
+
+     `import_legacy_projects.sql` is unchanged - it was always
+     contracts-first. `import_legacy_projects.TENDERS_FIRST.sql` is
+     marked as not chosen and kept for the record.
+
+259. **31 contracts with no status, and a pre-flight that could not see
+     them.** Reported from use, part way through the contract import:
+
+       ERROR: 23502: null value in column "Project_Status_ID"
+
+     Project_Status_ID is NOT NULL. 31 of the 1,926 carry NEITHER a
+     Contract_Status_ID nor a Tender_Status_ID - none has a signed date
+     or a secured date either, so they are records the old system never
+     finished - and the lookup found nothing for them.
+
+     **It was visible in my own measurements and I walked past it.** The
+     table I wrote two messages earlier said the seven statuses cover
+     1,895 rows, against 1,926 contracts. That gap of 31 was on the
+     screen. Then preflight_contracts.sql asked only whether every
+     status that IS set has a mapping, which is the same blind spot
+     written down a second time.
+
+     Fixed in both places. The import COALESCEs to the first
+     Contract-stage status by Sort_Order - chosen by order rather than
+     by name, so it follows the board if anybody reorders it - and says
+     so in the project's Notes, because a default nobody is told about
+     is a figure somebody will later believe. The pre-flight now counts
+     them before the import runs, and checks a Contract-stage status
+     exists to fall back to.
+
+     **And a second stale tender instruction.** The import's AFTERWARDS
+     section still said to load the tender file into the same staging
+     table with Source = 'tender' - the same fault 0248 carried, in a
+     second file. 5,454 tender rows among the contracts, where this
+     import would try to make projects of them. Replaced with a pointer
+     to import_legacy_tenders.sql.
+
+     **Run for real against a Project table built to match the live
+     one** - the NOT NULL set, both unique constraints, a generated
+     Display_Ref, and 28 existing projects holding references in the
+     YYMM.NNN sequence. Result: 1,926 imported, 1,954 total, the 28
+     untouched, ZERO duplicate references, the 31 on Mobilising with
+     their note, 52 on the date stand-in, and a re-run inserting
+     nothing.
+
+     **1,615 of 1,926 land on a specific branch** - better than the
+     1,036 the branch key alone gives, because the import also settles
+     a branch wherever the organisation has exactly one. 311 have no
+     customer, down from 374, the difference being the Audacia code
+     fallback.
+
+     Reading pg_trigger and pg_constraint first - the lesson from 255
+     and 256 - is what made this run at all: it confirmed 0233 had run,
+     so log_project_changes no longer names a dropped column. Without
+     that the import could not have inserted a single row.
+
+260. **The tenders, run end to end — and a status gap that would have
+     flattened 3,773 projects.**
+
+     Loaded as three SQL parts (1.6 MB is too much for one paste; 574 KB
+     each matches the contract loader that worked). 5,454 rows, 5,454
+     distinct ids.
+
+     **Part 1 is better than it was before the organisations existed.**
+     With customers migrated, the site+customer route works properly:
+
+       no contract - becomes its own project    3,789
+       same site and customer                   1,540
+       tender reference on the contract           112
+       AMBIGUOUS - several projects match          13
+
+     1,652 merge against the 1,159 measured when customers were not yet
+     in. The 13 ambiguous are listed by name and matched to nothing.
+
+     **Part 2: 1,159 projects filled in from their tender, 1,140 now
+     carrying a real received date** instead of the 1900-01-01 stand-in.
+
+     **Part 3 failed the same way the contracts did** - 523 tenders
+     carry no Tender_Status_ID and Project_Status_ID is NOT NULL. Fixed
+     the same way: COALESCE to the first TENDER-stage status by
+     Sort_Order, because these are tenders.
+
+     **But then it ran, and every one of the 3,773 got that fallback** -
+     "tender_status" has no rows in Legacy_Lookup_Map at all. The
+     namespace is separate from the contract 'status' kind, which is
+     good design and means the contract mapping did nothing for these.
+     13 distinct tender statuses, with id 2 alone covering 3,297 of
+     5,454.
+
+     So part 3 must not run until the tender statuses are mapped, or
+     3,773 projects arrive on one status. Parts 1 and 2 are safe now;
+     part 2 never touches a status.
+
+     **Totals with the whole chain run: 5,727 projects** - 1,926 from
+     contracts, 1,159 of those merged with a tender, 3,773 tender-only,
+     plus the 28 that were already there. Zero duplicate references.
+     Matches the 5,699 measured in September.
+
+     **And the test harness, finally built properly.** Three runs failed
+     one missing column at a time - Tender_Base_Points, the points
+     columns, the Tender-stage statuses - so the Project table is now
+     generated from projects.js's own PROJECT_COLUMNS, all 50 of them,
+     plus the NOT NULLs and constraints read off pg_constraint. Guessing
+     a column at a time is what made those three runs fail.
+
+260. **One script that says where the migration is, and does not fall
+     over on a migration you have not run.** Asked for directly: "back
+     to the data migration. Where did we get up to ?"
+
+     `migration_status.sql` - one paste, one table, seventeen rows,
+     read-only. Stage 0 is which of 0247-0253 are in, stages 1 to 5 are
+     organisations, the lookup map, contracts, tenders, plots, and 9.1
+     and 9.2 are the two things worth watching.
+
+     **The first version of it was no use.** It asked
+     `Legacy_Plot_Import` and `Legacy_Tender_Import` for their row
+     counts directly, so on a database where 0251 and 0252 had not been
+     run it stopped at
+
+         ERROR: relation "Legacy_Plot_Import" does not exist
+
+     and said nothing about the eleven stages that WERE done - the one
+     question it exists to answer. A missing relation is a parse error,
+     so no CASE or COALESCE in the body can get round it. The counts
+     that depend on a later migration now go through
+     `query_to_xml('SELECT count(*) ...')`, which takes the query as
+     text, so nothing is resolved until `to_regclass` has said the
+     table is there. 0249 is deliberately not on the stage 0 list: the
+     keys it adds are what stage 1 counts, so if it were missing row
+     1.1 could not have been written.
+
+     Tested in three states against the verification database, all
+     returning one result set and no error: everything present; the
+     0250/0251/0252/0253 artefacts renamed away (0.1 names all four,
+     the stages that need them read "not yet"); and the state their
+     live database is probably in, tenders never imported, where 4.1
+     to 4.3 correctly read "not yet" rather than vacuously passing.
+
+     **Where it says the migration stands.** Stages 1 to 3 done - 509
+     organisations, 623 branches, 14 lookup rows, 1,926 contract
+     projects, 1,615 of them showing a customer, zero duplicate
+     references. Stage 4 tested end to end here and blocked on one
+     thing only: `tender_status` has no rows in `Legacy_Lookup_Map`, so
+     part 3 of the tender import would put all 3,773 tender-only
+     projects on a single status. Still waiting on the old system's
+     `Tender_Status` table, 13 ids and names. Stage 5 not started and
+     needs psql rather than the SQL editor - 333,950 plots is too big
+     for the editor as a CSV (mixed-case table name) and too big as
+     INSERT statements (~80 MB).
+
+261. **Their live database answered, and the one duplicate reference is
+     still there.** `migration_status.sql` run against Supabase came
+     back matching the prediction row for row: 0.1 all seven
+     migrations in, stages 1 to 3 done (509/623, 14 lookup rows,
+     1,926 contracts, 1,615 with a customer), stage 4 not started at
+     all - the tender loader files were never run - stage 5 not
+     started, 311 with no customer as expected.
+
+     One difference. Row 9.1 reads **1**, not 0. That is the pair that
+     pre-dates all of this: "Test Site" and "Brierton Lane,
+     Hartlepool" both on the same reference, which the UNIQUE
+     constraint allows because both have a NULL Option_Letter and
+     Postgres treats two NULLs as different values. Said in September
+     that the test site could go; it never went.
+
+     `clear_duplicate_ref.sql` - three parts, one statement each.
+     Part 1 lists everything sharing a reference and says which came
+     from the old system. Part 2 says what hangs off the project part
+     3 would delete, with every child table found from pg_constraint
+     rather than from a list typed here, and what each foreign key
+     would do on delete - cascade, block, or orphan. Part 3 deletes
+     it, finding the project by rule rather than by id: it must share
+     a reference, carry no legacy id of either kind, and be named like
+     a test. Miss any one and it deletes nothing.
+
+     **Two faults in it, both found by running it rather than reading
+     it.**
+
+     Part 3 reported "1 still sharing a reference" immediately after
+     successfully deleting the only one. Everything in a statement sees
+     one snapshot, so a count in the same statement as a DELETE in a
+     CTE cannot see that DELETE, however it is written - it has to
+     subtract the rows the CTE returned. Run twice it looked right,
+     which is exactly how it would have been missed.
+
+     Part 2 came back with zero rows, which reads as "nothing hangs off
+     it" and is not the same claim: a schema with no foreign keys to
+     Project, and a rule that matched no project, give the identical
+     empty result. It now always returns two rows first - which project
+     part 3 would delete, and the total pointing at it - so an empty
+     table underneath them means something.
+
+     Tested in four states: no duplicate at all; a duplicate that is
+     not a test project (refuses, and both parts say why); the real
+     case end to end with part 3 run twice; and against three child
+     tables built with CASCADE, RESTRICT and SET NULL, which vfy did
+     not have, to prove the per-table counts and the delete actions
+     are read correctly.
+
+262. **Part 3 deleted nothing, which is the script working.** Their run
+     came back "nothing matched - either it is already gone, or the
+     duplicate is not a test project", with 1 duplicate still there.
+
+     So the pair is not the "Test Site" / "Brierton Lane" one assumed
+     from September. Either the test site went at some point, or the
+     two projects sharing a reference are something else - two
+     imported contracts is the obvious candidate, and that would need
+     a different decision from deleting one.
+
+     Worth noting that it refused rather than widening its aim. A
+     delete written as `WHERE "Project_ID" = 21` would have taken
+     whatever is sitting on 21 now.
+
+     `show_duplicate_ref.sql` is part 1 on its own, one statement, so
+     there is no confusion about which bit to paste. Two changes from
+     the version inside clear_duplicate_ref.sql:
+
+     `IS NOT DISTINCT FROM` on all three key columns, not just
+     Option_Letter. GROUP BY puts two NULLs in one group but `=`
+     against NULL is NULL, so a plain join can return nothing where
+     the grouping found a pair - it drops the very rows it exists to
+     show. Project_Ref and Revision are NOT NULL today so it changes
+     nothing now, but a column going nullable later should not break
+     this quietly.
+
+     And Option_Letter prints as (null) or (empty), because those are
+     different values to the unique constraint and identical on
+     screen. Testing that case proved an empty-string pair cannot
+     exist at all - the constraint catches it, since '' = ''. Only a
+     NULL/NULL pair gets through, so that is what theirs is.
+
+263. **The duplicate was not old data. It happened this morning, and
+     the constraint meant to stop it has never once fired.**
+
+     show_duplicate_ref.sql named the pair:
+
+         3693  2610.004  Tansey Green, Kingswinford   contract 380
+                                                      05 Oct 14:21
+         3801  2610.004  Bodnant Avenue, Prestatyn    made in this app
+                                                      06 Oct 06:32
+
+     So a project entered in the app at half six this morning took a
+     reference an imported contract had held since yesterday
+     afternoon. Nothing refused it.
+
+     **Why the database allowed it.** 0001 created the table with
+     `UNIQUE ("Project_Ref", "Revision", "Option_Letter")` and
+     Postgres counts two NULLs as distinct. An ordinary project has no
+     option letter, so the third column is NULL on both rows and they
+     never collide. That index has only ever protected lettered
+     options - the one case that does not need it, because 0077's
+     next_option_letter() allocates those. A constraint that is never
+     violated looks like a constraint that works.
+
+     **Why the app handed out a taken number.** next-ref.js was asked
+     for a reference when the Add Project form MOUNTED and the number
+     was written when somebody saved. The gap is however long they
+     take over the form; a tab left open overnight makes it hours, and
+     the contract import ran straight through the middle of one. The
+     function's own comment claimed "two estimators creating a project
+     at the same moment must not be handed the same ref", which it
+     never delivered - the read and the write are separate HTTP
+     requests with no lock, no sequence and no retry.
+
+     It had a second fault nobody had hit yet: the next number came
+     from `.order("Project_Ref").limit(1)`, a TEXT ordering. Padded to
+     three digits that happens to match numeric order, but the
+     reference field is free text anybody can edit and the import
+     carries whatever the old system had. One '2610.9' in the month
+     sorts above '2610.012' and the next reference comes out 2610.010,
+     already in use.
+
+     **What two projects on one reference actually break**, which is
+     why this is not cosmetic: project-options.js treats everything
+     sharing (Project_Ref, Revision) as one option set, and its DELETE
+     path nulls Option_Letter across every row sharing the reference -
+     changing an unrelated project's Display_Ref. ProjectsList.jsx
+     locks "Edit Project" when a higher revision of the same reference
+     exists, so one project can make an unrelated one uneditable. And
+     plots.js builds Plot_Ref from the project reference, so the plots
+     collide too. None of it errors. It all degrades quietly.
+
+     **The fix, in four parts.**
+
+     `renumber_duplicate_project.sql` moves the app-created project to
+     the next free number in the month its reference names - never the
+     imported one, whose link back to contract 380 is what yesterday
+     bought - and records the change in its Notes.
+
+     `0254_project_ref_unique_nulls.sql` replaces the constraint with
+     `UNIQUE NULLS NOT DISTINCT`, after normalising empty option
+     letters to NULL (NULLS NOT DISTINCT makes two NULLs equal; it
+     does not make '' and NULL equal, and both are in the column). It
+     RAISEs with the references named while a duplicate exists rather
+     than letting Postgres name only the first one it trips over.
+
+     `netlify/functions/_refs.js` is new: refPrefix, monthOf,
+     allocateRef and isRefConflict in one place, because the reference
+     now has to be allocated twice and two copies of that arithmetic
+     would drift. allocateRef reads every reference in the month and
+     takes the NUMERIC maximum.
+
+     And projects.js POST retries on the collision - up to six
+     attempts, staying in the month the reference already names so a
+     form opened on the 31st does not jump to the 1st, and reporting
+     the first displaced reference back as Ref_Reassigned_From so the
+     form can say what happened instead of showing a different number
+     with no explanation. isRefConflict matches the constraint by
+     name, so a duplicate contract number still goes back to the user
+     as an error - renumbering the project would hide it.
+
+     **54 checks in checkprojectref.mjs, and three of them only exist
+     because a mutation survived.** Thirteen mutations run; ten were
+     caught first time.
+
+     Loosening the fallback to `text.includes("Project_Ref")` survived,
+     and the comment defending the strict version was wrong on its
+     face: it claimed Display_Ref contains Project_Ref as a substring,
+     which it does not - they share only "_Ref". The real case is a
+     constraint over the reference AND another column, where a new
+     reference fixes nothing and the insert is retried six times
+     before failing anyway. There is a test for that now, and the
+     comment says what is actually true.
+
+     Dropping the pre-0254 constraint name from REF_CONSTRAINTS also
+     survived, because every test for it carried the full key list in
+     `details` and the fallback caught it. PostgREST does not always
+     pass `details` through, and a database that has not run 0254 is
+     the live case, so there are now two tests with a message and no
+     details.
+
+     The third mutation - loosening allocateRef's regex to allow an
+     empty tail - was inert: '2610.' parses to NaN either way. Noted
+     rather than chased.
+
+     The error objects in those tests are not invented. They are the
+     exact message and detail text Postgres 16 produced against the
+     real schema with 0254 applied.
+
+     Build passes. The twenty-one check scripts that report problems
+     report the same problems with the change stashed - verified, not
+     assumed.
+
+     **Order to apply it.** renumber first, then 0254, then the code.
+     0254 is worth running before the deploy either way: without the
+     code a collision becomes a visible error instead of silent
+     corruption, which is strictly better than today. The code is on
+     the PR branch, still gated on 0241-0246.
+
+264. **Drawing 35: the mains are right, and every service cable is
+     gone.** Asked whether the POC-to-link-box-to-meter routing was
+     working. The routing is. The cables are not there.
+
+     What is on that drawing: 10 LV mains, 41 service trenches, 47
+     joints, 41 plot meters, **0 service cables**.
+
+     The mains are structured exactly as described. A1 runs POC 1 ->
+     Link Box 2 and B1 runs POC 2 -> Link Box 1, neither carrying a
+     Link_Way, which is right for the feed into a box. A2-A6 and B2-B4
+     all carry Link_Box_ID and Link_Way 1 and form a proper tree out
+     of their box. Both boxes take span label A1/B1 at Span_Seq 1,
+     with the feeder points lettered around them. A1 even records
+     KVA 82.3 over 23 meters, so the build sized for the meters it was
+     given.
+
+     Then: all 47 joints name Joint_Cables ids that are not on the
+     drawing - 48 distinct absent ids, 94 dangling references - and
+     all 41 meters are connected to nothing but their trench. The ids
+     are still sitting in the joints, which is the proof: those cables
+     were written, the database allocated their ids, and they were
+     removed afterwards.
+
+     Download Drawing is not the culprit - gis.js:33 selects every row
+     for the project with no filter at all, so the export is faithful.
+
+     **The cause, confirmed in the code.** GISCanvasPage.jsx, the
+     duplicate-trench sweep in Auto Service:
+
+         const keep = Number(drawn[rightOne].Feature_ID);
+         for (const f of mine) {
+           if (Number(f.Feature_ID) !== keep) copies.push(f);
+         }
+
+     `drawn` is the trenches stamped to the seed. `mine` is
+     stampedTo(sd) - EVERY line stamped to it, trenches and cables
+     together. So `keep` is one trench id and the loop pushes every
+     cable on the plot into `copies`, which is deleted at 23105-23118.
+     The `continue` straight after keeps the seed out of `mismatched`
+     and therefore inside `serviced`, so nothing is re-laid. One word.
+
+     **And why nobody saw it.** isServed() in autoService.js returns
+     true the moment any trench is stamped to the seed:
+
+         for (const t of trenches) {
+           if (Number(t.Attributes?.Seed_Feature_ID) === sid) return true;
+         }
+
+     It never looks at the cables. So all 41 stripped plots report
+     "already has a service trench", the next Auto Service lays
+     nothing, and the drawing sits there looking finished. That is
+     also why they cannot recover by re-running it.
+
+     **Recovery: Auto Lay Services**, per utility. layServices() works
+     from the service trenches, which are all still there, skips any
+     trench that already holds a cable, and its caller is the only
+     code that repairs a joint's Joint_Cables
+     (GISCanvasPage.jsx:20620-20637) - so it fixes the 47 orphaned
+     joints in the same pass. Its own comment already describes this
+     exact fault: "re-laying them replaced the cables with new rows,
+     leaving the joints naming ids that no longer exist."
+
+     **The suite could not see any of this.** checkautoservice,
+     checkservicejoint, checkservicejoints, checkservicetee,
+     checkservicemoved, checkservicesizes, checkservicetail - every
+     one works on the pure planner's return value or on a fixture that
+     already contains the cable. Not one asserts a cable ROW survives
+     a build, or that a joint's Joint_Cables resolve to anything. The
+     build was judged on what it planned, never on what was left.
+
+     checkservicecables.mjs is that check, and it takes a drawing path
+     so it can be pointed at any export: every joint's cable is on the
+     drawing, service joints have cables to hold, every meter is fed,
+     no service trench is dug for nothing. Clean on
+     drawing-2202-043 (84 cables, 84 meters); four failures on 35.
+
+     **My first version of it failed the healthy fixture on all 84
+     meters.** It read the meter's own Connects, and in
+     drawing-2202-043 every meter's Connects is empty - the CABLE
+     carries the link, cable 44416 naming meter 44306. A test a
+     known-good drawing fails is measuring the wrong thing, and it
+     would have been worthless the moment it went green on 35's
+     successor. It now reads from the cable's side and accepts either
+     direction, because the two drawings genuinely disagree about
+     which end holds the link.
+
+     Six of the thirteen drawing fixtures fail these invariants, which
+     is correct - they are hand-built partials. The script therefore
+     defaults to the one full real drawing and takes a path for the
+     rest, so checkall stays clean.
+
+     isServed is pinned rather than changed: it is load-bearing for
+     deciding a re-lay, and making served-ness depend on cables is a
+     decision with consequences beyond this fault. The check records
+     the blind spot so whoever touches it reads why.
+
+265. **Two boxes 1.73 m apart, and the input dot took the wrong one's
+     cable.** Reported: "the input node of Link Box B1 is not picking
+     up the colour of the cable on its input."
+
+     The canvas settled which cable was on a box's input by measuring:
+     walk the mains, take the FIRST whose end falls within SNAP_TOL -
+     12 metres - of the box, excluding only that box's own outputs.
+
+     Drawing 35 has two link boxes, one per circuit, standing 1.73 m
+     apart at the end of the POC trench. Simulated against the export:
+     box B1's 12 m circle holds cable A1 at 1.73 m, cable A2 (the
+     other box's OUTPUT) at 1.73 m, its own cable B1 at 0.00 m and its
+     own output B2 at 0.00 m. The walk returns on id order, and 57970
+     (A1) precedes 57982 (B1). Box A1 was right by luck; box B1 drew
+     its input in circuit 1's green with circuit 2's orange cable on
+     it.
+
+     Three things wrong with measuring first:
+
+     Link_Way was tested against THIS box only, so the neighbour's
+     output - equally close - was a candidate. An input cable carries
+     no way at all, from any box.
+
+     The circuit was never consulted, though the box carries its own
+     Circuit_ID. A cable on another circuit cannot be its input.
+
+     And `Connects` already records which cable lands at the box, both
+     directions, exactly. Measuring was answering a question the
+     drawing had already answered.
+
+     `inputCableOf()` now lives in linkWays.js beside wayColourOf:
+     Connects first, then the NEAREST end inside the tolerance rather
+     than the first, with both filters applied throughout. Verified on
+     the export - B1's input resolves to #ff7300 and A1's to #1eed02,
+     the two circuit colours chosen on the POCs.
+
+     **Why checklinkbox.mjs stayed green through all of it.** It
+     asserts on this dot three times, and all three are regexes over
+     GISCanvasPage.jsx: that the dot call reads
+     `dot(p.x - ux * half, p.y - uy * half, inInk);`, that
+     `feederPlan.get(...)?.colour` appears, and that
+     `Link_Way != null) continue;` appears "so an output's cable cannot
+     be taken as the input". The third was pinning the very line whose
+     narrowness WAS the fault. Pinning the text of a routine says
+     nothing about the answer it gives.
+
+     So the rule was moved out of the 24,000-line component to be
+     runnable, and checklinkboxinput.mjs resolves it - 21 checks, two
+     boxes at the real coordinates with the real ids, each filter
+     isolated, and the feature list reversed to catch an answer that is
+     only ever first or last.
+
+     **Six mutations run; two survived first time, each masked by the
+     other mechanism.** Reverting nearest-end to first-found changed
+     nothing, because the decoy in that test was on another circuit and
+     the circuit filter removed it before any distance was compared.
+     Narrowing the output test back to this-box-only also survived,
+     because the neighbour's output was 1.73 m out and the real input
+     0 m, so the nearest rule covered for it. Both now have a case that
+     isolates them: same-circuit decoys for the distance rule, and the
+     neighbour's output placed exactly ON the box for the exclusion.
+
+     And my own replacement assertion in checklinkbox.mjs failed on
+     its first run - against my own comment, which quotes the old line.
+     An assertion that something is GONE has to read code only, so that
+     file now keeps a comment-stripped copy of the source for it.
+
+266. **Only one levels label, and that one is not a fault.** Reported
+     alongside the above: a levels label at link box A1 and none at
+     B1.
+
+     levelsByNode() skips a whole circuit whose origin is not fully
+     declared:
+
+         if (originMissing(r.model?.origin || station,
+           lookups?.transformerSizes || []).length) continue;
+
+     Run against the export:
+
+         Electric POC 1  Output "150"  Output_V 400   -> nothing missing
+         Electric POC 2  Output null   Output_V unset -> "the output
+                                                         voltage on the POC"
+
+     So circuit 2 is skipped, and every node on it - link box B1
+     included - has no figure to label. Circuit 1 keeps its levels.
+
+     Deliberate, and the comment there says so: a POC with no declared
+     voltage does not fail, it DEFAULTS to 400, and every label on the
+     circuit would then read better than the truth by the missing
+     amount. "A number on the drawing is read as a measurement; one
+     resting on an undeclared source is worse than a blank."
+
+     Fix is on the drawing, not in the code: set the output voltage on
+     Electric POC 2. Note that voltageOf(POC 2) already returns 400 -
+     that is the default, which is exactly why originMissing refuses to
+     accept it as declared.
+
+     Worth knowing: Levels_Offset is not the gate. Box A1 carries one
+     and B1 does not, which looks like the cause and is not - it only
+     says where a label somebody dragged should sit. Nothing on the
+     canvas says WHY a circuit has no levels; the Run Levels Check
+     panel does, "because a panel can carry words and a label cannot".
+
+267. **"Link Box B1 is still showing the wrong colour."** Two reasons,
+     and the first one is on me for not saying it plainly: **none of
+     265's fix is deployed.** It is on the PR branch, which is unmerged
+     and gated on 0241-0246. Their live site was running the same code
+     as before I touched it.
+
+     The second is a real gap in that fix, found while checking rather
+     than assumed. The input colour work changed `inInk` and the input
+     DOT. The input STUB - the dashed leader from the input face out to
+     where the cable lands - sits twenty lines further down and read its
+     own hardcoded null:
+
+         stub(way, way === "in" ? null : (wayInk[way] || null));
+
+     so it drew slate while the dot at its own end wore the cable's
+     colour. Two marks for one termination, disagreeing.
+
+     I first talked myself out of this mattering, reasoning that
+     `landed` only gains "in" from an explicit Link_Connections claim
+     and theirs would not have one. Checked it instead of asserting it,
+     and `landed` is `["?","in",1]` for BOTH boxes: every main on that
+     drawing carries a claim, the inputs saying
+     `{"end":{"box":57959,"way":"in"}}` and the outputs their way
+     number. So the input stub is drawn there, and it was slate.
+
+     **Which turned up something better than the fix 265 shipped.** A
+     cable saying `way: "in"` and naming this box is the drawing
+     stating outright which cable is on the input - and inputCableOf was
+     settling it by Connects and then by proximity, neither of which is
+     a declaration. Connects is rebuilt from what a cable TOUCHES, so a
+     cable passing near a box it has nothing to do with can be in its
+     list. The claim is a statement about what the cable IS.
+
+     So the order is now: a declaration naming THIS box, then Connects
+     either direction, then the nearest end inside the tolerance. 23
+     checks; the two new ones have a decoy that is both nearer AND in
+     the box's Connects, so only the declaration can answer, and a
+     second that declares itself the OTHER box's input. Both mutations
+     caught.
+
+     checklinkbox.mjs now also pins the stub, and that assertion was
+     mutation-tested by putting the hardcoded null back.
+
+268. **The merge gate I kept repeating was wrong.** Asked what is
+     needed to push the changes through, and the honest first answer is
+     that my own standing warning was misinformed.
+
+     I have said repeatedly, in several handover entries and in
+     conversation, that PR #1 must not be merged "until migrations
+     0241-0246 have run in Supabase, or the fail-closed access-control
+     code locks every staff account out". Checked the branch properly
+     instead of repeating the note:
+
+         git ls-tree origin/main supabase/migrations/ | grep 024[1-6]
+         -> all six are there
+
+         git grep -l Person_Menu_Visible origin/main
+         -> _access.js, _adminOwners.js, access.js, admin.js,
+            PeopleRolesAdmin.jsx, src/lib/access.js, src/lib/adminTabs.js
+
+     **0241-0246 and the code that reads them are already on main.**
+     They are not in this PR; `git diff --stat origin/main...HEAD`
+     does not list one of them. So merging this PR cannot introduce
+     that code, and cannot lock anybody out who is not already locked
+     out. Whatever state that gate is in, it has been in it since main
+     last deployed, and this PR neither helps nor worsens it.
+
+     Carried the warning forward for days without checking it, and it
+     has been holding three real fixes off a live site: the duplicate
+     references, the deleted service cables, and the link box input
+     colour.
+
+     The one schema change this PR's code genuinely depends on is
+     **0254** - projects.js retries an insert on a reference collision,
+     and without that constraint there is no collision to catch, so the
+     retry is dead code and duplicates keep happening silently.
+
+     `preflight_merge.sql`: one paste, one table, read-only, nine rows.
+     Each of 0241-0246 detected by something it creates rather than by
+     a version number - the three nullable GIS_Style columns, the two
+     columns 0242 ADDS to gis_style_scope_uniq (the index has the same
+     name in 0195, so its presence proves nothing), Is_Exclusive,
+     Needs_Detail and Detail_Prompt - then 0245 by its BACKFILL rather
+     than by its table, because an empty Person_Menu_Visible with the
+     code live is the lock-out, not a missing table. Row 7 counts live
+     people with no ticks at all, which is not a migration question but
+     is worth seeing before any deploy. Rows 9 and 9.1 are this PR's
+     own requirement and the duplicate that would block it.
+
+     Tested in four states against the verification cluster: nothing
+     present, everything present, the table present with the backfill
+     not run, 0245 run and 0246 not, and a duplicate reference with the
+     constraint absent. One result set every time.
+
+     My first attempt at the duplicate-state test was itself wrong - it
+     inserted the duplicate before dropping the constraint, so the
+     insert failed and aborted the transaction, and every row came back
+     as "current transaction is aborted" rather than an answer.
+
+269. **"Tansey Green in the original database was Tender Ref 1906.054."**
+     Which stops the renumber, and opens something much larger.
+
+     The import gave Tansey Green 2610.004 - October 2026, the month the
+     import RAN. Measured on a copy of their CSVs:
+
+         1,926  imported from contracts
+            77  kept their own old reference
+         1,849  given one by the import, numbered from a date
+            34  of those dated from the day the import ran
+             0  contract rows carry a Tender_ID at all
+
+     The contract import keeps an old reference where the row has one in
+     YYMM.NNN shape - but it reads the CONTRACT file's
+     "Tender_Reference", and only 77 rows have one. The real reference
+     lives in the TENDER file under a differently named column,
+     "Tender_Ref". Contract 380's own fields are all empty:
+
+         Tender_Reference (empty) · Secured_Date (empty)
+         Date_Signed (empty) · Tender_ID (empty)
+
+     so it fell all the way through to CURRENT_DATE. That is why it
+     reads 2610.004, and why it collided with a project somebody created
+     in the app that morning: two pieces of code handing out October
+     2026 numbers without seeing each other.
+
+     **Tender 2182 carries Tender_Ref 1906.054 and the identical site
+     name**, "Tansey Green, Kingswinford". The tender import did not
+     match them, and the reason is visible: the tender has Customer_ID
+     786 and the contract row has no customer at all, so there is
+     nothing to corroborate the site name with. Contract 380 is one of
+     the 311 with no customer, and that is the same thinness in the old
+     data showing up twice.
+
+     With the tenders loaded and merged, **817 contract-imported
+     projects end up holding a real YYMM.NNN reference in their
+     Tender_Ref column that differs from the Project_Ref they were
+     given.** Tansey Green is not among them, for the reason above.
+
+     `check_imported_refs.sql` reports all of the above off their own
+     database, read-only, one result set, with rows 4 and 5 answering
+     only once the tender files are loaded rather than guessing.
+
+     **Not acted on - this is theirs to decide**, and it is close to
+     irreversible: moving Project_Ref on 817 projects changes the
+     reference people read in every dropdown, every plot reference
+     built from it, and every drawing already issued. Asked rather than
+     assumed.
+
+     `renumber_duplicate_project.sql` is now also split into
+     1_look_at_the_duplicate.sql and 2_renumber_the_project.sql, which
+     is what was asked for before any of this came up. Both tested
+     standalone. **File 2 is on hold**: as written it moves the
+     APP-created project off 2610.004 and leaves Tansey Green on a
+     reference that was never its own, which is the wrong one of the
+     two to move if 1906.054 can be given back.
+
+270. **Checking that 1906.054 was free reversed the recommendation I
+     had just given, and found something bigger.**
+
+     Asked which project should move to clear 2610.004, I recommended
+     giving Tansey Green its real 1906.054. Then checked whether that
+     reference was free, and in the verification database it is already
+     held - by **another project called "Tansey Green,
+     Kingswinford"**, created by part 3 of the tender import. The
+     tender became its own project because the merge did not match it
+     to the contract.
+
+     So handing 1906.054 over by hand makes things worse, not better.
+     The tender import keeps a tender's own reference only where
+
+         NOT EXISTS (SELECT 1 FROM "Project" p
+                      WHERE p."Project_Ref" = btrim(mine."Tender_Ref"))
+
+     so taking it first means tender 2182 gets a GENERATED reference
+     instead, and still creates a second Tansey Green. Leaving
+     1906.054 free is what lets the merge deliver it properly.
+
+     Revised recommendation: **move Bodnant Avenue to 2610.035** -
+     file 2 exactly as it was written. It is a project genuinely raised
+     in October 2026, so that reference is honest, and it unblocks 0254
+     today.
+
+     **The bigger finding. 1,377 of the 3,773 tender-only projects
+     share a site name with a contract-imported project, across 847
+     distinct sites.** Some of that is real - a site tendered, lost and
+     re-tendered, and "Halton Court, Runcorn" holds three references in
+     1906.0xx alone - but Tansey Green is plainly one job imported
+     twice.
+
+     The matching has three routes and two are unavailable right now:
+
+       1. "tender reference on the contract" - needs the contract's
+          Tender_Reference, which 77 of 1,926 rows have.
+       2. "a plot naming both" - reads Legacy_Plot_Import for a plot row
+          carrying BOTH a Tender_ID and a Contract_ID. This is the
+          strongest evidence there is, an explicit link in the old data,
+          and it is **completely dead until the plot file is staged**.
+       3. "same site and customer" - needs the contract to have a
+          customer. 311 do not, Tansey Green among them, which is why
+          all three routes missed it.
+
+     So the plot CSV being unloaded is not just stage 5 waiting its
+     turn - it is disabling the best of the three match routes, and
+     running tender part 3 before it is staged throws away matches that
+     the old data can prove. Could not confirm whether a plot row links
+     tender 2182 to contract 380: the plot file is not staged in the
+     verification database either, so that is a question for their data
+     rather than a claim.
+
+     **Revised order:**
+
+       1. file 2 - Bodnant Avenue to 2610.035, clearing the duplicate
+       2. migration 0254
+       3. stage the plot CSV into Legacy_Plot_Import (the load, not the
+          import) - this switches match route 2 on
+       4. load the tender files, run tender parts 1 and 2
+       5. restore Tender_Ref to Project_Ref where it is a real YYMM.NNN
+          and free - the decision taken at entry 269
+       6. tender part 3 last, after the status mapping
+
+     Reference restoration not written yet, deliberately: it should run
+     after the merge, and how much there is to restore depends on how
+     well the merge does once route 2 is alive.

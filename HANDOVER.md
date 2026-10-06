@@ -11944,3 +11944,49 @@ plus generic table editors.
      Reference restoration not written yet, deliberately: it should run
      after the merge, and how much there is to restore depends on how
      well the merge does once route 2 is alive.
+
+271. **"Do I go to Legacy Plot Import and click Import data from CSV?"**
+     Asked after saying they were lost and overwhelmed, which is fair -
+     I had given them four files in ten minutes and two routes to choose
+     between.
+
+     No, twice over. Plot_Utility_rows_1.csv is the CONNECTIONS file, so
+     it belongs in Legacy_Connection_Import. And that button is the one
+     that failed on 5 Oct with
+
+         relation "public.legacy_customer_import" does not exist
+
+     But the right response is to make the button work, not to explain
+     why it does not. That error is a NAMING problem, not a size one:
+     the importer builds the table name unquoted, Postgres folds it to
+     lower case, and every table in this schema is mixed-case.
+
+     0255 creates lower-case twins - `legacy_plot_import` and
+     `legacy_connection_import` - with their COLUMN names quoted and
+     mixed-case, matching the export headers exactly. The importer maps
+     columns by header name, so the column ORDER in the CSV stops
+     mattering too, which was the whole hazard of the psql route and the
+     reason I was asking for header lines.
+
+     move_csv_into_staging.sql copies both twins into the real tables and
+     empties them in the same statement, so a second import cannot double
+     anything.
+
+     Tested against the actual file they uploaded on 2 Oct: 0255 run
+     twice, the real 33,059-row CSV through \copy into the twin, moved
+     across, the mover run a second time moving nothing, and a row read
+     back field by field.
+
+     **Two faults of mine, both found by running it rather than reading
+     it.** The report said "0 plot row(s), 0 connection row(s) in the
+     real staging tables now" immediately after moving 33,059 - the same
+     one-snapshot-per-statement trap as entry 261, where a count cannot
+     see INSERTs made by CTEs above it. Fixed by adding what the CTEs
+     returned. And the file count in the text said 33,058: wc -l had
+     undercounted by one because the last line carries no newline, and
+     COPY's own figure was the honest one.
+
+     Also recorded: the plot export does not exist yet. Only the
+     connections file was ever uploaded. The 333,950 figure is a count
+     from their old system that I had been carrying as though it were a
+     file I had seen.

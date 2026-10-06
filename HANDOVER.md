@@ -12080,3 +12080,52 @@ plus generic table editors.
      next thing needed is the old system's Property_Config, Heat_Source
      and Heat_Pump_Model tables, id and name, to match on name the way
      the contract statuses were.
+
+274. **Two triggers on Plot that no migration mentions, and one of them
+     changes what the import means.** Read off their database because
+     the Plot table pre-dates the baseline:
+
+     `plot_ref_trg` BEFORE INSERT sets
+
+         NEW."Plot_Ref" := proj_ref || '-' || dev_code || '-' || Plot_Number
+
+     unconditionally. So the Plot_Ref the import carefully carries over
+     from the old system is **overwritten on every row**. That is the
+     right outcome - an imported plot should read like one added in the
+     app - but the import appears to preserve the old reference and does
+     not, which is worth saying out loud.
+
+     Its consequence bites later: that trigger fires on INSERT and on
+     UPDATE OF Plot_Number, Project_ID or Project_Developer_ID, and NOT
+     when a PROJECT's reference changes. 1,849 imported projects carry
+     an invented reference that we have agreed to replace, and nothing
+     would update their plots' references afterwards. Recoverable with
+     `UPDATE "Plot" SET "Plot_Number" = "Plot_Number"` on those
+     projects, which re-fires it - so the order is a convenience, not a
+     trap.
+
+     `plot_points_trg` AFTER INSERT FOR EACH ROW calls
+     recalc_project_points(project) - the whole project recomputed once
+     per inserted row.
+
+     **And here I overclaimed, measured, and overclaimed again.** First
+     I said it was "an import that may never finish". Then I measured
+     2,000 rows at 916 ms against 242 ms suspended - bad but survivable,
+     contradicting me. Then the full import timed out at two minutes,
+     seeming to confirm the original claim. Then the SUSPENDED version
+     timed out too, and a 3,000-row sample timed out, which no
+     arithmetic about their trigger explains.
+
+     The explanation is that recalc_project_points is not in the
+     repository either. I wrote a stand-in that counts plots per project
+     with no index, which is quadratic, and every number above is my
+     stub's cost rather than theirs. I was measuring my own guess and
+     reporting it as a finding.
+
+     What survives is the shape, not the number: recomputing a whole
+     project once per row is work discarded 159,299 times out of
+     159,300 however cheap one run is. Suspending it is strictly less
+     work for the same answer, so import_plots_safely.sql suspends it,
+     re-enables it, and recalculates once per project - correct whatever
+     the real function costs. The file now says so instead of carrying
+     a figure I cannot stand behind.

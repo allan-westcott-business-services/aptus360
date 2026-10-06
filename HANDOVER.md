@@ -12129,3 +12129,32 @@ plus generic table editors.
      re-enables it, and recalculates once per project - correct whatever
      the real function costs. The file now says so instead of carrying
      a figure I cannot stand behind.
+
+275. **The real recalc_project_points, and real numbers at last.** They
+     sent the function. It opens with
+
+         SELECT COUNT(*) INTO plots FROM "Plot" WHERE "Project_ID" = p_project;
+
+     then reads a points band, loops the project's scopes, and UPDATEs
+     four columns on Project and one on Project_Scope - both UPDATEs
+     guarded with IS DISTINCT FROM, which saves nothing here because the
+     plot count changes on every insert.
+
+     Measured against the real file rather than a stub: 159,300 plots on
+     1,915 contracts, median 44 each, mean 83, largest 1,415.
+
+         counting rows   19,543,686  live    vs    159,300  suspended   123x
+         Project UPDATEs    159,300  live    vs      1,915  suspended    83x
+
+     159,300 updates to a 5,727-row table is not only slow, it leaves
+     159,300 dead row versions and the WAL to match.
+
+     Whether that is minutes or hours turns on whether Plot has an index
+     on Project_ID, which I still have not seen - and it does not matter,
+     because suspending is strictly less work for the same answer. The
+     file carries these figures now in place of the stub's.
+
+     Three claims about this trigger in one afternoon: "may never
+     finish" (guessed), "916 ms per 2,000 rows" (my stub), and these
+     (the real function, the real distribution). Only the third was
+     worth saying, and the first two were said with the same confidence.

@@ -22,24 +22,38 @@
 -- time. Importing 159,300 plots means 159,300 full recalculations, and
 -- a project with 500 plots gets its points worked out 500 times over.
 --
--- ── How slow, honestly: I do not know ──
+-- ── How much work that is, measured ──
 --
 -- recalc_project_points() is not in any committed migration either, so
--- I have not seen it. I wrote a stand-in, measured that, and what I was
--- measuring was my own guess — which turned out to be quadratic and
--- timed out, telling me about my stub rather than about your database.
--- The number is not knowable from here.
+-- I first wrote a stand-in, measured THAT, and reported numbers that
+-- were my own stub's cost rather than yours. Those figures were worth
+-- nothing. These are from the real function and the real file.
 --
--- What IS knowable is the shape: recomputing a whole project once per
--- inserted row is work thrown away 159,299 times out of 159,300,
--- whatever one run costs. Suspending it is strictly less work for the
--- same answer, so it is right whether the real function takes a
--- microsecond or a second.
+-- Its first statement is
 --
--- Suspending it and recalculating once per project at the end gives the
--- same answer: the function takes a project and recomputes it from
--- whatever is there, so running it once after all the plots have landed
--- is the same arithmetic on the same data.
+--     SELECT COUNT(*) INTO plots FROM "Plot" WHERE "Project_ID" = p_project;
+--
+-- and it then UPDATEs the project's four points columns.
+--
+-- Your 159,300 plots sit on 1,915 contracts - median 44 each, mean 83,
+-- largest 1,415. Inserting a project's plots one at a time counts them
+-- again from scratch every time, so the counting alone reads
+--
+--     19,543,686 rows   with the trigger live
+--        159,300 rows   counting once per project afterwards
+--
+-- 123 times the work. And every insert UPDATEs the Project row:
+--
+--        159,300 updates live
+--          1,915 updates suspended
+--
+-- 83 times the writes, on a table of 5,727 rows - which is not just
+-- slow, it leaves 159,300 dead row versions behind and the write-ahead
+-- log to match.
+--
+-- Whether that is minutes or hours depends on whether "Plot" has an
+-- index on "Project_ID", which I have not seen. It does not matter:
+-- suspending it is strictly less work for the same answer either way.
 --
 -- ── The other trigger is left alone, deliberately ──
 --

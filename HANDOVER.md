@@ -12158,3 +12158,48 @@ plus generic table editors.
      finish" (guessed), "916 ms per 2,000 rows" (my stub), and these
      (the real function, the real distribution). Only the third was
      worth saying, and the first two were said with the same confidence.
+
+276. **The plot lookups mapped, and the id trap was real.** Both sides
+     arrived: the old Property_Config and Heat_Source, and the new ones.
+
+     **Matching by id would have been a disaster, not a wobble.**
+
+         old 1  is 1BD        new 1  is 3BS
+         old 12 is 3BS        new 3  is 1BD
+
+     Carried across by id, 22,960 one-bed dwellings become three-bed
+     semis and 52,429 three-bed semis become one-beds, silently, with
+     every count in the system still adding up. The heat sources are
+     worse - the two id sets correspond on nothing, and old 1 "Gas
+     Heated" would land on new 1 "ASHP", putting 164,406 gas-heated
+     plots on air source heat pumps.
+
+     Matched on Code and on name instead. 23 of 35 configs match,
+     covering 169,902 plots. Twelve do not, covering 2,337.
+
+     **Two decisions, both theirs, both recorded in the Notes.** 6BD and
+     6BS are real dwellings the new table simply stops short of, so
+     those are added - 110 plots. The other ten (COMM 1,606, OTHER 486,
+     then FP1, LLS1, TS1, TS3, PS3, PS1, LLS3, FP3) all carry
+     "AUTO-IMPORTED FROM SITE SUMMARY - review" in the old system, a
+     review that never happened, and they land empty for somebody to
+     decide.
+
+     And the heat pump: the old system has ONE heat pump option on
+     30,210 plots, the new one splits ASHP from GSHP, and nothing in the
+     data says which. They chose ASHP. The map's Note records that as a
+     DECISION rather than a translation, because it feeds the load
+     calculations and the next person to read it should know the data
+     did not say so.
+
+     **Part 1 failed on its first run**, assuming Property_Config_ID
+     fills itself:
+
+         null value in column "Property_Config_ID" violates not-null
+
+     Which column style that table uses is not in any committed
+     migration - identity, serial with a default, or a plain bigint
+     assigned by hand are all possible. It now reads the catalogue and
+     supplies an id only where it must. Tested against a plain column, an
+     identity column, and run twice: two six-bed rows, not four, and 38
+     map rows.

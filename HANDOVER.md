@@ -12433,3 +12433,89 @@ plus generic table editors.
      unread trigger. `connections_detail.sql` fetches its definition and
      its function body along with the pack statuses and the full
      organisation picture, in one read-only statement.
+
+283. **pu_pack_trg read, and it is not a cost problem - it is a
+     correctness one.** The trigger is cheap: two lookups against a
+     five-row table, only when a service card date is present. Nothing
+     like `recalc_project_points`. But it rewrites data:
+
+         IF NEW."Service_Card_Submission_Date" IS NOT NULL
+            AND (OLD IS NULL OR OLD."Service_Card_Submission_Date" IS NULL)
+            AND (status IS NULL OR status IN ('Pack Not Submitted',
+                                             'Pack In Progress'))
+            THEN NEW."Pack_Status_ID" := <Submitted>
+
+     Right for a pack being submitted in the app today. Wrong for
+     history. And it turns the pack status gap from a loss into a
+     falsehood: 22,072 `Returned` rows resolve to NULL against the
+     register as it stands, and any of them carrying a service card date
+     would have been inserted as **Submitted**. A missing status reads
+     as missing; a wrong one reads as real.
+
+     Their Pack_Status holds Pack Not Submitted, Pack In Progress,
+     Submitted, Accepted and Rejected - five, not the two my test copy
+     had. Missing: Returned (22,072), Issued (284), IT Issues (22).
+
+     **0256_connection_lookups.sql** puts the prerequisites in:
+
+     - the three pack statuses, by name, with explicit ids because
+       Pack_Status has no sequence on its key;
+     - four organisations that are genuinely absent - Independent Water
+       Networks (IWNL, 3,327), MUA (2,252 + 71 as "MUA Water"), Last
+       Mile (193), Thames Water (38) - with their roles resolved by
+       Type_Key and their Organisation_Utility rows written, because
+       0172's own note says an operator with no utilities "appears in
+       the list and is offered by nothing";
+     - the utility map, three rows, written explicitly even though the
+       ids agree;
+     - adopter aliases for the six that were present under longer names
+       (ENW, NWL, Severn Trent, Leep Utilities) plus the four new ones;
+     - **ESP keyed on the utility**, because the register holds ESP
+       Electricity (idno), ES Pipelines (igt) and ESP Water (iwu) as
+       three organisations and the old data calls all of them "ESP":
+       2,827 electric, 2,669 gas. The view tries
+       `Kind = 'adopter:' || utility_id` first, then `Kind = 'adopter'`.
+       There is deliberately no bare 'ESP' row, so ESP on water - which
+       does not occur in this export - stays blank rather than guessed.
+     - and the view gains `dup_rank`, partitioned on the RAW legacy plot
+       id rather than new_plot_id, which is the mistake that hid 281 of
+       the 283 duplicates from me.
+
+     **Every step is wrapped in its own exception handler** and writes
+     to a Legacy_Migration_Log the final SELECT reads back. Pack_Status
+     and Plot_Utility both pre-date the baseline, so their real column
+     lists are not in this repository; a column I do not know about now
+     makes one step report a failure instead of taking the other three
+     down with it.
+
+     **import_connections.sql** disables pu_pack_trg for the insert so
+     the import lands exactly what the old system recorded, counts the
+     rows the trigger would have changed (41) so that inference can be
+     applied afterwards as a one-line UPDATE, puts the trigger back in
+     PART C, and carries the undo for both in PART E.
+
+     **Verified against a Plot_Utility rebuilt from their catalogue
+     output** - every column the import writes, UNIQUE ("Plot_ID",
+     "Utility_ID"), Plot_Utility_Legacy_UQ, Updated_At, and both
+     triggers with the function bodies verbatim. Not the stub I had been
+     testing against, which had nine columns and no triggers at all and
+     would have passed anything.
+
+     13,717 plots imported (every plot the connections name), then:
+     32,757 connections inserted, 299 superseded visits dropped, 3
+     waiting on a tender plot - 33,059 accounted for. Electric 11,244,
+     gas 9,635, water 11,878. Then checked, not assumed:
+
+     - **0 pack statuses rewritten**, 22,021 `Returned` rows kept their
+       status - all of which would have been NULL before 0256.
+     - **0 adopters lost to a failed match.** All 7,210 rows without an
+       adopter had a blank one in the source; not one named an
+       organisation that failed to resolve. 25,590 of 25,590 resolve.
+     - **0 superseded visits landed and 0 rank-1 rows missing.**
+     - **Re-running inserts 0.** Both files are idempotent.
+     - **An app-entered connection is not trampled.** Deleted an
+       imported row, put an app row on the same (plot, utility) with no
+       legacy id, re-ran: the import skipped the pair instead of failing
+       the unique constraint, and the app row was left exactly as it
+       was. That second NOT EXISTS is the plot import's lesson applied
+       before the failure rather than after it.

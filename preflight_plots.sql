@@ -128,6 +128,33 @@ SELECT step AS "#", item AS "What", verdict AS "State", detail AS "Detail"
      AND COALESCE(btrim(i."Plot"), '') = ''
 
   UNION ALL
+  -- ── The constraint rows 4 and 4.2 both missed ──
+  --
+  -- Those two ask about NOT NULL. Neither looks at a UNIQUE index, and
+  -- Plot has one that no migration mentions:
+  --
+  --   plot_number_per_developer
+  --     UNIQUE (Project_ID, COALESCE(Project_Developer_ID,-1), Plot_Number)
+  --
+  -- The import sets no developer, so it is effectively one plot number
+  -- per project - and the old data repeats some. Caught by the import
+  -- failing, after NOT NULL had already caught it once. Three separate
+  -- things on this one table that are not in the repository: the
+  -- triggers, Plot_Number being NOT NULL, and this.
+  SELECT 4.3, 'Plot numbers that repeat on their project',
+         CASE WHEN count(*) = 0 THEN 'ok' ELSE 'the extras are skipped' END,
+         COALESCE(sum(n - 1), 0)::text || ' row(s) across '
+           || count(*)::text || ' repeated plot number(s). The lowest '
+           || 'Plot_ID is kept and part F lists the rest.'
+    FROM (SELECT count(*) AS n
+            FROM "Legacy_Plot_Import" i
+            JOIN "Project" p
+              ON p."Legacy_Contract_ID" = NULLIF(btrim(i."Contract_ID"), '')::bigint
+           WHERE COALESCE(btrim(i."Plot"), '') <> ''
+           GROUP BY p."Project_ID", btrim(i."Plot")
+          HAVING count(*) > 1) d
+
+  UNION ALL
   -- 333,950 inserts through a row trigger is a different proposition
   -- from 333,950 plain inserts. Worth seeing before it runs, not after.
   SELECT 4.1, 'Triggers that will fire on every row',

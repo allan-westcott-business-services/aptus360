@@ -12254,3 +12254,47 @@ plus generic table editors.
      was left suspended on their live database. Part C is written to be
      run regardless for exactly this case, but they had to be told to
      run it NOW rather than after the fix.
+
+279. **A third constraint on Plot, and the point at which I stopped
+     guessing.** Part B failed again:
+
+         duplicate key value violates unique constraint
+         "plot_number_per_developer"
+         Key (Project_ID, COALESCE(Project_Developer_ID,-1), Plot_Number)
+             = (3457, -1, 17.05) already exists
+
+     Three failures on one table in twenty minutes, every one of them
+     something the repository does not contain: the triggers, Plot_Number
+     being NOT NULL, and now a unique index. My pre-flight checked NOT
+     NULL columns and triggers and never looked at a unique constraint
+     at all.
+
+     So instead of patching the third and waiting for the fourth, asked
+     for every constraint and index on Plot in one query. Seven foreign
+     keys, two unique indexes, five plain indexes, a primary key.
+
+     **What that settled, beyond the failure:**
+
+     `plot_project_idx` on Project_ID exists - which answers the
+     question left open at entry 275. recalc_project_points's
+     COUNT(*) is index-backed, so the 19,543,686 row reads are index
+     reads rather than sequential scans of a growing table. Materially
+     less bad than feared, and I could have known it an hour earlier by
+     asking.
+
+     `Plot_Legacy_Plot_UQ` is a partial unique index on Legacy_Plot_ID
+     WHERE NOT NULL - so a re-run genuinely cannot double the plots,
+     independent of the NOT EXISTS guard.
+
+     The duplicates themselves are small and real: 8 contract-and-plot
+     pairs repeat, 10 rows, 5 contracts. Contract 1231 has three plots
+     called S249, 1878 three called C22, 476 pairs on 17.05/.07/.08/.09.
+     Old data, not an import artefact.
+
+     Part B now keeps the lowest Plot_ID per (project, plot number) and
+     part F lists every staged plot that did not become a row with its
+     reason. Tested: 159,286 land, a second run adds nothing, and part F
+     reports 10 duplicates and 4 blanks by contract.
+
+     Pre-flight row 4.3 counts the repeats. It exists because rows 4 and
+     4.2 both missed them.

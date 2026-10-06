@@ -12219,3 +12219,38 @@ plus generic table editors.
      recording as good news rather than a nuisance: there IS a unique
      constraint on Legacy_Plot_ID, so a second run of the import cannot
      double up the plots even if the NOT EXISTS guard were removed.
+
+278. **Part B failed on four rows, and my pre-flight had already been
+     taught this exact lesson.**
+
+         null value in column "Plot_Number" violates not-null
+         Failing row: (..., null, ..., 22396)
+
+     Four rows in 333,950 have an empty "Plot": Plot_IDs 22396, 25772,
+     27909 and 133242, on contracts 249, 756, 668 and 318. All four are
+     empty throughout - no plot number, no reference, no house number,
+     no street. Junk in the old data, nothing to import and nothing to
+     invent. The insert now skips them and 159,296 land.
+
+     **Row 4 of the pre-flight said "ok" and was answering a different
+     question.** It asks which NOT NULL columns the import does NOT
+     write. Plot_Number IS written - as NULLIF(btrim("Plot"), '') - so
+     it was excluded from the check, and a column being on the insert
+     list says nothing at all about the value being there.
+
+     This is entry 259 again. The contract import failed on
+     Project_Status_ID, and the pre-flight I wrote afterwards "repeated
+     the blind spot by only checking statuses that ARE set". I recorded
+     that, wrote it down as a lesson, and then wrote the same shape of
+     check three weeks later for a different column. Knowing the fault
+     and not recognising it in new work are apparently different
+     skills.
+
+     Row 4.2 now counts staged rows whose Plot is empty, and says so in
+     terms of what the import does about it.
+
+     One consequence worth flagging to them straight away: part A had
+     already disabled plot_points_trg when part B failed, so the trigger
+     was left suspended on their live database. Part C is written to be
+     run regardless for exactly this case, but they had to be told to
+     run it NOW rather than after the fix.

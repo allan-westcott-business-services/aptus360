@@ -103,6 +103,31 @@ SELECT step AS "#", item AS "What", verdict AS "State", detail AS "Detail"
                              'PV', 'Heat_Pump_Model_ID', 'Legacy_Plot_ID')
 
   UNION ALL
+  -- ── The one row 4 could not see ──
+  --
+  -- Row 4 asks which NOT NULL columns the import does NOT write. It
+  -- said "ok", and the import then failed anyway:
+  --
+  --     null value in column "Plot_Number" violates not-null
+  --
+  -- because Plot_Number IS written - as NULLIF(btrim("Plot"), '') - and
+  -- a staged row with an empty Plot makes that null. A column being on
+  -- the insert list says nothing about the value being there.
+  --
+  -- This is the same blind spot as the contract import's statuses,
+  -- where the pre-flight checked every status that WAS set and missed
+  -- the 31 rows that had none. Recorded as a lesson at the time and
+  -- repeated here three weeks later.
+  SELECT 4.2, 'Staged rows with no plot number',
+         CASE WHEN count(*) = 0 THEN 'ok' ELSE 'these are skipped' END,
+         count(*)::text || ' row(s) have an empty "Plot". Plot_Number is '
+           || 'NOT NULL, so the import skips them rather than failing on '
+           || 'the first one and taking every good row with it.'
+    FROM "Legacy_Plot_Import" i
+   WHERE COALESCE(btrim(i."Plot_ID"), '') <> ''
+     AND COALESCE(btrim(i."Plot"), '') = ''
+
+  UNION ALL
   -- 333,950 inserts through a row trigger is a different proposition
   -- from 333,950 plain inserts. Worth seeing before it runs, not after.
   SELECT 4.1, 'Triggers that will fire on every row',

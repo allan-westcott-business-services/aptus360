@@ -100,7 +100,8 @@ ALTER TABLE "Plot" DISABLE TRIGGER plot_points_trg;
 --  PART B — the plots
 -- ────────────────────────────────────────────────────────────────────
 --
--- The same insert as part 2 of import_legacy_plots.sql. 159,300 rows.
+-- The same insert as part 2 of import_legacy_plots.sql. 159,296 rows
+-- (159,300 less the four with no plot number - see the guard below).
 -- Expect it to take a minute or two and say "No rows returned".
 --
 -- Only the plots whose project is already here. The 174,650 belonging
@@ -128,6 +129,20 @@ SELECT
   JOIN "Project" p
     ON p."Legacy_Contract_ID" = NULLIF(btrim(i."Contract_ID"), '')::bigint
  WHERE COALESCE(btrim(i."Plot_ID"), '') <> ''
+   /* ── And a plot number, because Plot_Number is NOT NULL ──
+
+      Four rows in 333,950 have an empty Plot. All four are empty
+      throughout - no plot number, no reference, no house number, no
+      street - so there is nothing to import and nothing to invent:
+      Plot_IDs 22396, 25772, 27909 and 133242, on contracts 249, 756,
+      668 and 318.
+
+      Without this the whole insert fails on the first of them with
+
+          null value in column "Plot_Number" violates not-null
+
+      and 159,296 good rows go down with four junk ones. */
+   AND COALESCE(btrim(i."Plot"), '') <> ''
    AND NOT EXISTS (
      SELECT 1 FROM "Plot" x
       WHERE x."Legacy_Plot_ID" = NULLIF(btrim(i."Plot_ID"), '')::bigint

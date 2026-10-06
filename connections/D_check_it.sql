@@ -8,7 +8,8 @@
 --   electric / gas / water roughly 11,250 / 9,640 / 11,880
 --   around 7,200 with no adopter - those had a BLANK adopter in the
 --     old system, not a name that failed to match
---   row 2.4 must be 0: Team_ID is deliberately not written
+--   rows 2.3 and 2.4 must both be 0: neither the legacy IDNO_ID nor
+--     Team_ID is written
 --
 -- Rows 2.1 and 2.2 are the ones that matter. They distinguish "the old
 -- system did not say" from "the import lost it", and both were 0 on my
@@ -35,11 +36,11 @@ SELECT * FROM (
    WHERE "Legacy_Plot_Utility_ID" IS NOT NULL AND "IDNO_Organisation_ID" IS NULL
 
   UNION ALL
-  -- IDNO_ID is the legacy column, filled only where the adopter's
-  -- organisation actually has an IDNO row. A water undertaker or a gas
-  -- transporter has none, and leaving it null is correct.
-  SELECT 2.3, 'Legacy IDNO_ID filled',
-         count(*)::text || ' of the imported rows reach an IDNO row too'
+  -- IDNO_ID is the legacy column. The new system holds an IDNO as an
+  -- Organisation with a Role of IDNO, so the adopter goes in
+  -- IDNO_Organisation_ID and this one is left alone. Expect 0.
+  SELECT 2.3, 'Legacy IDNO_ID not written',
+         count(*)::text || ' imported rows carry an IDNO_ID - expected 0'
     FROM "Plot_Utility"
    WHERE "Legacy_Plot_Utility_ID" IS NOT NULL AND "IDNO_ID" IS NOT NULL
 

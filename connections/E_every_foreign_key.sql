@@ -22,10 +22,12 @@
 -- data", which is the question that matters.
 --
 -- The expressions in section 3 track what the import actually writes,
--- so re-running this after a change to the import re-checks it. Team_ID
--- now reads NULL because B2 stopped writing it: 61 of the old system's
--- 65 team ids do not exist in Team, and the 4 that do would have landed
--- 2,605 connections on unrelated crews.
+-- so re-running this after a change to the import re-checks it. Two of
+-- them read NULL because B2 writes neither: Team_ID, where 61 of the
+-- old system's 65 ids do not exist in Team and the 4 that do would have
+-- landed 2,605 connections on unrelated crews; and the legacy IDNO_ID,
+-- because an IDNO in the new system is an Organisation with a Role of
+-- IDNO and the adopter belongs in IDNO_Organisation_ID.
 --
 -- Sections 4 and 5 dump the two small lookups whole, so the mapping can
 -- be built from what is actually in them rather than from my guess at
@@ -110,7 +112,7 @@ SELECT section AS "#", item AS "Item", detail AS "Detail"
       ('Pack_Status_ID', $q$SELECT r.pack_status_id AS v FROM "Legacy_Connection_Resolved" r WHERE r.new_plot_id IS NOT NULL AND r.dup_rank = 1$q$),
       ('Visit_Outcome_ID', $q$SELECT r.visit_outcome_id AS v FROM "Legacy_Connection_Resolved" r WHERE r.new_plot_id IS NOT NULL AND r.dup_rank = 1$q$),
       ('IDNO_Organisation_ID', $q$SELECT r.adopter_organisation_id AS v FROM "Legacy_Connection_Resolved" r WHERE r.new_plot_id IS NOT NULL AND r.dup_rank = 1$q$),
-      ('IDNO_ID', $q$SELECT (SELECT i."IDNO_ID" FROM "IDNO" i WHERE i."Organisation_ID" = r.adopter_organisation_id LIMIT 1) AS v FROM "Legacy_Connection_Resolved" r WHERE r.new_plot_id IS NOT NULL AND r.dup_rank = 1$q$),
+      ('IDNO_ID', $q$SELECT NULL::bigint AS v$q$),
       ('Team_ID', $q$SELECT NULL::bigint AS v$q$)
     ) AS e(col, expr) ON e.col = f.col
 

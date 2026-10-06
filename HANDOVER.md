@@ -12629,3 +12629,28 @@ plus generic table editors.
      key now reports 0 of n, and row 3.1 reports every key checked.**
      E is now a true pre-check rather than a post-mortem: change the
      import and re-running it re-checks the change.
+
+286. **Correction from Allan: the IDNO table is the OLD model and should
+     not be fed.** "the old database had a table for IDNOs but the new
+     database uses Organisations where it will have a Role of IDNO."
+
+     I had B2 filling IDNO_Organisation_ID *and* IDNO_ID, following the
+     organisation to its IDNO row - careful about not assuming the ids
+     line up, but wrong about whether to write it at all. 0120 is the
+     tell I read and did not act on: it dropped IDNO_ID from
+     Water_Pipe_Size_Operator once every row had an organisation. The
+     table is on its way out.
+
+     So B2 writes the organisation and nothing else. One column holds
+     the IDNO, the DNO, the gas transporter and the water undertaker,
+     which is the point of the role model - and the earlier worry about
+     water undertakers "having nowhere to go" was an artefact of writing
+     to the legacy column in the first place.
+
+     D row 2.3 now expects 0 IDNO_IDs rather than reporting how many
+     were filled, and E's expression for that key reads NULL so the
+     check tracks what the import does.
+
+     Re-ran A, B2, C, D: 32,757 inserted, 0 adopters lost, 0 pack
+     statuses rewritten, 0 IDNO_IDs, 0 Team_IDs, trigger back on. E
+     reports 0 of n on all seven keys with every key checked.

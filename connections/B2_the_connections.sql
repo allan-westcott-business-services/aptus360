@@ -7,21 +7,25 @@
 --
 -- ── What changed, and why ──
 --
--- **The adopter now goes in IDNO_Organisation_ID.**
+-- **The adopter goes in IDNO_Organisation_ID, and IDNO_ID is left
+-- alone entirely.**
 --
 -- The first attempt wrote an Organisation_ID into IDNO_ID, which points
--- at the IDNO table, and failed on the first row. Plot_Utility already
--- has IDNO_Organisation_ID REFERENCES "Organisation" — 0062 and 0070
--- added that column to AV_Invoice and AV_Agreement with the note that
--- "the old IDNO_ID stays for now but new work should read this one",
--- and 0120 finished the same move for the pipe size rules. So the
--- adopter was never meant to go in IDNO_ID at all.
+-- at the IDNO table, and failed on the first row.
 --
--- IDNO_ID is filled too, but only by following the organisation BACK to
--- an IDNO row — never by assuming the numbers line up. Seven IDNO rows
--- exist and each carries an Organisation_ID; an adopter that is a water
--- undertaker or a gas transporter has no IDNO row and leaves IDNO_ID
--- null, which is correct rather than unfortunate: it is not an IDNO.
+-- The old database kept a table of IDNOs. The new one does not work
+-- that way: an IDNO is an Organisation holding a Role of IDNO, and
+-- Plot_Utility already has IDNO_Organisation_ID REFERENCES
+-- "Organisation" for exactly that. 0062 and 0070 added the same column
+-- to AV_Invoice and AV_Agreement saying the old IDNO_ID stays for now
+-- but new work should read this one, and 0120 finished the move for the
+-- pipe size rules — dropping IDNO_ID from that table once every row had
+-- an organisation.
+--
+-- So this import writes the organisation and nothing else. Filling
+-- IDNO_ID as well would carry the old database's shape into the new one
+-- and leave a second place to be wrong. The IDNO table is on its way
+-- out, not something the migration should feed.
 --
 -- **Team_ID is no longer written at all.**
 --
@@ -60,14 +64,14 @@ INSERT INTO "Plot_Utility" (
   "Plot_ID", "Utility_ID", "Programmed_Date", "Connection_Date", "As_Laid_Date",
   "Meter_Number", "Service_Card_Submission_Date", "Meter_Card_Submission_Date",
   "Pack_Status_ID", "Visit_Outcome", "Visit_Outcome_ID",
-  "IDNO_Organisation_ID", "IDNO_ID",
+  "IDNO_Organisation_ID",
   "AV_Value", "Self_Lay_Provider", "Dead_Jointed_Date",
   "Planned_Jointing_Date", "Actual_Jointing_Date", "Legacy_Plot_Utility_ID"
 )
 SELECT
   d.new_plot_id, d.utility_id, d.programmed, d.connected, d.as_laid,
   d.meter, d.service_card, d.meter_card, d.pack_status, d.outcome_word,
-  d.outcome_id, d.adopter_org, d.adopter_idno,
+  d.outcome_id, d.adopter_org,
   d.av, d.self_lay, d.dead_jointed,
   d.planned_joint, d.actual_joint, d.legacy_id
 FROM (
@@ -88,15 +92,11 @@ FROM (
        lookup is better recorded as the word than lost. */
     NULLIF(btrim(r."Visit_Outcome"), '')                  AS outcome_word,
     r.visit_outcome_id                                    AS outcome_id,
-    /* The adopter, in the column that was built for it. */
+    /* The adopter, as an organisation. An IDNO here is an Organisation
+       with a Role of IDNO, and so is a DNO, a gas transporter and a
+       water undertaker - one column holds all of them, which is the
+       point of the role model. IDNO_ID is not written. */
     r.adopter_organisation_id                             AS adopter_org,
-    /* And the legacy column, reached by following the organisation to
-       its IDNO row rather than by hoping the ids agree. Null for a
-       water undertaker or a gas transporter, which is what it should
-       be - they are not IDNOs. */
-    (SELECT i."IDNO_ID" FROM "IDNO" i
-      WHERE i."Organisation_ID" = r.adopter_organisation_id
-      LIMIT 1)                                            AS adopter_idno,
     NULLIF(btrim(r."Expected_Asset_Value"), '')::numeric   AS av,
     COALESCE(NULLIF(btrim(r."Self_Lay_Provider"), '')::boolean, false) AS self_lay,
     NULLIF(btrim(r."Dead_Jointed_Date"), '')::date        AS dead_jointed,

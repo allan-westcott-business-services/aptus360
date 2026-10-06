@@ -11819,3 +11819,60 @@ plus generic table editors.
      inserted the duplicate before dropping the constraint, so the
      insert failed and aborted the transaction, and every row came back
      as "current transaction is aborted" rather than an answer.
+
+269. **"Tansey Green in the original database was Tender Ref 1906.054."**
+     Which stops the renumber, and opens something much larger.
+
+     The import gave Tansey Green 2610.004 - October 2026, the month the
+     import RAN. Measured on a copy of their CSVs:
+
+         1,926  imported from contracts
+            77  kept their own old reference
+         1,849  given one by the import, numbered from a date
+            34  of those dated from the day the import ran
+             0  contract rows carry a Tender_ID at all
+
+     The contract import keeps an old reference where the row has one in
+     YYMM.NNN shape - but it reads the CONTRACT file's
+     "Tender_Reference", and only 77 rows have one. The real reference
+     lives in the TENDER file under a differently named column,
+     "Tender_Ref". Contract 380's own fields are all empty:
+
+         Tender_Reference (empty) · Secured_Date (empty)
+         Date_Signed (empty) · Tender_ID (empty)
+
+     so it fell all the way through to CURRENT_DATE. That is why it
+     reads 2610.004, and why it collided with a project somebody created
+     in the app that morning: two pieces of code handing out October
+     2026 numbers without seeing each other.
+
+     **Tender 2182 carries Tender_Ref 1906.054 and the identical site
+     name**, "Tansey Green, Kingswinford". The tender import did not
+     match them, and the reason is visible: the tender has Customer_ID
+     786 and the contract row has no customer at all, so there is
+     nothing to corroborate the site name with. Contract 380 is one of
+     the 311 with no customer, and that is the same thinness in the old
+     data showing up twice.
+
+     With the tenders loaded and merged, **817 contract-imported
+     projects end up holding a real YYMM.NNN reference in their
+     Tender_Ref column that differs from the Project_Ref they were
+     given.** Tansey Green is not among them, for the reason above.
+
+     `check_imported_refs.sql` reports all of the above off their own
+     database, read-only, one result set, with rows 4 and 5 answering
+     only once the tender files are loaded rather than guessing.
+
+     **Not acted on - this is theirs to decide**, and it is close to
+     irreversible: moving Project_Ref on 817 projects changes the
+     reference people read in every dropdown, every plot reference
+     built from it, and every drawing already issued. Asked rather than
+     assumed.
+
+     `renumber_duplicate_project.sql` is now also split into
+     1_look_at_the_duplicate.sql and 2_renumber_the_project.sql, which
+     is what was asked for before any of this came up. Both tested
+     standalone. **File 2 is on hold**: as written it moves the
+     APP-created project off 2610.004 and leaves Tansey Green on a
+     reference that was never its own, which is the wrong one of the
+     two to move if 1906.054 can be given back.

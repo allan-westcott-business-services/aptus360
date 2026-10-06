@@ -12579,3 +12579,53 @@ plus generic table editors.
      Organisation_ID links, and only the water undertakers and gas
      transporters can have nowhere to go — IDNO is, by its name, a list
      of IDNOs.
+
+285. **The adopter had a column waiting for it all along, and the team
+     ids are the property config trap again.**
+
+     Their Plot_Utility carries **both** `IDNO_ID bigint REFERENCES
+     "IDNO"` and `IDNO_Organisation_ID bigint REFERENCES "Organisation"`.
+     0062 and 0070 added that second column to AV_Invoice and
+     AV_Agreement saying "the old IDNO_ID stays for now but new work
+     should read this one", and 0120 finished the move for the pipe size
+     rules. The adopter was never meant to go in IDNO_ID. No schema
+     change needed; the import was simply writing to the wrong column.
+
+     Worth noting that **E's own row 3.1 is what found this**. It names
+     every foreign key the script has no expression for, and it printed
+     `IDNO_Organisation_ID` - the column I would otherwise have had to
+     guess at. A pre-flight that reports its own blind spots beats one
+     that reports only what it thought to ask.
+
+     **B2 fills IDNO_ID too, but by following the organisation to its
+     IDNO row** - `SELECT "IDNO_ID" FROM "IDNO" WHERE "Organisation_ID"
+     = <org>` - never by assuming the numbers agree. Seven IDNO rows
+     exist, each with an Organisation_ID. An adopter that is a water
+     undertaker or a gas transporter has no IDNO row and leaves it null,
+     which is right: it is not an IDNO. 13,791 of the imported rows
+     reach one.
+
+     **Team_ID is no longer written at all.** 0066 created Team
+     "deliberately unseeded - the teams are yours to name", and thirteen
+     real teams have been named since. The old system's ids run to 65:
+
+         61 do not exist in Team and would have failed the key
+          4 DO exist, and would have put 2,605 connections on
+            MU Team 1 - North West, MU Team Yorkshire, Jointing Team
+            North West and Jointing Team Midlands
+
+     Old 1 is not new 1 any more than old config 1 (1BD) was new config
+     1 (3BS). The only reason the four did not slip through silently is
+     that the other sixty-one failed loudly. Nothing is lost: the old
+     Team_ID stays in Legacy_Connection_Import, every row carries its
+     Legacy_Plot_Utility_ID, and an export of the old Team table would
+     let it be mapped by name and backfilled on a re-run - the route the
+     heat sources and property configs took.
+
+     Re-ran A, B2, C, D in order against the rebuilt table with all
+     seven foreign keys in place: 32,757 inserted, 0 adopters lost, 0
+     pack statuses rewritten, 0 Team_IDs written, trigger back on. Then
+     re-ran E with its expressions updated to match B2 - **every foreign
+     key now reports 0 of n, and row 3.1 reports every key checked.**
+     E is now a true pre-check rather than a post-mortem: change the
+     import and re-running it re-checks the change.

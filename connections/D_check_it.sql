@@ -8,6 +8,7 @@
 --   electric / gas / water roughly 11,250 / 9,640 / 11,880
 --   around 7,200 with no adopter - those had a BLANK adopter in the
 --     old system, not a name that failed to match
+--   row 2.4 must be 0: Team_ID is deliberately not written
 --
 -- Rows 2.1 and 2.2 are the ones that matter. They distinguish "the old
 -- system did not say" from "the import lost it", and both were 0 on my
@@ -29,9 +30,26 @@ SELECT * FROM (
 
   UNION ALL
   SELECT 2, 'Without an adopter',
-         count(*)::text || ' of the imported rows have no IDNO_ID'
+         count(*)::text || ' of the imported rows have no IDNO_Organisation_ID'
     FROM "Plot_Utility"
-   WHERE "Legacy_Plot_Utility_ID" IS NOT NULL AND "IDNO_ID" IS NULL
+   WHERE "Legacy_Plot_Utility_ID" IS NOT NULL AND "IDNO_Organisation_ID" IS NULL
+
+  UNION ALL
+  -- IDNO_ID is the legacy column, filled only where the adopter's
+  -- organisation actually has an IDNO row. A water undertaker or a gas
+  -- transporter has none, and leaving it null is correct.
+  SELECT 2.3, 'Legacy IDNO_ID filled',
+         count(*)::text || ' of the imported rows reach an IDNO row too'
+    FROM "Plot_Utility"
+   WHERE "Legacy_Plot_Utility_ID" IS NOT NULL AND "IDNO_ID" IS NOT NULL
+
+  UNION ALL
+  SELECT 2.4, 'Team_ID deliberately not written',
+         count(*)::text || ' imported rows carry a Team_ID - expected 0. '
+         || 'The old team ids are in Legacy_Connection_Import and can be '
+         || 'mapped by name once the old Team table is exported.'
+    FROM "Plot_Utility"
+   WHERE "Legacy_Plot_Utility_ID" IS NOT NULL AND "Team_ID" IS NOT NULL
 
   UNION ALL
   -- The two that would mean something went wrong rather than something
@@ -41,7 +59,8 @@ SELECT * FROM (
     FROM "Plot_Utility" pu
     JOIN "Legacy_Connection_Import" i
       ON NULLIF(btrim(i."Plot_Utility_ID"), '')::bigint = pu."Legacy_Plot_Utility_ID"
-   WHERE pu."IDNO_ID" IS NULL AND COALESCE(btrim(i."Adopter"), '') <> ''
+   WHERE pu."IDNO_Organisation_ID" IS NULL
+     AND COALESCE(btrim(i."Adopter"), '') <> ''
 
   UNION ALL
   SELECT 2.2, 'Pack status rewritten',

@@ -21,10 +21,11 @@
 -- "which constraints are there" into "which ones would reject this
 -- data", which is the question that matters.
 --
--- I already expect a second failure behind the first one: 0066 adds
--- Team_ID REFERENCES "Team" and says of that table "deliberately
--- unseeded — the teams are yours to name". The import writes the old
--- system's raw Team_ID. Section 3 will say how many of those exist.
+-- The expressions in section 3 track what the import actually writes,
+-- so re-running this after a change to the import re-checks it. Team_ID
+-- now reads NULL because B2 stopped writing it: 61 of the old system's
+-- 65 team ids do not exist in Team, and the 4 that do would have landed
+-- 2,605 connections on unrelated crews.
 --
 -- Sections 4 and 5 dump the two small lookups whole, so the mapping can
 -- be built from what is actually in them rather than from my guess at
@@ -108,8 +109,9 @@ SELECT section AS "#", item AS "Item", detail AS "Detail"
       ('Utility_ID', $q$SELECT COALESCE((SELECT m."New_ID" FROM "Legacy_Lookup_Map" m WHERE m."Kind" = 'utility' AND m."Legacy_ID" = btrim(r."Utility_ID")), NULLIF(btrim(r."Utility_ID"), '')::bigint) AS v FROM "Legacy_Connection_Resolved" r WHERE r.new_plot_id IS NOT NULL AND r.dup_rank = 1$q$),
       ('Pack_Status_ID', $q$SELECT r.pack_status_id AS v FROM "Legacy_Connection_Resolved" r WHERE r.new_plot_id IS NOT NULL AND r.dup_rank = 1$q$),
       ('Visit_Outcome_ID', $q$SELECT r.visit_outcome_id AS v FROM "Legacy_Connection_Resolved" r WHERE r.new_plot_id IS NOT NULL AND r.dup_rank = 1$q$),
-      ('IDNO_ID', $q$SELECT r.adopter_organisation_id AS v FROM "Legacy_Connection_Resolved" r WHERE r.new_plot_id IS NOT NULL AND r.dup_rank = 1$q$),
-      ('Team_ID', $q$SELECT NULLIF(btrim(r."Team_ID"), '')::bigint AS v FROM "Legacy_Connection_Resolved" r WHERE r.new_plot_id IS NOT NULL AND r.dup_rank = 1$q$)
+      ('IDNO_Organisation_ID', $q$SELECT r.adopter_organisation_id AS v FROM "Legacy_Connection_Resolved" r WHERE r.new_plot_id IS NOT NULL AND r.dup_rank = 1$q$),
+      ('IDNO_ID', $q$SELECT (SELECT i."IDNO_ID" FROM "IDNO" i WHERE i."Organisation_ID" = r.adopter_organisation_id LIMIT 1) AS v FROM "Legacy_Connection_Resolved" r WHERE r.new_plot_id IS NOT NULL AND r.dup_rank = 1$q$),
+      ('Team_ID', $q$SELECT NULL::bigint AS v$q$)
     ) AS e(col, expr) ON e.col = f.col
 
   -- ── 3.1 Any key the import writes to that section 3 could not check ─
@@ -125,7 +127,8 @@ SELECT section AS "#", item AS "Item", detail AS "Detail"
        WHERE c.conrelid = '"Plot_Utility"'::regclass AND c.contype = 'f'
     ) f
    WHERE f.col NOT IN ('Plot_ID', 'Utility_ID', 'Pack_Status_ID',
-                       'Visit_Outcome_ID', 'IDNO_ID', 'Team_ID')
+                       'Visit_Outcome_ID', 'IDNO_ID', 'IDNO_Organisation_ID',
+                       'Team_ID')
 
   -- ── 4. The IDNO list, whole ───────────────────────────────────────
   --

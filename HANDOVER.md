@@ -12323,3 +12323,39 @@ plus generic table editors.
      Their live staging table holds 33,380 rather than 33,059, from the
      fresher export they loaded this morning, so the extra 321 are
      unmeasured here - the shape will be the same.
+
+281. **A pre-flight written BEFORE the import this time.** The plot
+     stage failed three times, each on something absent from the
+     repository, and each time I patched the one that had just broken.
+     preflight_connections.sql asks the catalogue about everything on
+     Plot_Utility first: NOT NULL columns, unique constraints AND
+     indexes, check constraints, triggers, and what the old data would
+     do to each.
+
+     Validated against the verification cluster with the real 33,059
+     connections staged. Two findings worth carrying forward:
+
+     **The utility is the only id-matched lookup in this import**, and
+     the insert falls back to the OLD id when nothing is mapped:
+
+         COALESCE((SELECT "New_ID" ... 'utility'), "Utility_ID"::bigint)
+
+     Pack_Status, Visit_Outcome and the adopter are all resolved by NAME
+     in Legacy_Connection_Resolved and cannot silently point at the
+     wrong thing. The utility can, and the property configs showed what
+     that costs. Row 3.1 prints what each old id would become against
+     THEIR Utility table rather than mine - my test seeding of
+     1=Electric, 2=Gas, 3=Water is a guess and the row exists so nobody
+     has to trust it.
+
+     **Only 13,176 of 25,590 adopters resolve to an organisation.** The
+     unmatched ones are abbreviations: ENW, ESP, IWNL, Lastmile, Leep
+     Utilities, MUA, MUA Water, NWL and more. The view matches on the
+     organisation's full Name, and the old system recorded short forms.
+     12,414 connections would import with no adopter unless those are
+     mapped - not fatal, and fillable on a re-run since rows are matched
+     on their legacy id, but worth deciding before rather than after.
+
+     Also measured: 32,174 of 32,416 visit outcomes match a name, and
+     2 (plot, utility) pairs repeat - trivial, and whether that matters
+     depends on a unique index their database will report in row 2.1.

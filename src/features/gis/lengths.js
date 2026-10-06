@@ -26,9 +26,23 @@
 
    Two writers of one column with opposite meanings — fault 13, and the
    only fix is two columns. `Length_m` goes back to being the trigger's
-   own mirror of the drawing (the bill of materials reads it in SQL and
-   is unaffected). `Measured_Length_m` is written by a person and by
-   nothing else, so its presence means what it says.
+   own mirror of the drawing. `Measured_Length_m` is written by a person
+   and by nothing else, so its presence means what it says.
+
+   ── The bill of materials was NOT unaffected ──
+
+   This note used to end that paragraph by saying the bill of materials
+   read this column in SQL and was therefore untouched by the split.
+   True as a sentence about SQL, and wrong about the bill. It went
+   on summing `Length_m`, so a trench drawn at 300 m and measured at
+   330 m was ordered as 300 m — on cable, gas, water and trench alike,
+   because `gis_bom` sums every line in one expression. Every consumer
+   in here was moved to `runLength()`; the one that turns into a
+   purchase order was in SQL, out of sight, and was left behind.
+
+   0257 moves it. `checkbommeasured` holds the two to the same rule, so
+   the next rewrite of `gis_bom` — it is replaced whole every time any
+   part of it changes — cannot quietly drop the measurement again.
 
    ── Existing drawings ──
 

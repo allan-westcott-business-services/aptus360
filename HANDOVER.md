@@ -12654,3 +12654,80 @@ plus generic table editors.
      Re-ran A, B2, C, D: 32,757 inserted, 0 adopters lost, 0 pack
      statuses rewritten, 0 IDNO_IDs, 0 Team_IDs, trigger back on. E
      reports 0 of n on all seven keys with every key checked.
+
+287. **The bill of materials was ordering the drawn length.** Reported
+     by Allan for cable, unsure about pipe. It was every line on the
+     drawing — cable, gas, water and trench alike — because `gis_bom`
+     sums them all in one expression:
+
+         ROUND(SUM(COALESCE((f."Attributes" ->> 'Length_m')::numeric, 0)), 2)
+
+     `Length_m` is written by `gis_length_trg` off the geometry on every
+     change. It is the drawing. `Measured_Length_m` is the one a person
+     typed because the plan is flat and the run is not.
+
+     **The comment that got it wrong is in the repository, in my own
+     words.** When the two lengths were split into two columns,
+     lengths.js recorded: "`Length_m` goes back to being the trigger's
+     own mirror of the drawing (the bill of materials reads it in SQL
+     and is unaffected)." Unaffected was true as a sentence about SQL
+     and wrong about the bill. Every consumer in the browser was moved
+     to `runLength()`; the one that turns into a purchase order was in
+     SQL, out of sight, and was left behind.
+
+     Reproduced on a focused schema before writing anything — the
+     eleven tables `gis_bom` touches, the real 0229 function, and a
+     drawing with a measurement on four line types:
+
+         bill said            should say
+         Main Cable  150 m    180 m
+         Service      20 m     26 m
+         Gas Main    200 m    240 m
+         Water Main   80 m     92 m
+         Trench      300 m    330 m
+
+     **0257_bom_measured_length.sql** replaces the function with the
+     measurement where somebody entered one and the drawing everywhere
+     else — the same rule as `runLength()`, so the sheet and the canvas
+     cannot disagree. Verified: all five rows come out right, and
+     re-running changes nothing else on the sheet.
+
+     **It also fixes a crash that was already there.** The old
+     expression cast `Length_m` straight out of jsonb, so one feature
+     carrying a non-numeric length failed the WHOLE bill with "invalid
+     input syntax for type numeric". Confirmed by running the old
+     function against such a row — it raises; the new one bills that row
+     at nothing and leaves the sheet standing. The cable and pipe joins
+     have guarded against exactly this since 0117; the quantity never
+     did.
+
+     **checkbommeasured.mjs** holds the newest `gis_bom` and
+     `runLength()` to the same rule. `gis_bom` is replaced wholesale
+     every time any part of it changes, so each rewrite is a fresh
+     chance to drop the measurement again.
+
+     **The check passed before it should have, and I nearly shipped
+     that.** Its last assertion looks for the wrong claim still sitting
+     in lengths.js. The claim is wrapped across two comment lines, the
+     pattern was written as one, and it matched nothing and reported
+     "all passed" while the sentence was still there. It now collapses
+     whitespace first — and it failed on my own rewrite until I stopped
+     quoting the old sentence verbatim, which is the check working. A
+     check that cannot fail is worse than no check, because it is
+     believed.
+
+     **Not changed, deliberately: the labour rows.** Excavation and
+     laying hours are built in the browser from trench geometry
+     (bomLabour.js -> contentsOf -> lengthOf) and still read the drawn
+     length. Whether a measured run means more digging is a trade
+     judgement rather than a fault, and the same geometry decides which
+     cables are INSIDE a trench — a spatial test that must stay drawn.
+     Raised with Allan rather than quietly changed.
+
+     Whole suite run before and after against a worktree at HEAD: no
+     check fails that was not already failing. The pre-existing ones are
+     the six migrations absent from the folder (0198, 0208, 0210, 0221,
+     0222, 0238) and the two files both numbered 0229 — which is why
+     0257 is written from `0229_bom_no_annotation.sql`, the superset, so
+     a database that got the other one picks up the annotation exclusion
+     as well.

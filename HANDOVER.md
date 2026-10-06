@@ -11763,3 +11763,59 @@ plus generic table editors.
 
      checklinkbox.mjs now also pins the stub, and that assertion was
      mutation-tested by putting the hardcoded null back.
+
+268. **The merge gate I kept repeating was wrong.** Asked what is
+     needed to push the changes through, and the honest first answer is
+     that my own standing warning was misinformed.
+
+     I have said repeatedly, in several handover entries and in
+     conversation, that PR #1 must not be merged "until migrations
+     0241-0246 have run in Supabase, or the fail-closed access-control
+     code locks every staff account out". Checked the branch properly
+     instead of repeating the note:
+
+         git ls-tree origin/main supabase/migrations/ | grep 024[1-6]
+         -> all six are there
+
+         git grep -l Person_Menu_Visible origin/main
+         -> _access.js, _adminOwners.js, access.js, admin.js,
+            PeopleRolesAdmin.jsx, src/lib/access.js, src/lib/adminTabs.js
+
+     **0241-0246 and the code that reads them are already on main.**
+     They are not in this PR; `git diff --stat origin/main...HEAD`
+     does not list one of them. So merging this PR cannot introduce
+     that code, and cannot lock anybody out who is not already locked
+     out. Whatever state that gate is in, it has been in it since main
+     last deployed, and this PR neither helps nor worsens it.
+
+     Carried the warning forward for days without checking it, and it
+     has been holding three real fixes off a live site: the duplicate
+     references, the deleted service cables, and the link box input
+     colour.
+
+     The one schema change this PR's code genuinely depends on is
+     **0254** - projects.js retries an insert on a reference collision,
+     and without that constraint there is no collision to catch, so the
+     retry is dead code and duplicates keep happening silently.
+
+     `preflight_merge.sql`: one paste, one table, read-only, nine rows.
+     Each of 0241-0246 detected by something it creates rather than by
+     a version number - the three nullable GIS_Style columns, the two
+     columns 0242 ADDS to gis_style_scope_uniq (the index has the same
+     name in 0195, so its presence proves nothing), Is_Exclusive,
+     Needs_Detail and Detail_Prompt - then 0245 by its BACKFILL rather
+     than by its table, because an empty Person_Menu_Visible with the
+     code live is the lock-out, not a missing table. Row 7 counts live
+     people with no ticks at all, which is not a migration question but
+     is worth seeing before any deploy. Rows 9 and 9.1 are this PR's
+     own requirement and the duplicate that would block it.
+
+     Tested in four states against the verification cluster: nothing
+     present, everything present, the table present with the backfill
+     not run, 0245 run and 0246 not, and a duplicate reference with the
+     constraint absent. One result set every time.
+
+     My first attempt at the duplicate-state test was itself wrong - it
+     inserted the duplicate before dropping the constraint, so the
+     insert failed and aborted the transaction, and every row came back
+     as "current transaction is aborted" rather than an answer.

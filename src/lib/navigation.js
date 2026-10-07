@@ -77,6 +77,7 @@ export const AREAS = [
          wrong one. */
       { view: "teams", label: "Teams", built: true },
       { view: "plot-connections", label: "Plot Connections", built: true },
+      { view: "pc-dashboard", label: "Plot Connections Dashboard", built: true },
       { view: "sc-log", label: "Service Card Log" },
       { view: "vehicles", label: "Vehicles", built: true },
       /* Generator hire was its own screen under Electric. It is a piece

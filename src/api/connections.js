@@ -9,6 +9,13 @@ export async function listAllConnections() {
   return http.get("/connections");
 }
 
+/* The dashboard's own, narrower read: the dates and ids its cards
+   compare, without the columns only the table renders. */
+export async function listDashboardConnections() {
+  if (USE_MOCKS) { await delay(220); return { connections: [...store] }; }
+  return http.get("/connections-dashboard");
+}
+
 export async function listConnections(projectId) {
   if (USE_MOCKS) { await delay(200); return { plots: [], connections: [...store] }; }
   return http.get(`/projects/${projectId}/connections`);

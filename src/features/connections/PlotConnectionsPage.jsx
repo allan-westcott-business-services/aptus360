@@ -121,7 +121,7 @@ const BULK_FIELDS = [
   { field: "Actual_Jointing_Date", label: "Jointed", type: "date", col: "jact" },
 ];
 
-export default function PlotConnectionsPage() {
+export default function PlotConnectionsPage({ onOpenDashboard }) {
   const layout = useTableLayout("connections", COLS);
   const [lookups, setLookups] = useState(null);
   const [plots, setPlots] = useState([]);
@@ -409,6 +409,15 @@ export default function PlotConnectionsPage() {
       {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <div className="pc-toolbar">
+        {/* The way through to the exception cards. Beside the search
+            rather than buried in a menu, because the dashboard is how
+            most people arrive at this table: they come to work a list,
+            not to browse 33,000 rows. */}
+        {onOpenDashboard && (
+          <button className="btn ghost" onClick={onOpenDashboard}>
+            &#128202; Dashboard
+          </button>
+        )}
         <input className="tb-search" value={search} aria-label="Search connections" placeholder="&#128269; Search project, AP number, site or plot&hellip;"
           onChange={(e) => setSearch(e.target.value)} />
 

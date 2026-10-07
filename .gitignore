@@ -1,0 +1,8 @@
+# Legacy exports staged for an import.
+#
+# These are extracts from the live original database — asset values,
+# contract references, plot and connection data. They are input to a
+# one-off import, not source, and they do not belong in version
+# control. Keep them beside the import's SQL on the machine doing the
+# load and let them go when it is done.
+*/data/*.csv

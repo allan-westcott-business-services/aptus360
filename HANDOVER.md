@@ -13145,3 +13145,22 @@ plus generic table editors.
      is ever hit, rather than assumed impossible.
 
      Whole suite: no check fails that was not already failing.
+
+298. **PR #2 merged and deployed. A deploy lands in two places and the
+     browser only reloads one of them.**
+
+     After the deploy Allan saw every connection but no AP number — and
+     that split is the diagnosis rather than a puzzle. The row-cap fix
+     is in a Netlify FUNCTION, server-side, live the moment the deploy
+     finished. The AP column is in the browser bundle, and Chrome was
+     still running the cached copy. New data through an old interface.
+
+     Worth remembering before guessing at a half-working deploy: ask
+     which half is server and which is client. "Empty Cache and Hard
+     Reload" from the DevTools reload menu fixed it.
+
+     Also worth recording: PR #1 was squash-merged, so main carried one
+     commit this branch did not, and PR #2 opened as `dirty`. Merging
+     main in and resolving two files - both cases where this branch was
+     a superset - cleared it. A squash merge means the branch it came
+     from will always conflict with its own content next time round.

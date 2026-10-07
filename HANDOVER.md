@@ -12882,3 +12882,52 @@ plus generic table editors.
      Its closing SELECT reports rows, adopters named and IDNO_IDs
      carried, so the three figures that matter are visible the moment
      the load finishes rather than needing another trip to the editor.
+
+292. **The adopter is a CONTRACT-level IDNO, and the connection's
+     Adopter text is not to be trusted.** Allan re-exported the Plot
+     Utility file to pick up recent connections. Loaded and measured
+     before suggesting he do anything with it:
+
+     - 33,475 rows, 96 more than before;
+     - **25,590 name an adopter — identical to the old file**, not one
+       more;
+     - AP1989's water connections still say "United Utilities".
+
+     So the file was not stale in the way I guessed. I had told him a
+     fresh export would probably settle it. It does not.
+
+     Two places I checked and ruled out before finding the right one,
+     both worth recording so nobody re-checks them: the connection's
+     own `IDNO_ID` is carried by 125 of 33,475 rows and none on this
+     contract; and the plot export's `Electric_IDNO_ID`,
+     `Gas_IDNO_ID` and `Water_IDNO_ID` are empty on **all 333,950
+     plots**.
+
+     It is on the CONTRACT. `Legacy_Project_Import` carries the same
+     three columns, and contract 326 reads Electric 4, Gas 4, Water 6 —
+     one company on electric and gas and another on water, which is
+     exactly "GTC and IWNL" as he described it.
+
+     **And the free-text Adopter actively disagrees with it.**
+     Correlating every contract's IDNO against the adopter words on its
+     connections:
+
+         IDNO  4  electric  GTC 2,627        gas  GTC 2,442
+         IDNO  6  water     IWNL 2,385   but United Utilities 1,056
+         IDNO 21  water     United Utilities 768   but IWNL 93
+         IDNO 24  water     United Utilities 763   but ESP Water 321
+
+     1,056 connections on IWNL contracts say United Utilities in the
+     text field. That is not a stale export, it is a field that was
+     never maintained — and the import has been reading it as the
+     adopter since the first draft.
+
+     **So the import changes: the adopter comes from the contract's
+     IDNO for that utility.** Which needs the old system's IDNO table
+     exported — id and name — because deriving the names from a field
+     this unreliable is exactly the mistake that produced the problem.
+     Asked for.
+
+     Still open and NOT explained by any of this: his counts are 3
+     electric, 4 gas and 3 water fewer than the staging holds for
+     AP1989.

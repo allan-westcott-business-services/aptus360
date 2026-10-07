@@ -30,7 +30,7 @@
 /* Two vertices this close are the same point. The original's value, in
    the same units — drawing coordinates, so metres here. */
 import { carries } from "./trenchCarries.js";
-import { runLength, drawnLength } from "./lengths.js";
+import { runLength, drawnLength, measuredScale } from "./lengths.js";
 import { hdCutoutsOn, hdcoAt, hdcoKva } from "./hdCutout.js";
 
 export const CONNECT_EPS = 0.5;
@@ -397,16 +397,10 @@ export function buildFeederModel(features = [], opts = {}) {
      what was drawn, and snapping, joining and nearness all stay
      geometric \u2014 a measured length changes how far the electricity
      travels, not where the trench is. */
-  const measuredScale = (f) => {
-    const stated = Number(f.Attributes?.Measured_Length_m ?? 0) || 0;
-    if (!(stated > 0)) return 1;
-    const g = f.Geometry || [];
-    let drawn = 0;
-    for (let i = 1; i < g.length; i++) {
-      drawn += Math.hypot(g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]);
-    }
-    return drawn > 0 ? stated / drawn : 1;
-  };
+  /* Moved to lengths.js, where runLength and drawnLength already live.
+     bomLabour and spanContents need the same multiplier, and three
+     private copies would be three chances for the volt drop, the bill
+     and the call-off to read one trench three different ways. */
 
   for (const f of features) {
     if (f.Feature_Type !== "line" || !isTrench(f, lineTypes)) continue;

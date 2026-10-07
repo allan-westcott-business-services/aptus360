@@ -13,15 +13,50 @@ const COLS = [
    a cross-project view. */
 export default withAuth(async function handler(req) {
   const db = supabase();
-  const url = new URL(req.url);
-  const limit = Math.min(Number(url.searchParams.get("limit") || 2000), 5000);
 
   try {
-    const { data, error } = await db
-      .from("Plot_Utility")
-      .select(`${COLS},Plot!inner(Plot_ID,Plot_Number,Plot_Ref,Project_ID,Project!inner(Project_ID,Project_Ref,Site_Name,Region_ID))`)
-      .limit(limit);
-    if (error) throw error;
+    /* ── Every row, fetched a page at a time ──
+
+       This took `.limit(2000)` and returned whatever 2,000 rows came
+       back first. No ORDER BY, so WHICH 2,000 was Postgres's business,
+       and the page said nothing about the rest: a project with 238
+       connections showed one of them, and the count beside it read 1
+       as though that were the fact.
+
+       Silent truncation on a page people plan work from is worse than
+       a slow page and far worse than an error. 33,000 connections came
+       in from the original app and the cap was set when there were a
+       couple of thousand.
+
+       Ordered by the key so the pages cannot overlap or skip - an
+       unordered range scan may return a row twice and another not at
+       all. `truncated` is reported rather than assumed impossible: if
+       it is ever true the page says so instead of quietly lying.  */
+    const PAGE = 1000;
+    const HARD_CAP = 200000;
+    const data = [];
+    let truncated = false;
+    let from = 0;
+    for (;;) {
+      const { data: page, error } = await db
+        .from("Plot_Utility")
+        .select(`${COLS},Plot!inner(Plot_ID,Plot_Number,Plot_Ref,Project_ID,Project!inner(Project_ID,Project_Ref,Site_Name,Region_ID,AP_Number))`)
+        .order("Plot_Utility_ID", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      if (!page || page.length === 0) break;
+      for (const row of page) data.push(row);
+      /* Advanced by what came BACK, not by what was asked for, and
+         stopped only on an empty page.
+
+         PostgREST has a max-rows of its own. Ask for 1,000 where the
+         server allows 500 and every page is short — and "a short page
+         means the end" would stop at 500 rows and call it the whole
+         table. That is the same silent truncation this is replacing,
+         rebuilt in the fix for it. */
+      from += page.length;
+      if (data.length >= HARD_CAP) { truncated = true; break; }
+    }
 
     /* Three things the connection doesn't carry, fetched alongside rather
        than joined: the IDNO belongs to the project's AV agreement, and
@@ -58,6 +93,10 @@ export default withAuth(async function handler(req) {
         _plotNumber: Plot?.Plot_Number ?? "",
         _projectId: proj?.Project_ID ?? null,
         _projectRef: proj?.Project_Ref ?? "",
+        /* The AP number, which is how the business names a contract.
+           It was in neither the payload nor the search, so looking up
+           AP1989 on this page found nothing at all. */
+        _apNumber: proj?.AP_Number ?? "",
         _siteName: proj?.Site_Name ?? "",
         _regionId: proj?.Region_ID ?? null,
         /* ── The row's own flag, not the plot's ──
@@ -85,7 +124,7 @@ export default withAuth(async function handler(req) {
       }
     });
 
-    return json({ connections, plots });
+    return json({ connections, plots, truncated });
   } catch (e) {
     return fail(e, 400);
   }

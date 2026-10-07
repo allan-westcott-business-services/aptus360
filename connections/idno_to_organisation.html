@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IDNO to Organisation</title>
+<style>
+  :root {
+    --bg: #fbfaf8;
+    --fg: #1c1a17;
+    --muted: #6b6560;
+    --rule: #d8d2ca;
+    --panel: #ffffff;
+    --accent: #0b6b5e;
+    --accent-soft: #e4f0ed;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17161a;
+      --fg: #ece9e4;
+      --muted: #9b958e;
+      --rule: #3a3731;
+      --panel: #201e22;
+      --accent: #5fd3bd;
+      --accent-soft: #1e3a36;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17161a;
+    --fg: #ece9e4;
+    --muted: #9b958e;
+    --rule: #3a3731;
+    --panel: #201e22;
+    --accent: #5fd3bd;
+    --accent-soft: #1e3a36;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 40px 16px 72px;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; }
+  h1 {
+    font-size: clamp(1.4rem, 4vw, 2rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin: 0 0 8px;
+  }
+  .sub { color: var(--muted); margin: 0 0 44px; max-width: 62ch; }
+  figure {
+    margin: 0 0 52px;
+    padding: 24px 20px 20px;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+  }
+  svg { display: block; width: 100%; max-width: 100%; height: auto; }
+  figcaption {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--rule);
+    color: var(--muted);
+    font-size: 0.9rem;
+    max-width: 70ch;
+  }
+  figcaption b { color: var(--fg); font-weight: 600; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.88em;
+  }
+  .box { fill: var(--panel); stroke: currentColor; stroke-width: 1.25; }
+  .box-accent { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+  .ttl { font: 600 13px ui-sans-serif, system-ui, sans-serif; fill: currentColor; }
+  .fld { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: currentColor; }
+  .note { font: 12px ui-sans-serif, system-ui, sans-serif; fill: currentColor; opacity: 0.68; }
+  .edge { stroke: currentColor; stroke-width: 1.25; fill: none; }
+  .edge-dead { stroke: currentColor; stroke-width: 1.25; fill: none;
+               stroke-dasharray: 5 4; opacity: 0.4; }
+  .edge-live { stroke: var(--accent); stroke-width: 2; fill: none; }
+  .lbl { font: 11px ui-sans-serif, system-ui, sans-serif; fill: currentColor; opacity: 0.8; }
+  .lbl-live { font: 600 11px ui-sans-serif, system-ui, sans-serif; fill: var(--accent); }
+  .dim { opacity: 0.42; }
+  .rule { stroke: currentColor; stroke-width: 1; opacity: 0.25; }
+  .chip { font: 11px ui-monospace, Menlo, monospace; fill: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>The old IDNO table, and the role model that replaced it</h1>
+  <p class="sub">Why the connections import writes <code>IDNO_Organisation_ID</code> and leaves
+  <code>IDNO_ID</code> alone.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 650" role="img"
+         aria-label="Plot_Utility has two adopter columns. The legacy IDNO_ID points at the IDNO table, which can only hold IDNOs. The live IDNO_Organisation_ID points at Organisation, which carries one Organisation_Role per role, each naming an Organisation_Type such as idno, dno, gt, igt, wu or iwu. Migration 0047 backfilled an Organisation_ID onto every IDNO row, so the old table's rows already have somewhere to go.">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5"
+                markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+        </marker>
+        <marker id="ar-live" viewBox="0 0 10 10" refX="9" refY="5"
+                markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)"/>
+        </marker>
+      </defs>
+
+      <!-- Plot_Utility, the one table with two adopter columns -->
+      <rect class="box" x="60" y="16" width="780" height="104" rx="6"/>
+      <text class="ttl" x="78" y="42">Plot_Utility</text>
+      <line class="rule" x1="60" y1="54" x2="840" y2="54"/>
+
+      <rect class="box dim" x="100" y="66" width="210" height="38" rx="4"/>
+      <text class="fld dim" x="205" y="84" text-anchor="middle">IDNO_ID</text>
+      <text class="note" x="205" y="99" text-anchor="middle">legacy</text>
+
+      <rect class="box-accent" x="590" y="66" width="210" height="38" rx="4"/>
+      <text class="fld" x="695" y="84" text-anchor="middle"
+            style="fill:var(--accent);font-weight:600">IDNO_Organisation_ID</text>
+      <text class="chip" x="695" y="99" text-anchor="middle">the adopter</text>
+
+      <!-- dead edge -->
+      <path class="edge-dead" d="M 205 104 L 205 196" marker-end="url(#ar)"/>
+      <text class="lbl dim" x="216" y="146">foreign key</text>
+      <text class="lbl dim" x="216" y="162">never written</text>
+
+      <!-- live edge -->
+      <path class="edge-live" d="M 695 104 L 695 196" marker-end="url(#ar-live)"/>
+      <text class="lbl-live" x="684" y="146" text-anchor="end">every adopter,</text>
+      <text class="lbl-live" x="684" y="162" text-anchor="end">whatever its role</text>
+
+      <!-- IDNO, the old table -->
+      <rect class="box dim" x="60" y="198" width="280" height="122" rx="6"/>
+      <text class="ttl dim" x="78" y="222">IDNO</text>
+      <line class="rule" x1="60" y1="232" x2="340" y2="232"/>
+      <text class="fld dim" x="78" y="254">IDNO_ID</text>
+      <text class="fld dim" x="78" y="276">IDNO_Name</text>
+      <text class="fld dim" x="78" y="302">Organisation_ID</text>
+
+      <text class="note" x="60" y="360">IDNOs only — 7 rows.</text>
+      <text class="note" x="60" y="378">A DNO, a gas transporter or a</text>
+      <text class="note" x="60" y="396">water undertaker has no row here,</text>
+      <text class="note" x="60" y="414">so an adopter like United Utilities</text>
+      <text class="note" x="60" y="432">could never be recorded in it.</text>
+
+      <!-- the bridge 0047 built -->
+      <path class="edge" d="M 340 298 C 420 298, 450 262, 556 248" marker-end="url(#ar)"/>
+      <text class="lbl" x="352" y="322">0047 backfilled this link</text>
+
+      <!-- Organisation -->
+      <rect class="box" x="560" y="198" width="280" height="92" rx="6"/>
+      <text class="ttl" x="578" y="222">Organisation</text>
+      <line class="rule" x1="560" y1="232" x2="840" y2="232"/>
+      <text class="fld" x="578" y="254">Organisation_ID</text>
+      <text class="fld" x="578" y="276">Name</text>
+
+      <path class="edge" d="M 700 290 L 700 336" marker-end="url(#ar)"/>
+      <text class="lbl" x="712" y="318">one row per role it holds</text>
+
+      <!-- Organisation_Role -->
+      <rect class="box" x="560" y="338" width="280" height="92" rx="6"/>
+      <text class="ttl" x="578" y="362">Organisation_Role</text>
+      <line class="rule" x1="560" y1="372" x2="840" y2="372"/>
+      <text class="fld" x="578" y="394">Organisation_ID</text>
+      <text class="fld" x="578" y="416">Organisation_Type_ID</text>
+
+      <path class="edge" d="M 700 430 L 700 476" marker-end="url(#ar)"/>
+      <text class="lbl" x="712" y="458">which role it is</text>
+
+      <!-- Organisation_Type -->
+      <rect class="box" x="560" y="478" width="280" height="118" rx="6"/>
+      <text class="ttl" x="578" y="502">Organisation_Type</text>
+      <line class="rule" x1="560" y1="512" x2="840" y2="512"/>
+      <text class="fld" x="578" y="534">Type_Key</text>
+      <text class="chip" x="578" y="558">idno · dno · gt</text>
+      <text class="chip" x="578" y="578">igt · wu · iwu</text>
+
+      <text class="note" x="60" y="470">The new model has no table per</text>
+      <text class="note" x="60" y="488">kind of operator. One Organisation</text>
+      <text class="note" x="60" y="506">holds as many roles as it plays —</text>
+      <text class="note" x="60" y="524">GTC holds idno, igt and iwu — so</text>
+      <text class="note" x="60" y="542">one column on Plot_Utility can</text>
+      <text class="note" x="60" y="560">name any adopter at all.</text>
+    </svg>
+    <figcaption><b>One table became two joins, and that is the point.</b>
+    The old database needed a table per kind of operator, so
+    <code>Plot_Utility.IDNO_ID</code> could only ever hold an IDNO. The new one
+    records the company once and attaches a role to it, so a single column names
+    an IDNO, a DNO, a gas transporter or a water undertaker without caring which.
+    Migration 0047 put an <code>Organisation_ID</code> on every IDNO row, which is
+    the bridge the old data crosses — and 0120 then dropped <code>IDNO_ID</code>
+    from <code>Water_Pipe_Size_Operator</code> entirely once nothing needed it.
+    Writing it here would carry the retired shape forward and leave two places for
+    the same fact to disagree.</figcaption>
+  </figure>
+
+  <figure>
+    <svg viewBox="0 0 900 330" role="img"
+         aria-label="The adopter word ESP in the old export appears only on electric and gas connections, and resolves to two different organisations depending on which: ESP Electricity with the idno role, and ES Pipelines with the igt role. The separate word ESP Water matches the ESP Water organisation by its own name. There is no alias for ESP alone, so ESP on a water connection would stay blank.">
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5"
+                markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <rect class="box" x="30" y="78" width="200" height="74" rx="6"/>
+      <text class="note" x="48" y="102">old export says</text>
+      <text class="ttl" x="48" y="128" style="font-size:16px">"ESP"</text>
+      <text class="note" x="48" y="146">5,496 connections</text>
+
+      <path class="edge" d="M 230 108 C 330 108, 360 56, 496 56" marker-end="url(#ar2)"/>
+      <text class="lbl" x="488" y="42" text-anchor="end">Utility = Electric · 2,827</text>
+
+      <path class="edge" d="M 230 126 C 330 126, 360 158, 496 158" marker-end="url(#ar2)"/>
+      <text class="lbl" x="488" y="144" text-anchor="end">Utility = Gas · 2,669</text>
+
+      <rect class="box" x="30" y="222" width="200" height="60" rx="6"/>
+      <text class="ttl" x="48" y="248" style="font-size:14px">"ESP Water"</text>
+      <text class="note" x="48" y="268">a separate word</text>
+
+      <path class="edge" d="M 230 252 L 496 252" marker-end="url(#ar2)"/>
+      <text class="lbl" x="488" y="240" text-anchor="end">matched on its own name</text>
+
+      <rect class="box" x="498" y="28" width="332" height="56" rx="6"/>
+      <text class="ttl" x="516" y="52">ESP Electricity</text>
+      <text class="chip" x="516" y="72">Organisation + role idno</text>
+
+      <rect class="box" x="498" y="130" width="332" height="56" rx="6"/>
+      <text class="ttl" x="516" y="154">ES Pipelines</text>
+      <text class="chip" x="516" y="174">Organisation + role igt</text>
+
+      <rect class="box" x="498" y="224" width="332" height="56" rx="6"/>
+      <text class="ttl" x="516" y="248">ESP Water</text>
+      <text class="chip" x="516" y="268">Organisation + role iwu</text>
+
+      <text class="note" x="30" y="312">No alias exists for "ESP" alone — on a water connection it would stay blank, never guessed.</text>
+    </svg>
+    <figcaption><b>Why the alias map is keyed on the name <i>and</i> the utility.</b>
+    Three separate organisations carry the ESP name, and the word in the old export
+    does not say which. A map keyed on the word alone would have to pick one and be
+    wrong about roughly 2,700 connections either way, so the import looks up
+    <code>Kind = 'adopter:&lt;utility&gt;'</code> first and falls back to
+    <code>Kind = 'adopter'</code>. <code>ESP Water</code> needs no alias at all — it
+    matches the organisation by its own name. And there is deliberately no entry for
+    a bare <code>ESP</code>: it appears only on electric and gas in this export, and
+    if it ever turned up on water it would stay blank rather than be guessed at.</figcaption>
+  </figure>
+</main>
+</body>
+</html>

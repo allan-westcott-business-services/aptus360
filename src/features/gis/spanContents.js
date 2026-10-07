@@ -33,6 +33,7 @@
 import { contentsOf } from "./trenchContents.js";
 import { sizeLabelOf } from "./sizeMode.js";
 import { concurrentCount, dominantOf, trenchSize } from "./trenchSize.js";
+import { measuredScale } from "./lengths.js";
 import { digEstimate } from "./digRate.js";
 import { isTrenchType } from "./snapping.js";
 import { UTILITIES } from "../../lib/utilities.js";
@@ -257,7 +258,16 @@ export function spanDigEstimate(span, features = [], opts = {}) {
         .replace(/[^0-9.]/g, "")) || null,
     }));
     return digEstimate({
-      lengthM: (res.trenchM || 0) * scale,
+      /* The span's share of the section, and then the measurement.
+
+         `scale` above is the span against the sections under it, which
+         is a question about the drawing and stays on drawn figures on
+         both sides of its division. measuredScale is a separate
+         multiplier on top: what is actually dug, once somebody has
+         said the run is longer than the plan shows. The bill reads the
+         same multiplier for the same trench (bomLabour.js), so a
+         call-off and the sheet cannot quote different hours. */
+      lengthM: (res.trenchM || 0) * scale * measuredScale(trench),
       size: trenchSize(items, { trenchM: res.trenchM }),
       surfaceKey: trench?.Attributes?.Surface_Type ?? null,
       /* An existing section is not this call-off's to dig, but its

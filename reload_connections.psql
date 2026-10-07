@@ -1,0 +1,81 @@
+-- ════════════════════════════════════════════════════════════════════
+--  Replace the staged connections with a fresh export
+-- ════════════════════════════════════════════════════════════════════
+--
+-- NOT for the Supabase SQL editor. \copy is a psql command: it reads a
+-- file off YOUR computer, which is the point, and the web editor has
+-- no access to your disk.
+--
+-- ── It CLEARS the staging table first, and that is the point ──
+--
+-- The staging tables have no key to collide on, by design, so loading
+-- a second file on top of the first gives you both — 33,380 rows
+-- becoming 66,000, every connection present twice, and every count
+-- from here on quietly doubled. The DELETE below is what makes this a
+-- replacement rather than an addition.
+--
+-- Nothing already imported is touched. `Plot_Utility` is a different
+-- table; this only empties the landing strip the CSV arrives on.
+--
+-- ── How to run it ──
+--
+--   1. Put the new export and this file in one folder (Downloads is
+--      fine) and RENAME the export to exactly:
+--
+--          connections.csv
+--
+--      Renaming the file is easier than editing this one — \copy is
+--      parsed by psql itself and does not expand variables, so a
+--      filename cannot be put in a \set at the top. Tried it; it looks
+--      for a file literally called ":".
+--
+--   2. In Terminal:
+--          cd ~/Downloads
+--          ls connections.csv
+--      It must be listed.
+--
+--   3. Connect:
+--          psql "<your connection string, in double quotes>"
+--
+--   4. Run:
+--          \i reload_connections.psql
+--
+-- ── If the column list is wrong ──
+--
+-- The \copy below names every column in YOUR export's header order,
+-- which is not the table's order. If the new export has the same
+-- columns in the same order it will just work. If it does not, psql
+-- stops with a complaint about the number of columns or an invalid
+-- value — which is the good outcome. The bad one would be a silent
+-- load with dates in the meter column, and naming every column is what
+-- prevents it.
+--
+-- The \copy must stay on ONE line. psql reads a backslash command to
+-- the end of the line, so a line break inside it breaks it. It is
+-- long; let it wrap on screen rather than tidying it.
+--
+-- ── After this ──
+--
+-- Back in the Supabase SQL editor, run `C1_summary_AP1989.sql` again.
+-- If the adopters now read GTC and IWNL and the counts match the
+-- screen, the file was simply out of date and the import can go ahead.
+-- ════════════════════════════════════════════════════════════════════
+
+\echo 'Clearing the old staged connections...'
+
+DELETE FROM "Legacy_Connection_Import";
+
+\echo 'Loading the new export...'
+
+\copy "Legacy_Connection_Import" ("Plot_Utility_ID", "Plot_ID", "Utility_ID", "Programmed_Date", "Connection_Date", "Visit_Outcome", "Meter_Number", "Meter_Photos", "As_Laid_Date", "Adopter", "Team_ID", "Status_Of_Pack", "Service_Card_Submission_Date", "Days_To_Complete", "Smart_Meter", "IDNO_ID", "MPAN_MPRN", "Meter_Card_Submission_Date", "Joint_Type_ID", "Cable_Size_In", "Cable_Size_Out", "Joint_Picture_Path", "Source_Plot_Service_ID", "Self_Lay_Provider", "Dead_Jointed_Date", "Expected_Asset_Value", "Service_Card_File_Path", "Planned_Jointing_Date", "Actual_Jointing_Date") FROM 'connections.csv' WITH (FORMAT csv, HEADER true)
+
+-- What landed, and what it says about the thing that started this.
+--
+-- The last export held 33,380 rows and named an adopter on 25,590 of
+-- them. A bigger number here means the export picked up connections
+-- made since; more adopters named means the blanks have been filled
+-- in, which is what AP1989's recent plots were missing.
+SELECT count(*)                                                    AS "rows",
+       count(*) FILTER (WHERE COALESCE(btrim("Adopter"), '') <> '') AS "name an adopter",
+       count(*) FILTER (WHERE COALESCE(btrim("IDNO_ID"), '') <> '') AS "carry an IDNO_ID"
+  FROM "Legacy_Connection_Import";

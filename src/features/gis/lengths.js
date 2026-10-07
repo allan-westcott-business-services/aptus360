@@ -26,9 +26,23 @@
 
    Two writers of one column with opposite meanings — fault 13, and the
    only fix is two columns. `Length_m` goes back to being the trigger's
-   own mirror of the drawing (the bill of materials reads it in SQL and
-   is unaffected). `Measured_Length_m` is written by a person and by
-   nothing else, so its presence means what it says.
+   own mirror of the drawing. `Measured_Length_m` is written by a person
+   and by nothing else, so its presence means what it says.
+
+   ── The bill of materials was NOT unaffected ──
+
+   This note used to end that paragraph by saying the bill of materials
+   read this column in SQL and was therefore untouched by the split.
+   True as a sentence about SQL, and wrong about the bill. It went
+   on summing `Length_m`, so a trench drawn at 300 m and measured at
+   330 m was ordered as 300 m — on cable, gas, water and trench alike,
+   because `gis_bom` sums every line in one expression. Every consumer
+   in here was moved to `runLength()`; the one that turns into a
+   purchase order was in SQL, out of sight, and was left behind.
+
+   0257 moves it. `checkbommeasured` holds the two to the same rule, so
+   the next rewrite of `gis_bom` — it is replaced whole every time any
+   part of it changes — cannot quietly drop the measurement again.
 
    ── Existing drawings ──
 
@@ -61,4 +75,35 @@ export function runLength(feature) {
 /* Whether a person has stated one, for a label that wants to say so. */
 export function hasMeasured(feature) {
   return (Number(feature?.Attributes?.Measured_Length_m ?? 0) || 0) > 0;
+}
+
+/* How much longer the real run is than the drawing, as a multiplier.
+
+   1 where nobody has measured, so a caller can multiply unconditionally
+   and a drawing made before the box existed behaves exactly as it did.
+
+   ── What it is for ──
+
+   Some figures are not a length but are made OUT of one, spread along
+   it: the volume of spoil out of a trench, the hours to lay what is in
+   it, where a tee falls along a run. Those scale with the measurement
+   rather than reading it directly — a trench drawn at 300 m and
+   measured at 330 m is ten per cent more digging and ten per cent more
+   cable to pull, and a tee half way along is still half way along.
+
+   ── What it is NOT for ──
+
+   Anything asking how NEAR two things are. A measured length does not
+   move the trench: snapping, joining, which cables lie inside a length
+   and where a line is on the screen all stay geometric. The drawing
+   still shows what was drawn.
+
+   One copy, here, because feeder.js, bomLabour.js and spanContents.js
+   all need it and three private copies is three chances for the volt
+   drop, the bill and the call-off to read one trench three ways. */
+export function measuredScale(feature) {
+  const stated = Number(feature?.Attributes?.Measured_Length_m ?? 0) || 0;
+  if (!(stated > 0)) return 1;
+  const drawn = drawnLength(feature);
+  return drawn > 0 ? stated / drawn : 1;
 }

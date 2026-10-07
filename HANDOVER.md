@@ -11944,3 +11944,1204 @@ plus generic table editors.
      Reference restoration not written yet, deliberately: it should run
      after the merge, and how much there is to restore depends on how
      well the merge does once route 2 is alive.
+
+271. **"Do I go to Legacy Plot Import and click Import data from CSV?"**
+     Asked after saying they were lost and overwhelmed, which is fair -
+     I had given them four files in ten minutes and two routes to choose
+     between.
+
+     No, twice over. Plot_Utility_rows_1.csv is the CONNECTIONS file, so
+     it belongs in Legacy_Connection_Import. And that button is the one
+     that failed on 5 Oct with
+
+         relation "public.legacy_customer_import" does not exist
+
+     But the right response is to make the button work, not to explain
+     why it does not. That error is a NAMING problem, not a size one:
+     the importer builds the table name unquoted, Postgres folds it to
+     lower case, and every table in this schema is mixed-case.
+
+     0255 creates lower-case twins - `legacy_plot_import` and
+     `legacy_connection_import` - with their COLUMN names quoted and
+     mixed-case, matching the export headers exactly. The importer maps
+     columns by header name, so the column ORDER in the CSV stops
+     mattering too, which was the whole hazard of the psql route and the
+     reason I was asking for header lines.
+
+     move_csv_into_staging.sql copies both twins into the real tables and
+     empties them in the same statement, so a second import cannot double
+     anything.
+
+     Tested against the actual file they uploaded on 2 Oct: 0255 run
+     twice, the real 33,059-row CSV through \copy into the twin, moved
+     across, the mover run a second time moving nothing, and a row read
+     back field by field.
+
+     **Two faults of mine, both found by running it rather than reading
+     it.** The report said "0 plot row(s), 0 connection row(s) in the
+     real staging tables now" immediately after moving 33,059 - the same
+     one-snapshot-per-statement trap as entry 261, where a count cannot
+     see INSERTs made by CTEs above it. Fixed by adding what the CTEs
+     returned. And the file count in the text said 33,058: wc -l had
+     undercounted by one because the last line carries no newline, and
+     COPY's own figure was the honest one.
+
+     Also recorded: the plot export does not exist yet. Only the
+     connections file was ever uploaded. The 333,950 figure is a count
+     from their old system that I had been carrying as though it were a
+     file I had seen.
+
+272. **The plot file arrived, and it does not say what I claimed it
+     would.** 42.6 MB, 333,950 rows, all 41 columns present by name,
+     none missing and none extra. Column ORDER differs from the table -
+     Tender_ID is twelfth in the export and third in the staging table -
+     which is exactly the hazard the \copy column list exists for.
+
+     **The correction.** I told them loading this file first was what
+     would stop Tansey Green happening 1,377 times, because the tender
+     import's strongest match route reads a plot row carrying both a
+     Tender_ID and a Contract_ID. Counted it on the actual file:
+
+         rows with BOTH ids   773
+         contract only    158,527
+         tender only      174,650
+         neither                0
+
+         distinct (contract, tender) pairs proved:  20
+
+     **Twenty.** Not 1,377. And contract 380's plots carry no Tender_ID
+     at all, so the plot route does not match Tansey Green either.
+
+     I reasoned that from the code - the route exists, it reads this
+     file, therefore loading the file unlocks it - and never measured
+     how much the file actually contains. Same shape of error as the
+     merge gate at entry 268: inferring from structure instead of
+     counting. Staging the plots before the tender merge still costs
+     nothing and still gains those 20, so the order stands, but it is a
+     rounding error rather than the unlock I described.
+
+     The 1,377 tender-only projects sharing a site name with a contract
+     project remain unsolved, and now have no cheap route to solving
+     them. Route 3 (same site AND customer) is the only one with reach,
+     and it fails exactly where the contract has no customer - 311 of
+     them.
+
+     `load_plots.psql` loads both files, column lists written in the
+     exports' own header order. Tested end to end against both real
+     files: 333,950 and 33,059 rows, 2.4 seconds for the plots, columns
+     spot-checked in place afterwards.
+
+273. **The plots are staged. 333,950 of them, and the connections with
+     them.** Loaded over psql with \copy after a long and clumsy hour
+     of getting there - placeholder passwords typed literally twice,
+     an unterminated quote leaving them in dquote>, and a variable
+     interpolation of mine that does not work in \copy. Worth noting
+     how much of that was my doing: `[YOUR-PASSWORD]` I explained,
+     then wrote `TheActualPassword` in an example, which is the same
+     trap one step later. The connection form that finally worked is
+     the one with separate flags and an interactive password prompt -
+     no quoting, no URL escaping, nothing to substitute. That should
+     have been the first suggestion, not the fourth.
+
+     Connections came in at 33,380, not the 33,059 I predicted: their
+     Connections.csv is a fresher export than the one uploaded on
+     2 Oct. Plots matched exactly.
+
+     `preflight_plots.sql` - one paste, one result set, 14 rows,
+     replacing part 1's EIGHT separate SELECTs of which the editor
+     shows one. Measured on the real file:
+
+         plots staged                            333,950
+         each Plot_ID once                       yes
+         land now, matched on Contract_ID        159,300
+         waiting on the tender import            174,650
+         belonging to neither                          0
+
+     **Rows 4 and 4.1 are the ones that matter and are the ones I
+     cannot answer from here.** The Plot table is not created by any
+     committed migration - it pre-dates the baseline like 0221, 0222
+     and 0238 - so what is NOT NULL on it is not in the repository, and
+     the verification cluster's Plot table is a cut-down thing built
+     from an endpoint's column list, which is exactly the schema that
+     has already caused four failed runs this migration. Both rows read
+     the live catalogue, so their run is the one that answers.
+
+     **The real blocker is the lookups.** Legacy_Lookup_Map holds only
+     'status' and 'region'. The plot import reads three more kinds and
+     nothing has filled any of them:
+
+         property_config   35 distinct old ids   172,239 plots
+         heat_source        3                    195,704 plots
+         heat_pump          1                          1 plot
+
+     Unmapped is not fatal - the column lands empty - but 172,239 plots
+     with no property config is not an import anybody would accept. The
+     old ids are known from the file; what they MEAN is not, so the
+     next thing needed is the old system's Property_Config, Heat_Source
+     and Heat_Pump_Model tables, id and name, to match on name the way
+     the contract statuses were.
+
+274. **Two triggers on Plot that no migration mentions, and one of them
+     changes what the import means.** Read off their database because
+     the Plot table pre-dates the baseline:
+
+     `plot_ref_trg` BEFORE INSERT sets
+
+         NEW."Plot_Ref" := proj_ref || '-' || dev_code || '-' || Plot_Number
+
+     unconditionally. So the Plot_Ref the import carefully carries over
+     from the old system is **overwritten on every row**. That is the
+     right outcome - an imported plot should read like one added in the
+     app - but the import appears to preserve the old reference and does
+     not, which is worth saying out loud.
+
+     Its consequence bites later: that trigger fires on INSERT and on
+     UPDATE OF Plot_Number, Project_ID or Project_Developer_ID, and NOT
+     when a PROJECT's reference changes. 1,849 imported projects carry
+     an invented reference that we have agreed to replace, and nothing
+     would update their plots' references afterwards. Recoverable with
+     `UPDATE "Plot" SET "Plot_Number" = "Plot_Number"` on those
+     projects, which re-fires it - so the order is a convenience, not a
+     trap.
+
+     `plot_points_trg` AFTER INSERT FOR EACH ROW calls
+     recalc_project_points(project) - the whole project recomputed once
+     per inserted row.
+
+     **And here I overclaimed, measured, and overclaimed again.** First
+     I said it was "an import that may never finish". Then I measured
+     2,000 rows at 916 ms against 242 ms suspended - bad but survivable,
+     contradicting me. Then the full import timed out at two minutes,
+     seeming to confirm the original claim. Then the SUSPENDED version
+     timed out too, and a 3,000-row sample timed out, which no
+     arithmetic about their trigger explains.
+
+     The explanation is that recalc_project_points is not in the
+     repository either. I wrote a stand-in that counts plots per project
+     with no index, which is quadratic, and every number above is my
+     stub's cost rather than theirs. I was measuring my own guess and
+     reporting it as a finding.
+
+     What survives is the shape, not the number: recomputing a whole
+     project once per row is work discarded 159,299 times out of
+     159,300 however cheap one run is. Suspending it is strictly less
+     work for the same answer, so import_plots_safely.sql suspends it,
+     re-enables it, and recalculates once per project - correct whatever
+     the real function costs. The file now says so instead of carrying
+     a figure I cannot stand behind.
+
+275. **The real recalc_project_points, and real numbers at last.** They
+     sent the function. It opens with
+
+         SELECT COUNT(*) INTO plots FROM "Plot" WHERE "Project_ID" = p_project;
+
+     then reads a points band, loops the project's scopes, and UPDATEs
+     four columns on Project and one on Project_Scope - both UPDATEs
+     guarded with IS DISTINCT FROM, which saves nothing here because the
+     plot count changes on every insert.
+
+     Measured against the real file rather than a stub: 159,300 plots on
+     1,915 contracts, median 44 each, mean 83, largest 1,415.
+
+         counting rows   19,543,686  live    vs    159,300  suspended   123x
+         Project UPDATEs    159,300  live    vs      1,915  suspended    83x
+
+     159,300 updates to a 5,727-row table is not only slow, it leaves
+     159,300 dead row versions and the WAL to match.
+
+     Whether that is minutes or hours turns on whether Plot has an index
+     on Project_ID, which I still have not seen - and it does not matter,
+     because suspending is strictly less work for the same answer. The
+     file carries these figures now in place of the stub's.
+
+     Three claims about this trigger in one afternoon: "may never
+     finish" (guessed), "916 ms per 2,000 rows" (my stub), and these
+     (the real function, the real distribution). Only the third was
+     worth saying, and the first two were said with the same confidence.
+
+276. **The plot lookups mapped, and the id trap was real.** Both sides
+     arrived: the old Property_Config and Heat_Source, and the new ones.
+
+     **Matching by id would have been a disaster, not a wobble.**
+
+         old 1  is 1BD        new 1  is 3BS
+         old 12 is 3BS        new 3  is 1BD
+
+     Carried across by id, 22,960 one-bed dwellings become three-bed
+     semis and 52,429 three-bed semis become one-beds, silently, with
+     every count in the system still adding up. The heat sources are
+     worse - the two id sets correspond on nothing, and old 1 "Gas
+     Heated" would land on new 1 "ASHP", putting 164,406 gas-heated
+     plots on air source heat pumps.
+
+     Matched on Code and on name instead. 23 of 35 configs match,
+     covering 169,902 plots. Twelve do not, covering 2,337.
+
+     **Two decisions, both theirs, both recorded in the Notes.** 6BD and
+     6BS are real dwellings the new table simply stops short of, so
+     those are added - 110 plots. The other ten (COMM 1,606, OTHER 486,
+     then FP1, LLS1, TS1, TS3, PS3, PS1, LLS3, FP3) all carry
+     "AUTO-IMPORTED FROM SITE SUMMARY - review" in the old system, a
+     review that never happened, and they land empty for somebody to
+     decide.
+
+     And the heat pump: the old system has ONE heat pump option on
+     30,210 plots, the new one splits ASHP from GSHP, and nothing in the
+     data says which. They chose ASHP. The map's Note records that as a
+     DECISION rather than a translation, because it feeds the load
+     calculations and the next person to read it should know the data
+     did not say so.
+
+     **Part 1 failed on its first run**, assuming Property_Config_ID
+     fills itself:
+
+         null value in column "Property_Config_ID" violates not-null
+
+     Which column style that table uses is not in any committed
+     migration - identity, serial with a default, or a plain bigint
+     assigned by hand are all possible. It now reads the catalogue and
+     supplies an id only where it must. Tested against a plain column, an
+     identity column, and run twice: two six-bed rows, not four, and 38
+     map rows.
+
+277. **Lookups mapped on their database, cleanly.** All three heat
+     sources, 25 configs including the 6BD and 6BS that part 1 added,
+     and ten old codes left NOT MAPPED on 2,227 plots - COMM 1,606,
+     OTHER 486, then FP1, LLS1, TS1, TS3, PS3, PS1, LLS3, FP3, every
+     one of them flagged "AUTO-IMPORTED - review" in the old system.
+
+     Parts D and E of import_plots_safely.sql verified against the
+     verification cluster: the recalc loop returns a count, and the
+     trigger-state row reads "yes - enabled" after part C.
+
+     My test data for that run generated the same Legacy_Plot_ID for
+     three projects and hit `Plot_Legacy_Plot_UQ` - which is worth
+     recording as good news rather than a nuisance: there IS a unique
+     constraint on Legacy_Plot_ID, so a second run of the import cannot
+     double up the plots even if the NOT EXISTS guard were removed.
+
+278. **Part B failed on four rows, and my pre-flight had already been
+     taught this exact lesson.**
+
+         null value in column "Plot_Number" violates not-null
+         Failing row: (..., null, ..., 22396)
+
+     Four rows in 333,950 have an empty "Plot": Plot_IDs 22396, 25772,
+     27909 and 133242, on contracts 249, 756, 668 and 318. All four are
+     empty throughout - no plot number, no reference, no house number,
+     no street. Junk in the old data, nothing to import and nothing to
+     invent. The insert now skips them and 159,296 land.
+
+     **Row 4 of the pre-flight said "ok" and was answering a different
+     question.** It asks which NOT NULL columns the import does NOT
+     write. Plot_Number IS written - as NULLIF(btrim("Plot"), '') - so
+     it was excluded from the check, and a column being on the insert
+     list says nothing at all about the value being there.
+
+     This is entry 259 again. The contract import failed on
+     Project_Status_ID, and the pre-flight I wrote afterwards "repeated
+     the blind spot by only checking statuses that ARE set". I recorded
+     that, wrote it down as a lesson, and then wrote the same shape of
+     check three weeks later for a different column. Knowing the fault
+     and not recognising it in new work are apparently different
+     skills.
+
+     Row 4.2 now counts staged rows whose Plot is empty, and says so in
+     terms of what the import does about it.
+
+     One consequence worth flagging to them straight away: part A had
+     already disabled plot_points_trg when part B failed, so the trigger
+     was left suspended on their live database. Part C is written to be
+     run regardless for exactly this case, but they had to be told to
+     run it NOW rather than after the fix.
+
+279. **A third constraint on Plot, and the point at which I stopped
+     guessing.** Part B failed again:
+
+         duplicate key value violates unique constraint
+         "plot_number_per_developer"
+         Key (Project_ID, COALESCE(Project_Developer_ID,-1), Plot_Number)
+             = (3457, -1, 17.05) already exists
+
+     Three failures on one table in twenty minutes, every one of them
+     something the repository does not contain: the triggers, Plot_Number
+     being NOT NULL, and now a unique index. My pre-flight checked NOT
+     NULL columns and triggers and never looked at a unique constraint
+     at all.
+
+     So instead of patching the third and waiting for the fourth, asked
+     for every constraint and index on Plot in one query. Seven foreign
+     keys, two unique indexes, five plain indexes, a primary key.
+
+     **What that settled, beyond the failure:**
+
+     `plot_project_idx` on Project_ID exists - which answers the
+     question left open at entry 275. recalc_project_points's
+     COUNT(*) is index-backed, so the 19,543,686 row reads are index
+     reads rather than sequential scans of a growing table. Materially
+     less bad than feared, and I could have known it an hour earlier by
+     asking.
+
+     `Plot_Legacy_Plot_UQ` is a partial unique index on Legacy_Plot_ID
+     WHERE NOT NULL - so a re-run genuinely cannot double the plots,
+     independent of the NOT EXISTS guard.
+
+     The duplicates themselves are small and real: 8 contract-and-plot
+     pairs repeat, 10 rows, 5 contracts. Contract 1231 has three plots
+     called S249, 1878 three called C22, 476 pairs on 17.05/.07/.08/.09.
+     Old data, not an import artefact.
+
+     Part B now keeps the lowest Plot_ID per (project, plot number) and
+     part F lists every staged plot that did not become a row with its
+     reason. Tested: 159,286 land, a second run adds nothing, and part F
+     reports 10 duplicates and 4 blanks by contract.
+
+     Pre-flight row 4.3 counts the repeats. It exists because rows 4 and
+     4.2 both missed them.
+
+280. **159,286 plots on their projects, confirmed on their database.**
+
+         plots imported                    159,286
+         still waiting on the tenders      174,664
+         points trigger                    enabled
+
+     Every figure matches what was predicted from the file before it
+     ran, and part D recalculated exactly 1,915 projects - the count of
+     contracts with plots.
+
+     The 174,664 waiting are the tender half plus the 14 that will
+     never land: 4 with no plot number, 10 repeating a plot number on
+     their project. Part F names all 14 by contract.
+
+     **The connections are ready to go next and all of them land.**
+     Measured against the staged files: all 33,059 connections in the
+     2 Oct file belong to plots that now exist, none to tender plots,
+     and not one names a Plot_ID absent from the plot file. Split by
+     utility: 12,025 water, 11,286 electric, 9,748 gas - on the old
+     ids, which still need mapping like the others did.
+
+     Their live staging table holds 33,380 rather than 33,059, from the
+     fresher export they loaded this morning, so the extra 321 are
+     unmeasured here - the shape will be the same.
+
+281. **A pre-flight written BEFORE the import this time.** The plot
+     stage failed three times, each on something absent from the
+     repository, and each time I patched the one that had just broken.
+     preflight_connections.sql asks the catalogue about everything on
+     Plot_Utility first: NOT NULL columns, unique constraints AND
+     indexes, check constraints, triggers, and what the old data would
+     do to each.
+
+     Validated against the verification cluster with the real 33,059
+     connections staged. Two findings worth carrying forward:
+
+     **The utility is the only id-matched lookup in this import**, and
+     the insert falls back to the OLD id when nothing is mapped:
+
+         COALESCE((SELECT "New_ID" ... 'utility'), "Utility_ID"::bigint)
+
+     Pack_Status, Visit_Outcome and the adopter are all resolved by NAME
+     in Legacy_Connection_Resolved and cannot silently point at the
+     wrong thing. The utility can, and the property configs showed what
+     that costs. Row 3.1 prints what each old id would become against
+     THEIR Utility table rather than mine - my test seeding of
+     1=Electric, 2=Gas, 3=Water is a guess and the row exists so nobody
+     has to trust it.
+
+     **Only 13,176 of 25,590 adopters resolve to an organisation.** The
+     unmatched ones are abbreviations: ENW, ESP, IWNL, Lastmile, Leep
+     Utilities, MUA, MUA Water, NWL and more. The view matches on the
+     organisation's full Name, and the old system recorded short forms.
+     12,414 connections would import with no adopter unless those are
+     mapped - not fatal, and fillable on a re-run since rows are matched
+     on their legacy id, but worth deciding before rather than after.
+
+     Also measured: 32,174 of 32,416 visit outcomes match a name, and
+     2 (plot, utility) pairs repeat - trivial, and whether that matters
+     depends on a unique index their database will report in row 2.1.
+
+282. **The pre-flight ran on their database and earned its keep.** Four
+     findings, two of which I had got wrong from my own copy.
+
+     **The utility ids agree, and it is not a coincidence I have to
+     trust.** Row 3.1 came back `1 -> Electric, 2 -> Gas, 3 -> Water`,
+     the same as my test seeding. But the staged data proves it without
+     reference to either table: old utility 1 carries a 13-digit
+     MPAN_MPRN (8,960 rows) and is adopted by ENW; old utility 2 carries
+     a 10-digit one (7,559 rows) and is adopted by Cadent; old utility 3
+     carries none at all and every adopter on it is a water company -
+     United Utilities, Severn Trent, Yorkshire Water, Welsh Water,
+     Anglian Water, NWL. MPAN is 13 digits and electricity, MPRN is 10
+     and gas, water has neither. The three map rows still get written
+     explicitly so the import does not rest on the fallback.
+
+     **I was wrong about the duplicates, by two orders of magnitude.**
+     I reported "2 (plot, utility) pairs repeat - trivial". Their
+     database says 283 pairs, 315 extra rows. I had computed mine
+     against `new_plot_id`, which is NULL for any connection whose plot
+     was not yet imported in my copy, so almost every duplicate was
+     hidden behind a NULL. Counting the raw staging instead gives 267
+     pairs and 299 extra rows in my own file - the same scale as theirs
+     all along. **A count filtered by a join is not a count of the
+     data.** Row 2.4 should have grouped on the raw `Plot_ID`.
+
+     This matters because row 2.1 reports `UNIQUE ("Plot_ID",
+     "Utility_ID")` on Plot_Utility. 315 rows will fail it.
+
+     What the duplicates are is clear once read: the old system kept one
+     row per VISIT, the new one keeps one row per plot per utility. Each
+     pair is an earlier `Aborted` visit with no connection date and no
+     meter, and a later `Completed` one with both. 225 of 267 groups
+     have exactly one dated row, 39 have none, 3 have more than one, and
+     the largest group is 3 rows. So the rule is to keep the dated
+     completed visit and drop the aborted attempt:
+     `ORDER BY (Connection_Date IS NOT NULL) DESC, Connection_Date DESC
+     NULLS LAST, Plot_Utility_ID DESC` and take rank 1. The visit
+     history is not representable in the new schema and is lost either
+     way; this loses the attempt rather than the outcome.
+
+     **Pack statuses: the new table only has two of the five states.**
+     Pack_Status holds Submitted and Accepted. The old data holds
+     Returned (22,076), Submitted (10,223), Pack In Progress (95),
+     Issued (54) and IT Issues (22). Unlike Visit_Outcome, the import
+     has no text column to fall back on - `Pack_Status_ID` is the only
+     place it goes - so 22,247 rows lose their status entirely unless
+     the four missing states are added first.
+
+     **The adopters are a naming problem, and a flat rename cannot fix
+     them.** Listing every organisation that carries an active network
+     role shows most of the unmatched names are present under their long
+     form: ENW is Electricity North West, NWL is Northumbrian Water,
+     Severn Trent is Severn Trent Water, Leep Utilities is Leep
+     Networks. Four are absent and need creating: IWNL, MUA, MUA Water,
+     Thames Water, Lastmile.
+
+     But **ESP is ambiguous and must be resolved per utility.** 2,827
+     ESP rows are on electricity, 2,669 on gas, 396 on water, and the
+     table holds three separate organisations - ESP Electricity (idno),
+     ES Pipelines (igt), ESP Water (iwu). The same is true of Lastmile.
+     So the alias map is keyed on (name, utility), not on name: look up
+     `Kind = 'adopter:' || utility_id` first, fall back to
+     `Kind = 'adopter'`.
+
+     **pu_pack_trg is still unread.** Row 2.3 reports a trigger firing
+     on every INSERT into Plot_Utility. It is not in the repository and
+     it is not in my test copy - the same gap that broke the plot import
+     three times, except this time it was found before the insert rather
+     than by it. `recalc_project_points` read 19.5 million rows when I
+     had guessed it was cheap. 33,367 rows are not going through an
+     unread trigger. `connections_detail.sql` fetches its definition and
+     its function body along with the pack statuses and the full
+     organisation picture, in one read-only statement.
+
+283. **pu_pack_trg read, and it is not a cost problem - it is a
+     correctness one.** The trigger is cheap: two lookups against a
+     five-row table, only when a service card date is present. Nothing
+     like `recalc_project_points`. But it rewrites data:
+
+         IF NEW."Service_Card_Submission_Date" IS NOT NULL
+            AND (OLD IS NULL OR OLD."Service_Card_Submission_Date" IS NULL)
+            AND (status IS NULL OR status IN ('Pack Not Submitted',
+                                             'Pack In Progress'))
+            THEN NEW."Pack_Status_ID" := <Submitted>
+
+     Right for a pack being submitted in the app today. Wrong for
+     history. And it turns the pack status gap from a loss into a
+     falsehood: 22,072 `Returned` rows resolve to NULL against the
+     register as it stands, and any of them carrying a service card date
+     would have been inserted as **Submitted**. A missing status reads
+     as missing; a wrong one reads as real.
+
+     Their Pack_Status holds Pack Not Submitted, Pack In Progress,
+     Submitted, Accepted and Rejected - five, not the two my test copy
+     had. Missing: Returned (22,072), Issued (284), IT Issues (22).
+
+     **0256_connection_lookups.sql** puts the prerequisites in:
+
+     - the three pack statuses, by name, with explicit ids because
+       Pack_Status has no sequence on its key;
+     - four organisations that are genuinely absent - Independent Water
+       Networks (IWNL, 3,327), MUA (2,252 + 71 as "MUA Water"), Last
+       Mile (193), Thames Water (38) - with their roles resolved by
+       Type_Key and their Organisation_Utility rows written, because
+       0172's own note says an operator with no utilities "appears in
+       the list and is offered by nothing";
+     - the utility map, three rows, written explicitly even though the
+       ids agree;
+     - adopter aliases for the six that were present under longer names
+       (ENW, NWL, Severn Trent, Leep Utilities) plus the four new ones;
+     - **ESP keyed on the utility**, because the register holds ESP
+       Electricity (idno), ES Pipelines (igt) and ESP Water (iwu) as
+       three organisations and the old data calls all of them "ESP":
+       2,827 electric, 2,669 gas. The view tries
+       `Kind = 'adopter:' || utility_id` first, then `Kind = 'adopter'`.
+       There is deliberately no bare 'ESP' row, so ESP on water - which
+       does not occur in this export - stays blank rather than guessed.
+     - and the view gains `dup_rank`, partitioned on the RAW legacy plot
+       id rather than new_plot_id, which is the mistake that hid 281 of
+       the 283 duplicates from me.
+
+     **Every step is wrapped in its own exception handler** and writes
+     to a Legacy_Migration_Log the final SELECT reads back. Pack_Status
+     and Plot_Utility both pre-date the baseline, so their real column
+     lists are not in this repository; a column I do not know about now
+     makes one step report a failure instead of taking the other three
+     down with it.
+
+     **import_connections.sql** disables pu_pack_trg for the insert so
+     the import lands exactly what the old system recorded, counts the
+     rows the trigger would have changed (41) so that inference can be
+     applied afterwards as a one-line UPDATE, puts the trigger back in
+     PART C, and carries the undo for both in PART E.
+
+     **Verified against a Plot_Utility rebuilt from their catalogue
+     output** - every column the import writes, UNIQUE ("Plot_ID",
+     "Utility_ID"), Plot_Utility_Legacy_UQ, Updated_At, and both
+     triggers with the function bodies verbatim. Not the stub I had been
+     testing against, which had nine columns and no triggers at all and
+     would have passed anything.
+
+     13,717 plots imported (every plot the connections name), then:
+     32,757 connections inserted, 299 superseded visits dropped, 3
+     waiting on a tender plot - 33,059 accounted for. Electric 11,244,
+     gas 9,635, water 11,878. Then checked, not assumed:
+
+     - **0 pack statuses rewritten**, 22,021 `Returned` rows kept their
+       status - all of which would have been NULL before 0256.
+     - **0 adopters lost to a failed match.** All 7,210 rows without an
+       adopter had a blank one in the source; not one named an
+       organisation that failed to resolve. 25,590 of 25,590 resolve.
+     - **0 superseded visits landed and 0 rank-1 rows missing.**
+     - **Re-running inserts 0.** Both files are idempotent.
+     - **An app-entered connection is not trampled.** Deleted an
+       imported row, put an app row on the same (plot, utility) with no
+       legacy id, re-ran: the import skipped the pair instead of failing
+       the unique constraint, and the app row was left exactly as it
+       was. That second NOT EXISTS is the plot import's lesson applied
+       before the failure rather than after it.
+
+284. **Part B failed on a foreign key, and my pre-flight never asked
+     about foreign keys at all.**
+
+         ERROR: insert or update on table "Plot_Utility" violates
+         foreign key constraint "Plot_Utility_IDNO_ID_fkey"
+         DETAIL: Key (IDNO_ID)=(925) is not present in table "IDNO".
+
+     `Plot_Utility.IDNO_ID` references a table called **IDNO**, not
+     Organisation. The view has been resolving the adopter to an
+     `Organisation_ID` and the import has been writing it into
+     `IDNO_ID`. That was wrong before 0256, before the aliases, before
+     any of today — it would have failed on the first adopter whatever
+     the mapping said.
+
+     `preflight_connections.sql` row 2 asked about NOT NULL columns,
+     2.1 about unique constraints and indexes, 2.2 about check
+     constraints, 2.3 about triggers. `contype` was tested for `'u'`,
+     `'p'` and `'c'`. Never `'f'`. **This is the plot import's lesson
+     landing in a new column of the same table**: there I patched the
+     constraint that had just broken and ran again, three times; here I
+     wrote a pre-flight that enumerated everything I had been bitten by
+     and nothing I had not.
+
+     **E_every_foreign_key.sql** answers the whole class instead of this
+     one key. It reads every FK off the catalogue and, for each, counts
+     how many of the values *the import would actually send through it*
+     are missing from the target — using the import's own expression per
+     column, so it catches IDNO_ID being fed an Organisation_ID rather
+     than just counting staged ids. Row 3.1 names any key the script
+     has no expression for, so a key I have not anticipated cannot pass
+     silently.
+
+     Validated against the six keys reproduced in the test cluster, and
+     it found the failure that was queued up behind this one:
+
+         3 IDNO_ID -> IDNO   14 of 17 distinct values are NOT in IDNO
+         3 Team_ID -> Team   65 of 65 distinct values are NOT in Team
+
+     **Team_ID was going to be the next error.** 0066 adds
+     `Team_ID bigint REFERENCES "Team"` and says of that table
+     "deliberately unseeded — the teams are yours to name". The import
+     writes the old system's raw Team_ID, which is the utility trap
+     exactly: an id carried across between two systems that reuse id
+     numbers for different things. With the FK it fails; without one it
+     would have pointed 33,052 connections at whichever teams got
+     created later.
+
+     Plot_ID, Utility_ID, Pack_Status_ID and Visit_Outcome_ID all came
+     back 0 of n, so those four are sound.
+
+     The shape of the fix depends on something I have still never seen:
+     Plot_Utility's actual column list. 0062, 0070 and 0120 each add an
+     `..._Organisation_ID` alongside a legacy `IDNO_ID` and say in terms
+     that new work should read the new one. If Plot_Utility already has
+     such a column the adopter belongs in it. Section 1 of the script
+     prints the column list, section 4 dumps the IDNO list with its
+     Organisation_ID links, and only the water undertakers and gas
+     transporters can have nowhere to go — IDNO is, by its name, a list
+     of IDNOs.
+
+285. **The adopter had a column waiting for it all along, and the team
+     ids are the property config trap again.**
+
+     Their Plot_Utility carries **both** `IDNO_ID bigint REFERENCES
+     "IDNO"` and `IDNO_Organisation_ID bigint REFERENCES "Organisation"`.
+     0062 and 0070 added that second column to AV_Invoice and
+     AV_Agreement saying "the old IDNO_ID stays for now but new work
+     should read this one", and 0120 finished the move for the pipe size
+     rules. The adopter was never meant to go in IDNO_ID. No schema
+     change needed; the import was simply writing to the wrong column.
+
+     Worth noting that **E's own row 3.1 is what found this**. It names
+     every foreign key the script has no expression for, and it printed
+     `IDNO_Organisation_ID` - the column I would otherwise have had to
+     guess at. A pre-flight that reports its own blind spots beats one
+     that reports only what it thought to ask.
+
+     **B2 fills IDNO_ID too, but by following the organisation to its
+     IDNO row** - `SELECT "IDNO_ID" FROM "IDNO" WHERE "Organisation_ID"
+     = <org>` - never by assuming the numbers agree. Seven IDNO rows
+     exist, each with an Organisation_ID. An adopter that is a water
+     undertaker or a gas transporter has no IDNO row and leaves it null,
+     which is right: it is not an IDNO. 13,791 of the imported rows
+     reach one.
+
+     **Team_ID is no longer written at all.** 0066 created Team
+     "deliberately unseeded - the teams are yours to name", and thirteen
+     real teams have been named since. The old system's ids run to 65:
+
+         61 do not exist in Team and would have failed the key
+          4 DO exist, and would have put 2,605 connections on
+            MU Team 1 - North West, MU Team Yorkshire, Jointing Team
+            North West and Jointing Team Midlands
+
+     Old 1 is not new 1 any more than old config 1 (1BD) was new config
+     1 (3BS). The only reason the four did not slip through silently is
+     that the other sixty-one failed loudly. Nothing is lost: the old
+     Team_ID stays in Legacy_Connection_Import, every row carries its
+     Legacy_Plot_Utility_ID, and an export of the old Team table would
+     let it be mapped by name and backfilled on a re-run - the route the
+     heat sources and property configs took.
+
+     Re-ran A, B2, C, D in order against the rebuilt table with all
+     seven foreign keys in place: 32,757 inserted, 0 adopters lost, 0
+     pack statuses rewritten, 0 Team_IDs written, trigger back on. Then
+     re-ran E with its expressions updated to match B2 - **every foreign
+     key now reports 0 of n, and row 3.1 reports every key checked.**
+     E is now a true pre-check rather than a post-mortem: change the
+     import and re-running it re-checks the change.
+
+286. **Correction from Allan: the IDNO table is the OLD model and should
+     not be fed.** "the old database had a table for IDNOs but the new
+     database uses Organisations where it will have a Role of IDNO."
+
+     I had B2 filling IDNO_Organisation_ID *and* IDNO_ID, following the
+     organisation to its IDNO row - careful about not assuming the ids
+     line up, but wrong about whether to write it at all. 0120 is the
+     tell I read and did not act on: it dropped IDNO_ID from
+     Water_Pipe_Size_Operator once every row had an organisation. The
+     table is on its way out.
+
+     So B2 writes the organisation and nothing else. One column holds
+     the IDNO, the DNO, the gas transporter and the water undertaker,
+     which is the point of the role model - and the earlier worry about
+     water undertakers "having nowhere to go" was an artefact of writing
+     to the legacy column in the first place.
+
+     D row 2.3 now expects 0 IDNO_IDs rather than reporting how many
+     were filled, and E's expression for that key reads NULL so the
+     check tracks what the import does.
+
+     Re-ran A, B2, C, D: 32,757 inserted, 0 adopters lost, 0 pack
+     statuses rewritten, 0 IDNO_IDs, 0 Team_IDs, trigger back on. E
+     reports 0 of n on all seven keys with every key checked.
+
+287. **The bill of materials was ordering the drawn length.** Reported
+     by Allan for cable, unsure about pipe. It was every line on the
+     drawing — cable, gas, water and trench alike — because `gis_bom`
+     sums them all in one expression:
+
+         ROUND(SUM(COALESCE((f."Attributes" ->> 'Length_m')::numeric, 0)), 2)
+
+     `Length_m` is written by `gis_length_trg` off the geometry on every
+     change. It is the drawing. `Measured_Length_m` is the one a person
+     typed because the plan is flat and the run is not.
+
+     **The comment that got it wrong is in the repository, in my own
+     words.** When the two lengths were split into two columns,
+     lengths.js recorded: "`Length_m` goes back to being the trigger's
+     own mirror of the drawing (the bill of materials reads it in SQL
+     and is unaffected)." Unaffected was true as a sentence about SQL
+     and wrong about the bill. Every consumer in the browser was moved
+     to `runLength()`; the one that turns into a purchase order was in
+     SQL, out of sight, and was left behind.
+
+     Reproduced on a focused schema before writing anything — the
+     eleven tables `gis_bom` touches, the real 0229 function, and a
+     drawing with a measurement on four line types:
+
+         bill said            should say
+         Main Cable  150 m    180 m
+         Service      20 m     26 m
+         Gas Main    200 m    240 m
+         Water Main   80 m     92 m
+         Trench      300 m    330 m
+
+     **0257_bom_measured_length.sql** replaces the function with the
+     measurement where somebody entered one and the drawing everywhere
+     else — the same rule as `runLength()`, so the sheet and the canvas
+     cannot disagree. Verified: all five rows come out right, and
+     re-running changes nothing else on the sheet.
+
+     **It also fixes a crash that was already there.** The old
+     expression cast `Length_m` straight out of jsonb, so one feature
+     carrying a non-numeric length failed the WHOLE bill with "invalid
+     input syntax for type numeric". Confirmed by running the old
+     function against such a row — it raises; the new one bills that row
+     at nothing and leaves the sheet standing. The cable and pipe joins
+     have guarded against exactly this since 0117; the quantity never
+     did.
+
+     **checkbommeasured.mjs** holds the newest `gis_bom` and
+     `runLength()` to the same rule. `gis_bom` is replaced wholesale
+     every time any part of it changes, so each rewrite is a fresh
+     chance to drop the measurement again.
+
+     **The check passed before it should have, and I nearly shipped
+     that.** Its last assertion looks for the wrong claim still sitting
+     in lengths.js. The claim is wrapped across two comment lines, the
+     pattern was written as one, and it matched nothing and reported
+     "all passed" while the sentence was still there. It now collapses
+     whitespace first — and it failed on my own rewrite until I stopped
+     quoting the old sentence verbatim, which is the check working. A
+     check that cannot fail is worse than no check, because it is
+     believed.
+
+     **Not changed, deliberately: the labour rows.** Excavation and
+     laying hours are built in the browser from trench geometry
+     (bomLabour.js -> contentsOf -> lengthOf) and still read the drawn
+     length. Whether a measured run means more digging is a trade
+     judgement rather than a fault, and the same geometry decides which
+     cables are INSIDE a trench — a spatial test that must stay drawn.
+     Raised with Allan rather than quietly changed.
+
+     Whole suite run before and after against a worktree at HEAD: no
+     check fails that was not already failing. The pre-existing ones are
+     the six migrations absent from the folder (0198, 0208, 0210, 0221,
+     0222, 0238) and the two files both numbered 0229 — which is why
+     0257 is written from `0229_bom_no_annotation.sql`, the superset, so
+     a database that got the other one picks up the annotation exclusion
+     as well.
+
+288. **Allan: "measured length means more digging and longer lengths to
+     lay."** So the labour follows it too, and `measuredScale` moves to
+     lengths.js where it can be read once.
+
+     It already existed as a private closure inside feeder.js. Three
+     places need it now — the volt drop, the bill's labour rows and the
+     call-off estimator — and three private copies would be three
+     chances for them to read one trench three different ways, which is
+     the fault that split `Length_m` into two columns in the first
+     place. One copy, exported, with the drawn/measured distinction
+     stated where the other two length functions already live.
+
+     - **bomLabour.js** `lengthM: res.trenchM * measuredScale(trench)`.
+       digEstimate takes it from there: the volume is length x width x
+       depth and the laying is length over a rate per utility, so one
+       multiplier reaches both the digging and the laying.
+     - **spanContents.js** the same multiplier on top of the existing
+       span-against-sections `scale`, so a call-off and the bill cannot
+       quote different hours for the same trench.
+     - **trenchSize is deliberately NOT scaled.** It is a cross-section,
+       and `concurrentCount` reads a RATIO of content length to trench
+       length which the multiplier cancels out of. Scaling one side and
+       not the other is the only way to get that wrong, so neither is
+       scaled.
+
+     **checkbommeasured** gained behavioural cases - run through
+     `bomLabour`, not read out of the source, because an import that is
+     present and unused passes a source test and changes no hours.
+     Proven to fail: with the multiplier taken back out, both the
+     laying and the digging assertions go red.
+
+     **My first assertion was wrong and blamed the code.** I asserted
+     the laying ratio was exactly 1.5 and it came back 1.515, which
+     reads as a bug in the scaling. It is not: bomLabour rounds every
+     row to a tenth of an hour before it reaches the bill, so 3.333 h is
+     published as 3.3 and a ratio taken against the published figure is
+     off by the rounding. Compared in hours against a 0.1 tolerance
+     now, with why in the comment - a test that is wrong about the code
+     is worse than no test, because the next person fixes the code.
+
+     Whole suite before and after: no check fails that was not already
+     failing.
+
+289. **A test run on one contract first: AP1989.** Allan's call, and a
+     better one than going straight at 33,052 rows.
+
+     `AP_Number` is a column on Project, written by the contract import
+     from the staged `Legacy_Import."AP_Number"`. AP1989 is 2208.030,
+     Richmond Point, Lytham St Annes.
+
+     Three files. **T1** looks: the project, its plots, what would be
+     written and how it splits, what is already there, and the adopters
+     and pack statuses the contract actually uses - counted the same way
+     T2 selects, so the two cannot disagree about what "this contract"
+     means. **T2** writes it. **T3** removes exactly what T2 wrote.
+
+     On my copy: 219 connections across 89 plots, electric 64, gas 80,
+     water 75, two superseded visits dropped, adopters GTC and United
+     Utilities, pack statuses Returned and Submitted. Returned is the
+     one that matters - it is one of the three 0256 adds, and without
+     it `pu_pack_trg` would have stamped some of these Submitted.
+
+     **The trigger work moved into a DO block, and I had claimed
+     something I had not checked.** T2's first draft said "the editor
+     runs a script as one transaction" and relied on that to keep
+     DISABLE, INSERT and ENABLE together. I have not verified what the
+     Supabase editor does, and the first full attempt is evidence
+     against assuming: PART A disabled the trigger, PART B failed, and
+     the trigger stayed down until PART C was run on its own.
+
+     A plpgsql block is its own transaction whatever the editor does
+     around it. The handler re-enables and `RAISE` re-raises the
+     original error untouched - a handler that reports something
+     friendlier is one that hides which constraint refused the data.
+
+     Verified on the cluster, all four:
+
+     - 219 written, every check row 0, trigger enabled afterwards.
+     - **Re-running adds nothing** - still 219.
+     - **A forced failure inside the block leaves the trigger
+       ENABLED** and re-raises the real error. Tested by breaking the
+       INSERT's column count on purpose.
+     - **An app-entered connection is untouched by both.** Put a row
+       with no legacy id on one of AP1989's plots: T2 wrote 218 instead
+       of 219, skipping that plot and utility, and T3 removed 218 and
+       left the app row standing.
+
+290. **AP1989 test run: two mismatches reported, and one of them is
+     partly my framing.** Allan, against the original system:
+
+         Water     87 plots, 88 connections (plot 41 twice, one aborted)
+         Electric  68 plots, 68 connections
+         Gas       83 plots, 84 connections
+
+     and "the Adopters (IDNO) are GTC and IWNL - not United Utilities".
+
+     **T1 reported connections where he was counting plots**, which is
+     part of the gap and my fault for reporting one number and calling
+     it the contract's size. C1 reports both, per utility.
+
+     **The rows are the right rows.** The chain holds - contract 326 =
+     AP1989 = Richmond Point, 2208.030 - and my copy independently has
+     **plot 41 on water twice, Completed and Aborted**, which is the
+     duplicate he named without my having looked for it. So this is not
+     the wrong contract.
+
+     **The IDNO_ID column is not the answer.** The staging carries both
+     a free-text `Adopter` and the old `IDNO_ID`, and the import has
+     only ever read the first - a plausible miss, and wrong: `IDNO_ID`
+     is empty on every row of this contract, and on 33,059 staged rows
+     only **125** carry one at all. The old system's own IDNO_ID column
+     is as empty as the import's comment has said since the start.
+
+     **What the row dump shows.** Plots 38-42, connected 2026-09-01,
+     carry no adopter and no MPAN. Plots 257+ , connected 2025-06-11,
+     carry GTC and an MPAN. The blank-adopter rows are the recent ones.
+     That is consistent with the export predating adopters being set,
+     and consistent with nothing else I can test from here.
+
+     So: **C1** counts it his way, **C2** dumps all ~250 rows one per
+     line to put beside the screen. A total cannot say WHICH three
+     electric rows are extra; a list can. Both read-only.
+
+     The open question for him is when the connections CSV was taken.
+     If the old system now shows IWNL on rows the file leaves blank,
+     the file is stale and a fresh export fixes it on a re-run - every
+     row carries its Legacy_Plot_Utility_ID, so re-running fills in
+     without duplicating.
+
+291. **Allan is re-exporting the Plot Utility CSV**, which is the right
+     move: it settles the adopter question by evidence rather than
+     argument, and it costs nothing, because every imported row carries
+     its `Legacy_Plot_Utility_ID` and a re-run fills in what changed
+     without duplicating.
+
+     **reload_connections.psql** does it, and the DELETE at the top is
+     the whole point of the file. The staging tables have no key to
+     collide on - deliberately, so a file arriving in pieces can be
+     added to - so loading a second export on top of the first would
+     give 66,000 rows, every connection twice, and every count from
+     here on quietly doubled. This replaces rather than adds.
+
+     Round-tripped on the cluster: exported the staged rows back out in
+     the export's own 29-column header order, ran the file, got
+     `DELETE 33059` then `COPY 33059` and the same 25,590 adopters and
+     125 IDNO_IDs back. The view and dup_rank still resolve afterwards.
+
+     Its closing SELECT reports rows, adopters named and IDNO_IDs
+     carried, so the three figures that matter are visible the moment
+     the load finishes rather than needing another trip to the editor.
+
+292. **The adopter is a CONTRACT-level IDNO, and the connection's
+     Adopter text is not to be trusted.** Allan re-exported the Plot
+     Utility file to pick up recent connections. Loaded and measured
+     before suggesting he do anything with it:
+
+     - 33,475 rows, 96 more than before;
+     - **25,590 name an adopter — identical to the old file**, not one
+       more;
+     - AP1989's water connections still say "United Utilities".
+
+     So the file was not stale in the way I guessed. I had told him a
+     fresh export would probably settle it. It does not.
+
+     Two places I checked and ruled out before finding the right one,
+     both worth recording so nobody re-checks them: the connection's
+     own `IDNO_ID` is carried by 125 of 33,475 rows and none on this
+     contract; and the plot export's `Electric_IDNO_ID`,
+     `Gas_IDNO_ID` and `Water_IDNO_ID` are empty on **all 333,950
+     plots**.
+
+     It is on the CONTRACT. `Legacy_Project_Import` carries the same
+     three columns, and contract 326 reads Electric 4, Gas 4, Water 6 —
+     one company on electric and gas and another on water, which is
+     exactly "GTC and IWNL" as he described it.
+
+     **And the free-text Adopter actively disagrees with it.**
+     Correlating every contract's IDNO against the adopter words on its
+     connections:
+
+         IDNO  4  electric  GTC 2,627        gas  GTC 2,442
+         IDNO  6  water     IWNL 2,385   but United Utilities 1,056
+         IDNO 21  water     United Utilities 768   but IWNL 93
+         IDNO 24  water     United Utilities 763   but ESP Water 321
+
+     1,056 connections on IWNL contracts say United Utilities in the
+     text field. That is not a stale export, it is a field that was
+     never maintained — and the import has been reading it as the
+     adopter since the first draft.
+
+     **So the import changes: the adopter comes from the contract's
+     IDNO for that utility.** Which needs the old system's IDNO table
+     exported — id and name — because deriving the names from a field
+     this unreliable is exactly the mistake that produced the problem.
+     Asked for.
+
+     Still open and NOT explained by any of this: his counts are 3
+     electric, 4 gas and 3 water fewer than the staging holds for
+     AP1989.
+
+293. **The count discrepancy was vintage, not data, and the new export
+     matches the live system exactly.**
+
+     Allan asked which plot numbers the extra rows sat on. There are
+     none. Loading the new export into the cluster and importing the
+     rest of contract 326's plots (653 more, so my copy mirrors his 742
+     rather than the 89 I had):
+
+         Electric  68 plots, 68 connections
+         Gas       83 plots, 84 connections
+         Water     87 plots, 88 connections
+
+     which is what he reported from the original system, to the row,
+     including the single water duplicate on plot 41.
+
+     Three vintages are in play and that is what made this look like a
+     fault:
+
+         my copy          33,059   AP1989: 64 / 80 / 75  — too few
+         his staging      33,380   AP1989: 71 / 87 / 90  — too many
+         the new export   33,475   AP1989: 68 / 83 / 87  — exact
+
+     The rows that looked extra - including an undated gas duplicate on
+     plot 41 with no visit outcome at all, which is what put me on to
+     "empty placeholder rows" - have been deleted in the source since
+     his first export. I was about to build a query to classify rows by
+     emptiness. Importing the missing plots and comparing totals cost
+     one statement and answered it.
+
+     **The lesson is the same one as the 283 duplicates.** I compared
+     his figures against a copy that held a different file AND a
+     different subset of plots, and read the difference as a defect in
+     the import. Make the copies match first, then compare.
+
+     The adopter remains open and is the real finding (292): it is the
+     contract's IDNO, not the connection's Adopter text. Waiting on the
+     old system's IDNO table, id and name.
+
+294. **The IDNO table arrived and 0258 wires the adopter to it. AP1989
+     now reads GTC, GTC, Independent Water Networks.**
+
+     **Asking for the table rather than inferring it was right, and the
+     evidence is in the file.** The correlation that found the fault
+     would have named two ids wrongly: IDNO 34 it put at Severn Trent
+     (it is **Dee Valley Water**) and IDNO 42 at IWNL on a majority
+     vote of 236 to 192 (it is **Yorkshire Water**). Both would have
+     been wrong in the quiet way — a plausible operator against a real
+     contract, with every count still adding up.
+
+     Three operators the old register has and the new one does not, so
+     0258 creates them: Dee Valley Water (186 connections), Northern
+     Gas Networks (63), Western Power Distribution (102).
+
+     **Western Power Distribution is kept as itself.** It is National
+     Grid Electricity Distribution under its former name, and the
+     register already holds the new one. Folding them together is an
+     editorial decision about the register; a migration that makes it
+     quietly has destroyed the evidence for making it the other way.
+
+     **IDNO 35 is deliberately unmapped.** One connection, named
+     "National Grid", and the only organisation of that name in the
+     register is a CUSTOMER — the operator is called National Grid
+     Electricity Distribution. Row 3 of the report names it rather than
+     guessing at it.
+
+     Where the adopter now comes from, across all 33,476:
+
+         contract IDNO   24,084
+         adopter text     6,503
+         neither          2,889
+
+     30,587 resolve, against 25,590 before — and the 25,590 were
+     resolving a field that disagrees with the contract a thousand
+     times, so the gain is larger than the numbers suggest.
+
+     The text is KEPT as a fallback rather than dropped: 6,503
+     connections sit on contracts naming no IDNO for their utility, and
+     a questionable name beats nothing where the authority is silent.
+     Where both speak the contract wins. `adopter_source` is a new view
+     column saying which answered, so this is auditable row by row
+     instead of by total.
+
+     **CREATE OR REPLACE VIEW can only append columns**, so
+     adopter_source sits at the end rather than beside the adopter
+     where it belongs. Slotting it in gives "cannot change name of view
+     column", and DROP ... CASCADE to get round it would take whatever
+     is built on the view with it.
+
+     T2 and D had an assertion testing the field we now know is wrong —
+     "named an adopter in text and did not get one". Both now test
+     `adopter_source <> 'neither'`: a source spoke and the import lost
+     it. Re-ran the AP1989 test end to end on the new export: 238 rows,
+     electric 68, gas 83, water 87 — his plot counts exactly — and
+     **238 of 238 carry an adopter**, against 156 of 219 before.
+
+295. **C4_adopter_sanity.sql — checking the IDNO map against something
+     it cannot influence.**
+
+     30,587 resolved is the same number whether they resolved to the
+     right companies or the wrong ones. That is precisely how the
+     free-text Adopter looked correct for a fortnight, and a second
+     count of the same mapping would have the same blind spot.
+
+     So the check is made against the ROLE MODEL. An organisation
+     adopting a water connection must hold wu or iwu; gas must hold gt
+     or igt; electric idno or dno. That is a fact about the trade,
+     recorded in the register, and nothing in the IDNO map can arrange
+     it. The two agreeing means the map is right for reasons unrelated
+     to how it was built.
+
+     On the cluster: **row 1 comes back clean** — every one of the
+     30,587 holds a role for its own utility.
+
+     **And it was made to fail before being believed.** Pointed IDNO 6
+     (Independent Water Networks) at Cadent, which holds gt and nothing
+     else: `STOPS IT — 4431 connections: Water -> Cadent (holds gt, via
+     contract IDNO)`. Restored and clean again. This morning I shipped
+     a check that passed vacuously because its pattern was written on
+     one line and the text it looked for was wrapped across two; a
+     check nobody has seen fail is not evidence.
+
+     What else it found:
+
+     - **3,753 connections name one company in the text and another on
+       the contract.** My earlier figure was 1,056, and that was IDNO 6
+       alone.
+     - 2,889 connections across 121 projects have no adopter from
+       either source, and 4.2 names the ten worst — AP2160 (90),
+       AP2318 (87), AP2067 (83) — which is a work list for filling the
+       contracts in rather than a fault in the import.
+     - Row 5 prints the map with each organisation's roles, so the
+       whole thing is readable in one place.
+
+     One SQL note worth keeping: a correlated subquery naming a column
+     that is not in the GROUP BY is "ungrouped column from outer
+     query", however obviously functionally dependent on a grouping
+     column it is. `min()` over it, or grouping by it, is the way out.
+
+296. **AP1989 imported on the live database. 238 rows, every check
+     clean.**
+
+         Connections imported   238 — Electric 68, Gas 83, Water 87
+         With an adopter        238 of 238
+         Lost an adopter          0     Pack status rewritten  0
+         Legacy IDNO_ID/Team_ID   0 / 0
+         Trigger                enabled
+         Outside AP1989           0
+
+     And C5 on his data: water reads Independent Water Networks from
+     contract IDNO 6, with "United Utilities" still sitting in the text
+     column beside it. The contrast is the point - a report showing
+     only the corrected value would not have proved the fix took.
+
+     Getting there turned up a loading wrinkle worth recording. His
+     psql session had been idle since the first connection and Supabase
+     closed it mid-script: the client reported "server closed the
+     connection unexpectedly" on all three statements, but the COPY had
+     in fact reached the server. The count he read afterwards said
+     33,380 and the next run's DELETE removed 33,476. **A client-side
+     connection error is not evidence that the server did nothing.**
+     Settled it with `count(*)` against `count(DISTINCT
+     "Plot_Utility_ID")` - 33,476 and 33,476, so exactly one copy.
+
+     **F_import_all_connections.sql** is T2 with the contract filter
+     taken out and the same DO block around the trigger. Row 8 asserts
+     AP1989 still holds exactly 238 rows afterwards, because the test
+     run must survive the full run rather than be done twice - the
+     legacy-id guard is what makes that true and the row is what proves
+     it.
+
+     On the cluster: 32,815 written in 6.7 seconds, AP1989 still 238,
+     every check 0, trigger enabled. Re-running adds nothing.
+
+297. **The Plot Connections page showed 1 of AP1989's 238, and the
+     reason was two faults stacked.**
+
+     **The search box never looked at the AP number.** It matched
+     project ref, site name and plot number, and its own placeholder
+     said so. AP1989's project ref is 2208.030 and its site is Richmond
+     Point — so searching "1989", which is how the business names the
+     contract, found nothing at all and read as "the import did not
+     work".
+
+     **And `/api/connections` stopped at 2,000 rows with no ORDER BY.**
+     `.limit(Number(...) || 2000)`, set when there were a couple of
+     thousand connections. 33,000 came in from the original app. Which
+     2,000 came back was Postgres's business, and the page said nothing
+     about the rest: the groups on his screen added to 1,348 and
+     AP1989's badge read 1. **A count that is wrong and looks right is
+     worse than an error**, and this one is on a page people plan gangs
+     from.
+
+     Fixed both:
+
+     - `AP_Number` added to the Project embed, surfaced as `_apNumber`,
+       given its own column, added to the search, and put in the group
+       heading beside the ref.
+     - The endpoint pages through every row, ordered by the key so
+       pages cannot overlap or skip.
+
+     **And the first version of the fix rebuilt the same fault.** I
+     stopped the loop on `page.length < PAGE`. PostgREST has a max-rows
+     of its own: ask for 1,000 where the server allows 500 and every
+     page is short, so the loop would stop at 500 rows and call it the
+     whole table — silent truncation, rebuilt inside the fix for silent
+     truncation. It now advances by what came BACK and stops only on an
+     empty page. Tested against a stub server that caps at 3 rows a
+     page: all 10 collected, no duplicates.
+
+     `truncated` is returned and shown as a banner if the hard ceiling
+     is ever hit, rather than assumed impossible.
+
+     Whole suite: no check fails that was not already failing.

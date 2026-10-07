@@ -12818,3 +12818,45 @@ plus generic table editors.
        with no legacy id on one of AP1989's plots: T2 wrote 218 instead
        of 219, skipping that plot and utility, and T3 removed 218 and
        left the app row standing.
+
+290. **AP1989 test run: two mismatches reported, and one of them is
+     partly my framing.** Allan, against the original system:
+
+         Water     87 plots, 88 connections (plot 41 twice, one aborted)
+         Electric  68 plots, 68 connections
+         Gas       83 plots, 84 connections
+
+     and "the Adopters (IDNO) are GTC and IWNL - not United Utilities".
+
+     **T1 reported connections where he was counting plots**, which is
+     part of the gap and my fault for reporting one number and calling
+     it the contract's size. C1 reports both, per utility.
+
+     **The rows are the right rows.** The chain holds - contract 326 =
+     AP1989 = Richmond Point, 2208.030 - and my copy independently has
+     **plot 41 on water twice, Completed and Aborted**, which is the
+     duplicate he named without my having looked for it. So this is not
+     the wrong contract.
+
+     **The IDNO_ID column is not the answer.** The staging carries both
+     a free-text `Adopter` and the old `IDNO_ID`, and the import has
+     only ever read the first - a plausible miss, and wrong: `IDNO_ID`
+     is empty on every row of this contract, and on 33,059 staged rows
+     only **125** carry one at all. The old system's own IDNO_ID column
+     is as empty as the import's comment has said since the start.
+
+     **What the row dump shows.** Plots 38-42, connected 2026-09-01,
+     carry no adopter and no MPAN. Plots 257+ , connected 2025-06-11,
+     carry GTC and an MPAN. The blank-adopter rows are the recent ones.
+     That is consistent with the export predating adopters being set,
+     and consistent with nothing else I can test from here.
+
+     So: **C1** counts it his way, **C2** dumps all ~250 rows one per
+     line to put beside the screen. A total cannot say WHICH three
+     electric rows are extra; a list can. Both read-only.
+
+     The open question for him is when the connections CSV was taken.
+     If the old system now shows IWNL on rows the file leaves blank,
+     the file is stale and a fresh export fixes it on a re-run - every
+     row carries its Legacy_Plot_Utility_ID, so re-running fills in
+     without duplicating.

@@ -13069,3 +13069,38 @@ plus generic table editors.
      that is not in the GROUP BY is "ungrouped column from outer
      query", however obviously functionally dependent on a grouping
      column it is. `min()` over it, or grouping by it, is the way out.
+
+296. **AP1989 imported on the live database. 238 rows, every check
+     clean.**
+
+         Connections imported   238 — Electric 68, Gas 83, Water 87
+         With an adopter        238 of 238
+         Lost an adopter          0     Pack status rewritten  0
+         Legacy IDNO_ID/Team_ID   0 / 0
+         Trigger                enabled
+         Outside AP1989           0
+
+     And C5 on his data: water reads Independent Water Networks from
+     contract IDNO 6, with "United Utilities" still sitting in the text
+     column beside it. The contrast is the point - a report showing
+     only the corrected value would not have proved the fix took.
+
+     Getting there turned up a loading wrinkle worth recording. His
+     psql session had been idle since the first connection and Supabase
+     closed it mid-script: the client reported "server closed the
+     connection unexpectedly" on all three statements, but the COPY had
+     in fact reached the server. The count he read afterwards said
+     33,380 and the next run's DELETE removed 33,476. **A client-side
+     connection error is not evidence that the server did nothing.**
+     Settled it with `count(*)` against `count(DISTINCT
+     "Plot_Utility_ID")` - 33,476 and 33,476, so exactly one copy.
+
+     **F_import_all_connections.sql** is T2 with the contract filter
+     taken out and the same DO block around the trigger. Row 8 asserts
+     AP1989 still holds exactly 238 rows afterwards, because the test
+     run must survive the full run rather than be done twice - the
+     legacy-id guard is what makes that true and the row is what proves
+     it.
+
+     On the cluster: 32,815 written in 6.7 seconds, AP1989 still 238,
+     every check 0, trigger enabled. Re-running adds nothing.

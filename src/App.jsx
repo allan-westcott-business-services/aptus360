@@ -16,6 +16,7 @@ import Sidebar from "./components/Sidebar.jsx";
 const ProjectsPage = lazyPage("ProjectsPage", () => import("./features/projects/ProjectsPage.jsx"));
 const AdminPage = lazyPage("AdminPage", () => import("./features/admin/AdminPage.jsx"));
 const PlotConnectionsPage = lazyPage("PlotConnectionsPage", () => import("./features/connections/PlotConnectionsPage.jsx"));
+const PlotConnectionsDashboard = lazyPage("PlotConnectionsDashboard", () => import("./features/connections/PlotConnectionsDashboard.jsx"));
 const GISCanvasPage = lazyPage("GISCanvasPage", () => import("./features/gis/GISCanvasPage.jsx"));
 const GenerateAvInvoices = lazyPage("GenerateAvInvoices", () => import("./features/av/GenerateAvInvoices.jsx"));
 const AvInvoicesPage = lazyPage("AvInvoicesPage", () => import("./features/av/AvInvoicesPage.jsx"));
@@ -234,7 +235,12 @@ function Shell({ keys = null }) {
     content = <div className="card"><ProjectsPage areaKey={PROJECT_VIEWS[view]} /></div>;
   }
   else if (view === "admin") content = <div className="card"><AdminPage keys={keys} /></div>;
-  else if (view === "plot-connections") content = <div className="card"><PlotConnectionsPage /></div>;
+  else if (view === "plot-connections") content = <div className="card"><PlotConnectionsPage onOpenDashboard={() => setView("pc-dashboard")} /></div>;
+  /* Its own view rather than a mode of the table. The dashboard reads a
+     different, narrower set of columns and renders a dozen cards where
+     the table renders thousands of rows; sharing a route would mean one
+     of them loading the other's payload. */
+  else if (view === "pc-dashboard") content = <div className="card"><PlotConnectionsDashboard onOpenRows={() => setView("plot-connections")} /></div>;
   else if (view === "gis-canvas") content = <div className="card"><GISCanvasPage /></div>;
   else if (view === "generate-av-invoices") content = <div className="card"><GenerateAvInvoices /></div>;
   else if (view === "av-invoices") content = <div className="card"><AvInvoicesPage /></div>;

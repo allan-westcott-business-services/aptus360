@@ -13279,3 +13279,72 @@ plus generic table editors.
      rather than wasting it, and no group is ever promised more rows
      than it holds. Proven to fail: ignoring the total builds 38,000
      rows against a 2,500 budget and all three relevant cases go red.
+
+302. **The Plot Connections dashboard, ported from the original app.**
+     Allan sent the original Aptus360 — an 8 MB index.html with the
+     whole application in it, dashboard included. Three parent
+     dashboards, nine exception cards, six KPIs and a missing-packs
+     breakdown by team.
+
+     **The first file he sent was the page shell**: sixteen lines and
+     two script tags pointing at assets that were not attached. Nothing
+     to examine, so nothing was built from it. Saying so cost one
+     message; inventing a dashboard and calling it a replica would have
+     cost a great deal more.
+
+     **The rules are in their own module.** `dashboardMetrics.js` holds
+     the sections, the predicates, the KPIs and the date arithmetic;
+     `PlotConnectionsDashboard.jsx` decides only what it looks like. A
+     card reading 412 is exactly as convincing when the predicate is
+     wrong as when it is right, so the half that can be silently wrong
+     is the half that is tested.
+
+     **Outcomes and pack statuses are matched on the WORD, not the id.**
+     The original compares against 'Aborted', 'Completed', 'Issued'; we
+     hold those as ids against lookup tables, so the caller passes
+     resolvers. Keeping the comparison on the word means the predicates
+     read like the originals and a lookup renumbered tomorrow changes
+     nothing — the trap that nearly put 33,000 connections on the wrong
+     utility was an id assumed to mean the same thing in two systems.
+
+     The utility name comes from `lib/utilities.js` rather than the
+     lookups payload, because that is where the rest of the app reads
+     it and the file says it was confirmed against the database. Two
+     sources for the same six names is how a dashboard starts
+     disagreeing with the table beside it.
+
+     **checkconnectionsdashboard.mjs** runs every card against rows
+     built either side of its boundary, with `today` frozen at
+     Wednesday 7 October 2026 — otherwise the "more than five working
+     days" cases would pass or fail by the day of the week the suite
+     ran on, which is a test that reports the calendar.
+
+     Three things it caught, and one it did not until told to:
+
+     - **My expectations were wrong four times**, not the code: I had
+       the jointing cards firing on rows with no outcome, and the
+       five-day line falling where the two-day line does.
+     - Removing the water exclusion from `aslaid_no_sc` fails it.
+     - **Moving the five-day line to four did NOT fail it.** None of my
+       cases sat on the boundary — they were all comfortably either
+       side. Added rows at exactly five and exactly two working days;
+       both mutations now go red. A check that survives the mutation it
+       exists to catch is decoration.
+
+     **Its own endpoint**, `/api/connections-dashboard`, carrying
+     eleven fields rather than the table's set. Two readers of one
+     table wanting different columns is not a reason to make one query
+     serve both badly. It reuses the same paging shape as the
+     connections endpoint, probe and all.
+
+     Rendered in a real browser against stubbed data rather than
+     declared finished because it compiled: the region select was
+     eating the toolbar and pushing Refresh onto its own line, and the
+     utility column read "electric" where every other screen says
+     "Electric" — `ctx.utilityOf` is lower-cased for matching and I had
+     used it for display.
+
+     **Not ported, deliberately:** the original's Service Cards card
+     reads a `WI_Submission` table and its toolbar offers a water
+     invoicing report. Neither exists in this system, and a card
+     promising a report nobody can run is worse than its absence.

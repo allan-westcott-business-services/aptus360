@@ -12774,3 +12774,47 @@ plus generic table editors.
 
      Whole suite before and after: no check fails that was not already
      failing.
+
+289. **A test run on one contract first: AP1989.** Allan's call, and a
+     better one than going straight at 33,052 rows.
+
+     `AP_Number` is a column on Project, written by the contract import
+     from the staged `Legacy_Import."AP_Number"`. AP1989 is 2208.030,
+     Richmond Point, Lytham St Annes.
+
+     Three files. **T1** looks: the project, its plots, what would be
+     written and how it splits, what is already there, and the adopters
+     and pack statuses the contract actually uses - counted the same way
+     T2 selects, so the two cannot disagree about what "this contract"
+     means. **T2** writes it. **T3** removes exactly what T2 wrote.
+
+     On my copy: 219 connections across 89 plots, electric 64, gas 80,
+     water 75, two superseded visits dropped, adopters GTC and United
+     Utilities, pack statuses Returned and Submitted. Returned is the
+     one that matters - it is one of the three 0256 adds, and without
+     it `pu_pack_trg` would have stamped some of these Submitted.
+
+     **The trigger work moved into a DO block, and I had claimed
+     something I had not checked.** T2's first draft said "the editor
+     runs a script as one transaction" and relied on that to keep
+     DISABLE, INSERT and ENABLE together. I have not verified what the
+     Supabase editor does, and the first full attempt is evidence
+     against assuming: PART A disabled the trigger, PART B failed, and
+     the trigger stayed down until PART C was run on its own.
+
+     A plpgsql block is its own transaction whatever the editor does
+     around it. The handler re-enables and `RAISE` re-raises the
+     original error untouched - a handler that reports something
+     friendlier is one that hides which constraint refused the data.
+
+     Verified on the cluster, all four:
+
+     - 219 written, every check row 0, trigger enabled afterwards.
+     - **Re-running adds nothing** - still 219.
+     - **A forced failure inside the block leaves the trigger
+       ENABLED** and re-raises the real error. Tested by breaking the
+       INSERT's column count on purpose.
+     - **An app-entered connection is untouched by both.** Put a row
+       with no legacy id on one of AP1989's plots: T2 wrote 218 instead
+       of 219, skipping that plot and utility, and T3 removed 218 and
+       left the app row standing.

@@ -13240,3 +13240,42 @@ plus generic table editors.
      larger than the rows that can be fetched. Proven to fail: with the
      stride assumed rather than probed, the 500-row-cap case loses
      16,500 of 33,150 and says so.
+
+301. **Fast enough to arrive, too big to draw.** With PR #3 deployed
+     the rows reached the browser and Chrome put up **Page
+     Unresponsive**. 33,150 connections at seventeen cells each is half
+     a million DOM nodes.
+
+     So the same question again at the next layer down, and the same
+     answer: do not produce what nobody is looking at, and never stop
+     without saying so.
+
+     - **Groups start collapsed above 4,000 connections.** The
+       machinery was already there - `collapsed[label]` renders the
+       heading and none of the rows - so a 33,150-row table becomes
+       about 1,900 headings, every count still right because the counts
+       come from the data rather than from what is on screen. Applied
+       once per grouping, not per filter change, or narrowing a search
+       would slam shut the group you had just opened.
+     - **planRows shares one budget across whatever is open**: 1,000
+       rows to any one group, 2,500 in total. Without the total,
+       "Expand all" would open all 33,150 and freeze the tab again -
+       which is the case the check caught when I sabotaged it.
+     - **A group given fewer rows than it holds says so, in place.** A
+       table that stops at a thousand without mentioning it is the
+       endpoint's row cap all over again, one layer up.
+
+     `planRows` is a module of its own rather than a closure in the
+     component, because a .jsx file cannot be imported by a plain node
+     check and the failure mode here - quietly rendering less than
+     there is - is invisible from the screen. That invisibility is
+     exactly how the 2,000-row cap survived until a project with 238
+     connections showed one of them.
+
+     **checkconnectionsrender.mjs** holds it to five things: the total
+     is never exceeded, one enormous group cannot take the lot, a small
+     table is shown whole (the guard must cost nothing on the tables
+     this page had before the import), collapsing hands its share on
+     rather than wasting it, and no group is ever promised more rows
+     than it holds. Proven to fail: ignoring the total builds 38,000
+     rows against a 2,500 budget and all three relevant cases go red.

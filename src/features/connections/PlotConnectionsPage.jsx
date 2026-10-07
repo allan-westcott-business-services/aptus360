@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listAllConnections, updateConnection, bulkUpdateConnections } from "../../api/connections.js";
@@ -6,6 +6,7 @@ import { UTILITIES, RESIDENTIAL_UTILITIES, utilityById } from "../../lib/utiliti
 import NewScheduleModal from "./NewScheduleModal.jsx";
 import PhotoPanel from "./PhotoPanel.jsx";
 import { useTableLayout } from "../../lib/useTableLayout.js";
+import { planRows } from "./rowBudget.js";
 import ColumnsMenu from "../../components/ColumnsMenu.jsx";
 import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 
@@ -67,6 +68,14 @@ const NA_FOR_ELECTRIC = ["meter", "mcsub"];
 
 /* Grouping by a field makes that column redundant — the heading already
    says it, so showing it repeats the same value down every row. */
+/* Past this many connections the table stops rendering everything at
+   once. Not a round number for its own sake: a few thousand rows is
+   already slow to build and 33,150 is a frozen tab. */
+const BIG_TABLE = 4000;
+
+
+
+
 const GROUP_HIDES = { project: ["project", "site"], region: [], utility: ["utility"], date: ["prog"] };
 
 /* The order work actually happens in, taken from the column order rather
@@ -244,6 +253,38 @@ export default function PlotConnectionsPage() {
     shown.forEach((r) => { const k = key(r); if (!m.has(k)) m.set(k, []); m.get(k).push(r); });
     return [...m].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
   }, [shown, groupBy, lookups]);
+
+  /* ── Thirty-three thousand rows will not render ──
+
+     The legacy import took this table from a couple of thousand
+     connections to 33,150. Every one of them is a row of seventeen
+     cells, and building half a million DOM nodes locks the tab: Chrome
+     put up "Page Unresponsive".
+
+     A collapsed group renders its heading and none of its rows - the
+     machinery is right there at `collapsed[label]`. So on a large
+     table the groups start shut: about 1,900 headings instead of
+     33,150 rows, every count still correct because the counts come
+     from the data rather than from what is on screen, and one click
+     opens the project you actually want.
+
+     Done once per grouping rather than on every filter change, or
+     narrowing a search would slam shut the group you had just opened
+     to look at. */
+  const autoCollapsed = useRef("");
+  useEffect(() => {
+    const key = `${groupBy}|${conns.length}`;
+    if (autoCollapsed.current === key) return;
+    autoCollapsed.current = key;
+    if (groupBy !== "none" && conns.length > BIG_TABLE) {
+      setCollapsed(Object.fromEntries(groups.map(([label]) => [label, true])));
+    }
+  }, [groupBy, conns.length, groups]);
+
+  /* A group given fewer rows than it has says so on screen - the
+     alternative is a table that stops without mentioning it, which is
+     the row cap all over again one layer up. */
+  const rowBudget = useMemo(() => planRows(groups, collapsed), [groups, collapsed]);
 
   const hidden = GROUP_HIDES[groupBy] || [];
   /* The layout's order, minus whatever this grouping folds away. Reading
@@ -565,7 +606,12 @@ export default function PlotConnectionsPage() {
                     </td>
                   </tr>
                 )] : []),
-                ...(label && collapsed[label] ? [] : list.map((r) => {
+                /* A ceiling on what is actually built, for the cases
+                   collapsing cannot cover: grouping turned off, or one
+                   project with thousands of connections expanded. The
+                   row below says how many are not shown, so this is a
+                   visible limit rather than a quiet one. */
+                ...(label && collapsed[label] ? [] : list.slice(0, rowBudget.get(label) ?? 0).map((r) => {
                 const u = utilityById(r.Utility_ID);
                 const on = selected.includes(r.Plot_Utility_ID);
                 return (
@@ -699,6 +745,22 @@ export default function PlotConnectionsPage() {
                   </tr>
                 );
                 })),
+                /* Said on screen, in the group it belongs to. A table
+                   that stops at a thousand rows without mentioning it
+                   is the row cap all over again, one layer up. */
+                ...(!(label && collapsed[label])
+                    && list.length > (rowBudget.get(label) ?? 0) ? [(
+                  <tr key={`more-${label}`} className="pc-more-row">
+                    <td colSpan={cols.length}>
+                      {(rowBudget.get(label) ?? 0) === 0
+                        ? `${list.length.toLocaleString()} rows not shown — `
+                        : `Showing ${(rowBudget.get(label) ?? 0).toLocaleString()} of `
+                          + `${list.length.toLocaleString()} — `}
+                      narrow the filters, or collapse a group above, to see
+                      the rest.
+                    </td>
+                  </tr>
+                )] : []),
               ])}
             </tbody>
           </table>
@@ -732,6 +794,10 @@ const CSS = FILTER_CSS + `
 .pc-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px;
   padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
 .pc-toolbar select { width: auto; min-width: 132px; font-size: 12px; padding: 5px 8px; }
+.pc-more-row td {
+  padding: 8px 12px; background: #fff4e5; color: #6b4a16;
+  font-size: 12px; font-style: italic;
+}
 .pc-truncated {
   margin: 0 0 10px; padding: 8px 12px; border-radius: 6px;
   background: #fff4e5; border: 1px solid #f0c48a; color: #6b4a16;

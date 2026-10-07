@@ -13026,3 +13026,46 @@ plus generic table editors.
      it. Re-ran the AP1989 test end to end on the new export: 238 rows,
      electric 68, gas 83, water 87 — his plot counts exactly — and
      **238 of 238 carry an adopter**, against 156 of 219 before.
+
+295. **C4_adopter_sanity.sql — checking the IDNO map against something
+     it cannot influence.**
+
+     30,587 resolved is the same number whether they resolved to the
+     right companies or the wrong ones. That is precisely how the
+     free-text Adopter looked correct for a fortnight, and a second
+     count of the same mapping would have the same blind spot.
+
+     So the check is made against the ROLE MODEL. An organisation
+     adopting a water connection must hold wu or iwu; gas must hold gt
+     or igt; electric idno or dno. That is a fact about the trade,
+     recorded in the register, and nothing in the IDNO map can arrange
+     it. The two agreeing means the map is right for reasons unrelated
+     to how it was built.
+
+     On the cluster: **row 1 comes back clean** — every one of the
+     30,587 holds a role for its own utility.
+
+     **And it was made to fail before being believed.** Pointed IDNO 6
+     (Independent Water Networks) at Cadent, which holds gt and nothing
+     else: `STOPS IT — 4431 connections: Water -> Cadent (holds gt, via
+     contract IDNO)`. Restored and clean again. This morning I shipped
+     a check that passed vacuously because its pattern was written on
+     one line and the text it looked for was wrapped across two; a
+     check nobody has seen fail is not evidence.
+
+     What else it found:
+
+     - **3,753 connections name one company in the text and another on
+       the contract.** My earlier figure was 1,056, and that was IDNO 6
+       alone.
+     - 2,889 connections across 121 projects have no adopter from
+       either source, and 4.2 names the ten worst — AP2160 (90),
+       AP2318 (87), AP2067 (83) — which is a work list for filling the
+       contracts in rather than a fault in the import.
+     - Row 5 prints the map with each organisation's roles, so the
+       whole thing is readable in one place.
+
+     One SQL note worth keeping: a correlated subquery naming a column
+     that is not in the GROUP BY is "ungrouped column from outer
+     query", however obviously functionally dependent on a grouping
+     column it is. `min()` over it, or grouping by it, is the way out.

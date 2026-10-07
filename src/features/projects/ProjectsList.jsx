@@ -22,6 +22,16 @@ const COLUMNS = [
      option letter — 2607.004(A). Assembling it here would be a second
      definition of the same format. */
   { key: "ref",      label: "Project Ref",   width: 130, type: "text",  raw: (p) => p.Display_Ref ?? p.Project_Ref },
+  /* Beside the project reference, because it is the same fact in
+     somebody else's words: Display_Ref is what we call the scheme and
+     the AP number is what the network operator calls it. An operator's
+     email quotes the AP number and nothing else, so scanning for one
+     is a thing people do on this page.
+
+     Blank for most projects — it is filled in once an application goes
+     to the operator — so it is a column rather than part of the Project
+     Ref cell, which would leave a ragged gap on every row without one. */
+  { key: "ap",       label: "AP Number",     width: 110, type: "text",  raw: (p) => p.AP_Number },
   /* Revision 0 is the first issue, not the absence of one — and it is
      falsy, so testing the value hid every new project's revision. */
   { key: "rev",      label: "Rev",           width: 56,  type: "text",  align: "center", raw: (p) => String(p.Revision ?? 0) },
@@ -136,6 +146,21 @@ function loadPrefs() {
       const without = order.filter((k) => k !== "plots");
       const at = without.indexOf("sitename");
       if (at >= 0) without.splice(at + 1, 0, "plots");
+      order.length = 0;
+      order.push(...without);
+    }
+
+    /* AP Number is new, and the append above puts a new column last —
+       out past Quote Type and Estimator, where nobody scanning for an
+       operator's reference would look. It belongs beside Project Ref.
+
+       Only moved while it is still sitting where the append dropped it.
+       Once somebody has dragged it somewhere, that is a decision, and
+       shifting it back under them is worse than leaving it alone. */
+    if (order[order.length - 1] === "ap") {
+      const without = order.filter((k) => k !== "ap");
+      const at = without.indexOf("ref");
+      if (at >= 0) without.splice(at + 1, 0, "ap");
       order.length = 0;
       order.push(...without);
     }

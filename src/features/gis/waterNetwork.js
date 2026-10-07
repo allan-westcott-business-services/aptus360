@@ -40,8 +40,8 @@
    silently rounding up is how a drawing goes out with a pipe on it that
    nobody chose. */
 
-import { CONNECT_EPS, SNAP_TOL, isTrenchLine, isServiceLine } from "./feeder.js";
-import { carries } from "./trenchCarries.js";
+import { CONNECT_EPS, SNAP_TOL, isTrenchLine, isServiceLine } from "../../shared/design-calc/feeder.js";
+import { carries } from "../../shared/design-calc/trenchCarries.js";
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 

@@ -94,8 +94,8 @@
    features and returns geometry, which is what lets it be tested
    against a drawing that no database has ever seen. */
 
-import { CONNECT_EPS, SNAP_TOL, isTrenchLine, isServiceLine } from "./feeder.js";
-import { carries } from "./trenchCarries.js";
+import { CONNECT_EPS, SNAP_TOL, isTrenchLine, isServiceLine } from "../../shared/design-calc/feeder.js";
+import { carries } from "../../shared/design-calc/trenchCarries.js";
 
 /* ── How far the main runs past the last tee ──
 

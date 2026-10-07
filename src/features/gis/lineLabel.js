@@ -13,8 +13,8 @@
    plate behind the text — is live state and presentation; what a run IS
    called is a fact about the feature, and that is what this returns. */
 
-import { isTrenchType } from "./snapping.js";
-import { drawnLength, runLength, hasMeasured } from "./lengths.js";
+import { isTrenchType } from "../../shared/design-calc/snapping.js";
+import { drawnLength, runLength, hasMeasured } from "../../shared/design-calc/lengths.js";
 
 /* The measured length where somebody entered one, marked so the
    drawing admits the number is not the geometry under it, and the

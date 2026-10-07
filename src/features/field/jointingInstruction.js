@@ -417,11 +417,11 @@ export function routeUnknownFor(job, plot) {
    and this form — and three spellings of one name is the fault this
    repo keeps finding. Re-exported so the form's own importers are not
    made to know where it lives. */
-export { jointLabel } from "../gis/serviceBreech.js";
+export { jointLabel } from "../../shared/design-calc/serviceBreech.js";
 
 /* The same function, bound locally so this module can call it too. A
    bare re-export is not in scope in the file that writes it. */
-import { jointLabel as jointLabelOf } from "../gis/serviceBreech.js";
+import { jointLabel as jointLabelOf } from "../../shared/design-calc/serviceBreech.js";
 
 /* An empty answer set for a plot, so a row that has been opened and not
    filled in is distinguishable from one never reached. */

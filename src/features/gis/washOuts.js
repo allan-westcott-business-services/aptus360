@@ -32,7 +32,7 @@
    Features in, positions out. The canvas creates the features and
    replaces them on every rebuild, as it does with service valves. */
 
-import { CONNECT_EPS, SNAP_TOL, isServiceLine } from "./feeder.js";
+import { CONNECT_EPS, SNAP_TOL, isServiceLine } from "../../shared/design-calc/feeder.js";
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 

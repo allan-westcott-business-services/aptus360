@@ -11,14 +11,14 @@ import {
 import {
   SNAP_PX, CONNECT_M, snapTargets, findSnap, nearestOnLines, connectedTo, lineLength,
   classOf, classLabel, featureName, joinLines, isTrenchType, splitPolylineAt, insertVertexAt, canBreakAt, pointOnLineNear,
-} from "./snapping.js";
+} from "../../shared/design-calc/snapping.js";
 import BasemapSetup from "./BasemapSetup.jsx";
 /* What a trench has been told to hold. Imported under its own name:
    the levels file has a LOCAL `carries` asking which layer a line is
    on, and two functions of one name answering different questions is
    how a trench that refuses LV came to be walked across by every
    distance on the drawing. */
-import { carries } from "./trenchCarries.js";
+import { carries } from "../../shared/design-calc/trenchCarries.js";
 /* What a cable is called, for the levels export: the type's name plus
    the size, the same words the editor shows. */
 import { cableMenuName } from "./cableMenu.js";
@@ -57,9 +57,9 @@ import { originMissing,
   distancesFrom,
   sourceImpedance, NO_SOURCE_NOTE, upstreamVoltDropPct, workingVoltage, voltageOf,
   circuitReport,
-} from "./electric.js";
+} from "../../shared/design-calc/electric.js";
 import FeatureEditor from "./FeatureEditor.jsx";
-import { drawnLength, runLength, hasMeasured } from "./lengths.js";
+import { drawnLength, runLength, hasMeasured } from "../../shared/design-calc/lengths.js";
 import { inputCableOf, metersByPlot, outsideWay, wayColourOf } from "./linkWays.js";
 import { traceTree, pointAlong } from "./traceWalk.js";
 
@@ -108,7 +108,7 @@ import CircuitReport from "./CircuitReport.jsx";
 import AptusCalcSheet from "./AptusCalcSheet.jsx";
 import BulkDelete from "./BulkDelete.jsx";
 import { circuitBuildParts, circuitMembership, SPAN_REACH_M, SNAP_TOL,
-  carriedOverrides, carriedOverrideFor, buildFeederModel } from "./feeder.js";
+  carriedOverrides, carriedOverrideFor, buildFeederModel } from "../../shared/design-calc/feeder.js";
 import { planFeederPoints, planInsertion, nextSeqFor, marksOnPart,
   partEndMark, jointMarks } from "./feederPoints.js";
 import { anchorSnapshot, withMovedAnchor, anchorUpdates } from "./anchorFollow.js";
@@ -120,7 +120,7 @@ import { nodeFedBy as nodeFedByLine, runThrough as runThroughNode } from "./span
    checkimports reported two exports that do not exist. */
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
   spanTrace, orderNodesFromRoot, lvOrigin, lvOrigins, cableIdOf,
-  circuitTraceParts } from "./feeder.js";
+  circuitTraceParts } from "../../shared/design-calc/feeder.js";
 import { cumulativeToNode, serviceVoltDrop, VD_DEFAULTS, defaultFeederCable,
   levelsForParts, kvaOf,
 } from "./voltDrop.js";
@@ -133,7 +133,7 @@ import {
   BOTTLE_END_COLOUR,
   jointAtEnd, jointAtPoint, withCable, withoutCable, jointCables,
   JOIN_REACH_M, cablesHeldAt, jointAngle as jointAngleOf, servedPlots,
-} from "./joints.js";
+} from "../../shared/design-calc/joints.js";
 import { lineTag } from "./lineLabel.js";
 import { loadThrough } from "./loadThrough.js";
 import { alpha } from "../../lib/colour.js";
@@ -188,12 +188,12 @@ import {
   LIVE_BAND_M,
   isOffSite, withDefaultStatus, blocksLive, needsGround, isServiceFeature,
   newMainTypeFor, isExistingLineType, defaultStatusOf,
-} from "./buildStatus.js";
-import { contentsOf, stretchAt } from "./trenchContents.js";
+} from "../../shared/design-calc/buildStatus.js";
+import { contentsOf, stretchAt } from "../../shared/design-calc/trenchContents.js";
 import { carryLine, carryPoint, claimedByAnother } from "./carryContents.js";
 import { teeInto, mainsOnLayer } from "./teeInto.js";
-import { trenchSize } from "./trenchSize.js";
-import { digEstimate, hoursText } from "./digRate.js";
+import { trenchSize } from "../../shared/design-calc/trenchSize.js";
+import { digEstimate, hoursText } from "../../shared/design-calc/digRate.js";
 import { sizeIdFor, isOverridden, sizeLabelOf } from "./sizeMode.js";
 import { electricSteps } from "./electricSteps.js";
 import { upstreamTooSmall } from "./upstreamSize.js";
@@ -214,7 +214,7 @@ import { adminList } from "../../api/admin.js";
 import { gasMainEnds, GAS_CAP_SPINE_M, GAS_CAP_ARM_M } from "./gasEnds.js";
 import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
-} from "./mainsCallOff.js";
+} from "../../shared/design-calc/mainsCallOff.js";
 import {
   gasLevels, serviceTees, suggestPipeChanges, TEE_DIAMETERS, lineFollows,
   fingerprintOf,
@@ -227,7 +227,7 @@ import {
 } from "../../api/calloffs.js";
 import { spanImage, spanBounds } from "./spanImage.js";
 import { asLaidImage, asLaidFeatures } from "./asLaidImage.js";
-import { breechSummary, jointLabel, plotNumberFrom } from "./serviceBreech.js";
+import { breechSummary, jointLabel, plotNumberFrom } from "../../shared/design-calc/serviceBreech.js";
 import { cableSizes } from "./cableSizes.js";
 import { sealLeg } from "./bottleEnd.js";
 import { planLayer, planReason } from "./planLayer.js";

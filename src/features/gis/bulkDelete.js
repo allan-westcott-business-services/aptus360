@@ -12,7 +12,7 @@
 
    Pure so it can be tested. Doing the deleting is the canvas's job. */
 
-import { JOINT_KINDS, isJointOfKind } from "./joints.js";
+import { JOINT_KINDS, isJointOfKind } from "../../shared/design-calc/joints.js";
 
 /* The order the joint kinds are offered in, which is not the order the
    catalogue happens to declare them.

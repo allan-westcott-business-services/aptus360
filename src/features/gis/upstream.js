@@ -31,7 +31,7 @@
    was drawn against and a length added later may join two that never
    knew about it. */
 
-import { isMainFeature, statusOf } from "./buildStatus.js";
+import { isMainFeature, statusOf } from "../../shared/design-calc/buildStatus.js";
 
 /* How close two lengths have to be to count as joined.
 

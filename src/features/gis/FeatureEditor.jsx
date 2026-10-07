@@ -4,26 +4,26 @@ import Banner from "../../components/Banner.jsx";
 import {
   BUILD_STATUSES, MAIN_STATUSES, SERVICE_STATUSES,
   isMainFeature, isServiceFeature, statusOptions, isExistingLineType, defaultStatusOf,
-} from "./buildStatus.js";
+} from "../../shared/design-calc/buildStatus.js";
 import FutureAllowance from "./FutureAllowance.jsx";
 import { utilityById } from "../../lib/utilities.js";
 import {
   lineLength, isTrenchType, isTrenchFeature, classLabel,
-} from "./snapping.js";
+} from "../../shared/design-calc/snapping.js";
 import { EASEMENT_KEY } from "./easement.js";
 import { cableMenu, cableMenuName } from "./cableMenu.js";
 import { wayOf, metersByPlot } from "./linkWays.js";
-import { contentsOf } from "./trenchContents.js";
+import { contentsOf } from "../../shared/design-calc/trenchContents.js";
 import { UTILITIES } from "../../lib/utilities.js";
-import { trenchSize, concurrentCount, dominantOf } from "./trenchSize.js";
-import { digEstimate, hoursText } from "./digRate.js";
-import { TRENCH_CARRIES } from "./trenchCarries.js";
+import { trenchSize, concurrentCount, dominantOf } from "../../shared/design-calc/trenchSize.js";
+import { digEstimate, hoursText } from "../../shared/design-calc/digRate.js";
+import { TRENCH_CARRIES } from "../../shared/design-calc/trenchCarries.js";
 import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
 import { circuitColours, feederColourAt } from "./feederColour.js";
 import { sizeIdFor, isOverridden } from "./sizeMode.js";
-import { lvOrigins } from "./electric.js";
+import { lvOrigins } from "../../shared/design-calc/electric.js";
 import { servedPlots, JOINT_KINDS, straightJointWarning,
-  jointCables, cableEndsAt, servicesAt } from "./joints.js";
+  jointCables, cableEndsAt, servicesAt } from "../../shared/design-calc/joints.js";
 import {
   FLOORS, msdbLoad, apartmentLevels, worstApartment, flatsFromPlots,
   landlordSupplies, nrsAsSeeds, nrsOnBoards,
@@ -37,7 +37,7 @@ import {
   nextCircuitNumber, fuseForWay, WAY_FUSES, distancesFrom,
   SUB_DEFAULTS, ampsFor,
   moveCircuitToWay, compactWays,
-} from "./electric.js";
+} from "../../shared/design-calc/electric.js";
 import {
   hvRingModel, feedSummary, faultCompany,
   HV_CONNECTIONS, RMU_TEE_PROTECTION,

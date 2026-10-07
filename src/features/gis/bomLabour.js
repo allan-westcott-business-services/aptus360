@@ -54,10 +54,10 @@
    estimate and the bill's own quantities: an existing section is not
    this job's to dig, but its pipes and cables still have to be laid. */
 
-import { contentsOf } from "./trenchContents.js";
-import { trenchSize } from "./trenchSize.js";
-import { measuredScale } from "./lengths.js";
-import { digEstimate } from "./digRate.js";
+import { contentsOf } from "../../shared/design-calc/trenchContents.js";
+import { trenchSize } from "../../shared/design-calc/trenchSize.js";
+import { measuredScale } from "../../shared/design-calc/lengths.js";
+import { digEstimate } from "../../shared/design-calc/digRate.js";
 import { contentsOptions } from "./spanContents.js";
 import { UTILITIES } from "../../lib/utilities.js";
 

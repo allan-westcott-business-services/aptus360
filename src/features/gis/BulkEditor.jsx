@@ -2,12 +2,12 @@ import { useState, useMemo } from "react";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import CategoryPicker from "./CategoryPicker.jsx";
-import { lineLength } from "./snapping.js";
-import { statusesFor } from "./buildStatus.js";
+import { lineLength } from "../../shared/design-calc/snapping.js";
+import { statusesFor } from "../../shared/design-calc/buildStatus.js";
 import { bulkDeleteCategories, idsForKeys } from "./bulkDelete.js";
 import { classesIn, fieldsForMany, planBulkEditOn, CLEAR } from "./bulkEdit.js";
 import { cableMenu, cableMenuName } from "./cableMenu.js";
-import { circuitsFrom } from "./electric.js";
+import { circuitsFrom } from "../../shared/design-calc/electric.js";
 
 /* Editing many features at once, by selecting them or by naming them.
 

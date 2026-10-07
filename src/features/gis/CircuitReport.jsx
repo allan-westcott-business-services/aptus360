@@ -2,7 +2,7 @@ import { useState } from "react";
 import * as XLSX from "xlsx";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import { parsePlotRange } from "./plotRange.js";
-import { boardSections } from "./electric.js";
+import { boardSections } from "../../shared/design-calc/electric.js";
 
 /* Circuit report — electric meters by feeder.
 

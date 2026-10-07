@@ -12,7 +12,7 @@ import {
   setPlotEnergisation, saveCallOffDrawing, removeCallOffDrawing, getCallOffDrawing,
 } from "../../api/calloffs.js";
 import { energisationFloor, dayAfter, byUtilityColumn, isDigTask } from "./rules.js";
-import { isJointTask, jointEstimate, jointEstimateText } from "../gis/jointRate.js";
+import { isJointTask, jointEstimate, jointEstimateText } from "../../shared/design-calc/jointRate.js";
 import { halfDaysText } from "./digDays.js";
 import { phaseCover, COVER_LABEL, isListedPhase } from "./assignmentCover.js";
 import { useTableLayout } from "../../lib/useTableLayout.js";
@@ -31,8 +31,8 @@ import {
   splitsByUtility, endAfterHalves, layHalves,
 } from "./assignments.js";
 import { phasesToShow, phasesHidden, isServiceCallOff } from "./callOffPhases.js";
-import { breechSummary, plotNumberFrom } from "../gis/serviceBreech.js";
-import { lvOrigin } from "../gis/electric.js";
+import { breechSummary, plotNumberFrom } from "../../shared/design-calc/serviceBreech.js";
+import { lvOrigin } from "../../shared/design-calc/electric.js";
 import { listGis } from "../../api/gis.js";
 import { listPlots } from "../../api/plots.js";
 import { dependencyProblems, dependencyFloor } from "../planning/dependencies.js";

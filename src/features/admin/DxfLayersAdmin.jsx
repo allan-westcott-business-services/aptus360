@@ -24,7 +24,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
-import { explainLayer, sizeUnitFor, sizeUnitLabel } from "../gis/dxfLayerMap.js";
+import { explainLayer, sizeUnitFor, sizeUnitLabel } from "../../shared/design-calc/dxfLayerMap.js";
 
 const BLANK = {
   Layer_Key: "", Line_Type: "", Feature_Role: "", Build_Status: "",

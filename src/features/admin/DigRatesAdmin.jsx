@@ -3,8 +3,8 @@ import Banner from "../../components/Banner.jsx";
 import { adminList, adminUpdate } from "../../api/admin.js";
 import {
   digEstimate, hoursText, DEFAULT_SURFACE_FACTORS,
-} from "../../features/gis/digRate.js";
-import { trenchSize } from "../../features/gis/trenchSize.js";
+} from "../../shared/design-calc/digRate.js";
+import { trenchSize } from "../../shared/design-calc/trenchSize.js";
 
 /* The numbers behind every dig and lay estimate.
 

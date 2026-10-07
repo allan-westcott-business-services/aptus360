@@ -1,0 +1,29 @@
+\set ON_ERROR_STOP on
+
+-- ════════════════════════════════════════════════════════════════════
+--  Load the asset value export
+-- ════════════════════════════════════════════════════════════════════
+--
+-- Run from psql, from the folder holding AV_Agreement_rows.csv:
+--
+--     \i load_av.psql
+--
+-- Not from the Supabase SQL editor — that cannot read a file off your
+-- laptop. This is the same route the connections export took.
+--
+-- The DELETE first makes this re-runnable: load it again after a fresh
+-- export and you replace the staging table rather than doubling it.
+-- ════════════════════════════════════════════════════════════════════
+
+DELETE FROM "Legacy_AV_Agreement_Import";
+
+\copy "Legacy_AV_Agreement_Import" FROM 'AV_Agreement_rows.csv' WITH (FORMAT csv, HEADER true)
+
+-- Expect 6205 and 1668. If the row count is lower, the file was
+-- truncated; if it is higher, the export has grown since I profiled it
+-- and the numbers in AV2's report will differ from the ones I quoted.
+SELECT count(*)                                  AS rows_loaded,
+       count(DISTINCT "Contract_ID")              AS contracts,
+       count(*) FILTER (WHERE NULLIF(btrim("Contract_ID"), '') IS NULL)
+                                                  AS missing_contract
+  FROM "Legacy_AV_Agreement_Import";

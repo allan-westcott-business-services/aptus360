@@ -13145,3 +13145,98 @@ plus generic table editors.
      is ever hit, rather than assumed impossible.
 
      Whole suite: no check fails that was not already failing.
+
+298. **PR #2 merged and deployed. A deploy lands in two places and the
+     browser only reloads one of them.**
+
+     After the deploy Allan saw every connection but no AP number — and
+     that split is the diagnosis rather than a puzzle. The row-cap fix
+     is in a Netlify FUNCTION, server-side, live the moment the deploy
+     finished. The AP column is in the browser bundle, and Chrome was
+     still running the cached copy. New data through an old interface.
+
+     Worth remembering before guessing at a half-working deploy: ask
+     which half is server and which is client. "Empty Cache and Hard
+     Reload" from the DevTools reload menu fixed it.
+
+     Also worth recording: PR #1 was squash-merged, so main carried one
+     commit this branch did not, and PR #2 opened as `dirty`. Merging
+     main in and resolving two files - both cases where this branch was
+     a superset - cleared it. A squash merge means the branch it came
+     from will always conflict with its own content next time round.
+
+299. **The connections are in. 33,150 rows on the live database.**
+
+         Electric 11,384   Gas 9,757   Water 12,009
+         With an adopter        30,526
+         Lost an adopter that was stated   0
+         Pack status rewritten             0
+         Legacy IDNO_ID / Team_ID written  0 / 0
+         AP1989 after the full run       238 — expected 238
+         Trigger                      enabled
+
+     Every staged row accounted for: 33,150 + 13 waiting on a tender
+     plot + 313 superseded visits = 33,476, the whole export.
+
+     Row 8 is the one that matters structurally. The AP1989 test run
+     survived the full run untouched rather than being written twice -
+     the legacy-id guard did its job, and the row proves it rather than
+     assuming it.
+
+     13,884 of 159,286 plots now carry a connection. The rest are plots
+     with nothing scheduled yet, which is ordinary.
+
+     Still open: 2,624 rows with no adopter from either source (the
+     contract names no IDNO for that utility - C4 row 4.2 lists the
+     worst contracts); Western Power Distribution kept separate from
+     National Grid Electricity Distribution pending a decision; IDNO 35
+     unmapped at one connection; and the tenders, which are 13 statuses
+     away from starting.
+
+300. **The connections page timed out, and I caused it.** Removing the
+     2,000-row cap left a loop making 34 sequential round trips for
+     33,150 rows. A Netlify function does not get that long, so the
+     page sat on "Loading connections" until it gave up.
+
+     I had the information to foresee this and did not act on it — the
+     note I wrote an hour earlier said "33,000 rows into the browser is
+     heavy but workable" and moved on. **A fix whose cost is never
+     measured is a change, not a fix.**
+
+     Three versions of this query now, each wrong differently:
+
+       1. `.limit(2000)`, no ORDER BY — silent truncation.
+       2. sequential paging — honest, and too slow to finish.
+       3. parallel ranges on an assumed stride of 1,000 — which SKIPS
+          rows wherever PostgREST's max-rows is lower, because the next
+          range starts past what came back. Silent loss again, and
+          harder to spot than the first version. Caught while writing
+          it, not by running it.
+
+     What it is now: count with `head: true`, fetch the first page
+     alone so its length IS the stride, then the rest concurrently six
+     at a time. 34 requests in six waves rather than 34 in a queue.
+
+     Two other things went with it:
+
+     - **The payload is down to what the page renders.** Eleven fields
+       it never reads — Meter_Reference, Notes, AV_Invoice_Number, the
+       plot's Plot_Ref and the rest — were columns of nulls repeated
+       33,150 times, against a 6 MB response ceiling. Safe because an
+       edit sends `{ [key]: value }` rather than writing the row back
+       whole, and the comment says so where the next person will look.
+     - **The photo count had the same fault one query lower.** A bare
+       select, capped by PostgREST, so past its limit the counts were
+       simply short. Both now go through one `readAll`.
+
+     Guessed `Plot_Utility_Photo_ID` for that table's key and checked:
+     it is `Photo_ID`. It would have failed at runtime.
+
+     **checkconnectionspaging.mjs** runs the real `readAll` — read out
+     of the endpoint source, not copied, so it cannot go on passing
+     after the endpoint changes — against stub servers that behave the
+     awkward ways a real one does: capping pages below what was asked
+     for, a table of seven rows, exactly one page, empty, and a count
+     larger than the rows that can be fetched. Proven to fail: with the
+     stride assumed rather than probed, the 500-row-cap case loses
+     16,500 of 33,150 and says so.

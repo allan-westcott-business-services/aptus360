@@ -13164,3 +13164,31 @@ plus generic table editors.
      main in and resolving two files - both cases where this branch was
      a superset - cleared it. A squash merge means the branch it came
      from will always conflict with its own content next time round.
+
+299. **The connections are in. 33,150 rows on the live database.**
+
+         Electric 11,384   Gas 9,757   Water 12,009
+         With an adopter        30,526
+         Lost an adopter that was stated   0
+         Pack status rewritten             0
+         Legacy IDNO_ID / Team_ID written  0 / 0
+         AP1989 after the full run       238 — expected 238
+         Trigger                      enabled
+
+     Every staged row accounted for: 33,150 + 13 waiting on a tender
+     plot + 313 superseded visits = 33,476, the whole export.
+
+     Row 8 is the one that matters structurally. The AP1989 test run
+     survived the full run untouched rather than being written twice -
+     the legacy-id guard did its job, and the row proves it rather than
+     assuming it.
+
+     13,884 of 159,286 plots now carry a connection. The rest are plots
+     with nothing scheduled yet, which is ordinary.
+
+     Still open: 2,624 rows with no adopter from either source (the
+     contract names no IDNO for that utility - C4 row 4.2 lists the
+     worst contracts); Western Power Distribution kept separate from
+     National Grid Electricity Distribution pending a decision; IDNO 35
+     unmapped at one connection; and the tenders, which are 13 statuses
+     away from starting.

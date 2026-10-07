@@ -12931,3 +12931,41 @@ plus generic table editors.
      Still open and NOT explained by any of this: his counts are 3
      electric, 4 gas and 3 water fewer than the staging holds for
      AP1989.
+
+293. **The count discrepancy was vintage, not data, and the new export
+     matches the live system exactly.**
+
+     Allan asked which plot numbers the extra rows sat on. There are
+     none. Loading the new export into the cluster and importing the
+     rest of contract 326's plots (653 more, so my copy mirrors his 742
+     rather than the 89 I had):
+
+         Electric  68 plots, 68 connections
+         Gas       83 plots, 84 connections
+         Water     87 plots, 88 connections
+
+     which is what he reported from the original system, to the row,
+     including the single water duplicate on plot 41.
+
+     Three vintages are in play and that is what made this look like a
+     fault:
+
+         my copy          33,059   AP1989: 64 / 80 / 75  — too few
+         his staging      33,380   AP1989: 71 / 87 / 90  — too many
+         the new export   33,475   AP1989: 68 / 83 / 87  — exact
+
+     The rows that looked extra - including an undated gas duplicate on
+     plot 41 with no visit outcome at all, which is what put me on to
+     "empty placeholder rows" - have been deleted in the source since
+     his first export. I was about to build a query to classify rows by
+     emptiness. Importing the missing plots and comparing totals cost
+     one statement and answered it.
+
+     **The lesson is the same one as the 283 duplicates.** I compared
+     his figures against a copy that held a different file AND a
+     different subset of plots, and read the difference as a defect in
+     the import. Make the copies match first, then compare.
+
+     The adopter remains open and is the real finding (292): it is the
+     contract's IDNO, not the connection's Adopter text. Waiting on the
+     old system's IDNO table, id and name.

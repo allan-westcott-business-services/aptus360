@@ -12860,3 +12860,25 @@ plus generic table editors.
      the file is stale and a fresh export fixes it on a re-run - every
      row carries its Legacy_Plot_Utility_ID, so re-running fills in
      without duplicating.
+
+291. **Allan is re-exporting the Plot Utility CSV**, which is the right
+     move: it settles the adopter question by evidence rather than
+     argument, and it costs nothing, because every imported row carries
+     its `Legacy_Plot_Utility_ID` and a re-run fills in what changed
+     without duplicating.
+
+     **reload_connections.psql** does it, and the DELETE at the top is
+     the whole point of the file. The staging tables have no key to
+     collide on - deliberately, so a file arriving in pieces can be
+     added to - so loading a second export on top of the first would
+     give 66,000 rows, every connection twice, and every count from
+     here on quietly doubled. This replaces rather than adds.
+
+     Round-tripped on the cluster: exported the staged rows back out in
+     the export's own 29-column header order, ran the file, got
+     `DELETE 33059` then `COPY 33059` and the same 25,590 adopters and
+     125 IDNO_IDs back. The view and dup_rank still resolve afterwards.
+
+     Its closing SELECT reports rows, adopters named and IDNO_IDs
+     carried, so the three figures that matter are visible the moment
+     the load finishes rather than needing another trip to the editor.

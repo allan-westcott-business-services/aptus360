@@ -13104,3 +13104,44 @@ plus generic table editors.
 
      On the cluster: 32,815 written in 6.7 seconds, AP1989 still 238,
      every check 0, trigger enabled. Re-running adds nothing.
+
+297. **The Plot Connections page showed 1 of AP1989's 238, and the
+     reason was two faults stacked.**
+
+     **The search box never looked at the AP number.** It matched
+     project ref, site name and plot number, and its own placeholder
+     said so. AP1989's project ref is 2208.030 and its site is Richmond
+     Point — so searching "1989", which is how the business names the
+     contract, found nothing at all and read as "the import did not
+     work".
+
+     **And `/api/connections` stopped at 2,000 rows with no ORDER BY.**
+     `.limit(Number(...) || 2000)`, set when there were a couple of
+     thousand connections. 33,000 came in from the original app. Which
+     2,000 came back was Postgres's business, and the page said nothing
+     about the rest: the groups on his screen added to 1,348 and
+     AP1989's badge read 1. **A count that is wrong and looks right is
+     worse than an error**, and this one is on a page people plan gangs
+     from.
+
+     Fixed both:
+
+     - `AP_Number` added to the Project embed, surfaced as `_apNumber`,
+       given its own column, added to the search, and put in the group
+       heading beside the ref.
+     - The endpoint pages through every row, ordered by the key so
+       pages cannot overlap or skip.
+
+     **And the first version of the fix rebuilt the same fault.** I
+     stopped the loop on `page.length < PAGE`. PostgREST has a max-rows
+     of its own: ask for 1,000 where the server allows 500 and every
+     page is short, so the loop would stop at 500 rows and call it the
+     whole table — silent truncation, rebuilt inside the fix for silent
+     truncation. It now advances by what came BACK and stops only on an
+     empty page. Tested against a stub server that caps at 3 rows a
+     page: all 10 collected, no duplicates.
+
+     `truncated` is returned and shown as a banner if the hard ceiling
+     is ever hit, rather than assumed impossible.
+
+     Whole suite: no check fails that was not already failing.

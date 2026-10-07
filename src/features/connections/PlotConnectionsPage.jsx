@@ -26,6 +26,7 @@ const nat = (a, b) => {
 const COLS = [
   { key: "sel",     label: "Select",     width: 38,  type: "none", fixed: true, raw: () => "" },
   { key: "project", label: "Project",    width: 110, type: "multi", raw: (r) => r._projectId },
+  { key: "ap",      label: "AP number",  width: 110, type: "text",  raw: (r) => r._apNumber || "" },
   { key: "site",    label: "Site",       width: 180, type: "text",  raw: (r) => r._siteName || "" },
   { key: "plot",    label: "Plot",       width: 80,  type: "text",  align: "left", fixed: true, raw: (r) => r._plotNumber || "" },
   { key: "utility", label: "Utility",    width: 140, type: "multi", raw: (r) => r.Utility_ID },
@@ -144,6 +145,12 @@ export default function PlotConnectionsPage() {
      regrouping starts everything open — the keys mean something
      different then. */
   const [collapsed, setCollapsed] = useState({});
+  /* Said out loud rather than assumed impossible. The endpoint used to
+     stop at 2,000 rows and say nothing, so a project with 238
+     connections showed one and the count beside it read 1. It pages
+     through everything now, and if it ever does hit its ceiling the
+     page says so instead of quietly being wrong. */
+  const [truncated, setTruncated] = useState(false);
 
   async function load() {
     try {
@@ -151,6 +158,7 @@ export default function PlotConnectionsPage() {
       setLookups(lk);
       setPlots(res.plots || []);
       setConns(res.connections || []);
+      setTruncated(!!res.truncated);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -188,7 +196,10 @@ export default function PlotConnectionsPage() {
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
     const out = rows.filter((r) => {
-      if (q && !`${r._projectRef} ${r._siteName} ${r._plotNumber}`.toLowerCase().includes(q)) return false;
+      /* The AP number is how a contract is referred to out loud, and
+         it was the one identifier this box did not look at. */
+      if (q && !`${r._projectRef} ${r._apNumber} ${r._siteName} ${r._plotNumber}`
+                 .toLowerCase().includes(q)) return false;
       if (region && String(r._regionId) !== region) return false;
       if (util && String(r.Utility_ID) !== util) return false;
       if (state === "connected" && !r.Connection_Date) return false;
@@ -224,7 +235,8 @@ export default function PlotConnectionsPage() {
   const groups = useMemo(() => {
     if (groupBy === "none") return [["", shown]];
     const key = (r) =>
-      groupBy === "project" ? `${r._projectRef} \u2014 ${r._siteName || "Unnamed site"}`
+      groupBy === "project"
+        ? `${r._projectRef}${r._apNumber ? ` (${r._apNumber})` : ""} \u2014 ${r._siteName || "Unnamed site"}`
       : groupBy === "region" ? ((lookups?.regions || []).find((x) => x.Region_ID === r._regionId)?.Region ?? "No region")
       : groupBy === "utility" ? (utilityById(r.Utility_ID)?.name ?? "Unknown")
       : r.Programmed_Date ? String(r.Programmed_Date).slice(0, 10).split("-").reverse().join("/") : "Not programmed";
@@ -347,10 +359,16 @@ export default function PlotConnectionsPage() {
       )}
 
       {flash && <Banner kind="ok">{flash}</Banner>}
+      {truncated && (
+        <div className="pc-truncated" role="status">
+          Not every connection is on this page — the list hit its ceiling.
+          Counts and totals below are incomplete.
+        </div>
+      )}
       {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <div className="pc-toolbar">
-        <input className="tb-search" value={search} aria-label="Search connections" placeholder="&#128269; Search project, site or plot&hellip;"
+        <input className="tb-search" value={search} aria-label="Search connections" placeholder="&#128269; Search project, AP number, site or plot&hellip;"
           onChange={(e) => setSearch(e.target.value)} />
 
         <select value={region} onChange={(e) => setRegion(e.target.value)}>
@@ -584,6 +602,7 @@ export default function PlotConnectionsPage() {
                               : [...sx, r.Plot_Utility_ID])} />)
 
                         : col.key === "project" ? r._projectRef
+                        : col.key === "ap" ? r._apNumber
                         : col.key === "site" ? r._siteName
                         : col.key === "plot" ? r._plotNumber
 
@@ -713,7 +732,12 @@ const CSS = FILTER_CSS + `
 .pc-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px;
   padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
 .pc-toolbar select { width: auto; min-width: 132px; font-size: 12px; padding: 5px 8px; }
-.tb-search { width: 230px; font-size: 12px; padding: 5px 9px; }
+.pc-truncated {
+  margin: 0 0 10px; padding: 8px 12px; border-radius: 6px;
+  background: #fff4e5; border: 1px solid #f0c48a; color: #6b4a16;
+  font-size: 13px;
+}
+.tb-search { width: 280px; font-size: 12px; padding: 5px 9px; }
 .tb-link { background: none; border: none; cursor: pointer; color: var(--accent);
   font: 600 11.5px inherit; padding: 2px 4px; border-radius: 4px; }
 .tb-link:hover { background: var(--accent-light); }

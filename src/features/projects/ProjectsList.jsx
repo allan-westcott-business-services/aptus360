@@ -373,7 +373,17 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
         }
       }
       if (!q) return true;
-      const hay = [p.Display_Ref, p.Project_Ref, p.Site_Name, p.Site_Address, p.Postcode,
+      /* AP_Number and Tender_Ref are in here because they are how the
+         project is known OUTSIDE this app — the AP number to the network
+         operator, the tender reference to the client. projects.js calls
+         them exactly that where it selects them. Somebody holding an
+         operator's email searches for AP0121, and until this line
+         included it the answer was no results, which reads as "we have
+         no such project" rather than "you cannot search by that".
+
+         The connections page had the same gap and the same fix. */
+      const hay = [p.Display_Ref, p.Project_Ref, p.AP_Number, p.Tender_Ref,
+        p.Site_Name, p.Site_Address, p.Postcode,
         display.cust?.(p), display.region?.(p), display.bdd?.(p), display.est?.(p), display.status?.(p)]
         .join(" ").toLowerCase();
       return hay.includes(q);

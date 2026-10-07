@@ -155,13 +155,15 @@ SELECT * FROM (
          || ' of ' || (SELECT count(*) FROM mine)::text
 
   UNION ALL
-  SELECT 3, 'Lost an adopter that WAS named',
+  SELECT 3, 'Lost an adopter that WAS stated',
          (SELECT count(*) FROM mine m
-            JOIN "Legacy_Connection_Import" i
-              ON NULLIF(btrim(i."Plot_Utility_ID"), '')::bigint = m."Legacy_Plot_Utility_ID"
+            JOIN "Legacy_Connection_Resolved" r
+              ON r."Plot_Utility_ID" = m."Legacy_Plot_Utility_ID"::text
            WHERE m."IDNO_Organisation_ID" IS NULL
-             AND COALESCE(btrim(i."Adopter"), '') <> '')::text
-         || ' rows — expected 0'
+             AND r.adopter_source <> 'neither')::text
+         || ' rows — expected 0. Counts a row where the contract names '
+         || 'an IDNO, or the connection names an adopter, and neither '
+         || 'reached the import.'
 
   UNION ALL
   SELECT 4, 'Pack status rewritten',

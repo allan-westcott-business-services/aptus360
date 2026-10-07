@@ -6,8 +6,9 @@
 --
 --   33,052 imported, 315 superseded visits dropped, 13 waiting
 --   electric / gas / water roughly 11,250 / 9,640 / 11,880
---   around 7,200 with no adopter - those had a BLANK adopter in the
---     old system, not a name that failed to match
+--   a few thousand with no adopter - those are the rows where the
+--     contract names no IDNO for that utility AND the connection names
+--     nobody in text either (0258 reports the split)
 --   rows 2.3 and 2.4 must both be 0: neither the legacy IDNO_ID nor
 --     Team_ID is written
 --
@@ -55,13 +56,15 @@ SELECT * FROM (
   UNION ALL
   -- The two that would mean something went wrong rather than something
   -- was blank to begin with. Both should be 0.
-  SELECT 2.1, 'Lost an adopter that WAS named',
-         count(*)::text || ' rows named an adopter and did not get one'
+  SELECT 2.1, 'Lost an adopter that WAS stated',
+         count(*)::text || ' rows had a source for the adopter and did '
+         || 'not get one — the contract naming an IDNO, or the '
+         || 'connection naming one in text'
     FROM "Plot_Utility" pu
-    JOIN "Legacy_Connection_Import" i
-      ON NULLIF(btrim(i."Plot_Utility_ID"), '')::bigint = pu."Legacy_Plot_Utility_ID"
+    JOIN "Legacy_Connection_Resolved" r
+      ON r."Plot_Utility_ID" = pu."Legacy_Plot_Utility_ID"::text
    WHERE pu."IDNO_Organisation_ID" IS NULL
-     AND COALESCE(btrim(i."Adopter"), '') <> ''
+     AND r.adopter_source <> 'neither'
 
   UNION ALL
   SELECT 2.2, 'Pack status rewritten',

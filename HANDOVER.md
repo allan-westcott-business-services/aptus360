@@ -12969,3 +12969,60 @@ plus generic table editors.
      The adopter remains open and is the real finding (292): it is the
      contract's IDNO, not the connection's Adopter text. Waiting on the
      old system's IDNO table, id and name.
+
+294. **The IDNO table arrived and 0258 wires the adopter to it. AP1989
+     now reads GTC, GTC, Independent Water Networks.**
+
+     **Asking for the table rather than inferring it was right, and the
+     evidence is in the file.** The correlation that found the fault
+     would have named two ids wrongly: IDNO 34 it put at Severn Trent
+     (it is **Dee Valley Water**) and IDNO 42 at IWNL on a majority
+     vote of 236 to 192 (it is **Yorkshire Water**). Both would have
+     been wrong in the quiet way — a plausible operator against a real
+     contract, with every count still adding up.
+
+     Three operators the old register has and the new one does not, so
+     0258 creates them: Dee Valley Water (186 connections), Northern
+     Gas Networks (63), Western Power Distribution (102).
+
+     **Western Power Distribution is kept as itself.** It is National
+     Grid Electricity Distribution under its former name, and the
+     register already holds the new one. Folding them together is an
+     editorial decision about the register; a migration that makes it
+     quietly has destroyed the evidence for making it the other way.
+
+     **IDNO 35 is deliberately unmapped.** One connection, named
+     "National Grid", and the only organisation of that name in the
+     register is a CUSTOMER — the operator is called National Grid
+     Electricity Distribution. Row 3 of the report names it rather than
+     guessing at it.
+
+     Where the adopter now comes from, across all 33,476:
+
+         contract IDNO   24,084
+         adopter text     6,503
+         neither          2,889
+
+     30,587 resolve, against 25,590 before — and the 25,590 were
+     resolving a field that disagrees with the contract a thousand
+     times, so the gain is larger than the numbers suggest.
+
+     The text is KEPT as a fallback rather than dropped: 6,503
+     connections sit on contracts naming no IDNO for their utility, and
+     a questionable name beats nothing where the authority is silent.
+     Where both speak the contract wins. `adopter_source` is a new view
+     column saying which answered, so this is auditable row by row
+     instead of by total.
+
+     **CREATE OR REPLACE VIEW can only append columns**, so
+     adopter_source sits at the end rather than beside the adopter
+     where it belongs. Slotting it in gives "cannot change name of view
+     column", and DROP ... CASCADE to get round it would take whatever
+     is built on the view with it.
+
+     T2 and D had an assertion testing the field we now know is wrong —
+     "named an adopter in text and did not get one". Both now test
+     `adopter_source <> 'neither'`: a source spoke and the import lost
+     it. Re-ran the AP1989 test end to end on the new export: 238 rows,
+     electric 68, gas 83, water 87 — his plot counts exactly — and
+     **238 of 238 carry an adopter**, against 156 of 219 before.

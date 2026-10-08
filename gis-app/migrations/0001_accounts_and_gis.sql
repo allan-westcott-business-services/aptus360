@@ -128,9 +128,19 @@ CREATE TABLE "Utility" (
 );
 
 INSERT INTO "Utility" ("Utility", "Colour", "Sort_Order") VALUES
-  ('Electric', '#f59e0b', 10),
-  ('Gas',      '#eab308', 20),
-  ('Water',    '#3b82f6', 30);
+  ('Electric',                '#f59e0b', 10),
+  ('Gas',                     '#eab308', 20),
+  ('Water',                   '#3b82f6', 30),
+  -- The canvas has a lighting layer with its own line types, and that
+  -- layer names this utility. Seeding only the three obvious ones left
+  -- the lighting layer's Utility_ID resolving to NULL — not an error,
+  -- just a quietly unlinked layer. Found when 0003 was generated from
+  -- the live catalogues.
+  --
+  -- gis_project_utilities still returns only electric, gas and water,
+  -- exactly as it does in Aptus360, so this changes nothing about what
+  -- a site is drawn for.
+  ('Private Street Lighting', '#a855f7', 40);
 
 
 -- ── A site, and its plots ───────────────────────────────────────────

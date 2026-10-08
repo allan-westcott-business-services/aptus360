@@ -130,3 +130,34 @@ INSERT INTO "GIS_Feature" ("Project_ID","Account_ID","Layer_Key","Feature_Type",
 VALUES (1, 1, 'boundary', 'polygon', '[[150,50],[350,50],[350,250],[150,250]]'::jsonb,
         'Persimmon parcel', '{"Project_Developer_ID": 88}'::jsonb);
 SELECT gis_plot_developer(:plot_Plot_ID) AS "expect NULL";
+
+\echo ''
+\echo '════ L. The catalogues came across whole ════'
+SELECT (SELECT count(*) FROM "GIS_Layer")        AS "layers, expect 9",
+       (SELECT count(*) FROM "GIS_Line_Type")    AS "line types, expect 17",
+       (SELECT count(*) FROM "GIS_Surface_Type") AS "surfaces, expect 6";
+
+\echo ''
+\echo '════ M. Every layer that names a utility actually resolved it ════'
+\echo '      A missing utility makes the subquery return NULL rather'
+\echo '      than fail, so an unlinked layer is silent. This is the'
+\echo '      check that makes it loud. Expect no rows.'
+SELECT l."Layer_Key", l."Label"
+  FROM "GIS_Layer" l
+ WHERE l."Layer_Key" IN ('electric','gas','water','lighting')
+   AND l."Utility_ID" IS NULL;
+
+\echo ''
+\echo '      -- and what each one resolved TO:'
+SELECT l."Layer_Key", u."Utility"
+  FROM "GIS_Layer" l JOIN "Utility" u ON u."Utility_ID" = l."Utility_ID"
+ ORDER BY l."Sort_Order";
+
+\echo ''
+\echo '════ N. Every line type sits on a layer that exists ════'
+\echo '      Expect no rows. GIS_Line_Type.Layer_Key is a bare text'
+\echo '      column with no foreign key behind it, here or in Aptus360,'
+\echo '      so a typo in a catalogue is a line type nothing can draw.'
+SELECT t."Type_Key", t."Layer_Key"
+  FROM "GIS_Line_Type" t
+ WHERE NOT EXISTS (SELECT 1 FROM "GIS_Layer" l WHERE l."Layer_Key" = t."Layer_Key");

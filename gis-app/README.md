@@ -84,6 +84,45 @@ today; changing it is a decision, not a port.
 **It is also slow by construction** — plots x lines x vertices, nested
 in plpgsql. Fine at current sizes, slow on a large site.
 
+## The API
+
+`functions/` holds the endpoints. One so far — `gis.js`, the drawing —
+with the rest to follow the same shape.
+
+The difference from Aptus360 is one line and it is the point of the
+whole exercise. Every endpoint there runs on the SERVICE ROLE key,
+which bypasses row-level security: the database never sees who is
+asking, so every check lives in JavaScript and a forgotten filter
+returns somebody else's rows. Here the default is `asUser(req)`, a
+client carrying the caller's own token. PostgREST runs the query as
+that person, 0001's policies do the filtering, and a forgotten filter
+returns FEWER rows rather than more.
+
+The practical result is that `gis.js` contains no permission logic at
+all, and so cannot forget any. A viewer's insert is refused by
+Postgres, not by an `if`.
+
+Two checks keep it that way, both sabotage-tested:
+
+`checkserviceuse.mjs` fails if a handler calls `asService()` without a
+line saying `SERVICE KEY OK: <reason>`. Two jobs genuinely need it —
+creating the first Account, before anybody is a member of it and so
+before a policy can match, and anything scheduled with no signed-in
+person. Both are rare and both are worth a sentence. It also fails on
+an empty directory, because a check that passes over nothing reports
+success for nothing.
+
+`checkwritablefields.mjs` fails if a request body can set `Account_ID`
+or `Project_ID`. Those come from the URL's project and the account
+that owns it, never from the caller. It also fails a handler that
+writes with no `WRITABLE` set at all, since taking a body unfiltered
+looks identical to having nothing to filter.
+
+A note on error codes: a row refused by RLS comes back **404, not
+403**. A 403 confirms the row exists and belongs to somebody else,
+which is worth knowing to anyone probing. Not found is both truthful
+from where the caller stands and says nothing.
+
 ## Not here yet Three are self-contained.
 Two read tables that do not exist on this side — `gis_project_utilities`
 read `Project_Scope`, `gis_seed_reference` read Aptus360's

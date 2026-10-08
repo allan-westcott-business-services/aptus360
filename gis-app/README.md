@@ -52,9 +52,39 @@ used `SET LOCAL ROLE`, which outside a transaction only warns and does
 nothing, so every block ran as the table owner. An owner bypasses RLS,
 so it reported that all nine walls held without having tested one.
 
-## Not here yet
+## The functions
 
-The five recovered GIS functions (`0002`). Three are self-contained.
+`migrations/0002_gis_functions.sql` brings the ten GIS functions
+recovered from Aptus360. Seven come across as they stand. Three could
+not:
+
+- `gis_place_joints` INSERTS into `GIS_Feature`, which now has a NOT
+  NULL `Account_ID`. It takes the account from the project it is
+  drawing on rather than from a caller who could pass the wrong one.
+- `gis_project_utilities` read `Project_Scope`, a tender concept that
+  does not exist here. It reads `Project_Utility` now, returning the
+  same shape so the canvas needs no change.
+- `gis_set_length` is unchanged, but its trigger had to be re-created
+  — a trigger belongs to a table, and these are new tables. That one
+  matters: it maintains `Length_m`, which the bill of materials reads.
+
+All ten are SECURITY INVOKER, so row-level security applies inside
+them. `gis_trace_network` walking a network can only walk one the
+caller may see. A SECURITY DEFINER function here would be a hole
+straight through 0001's policies.
+
+`test/functions.sql` runs each of them on real geometry. Two results
+are worth knowing:
+
+**`gis_assign_meters` measures to vertices, not to segments.** A plot
+5m from the middle of a long straight cable reads as however far it is
+from that cable's nearest *corner*. Carried across as it behaves
+today; changing it is a decision, not a port.
+
+**It is also slow by construction** — plots x lines x vertices, nested
+in plpgsql. Fine at current sizes, slow on a large site.
+
+## Not here yet Three are self-contained.
 Two read tables that do not exist on this side — `gis_project_utilities`
 read `Project_Scope`, `gis_seed_reference` read Aptus360's
 `Project."Eastings"`/`"Northings"` — and both need rework rather than

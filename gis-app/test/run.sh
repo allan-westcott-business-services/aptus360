@@ -34,7 +34,9 @@ DO $$ BEGIN
 END $$;
 SQL
 
-psql -d "$DB" -q -v ON_ERROR_STOP=1 -f "$HERE/../migrations/0001_accounts_and_gis.sql"
+for m in "$HERE"/../migrations/*.sql; do
+  psql -d "$DB" -q -v ON_ERROR_STOP=1 -f "$m"
+done
 
 # app_user gets ordinary table rights. RLS then decides which ROWS, and
 # that is what is under test. It must NOT own the tables: an owner
@@ -54,10 +56,16 @@ echo "Applied 0001: $(psql -d "$DB" -tAc "
       || ' policies'")"
 
 psql -d "$DB" -f "$HERE/isolation.sql" 2>&1 | grep -vE '^(SET|RESET|Pager)'
+psql -d "$DB" -f "$HERE/functions.sql" 2>&1 | grep -vE '^(SET|RESET|Pager)'
 
 echo
 echo "────────────────────────────────────────────────────────────────"
-echo "Read the output rather than the exit code. Blocks 4, 5, 7 and 8"
-echo "are SUPPOSED to print ERROR — that is the wall holding. Block 9"
-echo "is the check that none of them wrote anything: one feature per"
-echo "account, named as they were created."
+echo "Read the output rather than the exit code."
+echo
+echo "isolation.sql — blocks 4, 5, 7 and 8 are SUPPOSED to print ERROR:"
+echo "that is the wall holding. Block 9 checks none of them wrote."
+echo
+echo "functions.sql — block H is SUPPOSED to print ERROR, for the same"
+echo "reason. Every other block prints its expectation beside its"
+echo "result; read them against each other rather than trusting that"
+echo "the script finished."

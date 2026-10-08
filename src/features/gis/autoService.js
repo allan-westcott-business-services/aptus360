@@ -1,4 +1,4 @@
-import { servicesReachingMains } from "./feeder.js";
+import { servicesReachingMains } from "../../shared/design-calc/feeder.js";
 
 /* Auto Service.
 

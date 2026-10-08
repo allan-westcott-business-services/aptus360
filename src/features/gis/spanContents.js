@@ -30,12 +30,12 @@
    the contents are pooled across the sections before they are counted
    rather than added up section by section. */
 
-import { contentsOf } from "./trenchContents.js";
+import { contentsOf } from "../../shared/design-calc/trenchContents.js";
 import { sizeLabelOf } from "./sizeMode.js";
-import { concurrentCount, dominantOf, trenchSize } from "./trenchSize.js";
-import { measuredScale } from "./lengths.js";
-import { digEstimate } from "./digRate.js";
-import { isTrenchType } from "./snapping.js";
+import { concurrentCount, dominantOf, trenchSize } from "../../shared/design-calc/trenchSize.js";
+import { measuredScale } from "../../shared/design-calc/lengths.js";
+import { digEstimate } from "../../shared/design-calc/digRate.js";
+import { isTrenchType } from "../../shared/design-calc/snapping.js";
 import { UTILITIES } from "../../lib/utilities.js";
 
 /* The options contentsOf needs, worked out once for a drawing.

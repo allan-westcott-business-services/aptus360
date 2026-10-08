@@ -11,7 +11,7 @@
    single run between two fixed points, and asking it to would mean a
    POC could not be routed until the plots were metered. */
 
-import { CONNECT_EPS, SNAP_TOL } from "./feeder.js";
+import { CONNECT_EPS, SNAP_TOL } from "../../shared/design-calc/feeder.js";
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 

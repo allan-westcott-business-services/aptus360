@@ -42,7 +42,7 @@
 
    Features in, positions out. The canvas draws them. */
 
-import { CONNECT_EPS, SNAP_TOL, isServiceLine } from "./feeder.js";
+import { CONNECT_EPS, SNAP_TOL, isServiceLine } from "../../shared/design-calc/feeder.js";
 
 /* ── The size of the mark ──
 

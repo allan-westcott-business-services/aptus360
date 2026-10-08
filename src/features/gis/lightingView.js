@@ -37,7 +37,7 @@
    check that covered it had to keep a copy — which passed while the
    real one was broken, twice, before this was pulled out. */
 
-import { isBreechJoint } from "./joints.js";
+import { isBreechJoint } from "../../shared/design-calc/joints.js";
 
 export function inLightingView(f) {
   /* The lighting itself, whatever is on that layer. */

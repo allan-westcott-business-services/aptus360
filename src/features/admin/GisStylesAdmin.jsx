@@ -7,7 +7,7 @@ import {
   toCriteria, fromCriteria, fieldOptions, valuesFor, isColumnField, changeField,
   preservedScope, labelFor, PRESERVED, OTHER,
 } from "./styleCriteria.js";
-import { statusFieldFor, statusFieldForTypes } from "../gis/buildStatus.js";
+import { statusFieldFor, statusFieldForTypes } from "../../shared/design-calc/buildStatus.js";
 import Banner from "../../components/Banner.jsx";
 import { listGisStyles, saveGisStyle, deleteGisStyle } from "../../api/gis.js";
 import { getLookups } from "../../api/lookups.js";

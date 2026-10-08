@@ -24,7 +24,7 @@
    that happens to turn a corner, and putting a node there would split a
    span for no reason anybody on site would recognise. */
 
-import { TRENCH_CARRIES } from "./trenchCarries.js";
+import { TRENCH_CARRIES } from "../../shared/design-calc/trenchCarries.js";
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 

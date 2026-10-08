@@ -28,7 +28,7 @@
    what to do with a main whose points have changed, and that is the
    only part that differs between the two routines. */
 
-import { CONNECT_M } from "./snapping.js";
+import { CONNECT_M } from "../../shared/design-calc/snapping.js";
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 

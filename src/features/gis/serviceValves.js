@@ -34,7 +34,7 @@
    Features in, positions out. The canvas draws them; nothing is
    created, so nothing has to be cleaned up when a main is redrawn. */
 
-import { CONNECT_EPS, SNAP_TOL, isServiceLine } from "./feeder.js";
+import { CONNECT_EPS, SNAP_TOL, isServiceLine } from "../../shared/design-calc/feeder.js";
 
 /* How far down the spur, and how wide across it. Metres. */
 export const VALVE_ALONG_M = 1.5;

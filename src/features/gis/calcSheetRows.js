@@ -52,7 +52,7 @@
    brackets, because that is the thing a designer can point at on the
    canvas. */
 
-import { runLength, drawnLength } from "./lengths.js";
+import { runLength, drawnLength } from "../../shared/design-calc/lengths.js";
 
 /* ── How near two ends have to be to be one node ──
 

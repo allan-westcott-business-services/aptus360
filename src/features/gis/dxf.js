@@ -57,7 +57,7 @@
    matters for setting out, and they are exact. */
 
 import { resolveStyle, appearance, subjectOf } from "../../lib/gisStyle.js";
-import { layerFor as mappedLayerFor } from "./dxfLayerMap.js";
+import { layerFor as mappedLayerFor } from "../../shared/design-calc/dxfLayerMap.js";
 import { lineLabelText } from "./lineLabel.js";
 import { NOTE_ROLE, noteBox, lineBaseline, leaderFrom } from "./textNotes.js";
 

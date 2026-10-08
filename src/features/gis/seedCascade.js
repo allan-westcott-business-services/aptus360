@@ -37,7 +37,7 @@
    what is going before it does — every path through this asks first,
    with the count in the question. */
 
-import { isTrenchFeature } from "./snapping.js";
+import { isTrenchFeature } from "../../shared/design-calc/snapping.js";
 
 /* Which revision of this rule is in the build.
 

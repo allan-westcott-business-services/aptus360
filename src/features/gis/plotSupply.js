@@ -26,7 +26,7 @@
    live. The whole point is to stop a gang being sent to a dead main,
    and an unanswerable question is not a reason to send them. */
 
-import { isMainFeature, statusOf } from "./buildStatus.js";
+import { isMainFeature, statusOf } from "../../shared/design-calc/buildStatus.js";
 import { deadUpstream } from "./upstream.js";
 
 const NEAR_M = 0.75;

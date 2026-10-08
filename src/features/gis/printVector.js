@@ -36,15 +36,15 @@
 import {
   resolveStyle, appearance, subjectOf, symbolPath, STROKE_ONLY, SYMBOL_TEXT,
 } from "../../lib/gisStyle.js";
-import { isBottleEnd, symbolSpin, BOTTLE_END_COLOUR } from "./joints.js";
+import { isBottleEnd, symbolSpin, BOTTLE_END_COLOUR } from "../../shared/design-calc/joints.js";
 import { VALVE_WIDTH_M } from "./serviceValves.js";
 import { lineLabelText } from "./lineLabel.js";
-import { isTrenchType } from "./snapping.js";
+import { isTrenchType } from "../../shared/design-calc/snapping.js";
 import { labelShown, DEFAULT_LABEL_KINDS } from "./labelKinds.js";
 import { mmPerMetre } from "./printSheet.js";
 import { LABEL_PLATE_TINT } from "../../lib/pillColour.js";
 import { feederRenderPlan, offsetPolyline } from "./feederColour.js";
-import { lvOrigins } from "./electric.js";
+import { lvOrigins } from "../../shared/design-calc/electric.js";
 import { toCanvas } from "./gridLink.js";
 import {
   NOTE_ROLE, NOTE_DEFAULTS, noteBox, lineBaseline, leaderFrom, leaderHead,

@@ -27,7 +27,7 @@
    Pure, and slow enough to be worth memoising by its caller: it
    builds the routing graph. */
 
-import { buildFeederModel, SPAN_REACH_M } from "./feeder.js";
+import { buildFeederModel, SPAN_REACH_M } from "../../shared/design-calc/feeder.js";
 
 /* Which node of the model a point stands on.
 

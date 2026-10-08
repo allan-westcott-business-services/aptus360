@@ -33,10 +33,10 @@
    group is estimated at its own trench's size and surface, and the
    section is the sum. */
 
-import { contentsOf } from "../gis/trenchContents.js";
-import { trenchSize } from "../gis/trenchSize.js";
-import { isTrenchType } from "../gis/snapping.js";
-import { digEstimate, digEstimateTotal } from "../gis/digRate.js";
+import { contentsOf } from "../../shared/design-calc/trenchContents.js";
+import { trenchSize } from "../../shared/design-calc/trenchSize.js";
+import { isTrenchType } from "../../shared/design-calc/snapping.js";
+import { digEstimate, digEstimateTotal } from "../../shared/design-calc/digRate.js";
 
 /* The hours in half a working day.
 

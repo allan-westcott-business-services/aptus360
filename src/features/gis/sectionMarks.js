@@ -25,7 +25,7 @@
    from those. Both renderers use it, so the screen and the sheet draw
    one mark rather than two. */
 
-import { SNAP_TOL } from "./feeder.js";
+import { SNAP_TOL } from "../../shared/design-calc/feeder.js";
 
 /* The bar's length, in metres of ground. Exported because the canvas,
    the print and the checks all need the same number, and a second copy

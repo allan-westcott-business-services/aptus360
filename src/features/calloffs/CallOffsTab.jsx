@@ -6,9 +6,9 @@ import { getLookups } from "../../api/lookups.js";
 import { todayMs, toISO } from "../planning/timeline.js";
 import { listPlots } from "../../api/plots.js";
 import { listGis } from "../../api/gis.js";
-import { trenchGraph, pathBetween } from "../gis/mainsCallOff.js";
+import { trenchGraph, pathBetween } from "../../shared/design-calc/mainsCallOff.js";
 import { sectionEstimate, callOffEstimate, halfDaysText } from "./digDays.js";
-import { isTrenchFeature } from "../gis/snapping.js";
+import { isTrenchFeature } from "../../shared/design-calc/snapping.js";
 import { getProject } from "../../api/projects.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
 import {

@@ -38,7 +38,7 @@
    wrong, which is the wrong way round: a circuit at sixty is near its
    limit while its neighbour sits half empty. */
 
-import { buildFeederModel, METERS_PER_CABLE } from "./feeder.js";
+import { buildFeederModel, METERS_PER_CABLE } from "../../shared/design-calc/feeder.js";
 
 /* Plots per circuit, and how many circuits that implies.
 

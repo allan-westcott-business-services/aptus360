@@ -14,8 +14,6 @@ import PointsConfigAdmin from "./PointsConfigAdmin.jsx";
 import CustomersAdmin from "./CustomersAdmin.jsx";
 import TabbedTables from "./TabbedTables.jsx";
 import OrganisationsAdmin from "./OrganisationsAdmin.jsx";
-import GisStylesAdmin from "./GisStylesAdmin.jsx";
-import DxfLayersAdmin from "./DxfLayersAdmin.jsx";
 import EnquiryFormsAdmin from "./EnquiryFormsAdmin.jsx";
 import PortalAccountsAdmin from "./PortalAccountsAdmin.jsx";
 import WaterPipeSizesAdmin from "./WaterPipeSizesAdmin.jsx";
@@ -256,10 +254,6 @@ export default function AdminPage({ keys = null }) {
           <CustomersAdmin />
         ) : table?.special === "menulayout" ? (
           <AdminMenuAdmin />
-        ) : table?.special === "gisstyles" ? (
-          <GisStylesAdmin />
-        ) : table?.special === "dxflayers" ? (
-          <DxfLayersAdmin />
         ) : table?.special === "enquiryforms" ? (
           <EnquiryFormsAdmin />
 

@@ -12,7 +12,7 @@ import {
   rateFor, defaultRate, layRateFor, hoursText,
   DEFAULT_DIG_RATES, DEFAULT_DEPTH_FACTORS, DEFAULT_SURFACE_FACTORS,
   DEFAULT_LAY_RATES, JOINT_LAY_FACTOR, HOURS_PER_DAY,
-} from "./src/features/gis/digRate.js";
+} from "./src/shared/design-calc/digRate.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };

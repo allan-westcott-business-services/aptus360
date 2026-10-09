@@ -5,10 +5,6 @@ import { recall, remember } from "../../lib/session.js";
 import { getLookups } from "../../api/lookups.js";
 import { todayMs, toISO } from "../planning/timeline.js";
 import { listPlots } from "../../api/plots.js";
-import { listGis } from "../../api/gis.js";
-import { trenchGraph, pathBetween } from "../../shared/design-calc/mainsCallOff.js";
-import { sectionEstimate, callOffEstimate, halfDaysText } from "./digDays.js";
-import { isTrenchFeature } from "../../shared/design-calc/snapping.js";
 import { getProject } from "../../api/projects.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
 import {
@@ -62,22 +58,6 @@ export default function CallOffsTab({ projectId }) {
   const [rows, setRows] = useState([]);
   const [lookups, setLookups] = useState(null);
   const [plots, setPlots] = useState([]);
-  /* The span nodes on the drawing, so a trench section can be defined
-     between them as well as between plots. Read from the GIS features
-     rather than a table of their own: a span node is a point on the
-     drawing, and the drawing is where it is placed and named. */
-  const [spanNodes, setSpanNodes] = useState([]);
-  /* The drawing itself, kept so a trench section's length can be
-     measured along the dig rather than typed. */
-  const [gisFeatures, setGisFeatures] = useState([]);
-  const [gisLineTypes, setGisLineTypes] = useState([]);
-  /* The surfaces and the rate tables, for the dig estimate. Empty is a
-     working state, not a broken one — digRate.js falls back to its own
-     figures, so an unmigrated database still estimates. */
-  const [gisSurfaceTypes, setGisSurfaceTypes] = useState([]);
-  const [digRates, setDigRates] = useState([]);
-  const [digDepthFactors, setDigDepthFactors] = useState([]);
-  const [digLayRates, setDigLayRates] = useState({});
   const [project, setProject] = useState(null);
 
   /* Today, as the picker wants it. Computed per render rather than
@@ -122,29 +102,6 @@ export default function CallOffsTab({ projectId }) {
       setRows(res.rows || []);
       setLookups(lk);
       setPlots(plotRes.rows || []);
-      /* Tolerated missing: a project with no drawing yet has no span
-         nodes, and a call-off form that refused to open because of that
-         would be worse than one offering plots alone. */
-      const gis = await listGis(projectId).catch(() => ({ features: [] }));
-      setGisFeatures(gis.features || []);
-      /* The line types come back with the drawing, not from lookups.
-         Reading them from `lookups` found nothing, so every line failed
-         the trench test and no section could ever be measured. */
-      setGisLineTypes(gis.lineTypes || []);
-      setGisSurfaceTypes(gis.surfaceTypes || []);
-      setDigRates(gis.digRates || []);
-      setDigDepthFactors(gis.digDepthFactors || []);
-      setDigLayRates(gis.digLayRates || {});
-      setSpanNodes((gis.features || [])
-        .filter((f) => f.Feature_Role === "spannode" || f.Attributes?.Span_Label)
-        .map((f) => ({
-          id: f.Feature_ID,
-          label: f.Attributes?.Span_Label || f.Label,
-          seq: Number(f.Attributes?.Span_Seq ?? 9999),
-        }))
-        .filter((n) => n.label)
-        .sort((a, b) => a.seq - b.seq
-          || String(a.label).localeCompare(String(b.label), undefined, { numeric: true })));
       setProject(proj);
       setError("");
     } catch (e) { setError(e.message); }
@@ -172,156 +129,18 @@ export default function CallOffsTab({ projectId }) {
      Both spellings because the plots endpoint and the GIS features use
      different cases for the same field. */
 
-  /* How far it is from one end of a section to the other, along the
-     trench.
+  /* Three things stood here and all three were the drawing talking.
 
-     Not the straight line between them. A trench that doglegs round a
-     corner is longer than the distance across the corner, and a length
-     that quietly understates the dig is a length somebody prices from.
-     So the route is found through the trench network \u2014 the same graph
-     the GIS uses to work out what a run covers \u2014 and its length
-     returned.
+     lengthBetween measured a section along the trench network rather
+     than as the crow flies; endPoints resolved each end onto that
+     network; sectionDays and digTotal turned the result into half-days
+     using the surfaces and dig rates, which arrived from the GIS
+     endpoint in the same response as the features.
 
-     Null where it cannot be answered: no drawing, an end that is not on
-     the network, or no route between the two. A blank box is honest;
-     a zero would read as "no distance". */
-  const lengthBetween = useCallback((fromLabel, fromKind, toLabel, toKind) => {
-    if (!fromLabel || !toLabel) return null;
-    const trenches = gisFeatures.filter((f) => f.Feature_Type === "line"
-      && isTrenchFeature(f, gisLineTypes));
-    if (!trenches.length) return null;
-
-    /* Where each end sits. A span node is a point on the drawing; a
-       plot is its seed. */
-    const pointFor = (label, kind) => {
-      if (kind === "node") {
-        const n = gisFeatures.find((f) => (f.Attributes?.Span_Label || f.Label) === label
-          && (f.Feature_Role === "spannode" || f.Attributes?.Span_Label));
-        return (n?.Geometry || [])[0] || null;
-      }
-      const plot = plots.find((x) => plotLabelOf(x) === label);
-      if (!plot) return null;
-      const seed = gisFeatures.find((f) => f.Feature_Role === "plot"
-        && Number(f.Plot_ID) === plotIdOf(plot));
-      return (seed?.Geometry || [])[0] || null;
-    };
-
-    const a = pointFor(fromLabel, fromKind);
-    const b = pointFor(toLabel, toKind);
-    if (!a || !b) return null;
-
-    const nodes = gisFeatures.filter((f) => f.Feature_Role === "spannode");
-    const graph = trenchGraph(trenches, nodes);
-    /* The graph node nearest each end, since a plot seed sits off the
-       trench rather than on it. */
-    /* A graph point is { at, node }, not a bare coordinate. Reading it
-       as an array gave NaN for every distance, so every end resolved to
-       the first point and the length came out as zero. */
-    const nearest = (pt) => {
-      let best = null;
-      graph.points.forEach((q, i) => {
-        const d = Math.hypot(q.at[0] - pt[0], q.at[1] - pt[1]);
-        if (!best || d < best.d) best = { i, d };
-      });
-      return best;
-    };
-    const from = nearest(a);
-    const to = nearest(b);
-    if (!from || !to || from.i === to.i) return null;
-
-    /* Shortest path over the graph's own adjacency.
-
-       Not routeBetween: that resolves span node Feature_IDs, and an end
-       of a section is often a plot or a bare trench end with no node on
-       it. The edges already carry their length along the trench \u2014 B.m
-       minus A.m, measured down the polyline \u2014 so summing them gives
-       the dig rather than the straight line, which is the whole point
-       of routing at all. */
-    const best = new Map([[from.i, 0]]);
-    const queue = [from.i];
-    while (queue.length) {
-      const at = queue.shift();
-      for (const e of graph.adj.get(at) || []) {
-        const next = best.get(at) + e.len;
-        if (best.has(e.to) && best.get(e.to) <= next) continue;
-        best.set(e.to, next);
-        queue.push(e.to);
-      }
-    }
-    const m = best.get(to.i);
-    return m == null ? null : Math.round(m * 10) / 10;
-  }, [gisFeatures, gisLineTypes, plots]);
-
-  /* The graph point each end of a section sits on.
-
-     The same resolution lengthBetween does, lifted out so the estimate
-     and the length cannot disagree about where a section runs — two
-     copies of "nearest point to this plot seed" is one copy too many,
-     and the one that drifts would put a duration against a different
-     piece of trench from the metres beside it. */
-  const endPoints = useCallback((graph, fromLabel, fromKind, toLabel, toKind) => {
-    const pointFor = (label, kind) => {
-      if (!label) return null;
-      if (kind === "node") {
-        const n = gisFeatures.find((f) => (f.Attributes?.Span_Label || f.Label) === label
-          && (f.Feature_Role === "spannode" || f.Attributes?.Span_Label));
-        return (n?.Geometry || [])[0] || null;
-      }
-      const plot = plots.find((x) => plotLabelOf(x) === label);
-      if (!plot) return null;
-      const seed = gisFeatures.find((f) => f.Feature_Role === "plot"
-        && Number(f.Plot_ID) === plotIdOf(plot));
-      return (seed?.Geometry || [])[0] || null;
-    };
-    const nearest = (pt) => {
-      if (!pt) return null;
-      let best = null;
-      graph.points.forEach((q, i) => {
-        const d = Math.hypot(q.at[0] - pt[0], q.at[1] - pt[1]);
-        if (!best || d < best.d) best = { i, d };
-      });
-      return best?.i ?? null;
-    };
-    return [nearest(pointFor(fromLabel, fromKind)), nearest(pointFor(toLabel, toKind))];
-  }, [gisFeatures, plots]);
-
-  /* How long each trench section takes to dig and lay, in half-days.
-
-     Worked out here rather than typed, and re-run when the rows change,
-     because the answer follows the drawing: routing another cable into
-     a trench widens it and lengthens the dig, and a figure somebody
-     entered when the call-off was started would be describing a trench
-     that no longer exists.
-
-     Only for Span mode. A plot list and a column list are not digs. */
-  const sectionDays = useMemo(() => {
-    if (mode !== "Span") return [];
-    const trenches = gisFeatures.filter((f) => f.Feature_Type === "line"
-      && isTrenchFeature(f, gisLineTypes));
-    if (!trenches.length) return items.map(() => null);
-
-    const nodes = gisFeatures.filter((f) => f.Feature_Role === "spannode");
-    const graph = trenchGraph(trenches, nodes);
-
-    return items.map((r) => {
-      const [from, to] = endPoints(graph, r.From_Plot, r.From_Kind, r.To_Plot, r.To_Kind);
-      if (from == null || to == null || from === to) return null;
-      return sectionEstimate(pathBetween(graph, from, to), {
-        features: gisFeatures,
-        lineTypes: gisLineTypes,
-        surfaceTypes: gisSurfaceTypes,
-        rates: digRates,
-        depthBands: digDepthFactors,
-        layRates: digLayRates,
-      });
-    });
-  }, [mode, items, gisFeatures, gisLineTypes, gisSurfaceTypes, endPoints,
-    digRates, digDepthFactors, digLayRates]);
-
-  const digTotal = useMemo(
-    () => callOffEstimate(sectionDays.filter(Boolean)),
-    [sectionDays],
-  );
+     A trench section is now what somebody types: two plots and a
+     length. That was always the fallback where a project had no
+     drawing yet — "a blank box is honest" — and it is the only path
+     now. */
 
   /* The chosen plots as rows, in the order they appear on the project
      rather than the order they were clicked — a call-off reads better
@@ -469,19 +288,9 @@ export default function CallOffsTab({ projectId }) {
       if (j !== i) return r;
       const next = { ...r, [k]: v };
 
-      /* Measure the section as soon as both ends are known.
-
-         Filled rather than forced: the figure is overwritten when an
-         end changes, but somebody who types over it keeps their number
-         until they change an end again. A drawing is a good guide to a
-         length and not always the last word on it \u2014 a trench that has
-         to go round something the drawing does not show is longer than
-         the drawing says. */
-      if (["From_Plot", "To_Plot", "From_Kind", "To_Kind"].includes(k)) {
-        const m = lengthBetween(next.From_Plot, next.From_Kind,
-          next.To_Plot, next.To_Kind);
-        if (m != null) next.Estimated_Length_m = String(m);
-      }
+      /* The length used to fill itself in here, measured along the
+         trench network as soon as both ends were known. It is typed
+         now: there is no drawing on this side to measure along. */
       return next;
     }));
 
@@ -517,29 +326,14 @@ export default function CallOffsTab({ projectId }) {
         Contact_Company: branchName || null,
         Contact_Phone: f.Contact_Phone || "N/A",
         Created_By: user?.email ?? null,
-        /* How long the trenching takes, as the drawing said when this
-           was raised (0159).
-
-           Saved rather than left to be worked out again in Planning.
-           Planning holds none of the drawing, and an estimate
-           recomputed later would move — routing another cable into a
-           trench would silently lengthen a booking a team had already
-           been given. A call-off is a request for work as it was
-           understood on the day.
-
-           Null unless something could actually be estimated, so a
-           call-off whose ends are not on the trench network leaves the
-           end date empty rather than defaulting it to the start. */
-        Estimated_Half_Days: mode === "Span" && digTotal?.halfDays
-          ? digTotal.halfDays
-          : null,
+        /* The dig estimate was worked out from the drawing and saved
+           here, on the call-off and on each of its sections. Both are
+           left null now. The columns stay: every call-off raised while
+           the canvas was in this application still carries its figure,
+           and Planning reads them. */
+        Estimated_Half_Days: null,
         items: toItems(
-          mode === "Span"
-            ? rowsForMode.map((r, i) => ({
-              ...r,
-              Estimated_Half_Days: sectionDays[i]?.ok ? sectionDays[i].halfDays : null,
-            }))
-            : rowsForMode,
+          rowsForMode,
           mode,
         ),
       });
@@ -758,8 +552,8 @@ export default function CallOffsTab({ projectId }) {
               )}
             </>
           ) : (
-            <ItemRows mode={mode} items={items} plots={plots} spanNodes={spanNodes}
-              setRow={setRow} sectionDays={sectionDays} digTotal={digTotal}
+            <ItemRows mode={mode} items={items} plots={plots}
+              setRow={setRow}
               onAdd={() => setItems((rs) => [...rs, { ...BLANK_ROW[mode] }])}
               onRemove={(i) => setItems((rs) => rs.filter((_, j) => j !== i))} />
           )}
@@ -899,48 +693,34 @@ export default function CallOffsTab({ projectId }) {
    The kind sits above the picker rather than beside it, because it
    decides what the picker contains \u2014 reading the other way round asks
    somebody to choose from a list before knowing what the list is. */
-function SpanEnd({ side, row, index, setRow, plots, spanNodes }) {
-  const kindKey = `${side}_Kind`;
+/* One end of a trench section.
+
+   It used to offer a choice of two kinds, plot or span node, because a
+   span node was a named point on the drawing and a section could run
+   between two of them. The drawing went, so an end is a plot and the
+   kind selector would be a list of one.
+
+   `From_Kind` and `To_Kind` are still written as "plot" by BLANK_ROW
+   and still read by anything looking at older call-offs, which may
+   carry "node" against a point nobody can look up any more. */
+function SpanEnd({ side, row, index, setRow, plots }) {
   const valueKey = `${side}_Plot`;
-  const kind = row[kindKey] || "plot";
-  const nodes = spanNodes || [];
 
   return (
     <div className="co-end">
-      {/* A select rather than a pair of pills. Two pills did not fit
-          the width of the field beneath them and truncated to "P…" and
-          "SPAN …", which is worse than not labelling them at all. */}
-      <select className="co-end-kind" aria-label={`${side} is a`}
-        value={kind}
-        onChange={(e) => {
-          setRow(index, kindKey)(e.target.value);
-          setRow(index, valueKey)("");
-        }}>
-        <option value="plot">Plot</option>
-        <option value="node" disabled={!nodes.length}>
-          {nodes.length ? "Span node" : "Span node (none drawn)"}
-        </option>
-      </select>
       <select value={row[valueKey]}
         onChange={(e) => setRow(index, valueKey)(e.target.value)}>
         <option value="">{side}&hellip;</option>
-        {kind === "node"
-          ? nodes.map((n) => <option key={n.id} value={n.label}>{n.label}</option>)
-          : plots.map((p) => (
-            <option key={plotIdOf(p)} value={plotLabelOf(p)}>{plotLabelOf(p)}</option>
-          ))}
+        {plots.map((p) => (
+          <option key={plotIdOf(p)} value={plotLabelOf(p)}>{plotLabelOf(p)}</option>
+        ))}
       </select>
     </div>
   );
 }
 
 function ItemRows({
-  mode, items, plots, spanNodes = [], setRow, onAdd, onRemove,
-  /* One estimate per row, in row order, or null where the drawing
-     cannot answer for that row. Passed in rather than worked out here,
-     because the graph is built once for the whole grid — building it
-     per row would walk every trench on the site once per section. */
-  sectionDays = [], digTotal = null,
+  mode, items, plots, setRow, onAdd, onRemove,
 }) {
   if (!mode) return null;
 
@@ -986,10 +766,8 @@ function ItemRows({
                   node A12 are different points, and carrying a choice
                   across would leave a section pointing at something
                   nobody picked. */}
-              <SpanEnd side="From" row={r} index={i} setRow={setRow}
-                plots={plots} spanNodes={spanNodes} />
-              <SpanEnd side="To" row={r} index={i} setRow={setRow}
-                plots={plots} spanNodes={spanNodes} />
+              <SpanEnd side="From" row={r} index={i} setRow={setRow} plots={plots} />
+              <SpanEnd side="To" row={r} index={i} setRow={setRow} plots={plots} />
               <select value={r.D_or_P} onChange={(e) => setRow(i, "D_or_P")(e.target.value)}>
                 <option value="">D/P</option>
                 <option value="D">D</option>
@@ -999,26 +777,6 @@ function ItemRows({
                 value={r.Estimated_Length_m}
                 onChange={(e) => setRow(i, "Estimated_Length_m")(e.target.value)} />
 
-              {/* How long this section takes, in the unit it gets
-                  booked in.
-
-                  Read-only, and blank rather than zero where the
-                  drawing cannot answer — a section whose ends are not
-                  both on the network has no route to measure, and "0"
-                  would read as work that takes no time. The tooltip
-                  carries the working, because a duration a gang is sent
-                  out on gets questioned. */}
-              <span className={`co-days${sectionDays[i]?.ok ? "" : " none"}`}
-                title={sectionDays[i]?.ok
-                  ? `${sectionDays[i].lengthM}m over `
-                    + `${sectionDays[i].trenches} trench`
-                    + `${sectionDays[i].trenches === 1 ? "" : "es"}`
-                    + `, ${sectionDays[i].volumeM3}m\u00b3`
-                    + ` \u00b7 ${sectionDays[i].hours} hr`
-                    + ` \u00b7 ${sectionDays[i].basis ?? ""}`
-                  : (sectionDays[i]?.note ?? "Pick both ends to estimate the dig.")}>
-                {sectionDays[i]?.ok ? halfDaysText(sectionDays[i].halfDays) : "\u2014"}
-              </span>
             </>
           )}
 
@@ -1032,33 +790,6 @@ function ItemRows({
         </div>
       ))}
 
-      {/* What the whole call-off comes to.
-
-          Summed from the rows rather than recomputed from the hours:
-          each row is a booking somebody will make, and a total that
-          rounded once at the end would sit below the sum of what is on
-          screen and look like an error in the rows.
-
-          Sections the drawing could not answer for are named rather
-          than left out silently. A total that quietly covers four of
-          six sections is worse than one that says so, because it is the
-          number that goes onto a programme. */}
-      {mode === "Span" && !!digTotal?.sections && (
-        <p className="co-days-total">
-          <strong>{halfDaysText(digTotal.halfDays)}</strong>
-          {` to excavate and lay `}
-          {`${digTotal.lengthM}m across ${digTotal.sections} section`}
-          {digTotal.sections === 1 ? "" : "s"}
-          {digTotal.unestimated
-            ? `. ${digTotal.unestimated} section`
-              + `${digTotal.unestimated === 1 ? " is" : "s are"} not estimated.`
-            : "."}
-          <em>
-            {" Planning estimate from the drawing \u2014 the trench sizes follow "}
-            {"what is routed in them, so this moves as the design does."}
-          </em>
-        </p>
-      )}
     </div>
   );
 }
@@ -1077,22 +808,6 @@ const CSS = `
 .co-end { display: flex; flex-direction: column; gap: 3px; flex: 1 1 150px;
   min-width: 120px; }
 .co-end > select { width: 100%; min-width: 0; }
-/* Contained, not overflowing. The pair is wider than the 120px cell
-   under it, so without this the two ends' switches ran into each other
-   and read as one row of four. */
-.co-end-kind { display: flex; gap: 2px; min-width: 0; overflow: hidden; }
-.co-end-kind button { flex: 0 1 auto; min-width: 0; overflow: hidden;
-  text-overflow: ellipsis; }
-/* One line each. "Span node" broke across two and made the switch
-   taller than the field under it. */
-.co-end-kind button { font: 600 9.5px inherit; text-transform: uppercase;
-  letter-spacing: .02em; padding: 2px 6px; border-radius: 20px; cursor: pointer;
-  white-space: nowrap; border: 1px solid var(--border);
-  background: var(--white); color: var(--muted); }
-.co-end-kind button.on { background: var(--accent); border-color: var(--accent);
-  color: #fff; }
-.co-end-kind button[disabled] { opacity: .45; cursor: not-allowed; }
-
 .co-utils { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 4px 0 2px; }
 .co-util { display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
   cursor: pointer; }
@@ -1113,15 +828,6 @@ const CSS = `
 .co-item-row select, .co-item-row input { font: 500 12px inherit; padding: 5px 7px;
   border: 1px solid var(--border); border-radius: 6px; }
 .co-len { width: 74px; }
-/* The estimate, aligned with the boxes rather than styled as one: it is
-   read, never typed. */
-.co-days { align-self: center; min-width: 62px; text-align: right;
-  font: 600 12px inherit; color: var(--text); }
-.co-days.none { color: var(--muted); font-weight: 500; }
-.co-days-total { margin: 9px 0 0; padding: 8px 10px; background: var(--bg);
-  border-radius: var(--radius); font-size: 12px; line-height: 1.5; }
-.co-days-total em { display: block; margin-top: 3px; font-size: 10.5px;
-  color: var(--muted); font-style: italic; }
 .co-x { background: none; border: none; cursor: pointer; color: var(--muted);
   font-size: 17px; line-height: 1; padding: 0 4px; }
 .co-x:hover { color: #b91c1c; }

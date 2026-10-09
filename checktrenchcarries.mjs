@@ -6,7 +6,7 @@
    it like any other and lays a cable somebody has to find and remove. */
 import {
   carries, carriesLabel, isRestricted, trenchesFor, TRENCH_CARRIES,
-} from "./src/features/gis/trenchCarries.js";
+} from "./src/shared/design-calc/trenchCarries.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };

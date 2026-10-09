@@ -1,8 +1,8 @@
 /* Opening the call-offs page from somewhere else, with one call-off
    already expanded.
 
-   The same shape as gisIntent.js, for the same reason and deliberately
-   not generalised with it. The planning board wants to hand somebody
+   The same shape as projectIntent.js, for the same reason and
+   deliberately not generalised with it. The planning board wants to hand somebody
    over to where a booking is edited; the shell decides which page is
    showing and the call-offs page holds its own open row, and the board
    has neither in scope.

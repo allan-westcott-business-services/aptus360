@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import {
   trenchSize, concurrentCount, dominantOf, coverFor, separationFor,
   NJUG_COVER_M, MIN_WIDTH_M, EDGE_MARGIN_M,
-} from "./src/features/gis/trenchSize.js";
+} from "./src/shared/design-calc/trenchSize.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -240,156 +240,11 @@ if (separationFor("gas", "electric") !== separationFor("electric", "gas")) {
   fail("the separation between two utilities depends on their order");
 }
 
-/* ── HV and LV are two cables, not one cable in two sizes ──
-
-   Grouping the editor's list by utility is right for a gas main that
-   steps from 180 to 90 part way along: one pipe, one slot, however many
-   features the build cut it into.
-
-   Electric is not like that. A trench holding two HV routes and one LV
-   main reported "3 x HV Cable" \u2014 the count was of everything electric
-   and the name was of whichever covered most of it. Right total, wrong
-   thing named, and together they read as a cable that is not there. */
-{
-  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
-  /* ── Decided where the feature is still in hand ──
-
-     The row is rebuilt from the content with a fixed set of fields.
-     Working the split out LATER from `r.feature.Attributes.Line_Type`
-     found nothing on every row and called them all LV, so the HV field
-     came up empty on a trench with two HV cables in it.
-
-     And `utility` on the row is the DISPLAY name — "Electric", which
-     somebody can rename — so the test has to use the layer key. Two
-     ways for one line to be wrong, and it was wrong both ways. */
-  if (!/kind: c\.utility === "electric"/.test(editor)) {
-    fail("the HV/LV split is worked out after the feature has been dropped "
-      + "from the row, so every cable reads as LV");
-  }
-  if (/r\.utility === "electric"/.test(editor)) {
-    fail("the split tests the display name rather than the layer key, so "
-      + "renaming the Electric layer breaks it");
-  }
-  if (!/const kindOf = \(r\) => r\.kind \?\? r\.layerKey;/.test(editor)) {
-    fail("the grouping does not use the kind decided on the row");
-  }
-  if (!/grouped\.find\(\(g\) => kindOf\(g\) === kindOf\(r\)\)/.test(editor)) {
-    fail("the split is worked out and not used for the grouping");
-  }
-
-  /* ── A field each, or the second group is never seen ──
-
-     One "Electric Cable Size" slot and a `find` that took the first
-     electric group: splitting the list into HV and LV made a second
-     group that nothing rendered, so a trench with two HV and one LV
-     showed the HV and dropped the LV out of sight entirely. */
-  /* ── Every box answers the same question ──
-
-     An attempt to avoid saying "2 x HV Cable" under a heading of HV
-     Cable left one box showing a COUNT and the next showing a SIZE. A
-     reader comparing them has to work out which kind of thing each is
-     before they can read either, and "2" beside "3c WAVE 185" invites
-     reading the second as one cable. */
-  if (/const same = String\(c\.label\)/.test(editor)) {
-    fail("the boxes in this row do not all read the same way \u2014 one gives a "
-      + "count and another gives a size");
-  }
-  /* And headed for the thing rather than one of its properties: "Gas
-     Pipe Size" holding "1 x 180mm PE" promises less than it delivers. */
-  /* Matched on the FIELD list, not on any mention of the words: the
-     comment above the list quotes the old heading to explain why it
-     changed, and a check that reads a comment reports on the
-     documentation. */
-  if (/\["gas", "Gas Pipe Size"\]|\["water", "Water Pipe Size"\]/.test(editor)) {
-    fail("a box is headed Size and now carries a count as well");
-  }
-
-  if (!/\["electric:hv", "HV Cable"\]/.test(editor)
-    || !/\["electric:lv", "LV Cable"\]/.test(editor)) {
-    fail("HV and LV share one field, so whichever is grouped second is "
-      + "never shown at all");
-  }
-  /* ── Every type, each with its count, in every field ──
-
-     Naming the dominant type and hiding the rest in a tooltip is right
-     for a pipe that steps size part way along: one pipe, one slot. It
-     is wrong for a field that says what is IN the trench, because two
-     different cables read as more of the first one.
-
-     And every field has to answer the same question. An attempt to
-     avoid saying "2 x HV Cable" under a heading of HV Cable left one
-     box showing a COUNT and the next showing a SIZE \u2014 a reader
-     comparing them had to work out which kind of thing each was. */
-  if (!/c\.parts\.map\(\(x\) => `\$\{x\.count\} \\u00d7 \$\{x\.label\}`\)\.join\(", "\)/
-    .test(editor)) {
-    fail("a field names one type and hides the others, so two different "
-      + "cables read as more of the first");
-  }
-  if (!/parts,/.test(editor)) {
-    fail("the per-type counts are worked out and not carried to the field");
-  }
-
-  if (!/\(x\.kind \?\? x\.layerKey\) === key/.test(editor)) {
-    fail("the fields are matched on utility, so both electric fields show "
-      + "the same group");
-  }
-  /* `layerKey` stays what it was, so anything else reading these rows
-     by utility is unaffected. */
-  if (!/kind: kindOf\(g\),/.test(editor)) {
-    fail("the row does not say which field it belongs in");
-  }
-
-  /* ── And the WIDTH keeps the coarser grouping ──
-
-     It takes the widest in each group and repeats it, so an LV counted
-     as HV digs a little wide. Splitting them would NARROW the dig, and
-     this module's rule is that over-digging is money while under-digging
-     is a pipe that will not fit. */
-  const sizeSrc = readFileSync("./src/features/gis/trenchSize.js", "utf8");
-  const cs = sizeSrc.slice(sizeSrc.indexOf("export function crossSection"));
-  if (/Line_Type/.test(cs.slice(0, 900))) {
-    fail("crossSection now splits HV from LV, which narrows the dig \u2014 the "
-      + "safe direction here is to over-dig");
-  }
-  if (!/const k = x\.utility;/.test(cs.slice(0, 1200))) {
-    fail("crossSection no longer groups by utility");
-  }
-}
-
-/* ── A trench with nothing in it is still a trench ──
-
-   Surface, build status and duration sat inside the "In this trench"
-   block, which draws only where something is laid in it. Two of the
-   three do follow from the contents \u2014 the surface multiplies the dig,
-   the duration is computed from what is being laid \u2014 which is why they
-   were put there.
-
-   But they are facts about the TRENCH, and a trench exists before
-   anything is in it. On a fresh dig, which is exactly when somebody
-   sets the stage, the whole group vanished. */
-{
-  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
-  const contents = editor.indexOf("{isTrench && !!trenchContents.length && (");
-  const build = editor.indexOf('htmlFor="fe-build"');
-  const surface = editor.indexOf('htmlFor="fe-surface"');
-  const trenchOnly = editor.indexOf("{isTrench && (", contents);
-
-  if (contents < 0) fail("the contents block has moved; this check cannot find it");
-  else {
-    if (!(trenchOnly > contents)) {
-      fail("there is no trench-only block after the contents, so nothing can "
-        + "draw for a trench with nothing in it");
-    }
-    if (!(build > trenchOnly)) {
-      fail("Build status is inside the contents block, so a trench with "
-        + "nothing laid in it yet cannot be given a stage");
-    }
-    if (!(surface > trenchOnly)) {
-      fail("Surface is inside the contents block, so a fresh dig cannot be "
-        + "surfaced");
-    }
-  }
-}
+/* Two blocks of assertions about FeatureEditor.jsx stood here: how the
+   trench contents list grouped HV and LV, and where Build status and
+   Surface sat relative to the contents block. Both were about the
+   canvas's editor pane, which has left this application. What remains
+   is the sizing itself, which Dig & Lay Rates still reads. */
 
 console.log(bad ? `\n${bad} problem(s)`
   : `Trench sizing behaves (${EDGE_MARGIN_M * 2}m working room, `

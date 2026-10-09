@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from "react";
-import { openGis } from "../../lib/gisIntent.js";
 import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { getProject } from "../../api/projects.js";
@@ -189,14 +188,6 @@ export default function OutlineDesignsTab({ projectId }) {
               )}
             </div>
           )}
-          {/* The drawing these designs describe. Opening it meant going
-              to the canvas and finding the project again in a list of
-              five hundred, having just been looking at it. */}
-          <button className="btn ghost"
-            title="Open this project on the GIS canvas"
-            onClick={() => openGis({ projectId })}>
-            Open GIS design
-          </button>
           <button className="btn accent" disabled={!dirty.length || saving} onClick={saveAll}>
             {saving ? "Saving\u2026" : dirty.length ? `Save ${dirty.length} change${dirty.length === 1 ? "" : "s"}` : "Saved"}
           </button>

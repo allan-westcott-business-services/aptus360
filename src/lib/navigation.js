@@ -50,7 +50,10 @@ export const AREAS = [
     blurb: "Projects from enquiry through to a drawn and costed design.",
     items: [
       { view: "projects", label: "Projects", built: true },
-      { view: "gis-canvas", label: "GIS Canvas", built: true },
+      /* The GIS Canvas was the second item here. Drawing moved out of
+         this application into Utility GIS, which is the same code on
+         its own database, so the canvas, the ten gis-* endpoints and
+         everything that read a drawing came out together. */
     ],
   },
   {

@@ -76,27 +76,10 @@ export async function setPlotEnergisation(servicePlotId, utilities) {
   return http.put(`/calloffs/plots/${servicePlotId}/energisation`, { utilities });
 }
 
-/* The picture of one span, stored against it.
-
-   Sent to a function rather than uploaded from here: the browser's key
-   has no policies and can write nothing, so storage goes the same way
-   everything else does. */
-export async function saveSpanImage({ spanId, dataUrl }) {
-  return http.post("/call-off-span-image", { spanId, dataUrl });
-}
-
-/* The as-laid drawing of an Electric Service call-off.
-
-   Sent to a function rather than uploaded from here, for the same
-   reason the span pictures are: the browser's key has no policies and
-   can write nothing, so storage goes the way everything else does.
-
-   Which is also the answer to the credentials question the old
-   standalone work instruction raised — it carried an insert-only
-   Supabase token compiled into the page. Nothing here needs one. */
-export async function saveAsLaidImage({ submissionId, dataUrl }) {
-  return http.post("/call-off-as-laid", { submissionId, dataUrl });
-}
+/* saveSpanImage and saveAsLaidImage stood here. Both took a picture
+   the canvas had drawn and sent it to a function to be stored, and the
+   canvas was their only caller. The one below is different: the office
+   attaches a PDF by hand, and that stays. */
 
 /* The design drawing the office attaches to a call-off.
 

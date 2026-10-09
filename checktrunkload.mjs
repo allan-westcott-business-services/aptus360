@@ -23,7 +23,7 @@
    sized the input cable against double the load, which is the
    harmless direction, and is why nobody noticed. */
 import { readFileSync } from "node:fs";
-import { feederSections } from "./src/features/gis/feeder.js";
+import { feederSections } from "./src/shared/design-calc/feeder.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -98,7 +98,7 @@ const sub = {
      a session's work on its own. Named here so it is not forgotten:
      this case proves the call site reads the right field, and a
      behavioural one over a real link box is still wanted. */
-  const src = readFileSync("./src/features/gis/feeder.js", "utf8");
+  const src = readFileSync("./src/shared/design-calc/feeder.js", "utf8");
   const at = src.indexOf("const tally = servedBy.get(Number(box.Feature_ID));");
   if (at < 0) fail("the trunk no longer tallies what its box serves");
   else {

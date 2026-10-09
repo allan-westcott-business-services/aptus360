@@ -39,11 +39,12 @@ const SUB_COLS = [
 
      Fault 4 is about columns this endpoint saves and returns: a column
      added to the database and not to the list is neither. Neither of
-     these is. The drawing is written by call-off-as-laid.js, which
-     uploaded the file and is the only thing that may claim it exists,
-     and it is read by field-queue.js, which selects it itself. Listing
-     them here bought nothing and put the whole raise path — the thing
-     the canvas exists to do — behind a column it never touches.
+     these is. The as-laid drawing was written by call-off-as-laid.js,
+     which uploaded the file and was the only thing that could claim it
+     existed, and read by field-queue.js, which selects it itself. That
+     endpoint went with the canvas and the columns remain; listing them
+     here bought nothing and put the whole raise path behind a column
+     it never touches.
 
      The rule that matters: a column belongs in an explicit list where
      the endpoint reads or writes it, and nowhere else. A list that

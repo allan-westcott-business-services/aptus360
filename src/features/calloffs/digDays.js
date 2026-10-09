@@ -1,42 +1,28 @@
-/* How many half-days a section of a mains call-off takes to dig and lay.
+/* Half-days, as the planner books them.
 
-   ── Why half-days ──
+   ── What this used to be ──
 
-   Because that is what the planner books in. `assignments.js` already
-   works in halves throughout — `halfIsWorked`, `resolveStartHalf`,
-   weekend mornings booked without the afternoon — so an estimate in
-   hours would have to be converted by whoever read it, and two people
-   converting it would disagree about what a day is.
+   An estimator: it took a run through the trench network, grouped its
+   edges by the trench they lay on, sized each from what was routed in
+   it, priced it against the surface it crossed, and returned half-days.
+   Every input came from the drawing, and the drawing left this
+   application with the GIS canvas.
 
-   Rounded up, always. A gang cannot be sent for a third of a half-day,
-   and a section that needs four and a bit halves needs five. Rounding
-   down would produce a programme that is short on every row and then
-   short overall by the sum of the roundings.
+   What is left is the unit. Call-offs raised while the canvas was here
+   carry an Estimated_Half_Days, Planning books against it, and the
+   assignment screens work in halves throughout — halfIsWorked,
+   resolveStartHalf, weekend mornings booked without the afternoon. So
+   the conversion and the wording stay, and they stay here rather than
+   moving into a screen, because two screens rounding separately would
+   disagree about what a day is.
 
-   ── Where the size comes from ──
+   ── Why rounded up ──
 
-   Not from the call-off. A section carries a length and nothing else,
-   because that is what somebody raising one knows. The width and depth
-   come from the drawing: what is routed in each trench decides how big
-   the hole is, which is `trenchSize()`, and the same figures the canvas
-   shows on the trench itself.
+   A gang cannot be sent for a third of a half-day, and a section
+   needing four and a bit halves needs five. Rounding down produces a
+   programme short on every row and then short overall by the sum of
+   the roundings. */
 
-   ── Why per edge rather than per section ──
-
-   A section is a run between two points, and the run crosses whatever
-   trenches lie between them. Those are not one dig. A run that starts
-   in a footway and crosses a carriageway is two rates, and the
-   carriageway part is better than twice the footway part — averaging
-   them over the section would flatter every crossing on the site.
-
-   So the graph's edges are grouped by the trench they run on, each
-   group is estimated at its own trench's size and surface, and the
-   section is the sum. */
-
-import { contentsOf } from "../../shared/design-calc/trenchContents.js";
-import { trenchSize } from "../../shared/design-calc/trenchSize.js";
-import { isTrenchType } from "../../shared/design-calc/snapping.js";
-import { digEstimate, digEstimateTotal } from "../../shared/design-calc/digRate.js";
 
 /* The hours in half a working day.
 
@@ -69,134 +55,14 @@ export function halfDaysText(halves) {
   return `${Math.floor(n / 2)}\u00bd days`;
 }
 
-/* What one trench along the run contributes.
+/* sectionEstimate and callOffEstimate stood here.
 
-   `metres` is how much of that trench the section actually crosses,
-   which is not the trench's own length — a section may clip the end of
-   a long trench, and charging the whole of it would count metres nobody
-   is digging. */
-function trenchLeg(trench, metres, opts) {
-  const {
-    features = [], lineTypes = [], surfaceTypes = [],
-    rates, depthBands, layRates,
-  } = opts;
+   They turned a route through the trench network into half-days, using
+   the trench contents, its size, the surface it crosses and the dig
+   rates. Every input came from the drawing, and the drawing left this
+   application with the canvas.
 
-  const serviceLineTypes = new Set(lineTypes
-    .filter((t) => t.Layer_Key !== "trench" && /service/i.test(t.Type_Key))
-    .map((t) => t.Type_Key));
-  const serviceTrenchTypes = new Set(["trench_service", ...lineTypes
-    .filter((t) => t.Layer_Key === "trench" && /service/i.test(t.Type_Key))
-    .map((t) => t.Type_Key)]);
-
-  const res = contentsOf(trench, features, {
-    serviceLineTypes,
-    serviceTrenchTypes,
-    isTrench: (x) => x.Feature_Type === "line"
-      && isTrenchType(x.Attributes?.Line_Type, lineTypes),
-  });
-  if (res.error) return { ok: false, note: res.error, trench, metres };
-
-  const items = (res.contents || []).map((c) => {
-    const mm = Number(String(c.feature?.Attributes?.Size ?? "")
-      .replace(/[^0-9.]/g, ""));
-    return {
-      utility: c.utility,
-      outsideDiameterMM: mm > 0 ? mm : null,
-      /* How much of the trench it covers. A section crossing a trench
-         with several consecutive runs of one main is one pipe wide, not
-         several. */
-      withinM: c.withinM,
-    };
-  });
-
-  const size = trenchSize(items, { trenchM: res.trenchM });
-  const est = digEstimate({
-    lengthM: metres,
-    size,
-    surfaceKey: trench?.Attributes?.Surface_Type ?? null,
-    /* An existing section is not this call-off's to dig, but its pipes
-       and cables still have to be laid. Per section, so a run that
-       reuses one length and opens another is charged for the one it
-       opens. */
-    existing: trench?.Attributes?.Build_Status === "existing",
-    utilities: items.map((x) => x.utility),
-    rates, depthBands, layRates, surfaceTypes,
-  });
-
-  return { ...est, trench, metres, size };
-}
-
-/* A whole section of call-off, from the edges its run crosses.
-
-   `edges` are what `pathBetween` returns: each carries the trench it is
-   on and its length along that trench. Grouped by trench first, so a
-   run that leaves a trench and comes back to it is one leg and gets one
-   setup rather than two.
-
-   Returns no estimate rather than a zero where the drawing cannot
-   answer — no route, or a trench with nothing routed in it yet. A blank
-   is honest; a zero reads as work that takes no time. */
-export function sectionEstimate(edges, opts = {}) {
-  if (!edges?.length) {
-    return { ok: false, halfDays: 0, note: "No route between those two ends on the drawing." };
-  }
-
-  const byTrench = new Map();
-  for (const e of edges) {
-    const id = e.trench?.Feature_ID;
-    if (id == null) continue;
-    const held = byTrench.get(id);
-    if (held) held.metres += e.len;
-    else byTrench.set(id, { trench: e.trench, metres: e.len });
-  }
-
-  const legs = [...byTrench.values()].map((x) => trenchLeg(x.trench, x.metres, opts));
-  const total = digEstimateTotal(legs);
-
-  /* Every leg unanswerable is no estimate. Some of them unanswerable is
-     an estimate that names how much it left out, because a run that is
-     four-fifths measured is worth more than nothing to a planner — so
-     long as the fifth is declared rather than silently dropped. */
-  if (!total.trenches) {
-    return {
-      ok: false, halfDays: 0,
-      note: legs[0]?.note ?? "Nothing is routed in the trench along this run yet.",
-    };
-  }
-
-  return {
-    ok: true,
-    halfDays: halfDaysFor(total.totalHours),
-    hours: total.totalHours,
-    digHours: total.digHours,
-    layHours: total.layHours,
-    volumeM3: total.volumeM3,
-    lengthM: total.lengthM,
-    trenches: total.trenches,
-    /* Legs the drawing could not size. Named on screen, because a
-       section short by one trench is short by however long that trench
-       takes and nothing on the row would otherwise say so. */
-    unsized: total.skipped,
-    legs,
-    basis: legs.find((l) => l.ok)?.basis ?? null,
-  };
-}
-
-/* Every section on the call-off, and what the whole thing comes to.
-
-   The half-days are summed from the rows rather than recomputed from
-   the total hours. Each row is a booking somebody will make, and a
-   planner adding up what is on screen has to get the number at the
-   bottom — a total that rounded once at the end would sit below the
-   sum of the rows and look like an error in the rows. */
-export function callOffEstimate(sections = []) {
-  const ok = sections.filter((s) => s?.ok);
-  return {
-    sections: ok.length,
-    unestimated: sections.length - ok.length,
-    halfDays: ok.reduce((t, s) => t + s.halfDays, 0),
-    hours: Math.round(ok.reduce((t, s) => t + s.hours, 0) * 100) / 100,
-    lengthM: Math.round(ok.reduce((t, s) => t + s.lengthM, 0) * 10) / 10,
-    unsized: ok.reduce((t, s) => t + (s.unsized || 0), 0),
-  };
-}
+   What is left is the formatting — halfDaysFor and halfDaysText —
+   because call-offs raised while the canvas was here still carry an
+   Estimated_Half_Days, Planning still books against it, and it still
+   has to be read as "1½ days" rather than as 3. */

@@ -99,39 +99,17 @@ export const AREAS = [
       { view: "commercial-projects", label: "Projects", built: true },
     ],
   },
-  /* Human Resources.
+  /* Human Resources was here: sixteen screens of a self-contained HR
+     portal, mounted into the shell and reading a different Supabase
+     project from the rest of the application.
 
-     Every view is one screen of the HR portal, which is not a React page
-     but a self-contained app mounted into the shell — see
-     features/hr/hrPortal.js. The `hr-` prefix is what App.jsx routes on
-     and what it strips to get the portal's own module id, so the two
-     halves of each name have to stay in step: `hr-people` is the
-     portal's `people` module and nothing else. */
-  {
-    id: "hr",
-    label: "Human Resources",
-    icon: "\u{1F465}",
-    colour: "#818cf8",
-    blurb: "People, pay, leave, performance and everything that follows.",
-    items: [
-      { view: "hr-dashboard", label: "HR Dashboard", built: true },
-      { view: "hr-people", label: "People", built: true },
-      { view: "hr-roles", label: "Roles & Structure", built: true },
-      { view: "hr-pay", label: "Pay", built: true },
-      { view: "hr-leave", label: "Leave", built: true },
-      { view: "hr-benefits", label: "Benefits", built: true },
-      { view: "hr-performance", label: "Performance", built: true },
-      { view: "hr-skills", label: "Skills & Training", built: true },
-      { view: "hr-recruitment", label: "Recruitment", built: true },
-      { view: "hr-onboarding", label: "Onboarding", built: true },
-      { view: "hr-interactions", label: "Interactions", built: true },
-      { view: "hr-compliance", label: "Compliance", built: true },
-      { view: "hr-contractors", label: "Contractors & Temps", built: true },
-      { view: "hr-leavers", label: "Leavers", built: true },
-      { view: "hr-reports", label: "HR Reports", built: true },
-      { view: "hr-admin", label: "HR Admin", built: true },
-    ],
-  },
+     Removed with the GIS canvas, as two things this application is no
+     longer in the business of. It is the whole of src/features/hr, the
+     `hr-` view prefix and the helpers that split it, and the two checks
+     that held the portal's module names to these view keys. Nothing
+     else referred to it, which is why it came out in one piece.
+
+     The HR data is untouched: it never lived in this database. */
   {
     id: "hsqe",
     label: "HSQE",
@@ -179,16 +157,6 @@ export const AREAS = [
    from. The two cannot disagree about what pages exist while they are
    literally the same array. */
 export const NAV_SECTIONS = AREAS;
-
-export const HR_PREFIX = "hr-";
-
-export const isHrView = (view) => String(view).startsWith(HR_PREFIX);
-
-export const hrModuleFor = (view) => String(view).slice(HR_PREFIX.length);
-
-export const hrViewFor = (moduleId) => HR_PREFIX + moduleId;
-
-export const HR_VIEWS = AREAS.find((a) => a.id === "hr").items.map((i) => i.view);
 
 /* Every view any area offers, plus the landing page. What a remembered
    view is checked against: a name from an older build would otherwise

@@ -35,11 +35,6 @@ const VynTrackerPage = lazyPage("VynTrackerPage", () => import("./features/vyn/V
 const NcrListPage = lazyPage("NcrListPage", () => import("./features/hsqe/NcrListPage.jsx"));
 const HsqeDashboardPage = lazyPage("HsqeDashboardPage", () => import("./features/hsqe/HsqeDashboardPage.jsx"));
 const PlanningPage = lazyPage("PlanningPage", () => import("./features/planning/PlanningPage.jsx"));
-/* Human Resources is the largest single screen in the app — sixteen
-   modules, plus Chart.js and an icon set nothing else uses. Lazy for the
-   same reason as Admin, only more so: most sessions never open it, and
-   nobody should download it to look at a project. */
-const HumanResourcesPage = lazyPage("HumanResourcesPage", () => import("./features/hr/HumanResourcesPage.jsx"));
 /* Lazy for the plainest reason: staff never open it, and it is a
    different application behind the same door. */
 const DeveloperPortal = lazyPage("DeveloperPortal", () => import("./features/portal/DeveloperPortal.jsx"));
@@ -50,7 +45,6 @@ import HomePage from "./features/home/HomePage.jsx";
 import FieldApp from "./features/field/FieldApp.jsx";
 import {
   findNavItem, builtCount, totalCount,
-  isHrView, hrModuleFor, hrViewFor,
   HOME_VIEW, ALL_VIEWS, findArea, isProjectView, PROJECT_VIEWS, projectsViewFor,
 } from "./lib/navigation.js";
 import { isGranted, allowedViews, hasAnyGrant } from "./lib/access.js";
@@ -263,25 +257,6 @@ function Shell({ keys = null }) {
      own padding, and a card around a board that fills the width would
      put a border a few pixels inside another one. */
   else if (view === "planning") content = <PlanningPage />;
-  /* One component for all sixteen HR screens: which one it shows is a
-     prop, not a route, because the portal keeps its own loaded data and
-     switching modules inside it is much cheaper than remounting.
-
-     No card wrapper — the HR screens draw their own cards, and the
-     dashboard is a grid of them.
-
-     onNavigate is what lets the portal move the sidebar: a dashboard
-     tile or an org-chart node navigates internally, tells us the module
-     it went to, and the selection follows. Without it the sidebar would
-     keep pointing at a screen the user had already left. */
-  else if (isHrView(view)) {
-    content = (
-      <HumanResourcesPage
-        page={hrModuleFor(view)}
-        onNavigate={(moduleId) => setView(hrViewFor(moduleId))}
-      />
-    );
-  }
   else content = <NotBuilt view={view} />;
 
   /* The landing page is the menu, so it does not also get one beside

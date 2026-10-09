@@ -91,7 +91,14 @@ if (!owned.has("gs")) fail("the styles screen's own prefix is not recognised as 
 const ALREADY_THERE = new Set([
   "admin-pane",     // a typo for admin-panel — see above
   "admin-wait", "gs-insp", "tm-detail", "ph-head", "asg-day-lbl", "asg-saved",
-  "pts-btn", "jf-narrow", "jf-pcat", "cpick-name", "cpick-sub", "modal-back",
+  /* "modal-back" was here until Human Resources was removed. It is used
+     by the canvas and styled nowhere, but it was only ever VISIBLE to
+     this check because hrStyles.js defined .modal-md, .modal-overlay,
+     .modal-sm and .modal-tab, and that is what gave the `modal-` prefix
+     an owner. With HR gone nothing owns the prefix, the class stopped
+     being checked, and the entry went stale — which this check refuses,
+     rightly, because a stale entry hides the next real one. */
+  "pts-btn", "jf-narrow", "jf-pcat", "cpick-name", "cpick-sub",
   "fe-err", "ap-block", "ap-opts", "detail-body", "scope-group", "w-btn",
   "vy-table",
 ]);

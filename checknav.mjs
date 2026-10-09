@@ -11,8 +11,10 @@ let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
 
 // 1. Areas the brief asked for, in order.
+/* Human Resources was the fifth of eight. It and the GIS canvas were
+   taken out of this application, so seven is the shape now. */
 const want = ["Business Development","Tendering & Design","Operations","Commercial",
-  "Human Resources","HSQE","Finance","Admin"];
+  "HSQE","Finance","Admin"];
 const got = AREAS.map((a) => a.label);
 if (JSON.stringify(want) !== JSON.stringify(got))
   fail(`areas are ${got.join(", ")}`);

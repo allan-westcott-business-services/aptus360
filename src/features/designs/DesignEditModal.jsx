@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { openGis } from "../../lib/gisIntent.js";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { utilityById } from "../../lib/utilities.js";
@@ -310,25 +309,6 @@ export default function DesignEditModal({
             {saving ? "Saving\u2026" : "Save design"}
           </button>
           <button className="btn ghost" onClick={onClose}>Cancel</button>
-
-          {/* Straight to this utility on the drawing, with the others put
-              away. Someone reading an electric design wants to see the
-              electric network, and reaching it meant opening the canvas,
-              finding the project, then hiding four other utilities by
-              hand.
-
-              Unsaved edits are left behind, so it says so rather than
-              discarding them quietly. */}
-          <button className="btn ghost dm-gis"
-            title="Open this project on the GIS canvas, showing only this utility"
-            onClick={() => {
-              if (dirty && !window.confirm(
-                "Open the GIS design? Changes on this form will not be saved."
-              )) return;
-              openGis({ projectId, utilityId: design?.Utility_ID });
-            }}>
-            Open GIS design
-          </button>
         </div>
       </div>
     </div>
@@ -370,7 +350,6 @@ label.inline { display: flex; align-items: center; gap: 8px; font-size: 12.5px; 
 .dm-foot { display: flex; gap: 9px; padding: 14px 20px; border-top: 1px solid var(--border); }
 /* Pushed to the far end: it leaves the form, so it does not belong
    beside the buttons that act on it. */
-.dm-gis { margin-left: auto; }
 /* Sits under the fields it explains, not against them. The negative top
    margin this had pulled it into the selects above. */
 .dm-hint { margin: 8px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.45; }

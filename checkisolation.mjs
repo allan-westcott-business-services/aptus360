@@ -13,11 +13,11 @@
    answering different questions, and only the wrong one was ever
    consulted. */
 import { readFileSync } from "node:fs";
-import { distancesFrom } from "./src/features/gis/electric.js";
+import { distancesFrom } from "./src/shared/design-calc/electric.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
-const src = readFileSync("./src/features/gis/electric.js", "utf8");
+const src = readFileSync("./src/shared/design-calc/electric.js", "utf8");
 
 // 1. The real rule is consulted, under a name that cannot shadow.
 {

@@ -69,7 +69,11 @@ for (const c of defined) {
   prefixCount.set(p, (prefixCount.get(p) ?? 0) + 1);
 }
 const owned = new Set([...prefixCount].filter(([, n]) => n >= 2).map(([p]) => p));
-if (!owned.has("gs")) fail("the styles screen's own prefix is not recognised as one");
+/* A canary proving the prefix detection above detects anything at all.
+   It was `gs-`, the GIS Styles screen's; that screen went with the
+   canvas, so it is now `co-`, the call-offs page, which owns dozens of
+   classes and is not going anywhere. */
+if (!owned.has("co")) fail("the call-offs page's own prefix is not recognised as one");
 
 /* ── The ones that were already there ──
 
@@ -90,9 +94,23 @@ if (!owned.has("gs")) fail("the styles screen's own prefix is not recognised as 
    element is a bare wrapper and wants no styling at all. */
 const ALREADY_THERE = new Set([
   "admin-pane",     // a typo for admin-panel — see above
-  "admin-wait", "gs-insp", "tm-detail", "ph-head", "asg-day-lbl", "asg-saved",
-  "pts-btn", "jf-narrow", "jf-pcat", "cpick-name", "cpick-sub", "modal-back",
-  "fe-err", "ap-block", "ap-opts", "detail-body", "scope-group", "w-btn",
+  /* Six names left this list when Human Resources and the GIS canvas
+     were removed: modal-back, gs-insp, cpick-name, cpick-sub, fe-err
+     and the styles screen's own entries.
+
+     None of them was fixed. Each was an unstyled class whose PREFIX
+     happened to be owned by a file that has now gone — hrStyles.js
+     owned `modal-`, the styles screen owned `gs-`, the canvas's
+     project picker owned `cpick-`, the feature editor owned `fe-`. A
+     prefix with no owner is not checked, so the class stopped being
+     reported and the entry went stale.
+
+     This check refuses a stale entry, which is what surfaced all six,
+     and it is right to: an entry that matches nothing silently absorbs
+     the next unstyled class someone adds under that name. */
+  "admin-wait", "tm-detail", "ph-head", "asg-day-lbl", "asg-saved",
+  "pts-btn", "jf-narrow", "jf-pcat",
+  "ap-block", "ap-opts", "detail-body", "scope-group", "w-btn",
   "vy-table",
 ]);
 

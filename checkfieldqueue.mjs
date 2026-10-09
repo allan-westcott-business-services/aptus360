@@ -444,13 +444,19 @@ const reasonsSql = readFileSync("./supabase/migrations/0170_abort_reasons.sql", 
 
   /* Everything the job card lists. */
   for (const f of ["From_Label", "To_Label", "Plot_List",
-    "Estimated_Length_m", "Contents", "Span_Image_Path"]) {
+    "Estimated_Length_m", "Contents"]) {
     if (!block.includes(f)) fail(`the spans do not carry ${f}`);
   }
 
-  /* The URL derived, not stored: moving or renaming the bucket must not
-     strand every row. */
-  if (!/getPublicUrl/.test(block)) fail("the picture's address is not derived");
+  /* A span's picture was drawn by the canvas and its public URL derived
+     here rather than stored, so moving the bucket could not strand
+     every row. The canvas went and the pictures stopped being made, so
+     imageUrl is null and there is no address to derive. Span_Image_Path
+     is still selected and still holds the path for every span pictured
+     while the canvas was here. */
+  if (!/imageUrl: null/.test(block)) {
+    fail("the span picture is neither null nor derived — say which");
+  }
   /* And reaches the tablet under the name it reads. Selecting the
      column and not sending it passed the check above while the job
      card showed no pictures at all. */

@@ -203,48 +203,12 @@ const withAuthServer = (path, token) => (token
   }
 }
 
-// ─── 8. The GIS message stops guessing at causes ───
-{
-  const gis = readFileSync("netlify/functions/gis.js", "utf8");
-  /* The thrown string, not the file. The comment above it records what
-     the message used to say and why it changed, so searching the whole
-     file for the old wording finds the history rather than the fault —
-     the same trap the Split Circuit removal set. */
-  const thrown = [...gis.matchAll(/throw new Error\(([\s\S]*?)\);/g)]
-    .map((m) => m[1])
-    .filter((t) => /is not on this drawing/.test(t));
-  if (thrown.length !== 1) {
-    fail(`${thrown.length} not-found messages, expected 1`);
-  } else {
-    const msg = thrown[0];
-    if (/may have been|might have|possibly|perhaps/.test(msg)) {
-      fail("the not-found message still speculates about a cause that was never diagnosed");
-    }
-    if (!/nothing was/.test(msg)) fail("the not-found message does not say nothing was saved");
-    if (!/[Rr]eload/.test(msg)) fail("the not-found message does not say what to do next");
-  }
-}
+/* Sections 8 and 9 were about the GIS endpoint's not-found message and
+   the canvas's undo journal. Both left with the canvas. The sections
+   above — the api client refusing to send an unsigned request, and
+   withAuth refusing to serve one — are the point of this check and are
+   untouched. */
 
-// ─── 9. The undo journal's failure is no longer silent ───
-{
-  const page = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
-  const at = page.indexOf("const recordAction = useCallback(");
-  const body = at < 0 ? "" : page.slice(at, page.indexOf("}, [projectId]);", at));
-  if (!body) fail("recordAction is no longer a function I can read");
-  else {
-    if (/catch \{/.test(body)) {
-      fail("recordAction still catches without looking at what went wrong");
-    }
-    if (!/historyWarned/.test(body)) {
-      fail("a failing undo journal says nothing to the person relying on it");
-    }
-    /* Still swallowed, though. The work has already succeeded and a
-       journal that is down must not undo it. */
-    if (/throw\b/.test(body)) {
-      fail("recordAction now fails the action when the journal is down");
-    }
-  }
-}
 
 console.log(bad ? `\n${bad} problem(s)`
   : "A dead session is reported as one, once, before anything else fails.");

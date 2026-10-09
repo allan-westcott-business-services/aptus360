@@ -6,3 +6,17 @@
 # control. Keep them beside the import's SQL on the machine doing the
 # load and let them go when it is done.
 */data/*.csv
+
+# Dependencies and build output.
+#
+# Neither has ever been tracked here, but nothing said so: they were
+# kept out by nobody happening to run `git add -A` with a build
+# present. That is luck, not a rule, and the first time it ran out the
+# commit would carry the whole of node_modules — tens of thousands of
+# files and a diff nobody can review.
+#
+# dist/ has a second reason: a stale copy in the tree can disagree with
+# src/, and the one somebody reads to work out what is deployed is the
+# wrong one.
+node_modules/
+dist/

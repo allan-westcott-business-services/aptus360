@@ -7,7 +7,6 @@ import { takeCallOffIntent, onOpenCallOff } from "../../lib/callOffIntent.js";
 import { getLookups } from "../../api/lookups.js";
 import { getProject, listProjects } from "../../api/projects.js";
 import { openProject } from "../../lib/projectIntent.js";
-import { openGis } from "../../lib/gisIntent.js";
 import {
   setPlotEnergisation, saveCallOffDrawing, removeCallOffDrawing, getCallOffDrawing,
 } from "../../api/calloffs.js";
@@ -31,10 +30,6 @@ import {
   splitsByUtility, endAfterHalves, layHalves,
 } from "./assignments.js";
 import { phasesToShow, phasesHidden, isServiceCallOff } from "./callOffPhases.js";
-import { breechSummary, plotNumberFrom } from "../../shared/design-calc/serviceBreech.js";
-import { lvOrigin } from "../../shared/design-calc/electric.js";
-import { listGis } from "../../api/gis.js";
-import { listPlots } from "../../api/plots.js";
 import { dependencyProblems, dependencyFloor } from "../planning/dependencies.js";
 
 /* Call-offs across the business.
@@ -689,50 +684,22 @@ export default function CallOffsPage() {
           onToggle={layout.toggleColumn}
           onReset={layout.reset}
         />
-        <button className="btn accent sm" onClick={() => setPicking("how")}>
+        <button className="btn accent sm" onClick={() => setPicking("editor")}>
           + New call-off
         </button>
       </div>
 
-      {picking === "how" && (
-        <div className="co-modal" role="dialog" aria-modal="true">
-          <div className="co-how">
-            <h3>How do you want to raise it?</h3>
-            <button className="co-how-opt" onClick={() => setPicking("editor")}>
-              <strong>Fill in the call-off form</strong>
-              <span>
-                Plots, dates and utilities, typed in. Best when you already
-                know what is being asked for.
-              </span>
-            </button>
-            <button className="co-how-opt" onClick={() => setPicking("canvas")}>
-              <strong>Pick it off the drawing</strong>
-              <span>
-                Opens the GIS canvas to choose the runs between span nodes.
-                Best for mains, where which lengths are being laid is only
-                clear on a plan.
-              </span>
-            </button>
-            <button className="btn ghost" onClick={() => setPicking(null)}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {(picking === "editor" || picking === "canvas") && (
+      {/* There was a "How do you want to raise it?" dialog here, offering
+         the form or picking the runs off the drawing. The drawing went
+         with the canvas, and one option is not a question — so New
+         call-off goes straight to the project picker and the form. */}
+      {picking === "editor" && (
         <ProjectPicker
           onCancel={() => setPicking(null)}
-          onPick={(project) => (picking === "canvas"
-            /* Straight to the drawing, with everything but the call-off
-               turned off. Somebody who came here to raise one is not
-               here to edit the design, and a canvas with every tool live
-               invites a change nobody asked for on the way past. */
-            ? openGis({ project, callOffOnly: true })
-            /* Straight to the editor, not to the tab it lives on. The
-               tab's New call-off button asked nothing and could only be
-               pressed — a step, not a decision. */
-            : openProject(project, "calloffs", { newCallOff: true }))}
+          /* Straight to the editor, not to the tab it lives on. The
+             tab's New call-off button asked nothing and could only be
+             pressed — a step, not a decision. */
+          onPick={(project) => openProject(project, "calloffs", { newCallOff: true })}
         />
       )}
 
@@ -2409,58 +2376,15 @@ function Assignments({ row }) {
   useEffect(() => { setBreech(row.GIS_Data?.breech ?? null); },
     [row.Submission_ID, row.GIS_Data]);
 
-  /* ── And traced where the call-off has none stored ──
+  /* A live trace stood here for call-offs raised before the trace was
+     stored: it read the whole drawing, found the LV origin and worked
+     out the breech joints on opening. It went with the canvas, which is
+     where the drawing now lives.
 
-     Every call-off raised before this existed carries nothing, which is
-     most of them. There was a button and a sentence explaining why it
-     had to be pressed, which is a workaround wearing the clothes of a
-     feature: the planner does not care when the trace was taken, only
-     what is on the route.
-
-     So it is worked out on opening. Read only \u2014 nothing is written
-     back. The objection to doing this quietly was that it rewrites a
-     record because somebody looked at it, and that objection stands;
-     showing a figure is not the same as storing one.
-
-     Where a trace WAS stored at raise time it wins, because that is the
-     drawing as it was on the day and the record a gang was given. */
-  useEffect(() => {
-    if (breech != null || !isServiceCallOff(row.Work_Type?.Work_Type_Name)) return;
-    let gone = false;
-    (async () => {
-      try {
-        const [gis, plots] = await Promise.all([
-          listGis(row.Project_ID), listPlots(row.Project_ID),
-        ]);
-        if (gone) return;
-        const features = gis?.features || [];
-        const plotRows = plots?.rows || plots || [];
-        const origin = lvOrigin(features);
-        if (!origin) return;
-
-        const wanted = new Set((row.items || [])
-          .map((it) => String(it.Plots ?? it.Plot ?? "").trim())
-          .filter(Boolean));
-        const plotIds = new Set(plotRows
-          .filter((pl) => wanted.has(
-            String(pl.plot_number ?? pl.Plot_Number ?? "").trim()))
-          .map((pl) => Number(pl.plot_id ?? pl.Plot_ID)));
-
-        const meters = features.filter((f) => f.Feature_Role === "meter"
-          && f.Layer_Key === "electric"
-          && plotIds.has(Number(f.Plot_ID ?? f.Attributes?.Plot_ID)));
-        if (!meters.length) return;
-
-        const found = breechSummary(features, meters, origin.Feature_ID,
-          (id) => plotNumberFrom(plotRows, id));
-        if (!gone) setBreech(found);
-      } catch { /* the panel simply does not appear */ }
-    })();
-    /* A planner clicking down a list opens several call-offs in a few
-       seconds, and each of these reads a whole drawing. Without this
-       the slowest answer wins rather than the latest. */
-    return () => { gone = true; };
-  }, [breech, row.Submission_ID, row.Project_ID, row.Work_Type?.Work_Type_Name]);
+     What remains is the stored trace above — the drawing as it was on
+     the day the call-off was raised, and the record the gang was given.
+     Call-offs with none show no breech panel, which is what they did
+     before the fallback was written. */
 
   /* ── Nothing to assign to ──
 
@@ -4367,19 +4291,6 @@ const CSS = FILTER_CSS + `
    with a sentence each, not a pair of buttons: they lead to different
    screens doing different jobs, and a label alone would not say which
    is which to somebody meeting them for the first time. */
-.co-modal { position: fixed; inset: 0; background: rgba(15,23,42,.4);
-  display: flex; align-items: center; justify-content: center; z-index: 70;
-  padding: 16px; }
-.co-how { background: var(--white); border-radius: 12px; padding: 20px;
-  width: min(520px, 100%); box-shadow: 0 24px 60px rgba(15,23,42,.28); }
-.co-how h3 { margin: 0 0 14px; font-size: 17px; font-weight: 700; }
-.co-how-opt { display: block; width: 100%; text-align: left; margin-bottom: 10px;
-  padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px;
-  background: var(--white); cursor: pointer; }
-.co-how-opt:hover { border-color: var(--accent); background: var(--bg); }
-.co-how-opt strong { display: block; font-size: 15px; margin-bottom: 3px; }
-.co-how-opt span { display: block; font-size: 12.5px; color: var(--muted);
-  line-height: 1.6; }
 /* A group heading, spanning the table. Its own row rather than a
    sub-table, so the columns stay aligned across every group — the
    thing a table is for. */

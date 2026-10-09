@@ -1,7 +1,6 @@
 import { useState, useEffect, Suspense } from "react";
 import { lazyPage } from "./lib/lazyPage.js";
 import { AuthProvider, useAuth } from "./lib/AuthContext.jsx";
-import { onOpenGis } from "./lib/gisIntent.js";
 import { onOpenCallOff } from "./lib/callOffIntent.js";
 import { onOpenProject } from "./lib/projectIntent.js";
 import { remember, recallOneOf } from "./lib/session.js";
@@ -17,7 +16,6 @@ const ProjectsPage = lazyPage("ProjectsPage", () => import("./features/projects/
 const AdminPage = lazyPage("AdminPage", () => import("./features/admin/AdminPage.jsx"));
 const PlotConnectionsPage = lazyPage("PlotConnectionsPage", () => import("./features/connections/PlotConnectionsPage.jsx"));
 const PlotConnectionsDashboard = lazyPage("PlotConnectionsDashboard", () => import("./features/connections/PlotConnectionsDashboard.jsx"));
-const GISCanvasPage = lazyPage("GISCanvasPage", () => import("./features/gis/GISCanvasPage.jsx"));
 const GenerateAvInvoices = lazyPage("GenerateAvInvoices", () => import("./features/av/GenerateAvInvoices.jsx"));
 const AvInvoicesPage = lazyPage("AvInvoicesPage", () => import("./features/av/AvInvoicesPage.jsx"));
 /* The same screen the Admin suite uses. One implementation: a second
@@ -35,11 +33,6 @@ const VynTrackerPage = lazyPage("VynTrackerPage", () => import("./features/vyn/V
 const NcrListPage = lazyPage("NcrListPage", () => import("./features/hsqe/NcrListPage.jsx"));
 const HsqeDashboardPage = lazyPage("HsqeDashboardPage", () => import("./features/hsqe/HsqeDashboardPage.jsx"));
 const PlanningPage = lazyPage("PlanningPage", () => import("./features/planning/PlanningPage.jsx"));
-/* Human Resources is the largest single screen in the app — sixteen
-   modules, plus Chart.js and an icon set nothing else uses. Lazy for the
-   same reason as Admin, only more so: most sessions never open it, and
-   nobody should download it to look at a project. */
-const HumanResourcesPage = lazyPage("HumanResourcesPage", () => import("./features/hr/HumanResourcesPage.jsx"));
 /* Lazy for the plainest reason: staff never open it, and it is a
    different application behind the same door. */
 const DeveloperPortal = lazyPage("DeveloperPortal", () => import("./features/portal/DeveloperPortal.jsx"));
@@ -50,7 +43,6 @@ import HomePage from "./features/home/HomePage.jsx";
 import FieldApp from "./features/field/FieldApp.jsx";
 import {
   findNavItem, builtCount, totalCount,
-  isHrView, hrModuleFor, hrViewFor,
   HOME_VIEW, ALL_VIEWS, findArea, isProjectView, PROJECT_VIEWS, projectsViewFor,
 } from "./lib/navigation.js";
 import { isGranted, allowedViews, hasAnyGrant } from "./lib/access.js";
@@ -89,8 +81,8 @@ function NotBuilt({ view }) {
 
    Said plainly and with the way out on it. The alternative — rendering
    nothing, or silently bouncing somebody to the landing page — reads as
-   a fault in the screen, and the person reports the GIS Canvas as
-   broken rather than asking for access to it. The screen is named for
+   a fault in the screen, and the person reports Call-offs as broken
+   rather than asking for access to it. The screen is named for
    the same reason: "you do not have access" with no subject is a
    message somebody cannot act on. */
 function NoAccess({ view, onHome }) {
@@ -110,25 +102,6 @@ function NoAccess({ view, onHome }) {
       </div>
     </div>
   );
-}
-
-/* Safari on macOS sends gesturestart/gesturechange for a trackpad pinch
-   rather than a ctrl+wheel, and those ignore any wheel handler. Blocking
-   them inside the app area stops the page zooming under the canvas. */
-function useBlockPageZoom() {
-  useEffect(() => {
-    const stop = (e) => {
-      if (e.target.closest?.(".gis-canvas-wrap, .cv-stage")) e.preventDefault();
-    };
-    document.addEventListener("gesturestart", stop, { passive: false });
-    document.addEventListener("gesturechange", stop, { passive: false });
-    document.addEventListener("gestureend", stop, { passive: false });
-    return () => {
-      document.removeEventListener("gesturestart", stop);
-      document.removeEventListener("gesturechange", stop);
-      document.removeEventListener("gestureend", stop);
-    };
-  }, []);
 }
 
 /* Every view the shell will restore into, which is now derived from the
@@ -151,7 +124,6 @@ const VIEWS = ALL_VIEWS;
    /portal/me call: a routing fault that falls through to "everything"
    is an access fault. */
 function Shell({ keys = null }) {
-  useBlockPageZoom();
   /* Every view this person may be in. The remembered view is checked
      against this rather than against every view the build has, which is
      what makes a REVOKED grant take effect: the shell restores whatever
@@ -163,18 +135,6 @@ function Shell({ keys = null }) {
      is the whole navigation done again for the sake of pressing F5. */
   const [view, setView] = useState(() => recallOneOf("view", myViews, HOME_VIEW));
   useEffect(() => remember("view", view), [view]);
-
-  /* Somewhere else in the app has asked for the canvas — the outline
-     design tab, wanting to show the design it is describing. The payload
-     is left for the canvas to collect; all the shell has to do is put it
-     on screen.
-
-     Guarded, because this is a second way in: a project tab offering a
-     button to the drawing would otherwise open the canvas for somebody
-     who has not been granted it, with no menu item anywhere in sight. */
-  useEffect(() => onOpenGis(() => {
-    if (!keys || isGranted(keys, "gis-canvas")) setView("gis-canvas");
-  }), [keys]);
 
   /* The mouse wheel does not edit numbers.
 
@@ -241,7 +201,6 @@ function Shell({ keys = null }) {
      the table renders thousands of rows; sharing a route would mean one
      of them loading the other's payload. */
   else if (view === "pc-dashboard") content = <div className="card"><PlotConnectionsDashboard onOpenRows={() => setView("plot-connections")} /></div>;
-  else if (view === "gis-canvas") content = <div className="card"><GISCanvasPage /></div>;
   else if (view === "generate-av-invoices") content = <div className="card"><GenerateAvInvoices /></div>;
   else if (view === "av-invoices") content = <div className="card"><AvInvoicesPage /></div>;
   else if (view === "organisations") content = <div className="card"><OrganisationsAdmin /></div>;
@@ -263,25 +222,6 @@ function Shell({ keys = null }) {
      own padding, and a card around a board that fills the width would
      put a border a few pixels inside another one. */
   else if (view === "planning") content = <PlanningPage />;
-  /* One component for all sixteen HR screens: which one it shows is a
-     prop, not a route, because the portal keeps its own loaded data and
-     switching modules inside it is much cheaper than remounting.
-
-     No card wrapper — the HR screens draw their own cards, and the
-     dashboard is a grid of them.
-
-     onNavigate is what lets the portal move the sidebar: a dashboard
-     tile or an org-chart node navigates internally, tells us the module
-     it went to, and the selection follows. Without it the sidebar would
-     keep pointing at a screen the user had already left. */
-  else if (isHrView(view)) {
-    content = (
-      <HumanResourcesPage
-        page={hrModuleFor(view)}
-        onNavigate={(moduleId) => setView(hrViewFor(moduleId))}
-      />
-    );
-  }
   else content = <NotBuilt view={view} />;
 
   /* The landing page is the menu, so it does not also get one beside

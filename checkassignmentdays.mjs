@@ -5,8 +5,8 @@
    end date the calendar agrees with, that only the trenching phases get
    one, and that not knowing produces no date rather than a wrong one. */
 import { readFileSync } from "node:fs";
-import { jointEstimate, reinstateEstimate } from "./src/features/gis/jointRate.js";
-import { digEstimate } from "./src/features/gis/digRate.js";
+import { jointEstimate, reinstateEstimate } from "./src/shared/design-calc/jointRate.js";
+import { digEstimate } from "./src/shared/design-calc/digRate.js";
 import {
   endAfterHalves, workedDaysIn, layHalves, laySchedule, daysBetween,
   bookedParts, freeParts, dayTotal,
@@ -578,7 +578,6 @@ const MON = "2026-08-17";
 {
   const sql = readFileSync("./supabase/migrations/0178_team_machine.sql", "utf8");
   const teams = readFileSync("./src/features/admin/TeamsAdmin.jsx", "utf8");
-  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
 
   for (const col of ["Dig_Rate_ID", "Efficiency"]) {
     if (!sql.includes(col)) fail(`a team cannot record its ${col}`);
@@ -619,22 +618,11 @@ const MON = "2026-08-17";
   if (!/"Mains_Call_Off_Submission"[\s\S]{0,200}"Dig_Rate_ID"/.test(sql)) {
     fail("a call-off cannot record the machine it was estimated on");
   }
-  if (!/setCallOffMachine/.test(canvas)) fail("the machine cannot be chosen");
-  /* Fed into the estimate, or the picker changes a label and nothing
-     else. */
-  if (!/machineKey: callOffMachine/.test(canvas)) {
-    fail("choosing a machine does not change the estimate");
-  }
-  /* And kept with the call-off: a span's half-days mean nothing without
-     the machine behind them, and the office cannot ask the drawing
-     later. */
-  if (!/Dig_Rate_ID: callOffMachine \?\? null/.test(canvas)) {
-    fail("the machine is not saved with the call-off");
-  }
-  /* Only on the mains one — a service call-off has no dig estimate. */
-  if ((canvas.match(/Dig_Rate_ID: callOffMachine/g) || []).length !== 1) {
-    fail("the machine is sent on a call-off that has no dig to estimate");
-  }
+  /* Four assertions about the canvas followed: that the machine could
+     be chosen there, that choosing it changed the estimate, and that it
+     was saved with the call-off. The canvas raised the call-off and
+     made the estimate; both left with it. The column and the team's
+     own machine, checked above, are still here and still read. */
 }
 
 // 18. An estimate's odd half can be moved to the afternoon.

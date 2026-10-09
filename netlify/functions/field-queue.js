@@ -226,11 +226,14 @@ export default withAuth(async function handler(req, context, user) {
            page in that case and says why — a sketch with no plan under
            it is worse than it was, and not a reason to withhold the
            form. */
-        asLaid: released && s.As_Laid_Path
-          ? db.storage.from("call-off-as-laid")
-            .getPublicUrl(s.As_Laid_Path).data.publicUrl
-          : null,
-        asLaidAt: released ? (s.As_Laid_Captured_At ?? null) : null,
+        /* The as-laid plan was drawn by the canvas and stored per
+           call-off. It is always null now; the work instruction already
+           handled that and draws the sketch on a blank page, which is
+           what it did for every call-off raised before the picture
+           existed. The columns are left alone — call-offs raised while
+           the canvas was here still have theirs. */
+        asLaid: null,
+        asLaidAt: null,
         /* The breech joints traced back to the origin when the call-off
            was raised, per plot. The gang works at each of them as well
            as at the meter, so they are lines on the work instruction
@@ -333,10 +336,9 @@ export default withAuth(async function handler(req, context, user) {
                renaming the bucket does not strand every row. Null where
                no picture was taken — a call-off raised from the form
                has none and never will. */
-            imageUrl: r.Span_Image_Path
-              ? db.storage.from("call-off-spans")
-                .getPublicUrl(r.Span_Image_Path).data.publicUrl
-              : null,
+            /* Also the canvas's. Null for the same reason as the
+               as-laid plan above. */
+            imageUrl: null,
           }));
       }
     }

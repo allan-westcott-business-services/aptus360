@@ -102,17 +102,58 @@ export const AREAS = [
       { view: "commercial-projects", label: "Projects", built: true },
     ],
   },
-  /* Human Resources was here: sixteen screens of a self-contained HR
-     portal, mounted into the shell and reading a different Supabase
-     project from the rest of the application.
+  /* Human Resources: the square, and nothing behind it.
 
-     Removed with the GIS canvas, as two things this application is no
-     longer in the business of. It is the whole of src/features/hr, the
-     `hr-` view prefix and the helpers that split it, and the two checks
-     that held the portal's module names to these view keys. Nothing
-     else referred to it, which is why it came out in one piece.
+     The implementation was removed with the GIS canvas — the whole of
+     src/features/hr, sixteen screens of a self-contained portal that
+     read a different Supabase project, the `hr-` view prefix and the
+     helpers that split it. The HR data is untouched; it never lived in
+     this database.
 
-     The HR data is untouched: it never lived in this database. */
+     The square stays, drawn and disabled. Asked for: "add the UI
+     square button back for the Human Resources module but disable it
+     and mark as 'To Be Developed'."
+
+     It is the same argument the grey squares were given when access
+     control arrived: eight squares are the shape of the business, and
+     somebody who sees seven has no way to tell whether HR does not
+     apply to their job, has not been built, or is simply not theirs.
+     The difference is what it says. "No access" is something to ask
+     the office about; "To Be Developed" is not, and the two must not
+     be confused or somebody raises a ticket nobody can answer.
+
+     `toBeDeveloped` rather than inferring it from the items having no
+     `built: true`. Inference would mean any area whose last screen was
+     switched off quietly relabelled itself, and would have described
+     HSQE and Finance that way for months before this. The items are
+     kept because checknav walks firstViewOf for every area, and
+     because they are the list of what rebuilding it would mean. */
+  {
+    id: "hr",
+    label: "Human Resources",
+    icon: "\u{1F465}",
+    colour: "#818cf8",
+    toBeDeveloped: true,
+    blurb: "People, pay, leave, performance and everything that follows.",
+    items: [
+      { view: "hr-dashboard", label: "HR Dashboard" },
+      { view: "hr-people", label: "People" },
+      { view: "hr-roles", label: "Roles & Structure" },
+      { view: "hr-pay", label: "Pay" },
+      { view: "hr-leave", label: "Leave" },
+      { view: "hr-benefits", label: "Benefits" },
+      { view: "hr-performance", label: "Performance" },
+      { view: "hr-skills", label: "Skills & Training" },
+      { view: "hr-recruitment", label: "Recruitment" },
+      { view: "hr-onboarding", label: "Onboarding" },
+      { view: "hr-interactions", label: "Interactions" },
+      { view: "hr-compliance", label: "Compliance" },
+      { view: "hr-contractors", label: "Contractors & Temps" },
+      { view: "hr-leavers", label: "Leavers" },
+      { view: "hr-reports", label: "HR Reports" },
+      { view: "hr-admin", label: "HR Admin" },
+    ],
+  },
   {
     id: "hsqe",
     label: "HSQE",

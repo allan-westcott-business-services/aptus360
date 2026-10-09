@@ -323,7 +323,16 @@ export default function CallOffsPage() {
     return onOpenCallOff(take);
   }, []);
 
-  useEffect(() => remember("callOffStatus", status), [status]);
+  /* `remember("callOffStatus", status)` stood here, and a `status` in
+     the filter memo's dependencies below. Both outlived the state they
+     named: a89f659 removed the status dropdown and
+     `const [status, setStatus]` with it, and left these two behind.
+
+     Nothing threw, because `status` resolves to window.status — a
+     legacy DOM global that is always a string. So the effect wrote ""
+     to localStorage under callOffStatus on every render, and the memo
+     carried a dependency that could never change. Found by rendering
+     the page outside a browser, where that global does not exist. */
 
   async function load() {
     setLoading(true);
@@ -496,7 +505,7 @@ export default function CallOffsPage() {
       if (typeof x === "number" && typeof y === "number") return (x - y) * dir;
       return String(x ?? "").localeCompare(String(y ?? "")) * dir;
     });
-  }, [withCover, q, status, filters, sort]);
+  }, [withCover, q, filters, sort]);
 
   /* The rows, in groups.
 

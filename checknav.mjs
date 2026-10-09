@@ -11,10 +11,14 @@ let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
 
 // 1. Areas the brief asked for, in order.
-/* Human Resources was the fifth of eight. It and the GIS canvas were
-   taken out of this application, so seven is the shape now. */
+/* Eight, as the brief asked for. Human Resources is here as a square
+   with nothing behind it — its implementation went with the GIS canvas
+   and the section is marked toBeDeveloped, which is what makes the
+   landing page draw it shut and say so. Still listed, because the
+   eight are the shape of the business and this check is what holds
+   that shape. */
 const want = ["Business Development","Tendering & Design","Operations","Commercial",
-  "HSQE","Finance","Admin"];
+  "Human Resources","HSQE","Finance","Admin"];
 const got = AREAS.map((a) => a.label);
 if (JSON.stringify(want) !== JSON.stringify(got))
   fail(`areas are ${got.join(", ")}`);
@@ -62,6 +66,48 @@ const css = readFileSync("src/styles.css", "utf8");
 ["@font-face", ".lazy-wait", ".topbar", ".boot"].forEach((sel) => {
   if (!css.includes(sel)) fail(`${sel} missing from styles.css`);
 });
+
+/* ── A section marked "To Be Developed" must be exactly that ──
+
+   Two ways for the label to become a lie, and they fail in opposite
+   directions.
+
+   Somebody builds the section and forgets the flag: the square stays
+   shut over working screens, and nobody finds out, because a disabled
+   button reports nothing. So an area carrying the flag must have no
+   built item in it.
+
+   Or the flag goes on a section that is live: the square shuts and
+   takes working screens off the landing page. Caught by the same rule
+   from the other side.
+
+   And the flag has to actually DO something. HomePage decides what
+   opens, so this reads that file and insists it consults the flag —
+   a flag nothing reads is a comment with a colon in it. */
+for (const a of AREAS) {
+  const built = a.items.filter((i) => i.built).length;
+  if (a.toBeDeveloped === true && built > 0) {
+    fail(`${a.label} is marked "To Be Developed" and has ${built} built `
+      + "screen(s) behind it — the square is shut over working screens");
+  }
+}
+{
+  /* Comments stripped first. Both strings below are also DISCUSSED in
+     that file's comments, so searching the raw text lets a comment
+     satisfy a check about what the page renders — which is how the
+     fourth sabotage of this block walked straight through it. */
+  const home = readFileSync("src/features/home/HomePage.jsx", "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  if (!/toBeDeveloped/.test(home)) {
+    fail("the landing page does not read toBeDeveloped, so marking a "
+      + "section unbuilt would change nothing on screen");
+  }
+  if (!/To Be Developed/.test(home)) {
+    fail("the landing page never says \"To Be Developed\", so an unbuilt "
+      + "section is indistinguishable from one somebody lacks access to");
+  }
+}
 
 const live = AREAS.reduce((n, a) => n + a.items.filter((i) => i.built).length, 0);
 console.log(`${AREAS.length} areas, ${seen.size} views, ${live} live`);

@@ -37,7 +37,9 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
 /* Faults that were here before this check was, each with a reason to
    still be here. Anything not on this list is new. */
 const KNOWN = [
-  "src/features/hr/hrPortal.js:onReload",
+  /* Empty, for the first time. The one entry was
+     src/features/hr/hrPortal.js:onReload, and it went with the HR
+     portal rather than being fixed. */
 ];
 
 let out = "";
@@ -48,6 +50,25 @@ try {
     "--parser-options",
     "ecmaVersion:2022,sourceType:module,ecmaFeatures:{jsx:true}",
     "--rule", '{"no-undef":"error"}',
+    /* ── Globals that are almost always a deleted variable ──
+
+       no-undef alone did not catch the one that mattered. CallOffsPage
+       referenced `status` in an effect and a dependency array for two
+       months after a89f659 removed the `const [status, setStatus]`
+       they belonged to. Nothing complained, here or in the browser,
+       because `status` IS defined under --env browser: it is
+       window.status, a legacy DOM property that is always a string. So
+       the effect wrote "" to localStorage on every render and the memo
+       carried a dependency that could never change.
+
+       These five are the window properties whose names collide with
+       ordinary local variables. Reaching for any of them deliberately
+       is vanishingly rare; reaching for one by accident, after
+       deleting the state it named, is a Tuesday. Found by rendering a
+       page outside a browser, where the global does not exist and the
+       same code throws — which is a thing worth doing to any page this
+       rule ever fires on. */
+    "--rule", '{"no-restricted-globals":["error","status","name","length","event","closed"]}',
     "--format", "unix",
     "--ext", ".js,.jsx",
     "netlify/functions", "src",
@@ -62,10 +83,15 @@ try {
   }
 }
 
+/* Two rules, two message shapes. Matching only "no-undef" is what made
+   the restricted-globals rule above decorative when it was first added
+   — eslint reported it, this read past it, and the check went on
+   saying every identifier resolved. */
 const found = out.split("\n")
-  .filter((l) => l.includes("no-undef"))
+  .filter((l) => l.includes("no-undef") || l.includes("no-restricted-globals"))
   .map((l) => {
-    const m = l.match(/^(.*?):\d+:\d+:\s*'([^']+)' is not defined/);
+    const m = l.match(/^(.*?):\d+:\d+:\s*'([^']+)' is not defined/)
+      || l.match(/^(.*?):\d+:\d+:\s*Unexpected use of '([^']+)'/);
     if (!m) return null;
     /* Relative, so the list above does not depend on where the checkout
        is. */

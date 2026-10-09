@@ -95,15 +95,45 @@ if (squares().length !== nav.AREAS.length)
 if (document.querySelector("#app-sidebar")) fail("sidebar rendered on the landing page");
 
 // 2. Every square is outlined in its own colour.
+//
+//    Except a shut one, which is drawn in a neutral on purpose — the
+//    colour is fed in as a custom property so that a section somebody
+//    cannot open, or one not built yet, goes grey without a filter
+//    washing out the label with it. So the colour rule applies to the
+//    squares that OPEN, and the shut ones are checked for being grey
+//    rather than for being themselves.
+const LOCKED = "#94a3b8";
+const shut = (a) => a.toBeDeveloped === true;
 const outlines = squares().map((s) => s.style.getPropertyValue("--sq").trim());
-if (new Set(outlines).size !== outlines.length) fail("squares share an outline colour");
+const liveOutlines = outlines.filter((_, i) => !shut(nav.AREAS[i]));
+if (new Set(liveOutlines).size !== liveOutlines.length) {
+  fail("squares share an outline colour");
+}
 nav.AREAS.forEach((a, i) => {
-  if (outlines[i] !== a.colour) fail(`${a.label} outline ${outlines[i]} != ${a.colour}`);
+  const want = shut(a) ? LOCKED : a.colour;
+  if (outlines[i] !== want) fail(`${a.label} outline ${outlines[i]} != ${want}`);
   if (!squares()[i].textContent.includes(a.label)) fail(`square ${i} is not ${a.label}`);
 });
 
-// 3. Pressing a square opens that area and scopes the menu to it.
+// 3. Pressing a square opens that area and scopes the menu to it —
+//    unless the square is shut, in which case pressing it must do
+//    nothing at all.
+//
+//    Asserted rather than skipped. A shut square is a disabled button,
+//    and `disabled` is one attribute away from being a button that
+//    navigates to an area with no screens behind it. The landing page
+//    would then hand somebody an empty menu and no way to read it as
+//    anything but a fault.
 for (const [i, area] of nav.AREAS.entries()) {
+  if (shut(area)) {
+    if (!squares()[i].disabled) fail(`${area.label} is shut but not disabled`);
+    await click(squares()[i]);
+    if (document.querySelector("#app-sidebar")) {
+      fail(`${area.label} is marked "To Be Developed" and still opened`);
+    }
+    if (!squares().length) fail(`${area.label} navigated away from the squares`);
+    continue;
+  }
   await click(squares()[i]);
   const side = document.querySelector("#app-sidebar");
   if (!side) { fail(`no sidebar after opening ${area.label}`); break; }

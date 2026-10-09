@@ -43,12 +43,25 @@ import { areaVars } from "../../lib/colour.js";
    different warnings. */
 const LOCKED_COLOUR = "#94a3b8";
 
+/* ── Two reasons a square does not open ──
+
+   They are drawn the same and they mean different things, so they say
+   different things. "No access" is something to take to the office.
+   "To Be Developed" is not, and somebody who reads the first when the
+   second is true raises a ticket that cannot be answered. */
+const NO_ACCESS = "No access";
+const TO_BE_DEVELOPED = "To Be Developed";
+
 /* `keys` is the menu access this person has been granted, or null where
    access control is off — the unconfigured sample-data mode, which has
    no login and so nobody to grant anything to. See lib/access.js. */
 export default function HomePage({ onOpen, keys = null }) {
-  /* Every section, always. Which of them OPEN is the question. */
-  const open = (area) => (keys ? areaVisible(keys, area) : true);
+  /* Every section, always. Which of them OPEN is the question, and an
+     area with nothing behind it yet is shut to everybody — including
+     in the sample-data mode below, where access control is off and
+     every other square opens. */
+  const open = (area) =>
+    area.toBeDeveloped !== true && (keys ? areaVisible(keys, area) : true);
   /* And the screen it opens on is the first one they HAVE, not the
      first one that exists — otherwise Design sends a draughtsman who
      only has the canvas to the projects list and a refusal. */
@@ -68,6 +81,11 @@ export default function HomePage({ onOpen, keys = null }) {
       <div className="home-grid">
         {AREAS.map((area) => {
           const allowed = open(area);
+          /* Which kind of closed square this is. Taken from the area
+             rather than from `allowed`, so a section that is both
+             unbuilt and ungranted says the thing that is true of it —
+             access cannot fix a screen that does not exist. */
+          const why = area.toBeDeveloped === true ? TO_BE_DEVELOPED : NO_ACCESS;
           return (
             <button
               key={area.id}
@@ -82,7 +100,9 @@ export default function HomePage({ onOpen, keys = null }) {
               /* Said on hover as well as drawn, because grey alone is a
                  convention somebody has to already know. */
               title={allowed ? undefined
-                : `${area.label} — you have not been given access to this section`}
+                : why === TO_BE_DEVELOPED
+                  ? `${area.label} — not built yet`
+                  : `${area.label} — you have not been given access to this section`}
               /* The colour is per area and comes from data, so it cannot
                  live in the stylesheet. Everything else does. */
               style={areaVars(allowed ? area.colour : LOCKED_COLOUR)}
@@ -93,7 +113,7 @@ export default function HomePage({ onOpen, keys = null }) {
                   grey carries it for anybody who knows the convention;
                   this is for everybody else, and it is the difference
                   between asking for access and reporting a fault. */}
-              {!allowed && <span className="area-locked">No access</span>}
+              {!allowed && <span className="area-locked">{why}</span>}
             </button>
           );
         })}

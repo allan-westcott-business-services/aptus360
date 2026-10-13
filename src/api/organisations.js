@@ -1,10 +1,16 @@
 import { http, USE_MOCKS } from "./client.js";
 import { clearLookupCache } from "./lookups.js";
+import { mockOrganisations } from "../lib/mockData.js";
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export async function listOrganisations() {
-  if (USE_MOCKS) { await delay(180); return { rows: [] }; }
+  /* The mock list is the operators rather than nothing. It is read by
+     the NCR register to put a name on an auditor, and an empty list
+     there makes every imported report read as the bare word
+     "Operator" — which is what a mock is meant to let somebody see
+     before the data is real. */
+  if (USE_MOCKS) { await delay(180); return { rows: mockOrganisations() }; }
   return http.get("/organisations");
 }
 export async function getOrgTypes() {

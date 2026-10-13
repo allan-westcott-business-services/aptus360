@@ -54,6 +54,17 @@ export const lookups = {
     { IDNO_ID: 3, IDNO_Name: "Leep Networks" },
     { IDNO_ID: 4, IDNO_Name: "Icosa Water" },
   ],
+  /* The network operators an NCR can name as its auditor. Ids chosen
+     to look nothing like the IDNO ids above: the two numbered the same
+     operators differently, which is the mistake 0261 and the NCR
+     import exist to undo, and mock data that let them agree would hide
+     a column read off the wrong lookup. */
+  operators: [
+    { Organisation_ID: 18, Name: "United Utilities", role_keys: ["wu"] },
+    { Organisation_ID: 6, Name: "GTC", role_keys: ["idno", "igt", "iwu"] },
+    { Organisation_ID: 25, Name: "Cadent", role_keys: ["gt"] },
+    { Organisation_ID: 11, Name: "Electricity North West", role_keys: ["dno"] },
+  ],
   heatPumpModels: [
     { Heat_Pump_Model_ID: 1, Model: "Vaillant aroTHERM 5kW" },
     { Heat_Pump_Model_ID: 2, Model: "Daikin Altherma 6kW" },
@@ -191,32 +202,32 @@ export const adminMock = {
   NCR: [
     { NCR_ID: 1, NCR_Reference: "NCR00001", Description: "Excavation left unfenced overnight on plot 14.",
       Date_Received: "2026-07-31", Close_Date: null, Region_ID: 1, Sub_Region_ID: null,
-      Business_Unit_ID: null, Project_ID: 1, Auditor_Type: null, Auditor_DNO_ID: null,
-      Auditor_IDNO_ID: null, Owner_Person_ID: 1, Utility: "Water", NCR_Status_ID: 1 },
+      Business_Unit_ID: null, Project_ID: 1, Auditor_Type: null, Auditor_Organisation_ID: null,
+      Owner_Person_ID: 1, Utility: "Water", NCR_Status_ID: 1 },
     { NCR_ID: 2, NCR_Reference: "NCR00002", Description: "Incorrect backfill material used on the service trench.",
       Date_Received: "2026-06-26", Close_Date: null, Region_ID: 2, Sub_Region_ID: null,
-      Business_Unit_ID: null, Project_ID: 1, Auditor_Type: "DNO", Auditor_DNO_ID: 1,
-      Auditor_IDNO_ID: null, Owner_Person_ID: 2, Utility: "Electric", NCR_Status_ID: 1 },
+      Business_Unit_ID: null, Project_ID: 1, Auditor_Type: "Operator", Auditor_Organisation_ID: 11,
+      Owner_Person_ID: 2, Utility: "Electric", NCR_Status_ID: 1 },
     { NCR_ID: 3, NCR_Reference: "NCR00003", Description: "Gas purge record not returned with the pack.",
       Date_Received: "2026-05-26", Close_Date: null, Region_ID: 1, Sub_Region_ID: null,
-      Business_Unit_ID: null, Project_ID: 2, Auditor_Type: "IDNO", Auditor_DNO_ID: null,
-      Auditor_IDNO_ID: 1, Owner_Person_ID: 1, Utility: "Gas", NCR_Status_ID: 1 },
+      Business_Unit_ID: null, Project_ID: 2, Auditor_Type: "Operator", Auditor_Organisation_ID: 6,
+      Owner_Person_ID: 1, Utility: "Gas", NCR_Status_ID: 1 },
     { NCR_ID: 4, NCR_Reference: "NCR00004", Description: "Signage missing at the site entrance.",
       Date_Received: "2026-03-22", Close_Date: null, Region_ID: 2, Sub_Region_ID: null,
-      Business_Unit_ID: null, Project_ID: 2, Auditor_Type: null, Auditor_DNO_ID: null,
-      Auditor_IDNO_ID: null, Owner_Person_ID: null, Utility: "Not Applicable", NCR_Status_ID: 1 },
+      Business_Unit_ID: null, Project_ID: 2, Auditor_Type: "Aptus", Auditor_Organisation_ID: null,
+      Owner_Person_ID: null, Utility: "Not Applicable", NCR_Status_ID: 1 },
     { NCR_ID: 5, NCR_Reference: "NCR00005", Description: "Meter box fitted below the minimum height.",
       Date_Received: "2026-07-10", Close_Date: null, Region_ID: 1, Sub_Region_ID: null,
-      Business_Unit_ID: null, Project_ID: 1, Auditor_Type: null, Auditor_DNO_ID: null,
-      Auditor_IDNO_ID: null, Owner_Person_ID: 2, Utility: "Gas", NCR_Status_ID: 2 },
+      Business_Unit_ID: null, Project_ID: 1, Auditor_Type: null, Auditor_Organisation_ID: null,
+      Owner_Person_ID: 2, Utility: "Gas", NCR_Status_ID: 2 },
     { NCR_ID: 6, NCR_Reference: "NCR00006", Description: "Spoil heap encroaching the footpath.",
       Date_Received: "2026-04-11", Close_Date: "2026-05-05", Region_ID: 1, Sub_Region_ID: null,
-      Business_Unit_ID: null, Project_ID: 1, Auditor_Type: null, Auditor_DNO_ID: null,
-      Auditor_IDNO_ID: null, Owner_Person_ID: 1, Utility: "Water", NCR_Status_ID: 3 },
+      Business_Unit_ID: null, Project_ID: 1, Auditor_Type: null, Auditor_Organisation_ID: null,
+      Owner_Person_ID: 1, Utility: "Water", NCR_Status_ID: 3 },
     { NCR_ID: 7, NCR_Reference: "NCR00007", Description: "Jointing bay left without a cover plate.",
       Date_Received: "2026-01-21", Close_Date: "2026-02-10", Region_ID: 2, Sub_Region_ID: null,
-      Business_Unit_ID: null, Project_ID: 2, Auditor_Type: "DNO", Auditor_DNO_ID: 1,
-      Auditor_IDNO_ID: null, Owner_Person_ID: 2, Utility: "Electric", NCR_Status_ID: 3 },
+      Business_Unit_ID: null, Project_ID: 2, Auditor_Type: "Operator", Auditor_Organisation_ID: 18,
+      Owner_Person_ID: 2, Utility: "Electric", NCR_Status_ID: 3 },
   ],
   NCR_Action: [
     { NCR_Action_ID: 1, NCR_ID: 1, Action: "Fence the excavation and photograph it.",
@@ -357,6 +368,11 @@ export const adminMock = {
   Region: lookups.regions,
   Role: lookups.roles,
   IDNO: lookups.idnos,
+  /* The NCR screens ask for both: Organisation names every auditor a
+     report has ever had, Operator_Utility is the shorter list the
+     modal offers. Here they are the same four. */
+  Organisation: lookups.operators,
+  Operator_Utility: lookups.operators,
   Fire_Service: lookups.fireServices,
   Heat_Source: lookups.heatSources,
   Heat_Pump_Model: lookups.heatPumpModels,
@@ -400,6 +416,16 @@ export const adminMock = {
    one team so the lane packing shows, a booking that starts before the
    default window so clipping shows, and a call-off with nothing
    assigned so the unassigned row has something in it. */
+/* The organisations the /organisations list returns under mocks.
+   Every operator, as the real endpoint does — it lists the inactive
+   ones too, because an auditor retired since a report was raised still
+   has to read as itself on that report. */
+export function mockOrganisations() {
+  return lookups.operators.map((o) => ({
+    Organisation_ID: o.Organisation_ID, Name: o.Name, Is_Active: true,
+  }));
+}
+
 export function planningMock() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);

@@ -75,13 +75,36 @@ export function agingCounts(rows, statusName, today = new Date()) {
   return counts;
 }
 
-/* Who raised it. No auditor type means it was found internally, which
-   is a fact about the report rather than a missing value, so it reads
-   as the company rather than as a blank. */
-export function auditorLabel(row, { dnoName, idnoName }) {
-  if (row.Auditor_Type === "DNO") return dnoName(row.Auditor_DNO_ID) || "DNO";
-  if (row.Auditor_Type === "IDNO") return idnoName(row.Auditor_IDNO_ID) || "IDNO";
-  return "Aptus Utilities";
+/* Who raised it.
+
+   ── Three states, where there used to be two ──
+
+   The auditor was Auditor_DNO_ID or Auditor_IDNO_ID, and anything else
+   read as "Aptus Utilities" — found internally. 0261 replaced both
+   columns with one organisation, because the old pair could not
+   describe the data: 889 of the imported NCRs are Water with
+   Auditor_Type 'DNO', and a DNO distributes electricity. The old
+   system used DNO for the incumbent of whatever utility and IDNO for
+   the independent one, and between them the thirteen operators hold
+   five different roles here.
+
+   So there is now a type and an organisation, and three states:
+
+     'Operator'  an outside operator, named
+     'Aptus'     Aptus auditing Aptus — 4 of the 1,797
+     null        nobody recorded one — 153 of them
+
+   The last two used to be one. Treating null as Aptus would put 149
+   imported reports down as internal findings, which is a claim the
+   data does not make, so it reads as blank. Blank is also what the
+   register's blanks-only filter needs to answer "which have no auditor
+   recorded" — a dash would make that question unanswerable. */
+export function auditorLabel(row, { operatorName }) {
+  if (row.Auditor_Type === "Aptus") return "Aptus Utilities";
+  if (row.Auditor_Type === "Operator") {
+    return operatorName(row.Auditor_Organisation_ID) || "Operator";
+  }
+  return "";
 }
 
 /* ── Drill-down ───────────────────────────────────────────────────

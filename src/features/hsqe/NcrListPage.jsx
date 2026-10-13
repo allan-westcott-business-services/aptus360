@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Banner from "../../components/Banner.jsx";
 import { adminList, adminDelete } from "../../api/admin.js";
+import { listOrganisations } from "../../api/organisations.js";
 import NcrModal from "./NcrModal.jsx";
 import {
   auditorLabel, rowMatches, isBlank, trimStr, UTILITIES,
@@ -52,7 +53,7 @@ export default function NcrListPage() {
   const [rows, setRows] = useState([]);
   const [lookups, setLookups] = useState({
     statuses: [], regions: [], subRegions: [], people: [],
-    dnos: [], idnos: [], projects: [], businessUnits: [],
+    organisations: [], operators: [], projects: [], businessUnits: [],
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -66,10 +67,26 @@ export default function NcrListPage() {
   const load = useCallback(async () => {
     try {
       const soft = (t) => adminList(t).catch(() => ({ rows: [] }));
-      const [n, st, reg, sub, ppl, dno, idno, proj, bu] = await Promise.all([
+      const [n, st, reg, sub, ppl, org, ops, proj, bu] = await Promise.all([
         adminList("NCR"),
         soft("NCR_Status"), soft("Region"), soft("Sub_Region"), soft("Person"),
-        soft("DNO"), soft("IDNO"), soft("Project"),
+        /* Two organisation lookups, on purpose, from two different
+           endpoints.
+
+           The names come from /organisations, which lists every
+           organisation including the inactive ones — an operator
+           retired after a report was raised must still show its name
+           on that report. There is no Organisation entry in the admin
+           endpoint's table list, so adminList("Organisation") would
+           come back refused and every imported auditor would read as
+           the bare word "Operator".
+
+           The picker comes from Operator_Utility, which is the shorter
+           list: organisations holding a network-operator role and
+           still active. The same list three admin screens pick an
+           operator from. */
+        listOrganisations().catch(() => ({ rows: [] })),
+        soft("Operator_Utility"), soft("Project"),
         /* Business Unit arrives with the HR section. Until then the
            request fails and the column simply reads as empty, rather
            than the page refusing to load over a lookup it can do
@@ -79,7 +96,8 @@ export default function NcrListPage() {
       setRows(n.rows || []);
       setLookups({
         statuses: st.rows || [], regions: reg.rows || [], subRegions: sub.rows || [],
-        people: ppl.rows || [], dnos: dno.rows || [], idnos: idno.rows || [],
+        people: ppl.rows || [], organisations: org.rows || [],
+        operators: ops.rows || [],
         projects: proj.rows || [], businessUnits: bu.rows || [],
       });
       setError("");
@@ -101,8 +119,7 @@ export default function NcrListPage() {
       region: by(lookups.regions, "Region_ID", "Region"),
       subRegion: by(lookups.subRegions, "Sub_Region_ID", "Sub_Region"),
       person: by(lookups.people, "Person_ID", "Person_Name"),
-      dno: by(lookups.dnos, "DNO_ID", "DNO_Name"),
-      idno: by(lookups.idnos, "IDNO_ID", "IDNO_Name"),
+      operator: by(lookups.organisations, "Organisation_ID", "Name"),
       bu: by(lookups.businessUnits, "Business_Unit_ID", "Business_Unit"),
     };
   }, [lookups]);
@@ -123,9 +140,14 @@ export default function NcrListPage() {
       case "subregion": return names.subRegion(row.Sub_Region_ID) ?? "";
       case "bu": return names.bu(row.Business_Unit_ID) ?? "";
       case "project": return project?.Project_Ref ?? "";
-      case "site": return project?.Site_Name ?? "";
+      /* Where it happened. The project is the authority; the address
+         typed on the day is the fallback, and for the 66 imported
+         reports that carry no contract it is the only location there
+         is. Without the fallback those read as having happened
+         nowhere. */
+      case "site": return project?.Site_Name || row.Address_Raw || "";
       case "description": return row.Description ?? "";
-      case "auditor": return auditorLabel(row, { dnoName: names.dno, idnoName: names.idno });
+      case "auditor": return auditorLabel(row, { operatorName: names.operator });
       case "owner": return names.person(row.Owner_Person_ID) ?? "";
       case "utility": return row.Utility ?? "";
       case "status": return names.status(row.NCR_Status_ID) ?? "";

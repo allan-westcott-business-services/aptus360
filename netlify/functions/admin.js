@@ -52,6 +52,27 @@ const TABLES = {
   Quote_Type:      { pk: "Quote_Type_ID",      order: "Sort_Order" },
   Region:          { pk: "Region_ID",          order: "Sort_Order" },
   Sub_Region:      { pk: "Sub_Region_ID",      order: "Sort_Order" },
+  /* The business units. The NCR register and the HSQE dashboard both
+     show one per report, and the table did not exist until 0261 — the
+     register's own comment said the column "simply reads as empty"
+     until then, and it did, for every one of the 1,797 imported
+     reports. */
+  Business_Unit:   { pk: "Business_Unit_ID",   order: "Sort_Order" },
+  /* ── Project, read-only and three columns wide ──
+
+     The NCR register turns Project_ID into a reference and a site
+     name. It asked this endpoint for "Project" and was refused,
+     because Project has never been on this list — so the Project and
+     Site Name columns have been blank since the register was built,
+     unnoticed while the NCR table was empty.
+
+     readOnly, because a project is written through projects.js, which
+     handles status transitions and the developer cache a generic PATCH
+     would walk straight past. And a column list, because a lookup
+     needs a reference and a site name, not sixty columns of every
+     project in the business. */
+  Project:         { pk: "Project_ID",         order: "Project_Ref",
+    cols: "Project_ID,Project_Ref,Site_Name", readOnly: true },
   Utility:         { pk: "Utility_ID",         order: "Sort_Order" },
   Role:            { pk: "Role_ID",            order: "Sort_Order" },
   Person:          { pk: "Person_ID",          order: "Person_Name" },
@@ -314,6 +335,16 @@ export default withAuth(async function handler(req, context, user) {
        Reads stay open. A screen has to show what is there before
        somebody can change it, and the screens are already behind their
        own grants. */
+    /* readOnly is enforced before anything else, because a flag that
+       only documents an intention is a flag somebody will trust. A
+       project reaches the database through projects.js, which handles
+       status transitions and the cached developer; a generic PATCH
+       here would walk past both. */
+    if (meta.readOnly && req.method !== "GET") {
+      return json({ error: `"${table}" is read-only through this endpoint. `
+        + "Use the endpoint that owns it." }, 405);
+    }
+
     const owner = req.method === "GET" ? null : ownerOfTable(table);
     if (owner) {
       const no = await denyUnlessMenu(user, adminKeyFor(owner));
@@ -321,7 +352,11 @@ export default withAuth(async function handler(req, context, user) {
     }
 
     if (req.method === "GET") {
-      const { data, error } = await db.from(table).select("*").order(meta.order);
+      /* meta.cols where a table has one. A lookup that only needs
+         three columns should not drag every column of every row across
+         the wire because "*" was easier to write. */
+      const { data, error } = await db.from(table)
+        .select(meta.cols || "*").order(meta.order);
       if (error) throw error;
       return json({ rows: data || [] });
     }

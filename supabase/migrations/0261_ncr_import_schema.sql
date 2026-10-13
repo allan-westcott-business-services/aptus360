@@ -74,39 +74,71 @@ COMMENT ON COLUMN "NCR"."Address_Raw" IS
   'NCRs that carry no contract.';
 
 
--- ── 3. An NCR Aptus raised against itself ──
+-- ── 3. The auditor is an organisation ──
 --
--- The constraint allowed DNO and IDNO, which assumes every NCR comes
--- from a network operator. Four do not:
+-- The columns were Auditor_DNO_ID and Auditor_IDNO_ID, pointing at the
+-- DNO and IDNO shim tables. That cannot describe this data.
 --
---   NCR11891  gas duct laid at depth but black instead of yellow
---   NCR11995  a competency passport
---   NCR12054  brakes not working properly on an excavator
---   NCR12055  PAT testing labels missing from extension leads
+-- 889 of the NCRs are Water and carry Auditor_Type = 'DNO'. A DNO
+-- distributes electricity; it cannot have raised a water NCR. The old
+-- system used "DNO" to mean the incumbent for whatever utility and
+-- "IDNO" to mean the independent one — IWUs and IGTs included, which
+-- is what they were called at the time. So old DNO 3 is United
+-- Utilities (846 NCRs), old DNO 1 is Cadent, and old IDNO 4 is GTC.
 --
--- Those are Aptus's own HSQE process finding things, which is worth
--- being able to count separately rather than flattening into "no
--- auditor recorded" alongside the 149 that genuinely have none.
+-- Matched to organisations by name, those thirteen operators land on
+-- five different roles: wu, iwu, gt, idno and dno. Two columns named
+-- after two of those five cannot hold them.
 --
--- Both constraints are replaced. The second one is the one that would
--- be missed: it pairs the type with the id, and 'Aptus' needs its own
--- branch saying it carries neither a DNO nor an IDNO. Widening only
--- the first would let 'Aptus' past the type check and then fail on the
--- pairing, which reads as a mystery rather than as a rule.
+-- So the auditor is an Organisation, as it already is on
+-- Project_Scope, POC_Application, Plot_Utility, AV_Agreement and six
+-- others. The role is read from Organisation_Role rather than written
+-- on the NCR, which is what stops this drifting again: an operator
+-- that gains a role gains it everywhere at once.
+--
+-- The two old columns are dropped rather than left. NCR is empty, so
+-- nothing is lost, and a column that cannot be filled correctly is a
+-- column somebody will fill incorrectly.
 
+ALTER TABLE "NCR" ADD COLUMN IF NOT EXISTS "Auditor_Organisation_ID" bigint;
+
+ALTER TABLE "NCR" DROP CONSTRAINT IF EXISTS ncr_auditor_organisation_fk;
+ALTER TABLE "NCR"
+  ADD CONSTRAINT ncr_auditor_organisation_fk
+  FOREIGN KEY ("Auditor_Organisation_ID") REFERENCES "Organisation"("Organisation_ID");
+
+/* Auditor_Type survives, with the only distinction the organisation
+   cannot make: whether anybody outside raised it.
+
+   Four NCRs are Aptus auditing Aptus — a gas duct in the wrong colour,
+   a competency passport, an excavator's brakes, missing PAT labels.
+   Those are the HSQE process working, and worth counting apart from
+   the 149 that simply never had an auditor recorded.
+
+   'DNO' and 'IDNO' are gone from the vocabulary. They described a
+   world with two kinds of operator, and there are five. */
 ALTER TABLE "NCR" DROP CONSTRAINT IF EXISTS "NCR_Auditor_Type_check";
-ALTER TABLE "NCR" ADD CONSTRAINT "NCR_Auditor_Type_check"
-  CHECK ("Auditor_Type" = ANY (ARRAY['DNO'::text, 'IDNO'::text, 'Aptus'::text]));
-
 ALTER TABLE "NCR" DROP CONSTRAINT IF EXISTS ncr_auditor_matches_type;
+
+ALTER TABLE "NCR" ADD CONSTRAINT "NCR_Auditor_Type_check"
+  CHECK ("Auditor_Type" = ANY (ARRAY['Operator'::text, 'Aptus'::text]));
+
+/* An outside operator means an organisation; Aptus means none. A row
+   claiming an operator with nobody named is the fault this pairing
+   exists to stop — it reads on screen as "audited by —". */
 ALTER TABLE "NCR" ADD CONSTRAINT ncr_auditor_matches_type CHECK (
-     ("Auditor_Type" = 'DNO'   AND "Auditor_IDNO_ID" IS NULL)
-  OR ("Auditor_Type" = 'IDNO'  AND "Auditor_DNO_ID"  IS NULL)
-  OR ("Auditor_Type" = 'Aptus' AND "Auditor_DNO_ID"  IS NULL
-                               AND "Auditor_IDNO_ID" IS NULL)
-  OR ("Auditor_Type" IS NULL   AND "Auditor_DNO_ID"  IS NULL
-                               AND "Auditor_IDNO_ID" IS NULL)
+     ("Auditor_Type" = 'Operator' AND "Auditor_Organisation_ID" IS NOT NULL)
+  OR ("Auditor_Type" = 'Aptus'    AND "Auditor_Organisation_ID" IS NULL)
+  OR ("Auditor_Type" IS NULL      AND "Auditor_Organisation_ID" IS NULL)
 );
+
+ALTER TABLE "NCR" DROP COLUMN IF EXISTS "Auditor_DNO_ID";
+ALTER TABLE "NCR" DROP COLUMN IF EXISTS "Auditor_IDNO_ID";
+
+COMMENT ON COLUMN "NCR"."Auditor_Organisation_ID" IS
+  'The organisation that raised the NCR. Which capacity they raised it '
+  'in — wu, iwu, gt, idno, dno — is read from Organisation_Role, not '
+  'stored here: an operator plays several and gains new ones.';
 
 
 -- ── 4. NCR_Attachment ──

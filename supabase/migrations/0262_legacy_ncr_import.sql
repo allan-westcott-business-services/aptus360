@@ -347,10 +347,17 @@ SELECT s.old_ncr_id,
        END AS auditor_type,
 
        CASE
+         /* An empty id and an empty reference have one likely cause,
+            and it is worth naming: 255 of the descriptions carry a
+            line break, and a CSV importer that splits one leaves a
+            continuation row behind. The index on
+            NULLIF(btrim("NCR_ID"), '')::bigint refuses such a row
+            when the fragment is prose; it cannot refuse one whose
+            first field was empty. */
          WHEN s.old_ncr_id IS NULL
-           THEN 'no NCR_ID'
+           THEN 'no NCR_ID - a row left by a split description?'
          WHEN btrim(COALESCE(s."NCR_Reference", '')) = ''
-           THEN 'no NCR_Reference'
+           THEN 'no NCR_Reference - a row left by a split description?'
          WHEN s.old_region_id IS NOT NULL AND mr.new_name IS NULL
            THEN 'region ' || s.old_region_id || ' is not in the region map'
          WHEN s.old_region_id IS NOT NULL AND r."Region_ID" IS NULL

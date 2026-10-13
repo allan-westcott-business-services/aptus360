@@ -54,6 +54,73 @@
 --  PART 1 — what will land, and what will not
 -- ════════════════════════════════════════════════════════════════════
 
+-- 1.0 ── Did the CSV arrive whole? ──
+--
+--      255 of the 1,797 descriptions contain a line break — "FH needs
+--      a clear-out to the base" sits on its own second line — so an
+--      importer that does not honour the quotes around those fields
+--      splits one report into two rows.
+--
+--      ── What happens if it does ──
+--
+--      It fails during the import, not here. 0262 indexes
+--      NULLIF(btrim("NCR_ID"), '')::bigint, and that index refuses a
+--      row with prose in that column, so the importer stops with
+--
+--        invalid input syntax for type bigint: "FH needs a clear-out…"
+--
+--      which is a true statement about the wrong thing. If you see it
+--      while loading the CSV, that is what it means: the quotes were
+--      not honoured. Empty the table (DELETE FROM legacy_ncr_import)
+--      and load the file again.
+--
+--      So what is left to check here is what the index cannot refuse:
+--      a load that stopped part way, one done twice, and a split whose
+--      continuation line began with the comma, leaving the id empty
+--      rather than wrong.
+
+SELECT 'rows staged'                         AS item,
+       count(*)::text                        AS detail,
+       /* No guess at the cause when there are too many. It said
+          "loaded more than once?" for a single extra row left by a
+          split description, with the line that named the real cause
+          directly underneath. */
+       CASE WHEN count(*) = 1797 THEN 'ok - matches the export'
+            WHEN count(*) = 0    THEN 'nothing loaded yet'
+            WHEN count(*) < 1797 THEN 'the export has 1797 - the load stopped part way'
+            ELSE 'the export has 1797 - see the lines below' END AS state
+  FROM legacy_ncr_import
+UNION ALL
+SELECT 'attachment rows staged',
+       count(*)::text,
+       CASE WHEN count(*) = 98 THEN 'ok - matches the export'
+            WHEN count(*) = 0  THEN 'nothing loaded yet'
+            ELSE 'the export has 98' END
+  FROM legacy_ncr_attachment_import
+UNION ALL
+SELECT 'rows with no NCR_ID',
+       count(*)::text,
+       CASE WHEN count(*) = 0 THEN 'ok'
+            ELSE 'a split description - empty the table and load it again' END
+  FROM legacy_ncr_import
+ WHERE COALESCE(btrim("NCR_ID"), '') = ''
+UNION ALL
+SELECT 'rows with no NCR_Reference',
+       count(*)::text,
+       CASE WHEN count(*) = 0 THEN 'ok' ELSE 'same cause' END
+  FROM legacy_ncr_import
+ WHERE COALESCE(btrim("NCR_Reference"), '') = ''
+UNION ALL
+SELECT 'distinct NCR_IDs',
+       count(DISTINCT NULLIF(btrim("NCR_ID"), ''))::text,
+       /* Counted over the ids that are ids. Comparing a DISTINCT that
+          includes the empty string against count(*) read "ok - one
+          row each" with a split row sitting right above it. */
+       CASE WHEN count(DISTINCT NULLIF(btrim("NCR_ID"), ''))
+                 = count(NULLIF(btrim("NCR_ID"), '')) THEN 'ok - one row each'
+            ELSE 'some id appears twice - loaded more than once?' END
+  FROM legacy_ncr_import;
+
 -- 1.1 Every staged row, and whether it resolves.
 --
 --     Before part 2 this is mostly "waiting on part 2 creating <name>".
@@ -256,15 +323,35 @@ UPDATE legacy_ncr_import SET "NCR_Reference" = 'NCR11445' WHERE btrim("NCR_ID") 
 DO $$
 DECLARE dup text;
 BEGIN
+  /* No separate check here for prose in NCR_ID. There was one, and it
+     could not fire: 0262 indexes NULLIF(btrim("NCR_ID"), '')::bigint,
+     so the staging table refuses such a row when the CSV is loaded,
+     long before this runs. A guard that cannot fail is worse than no
+     guard, because it reads as cover. 1.0 explains the error the
+     importer gives instead, and the resolve check below catches the
+     one split that does land — the continuation line that began with
+     a comma, leaving the id empty rather than wrong. */
+
+  /* Five, and a count of the rest.
+
+     This listed every pair, and a staging table loaded twice made the
+     message 1,797 pairs long — "NCR06629 (NCR 50 and 50), NCR06638
+     (NCR 51 and 51), …" filling the editor with the same fact over
+     and over. The first few name the problem; the total says how big
+     it is. */
   SELECT string_agg(ncr_reference || ' (NCR ' || ids || ')', ', ')
+         || CASE WHEN max(total) > 5
+                 THEN ', and ' || (max(total) - 5)::text || ' more' ELSE '' END
     INTO dup
-    FROM (SELECT ncr_reference,
-                 string_agg(old_ncr_id::text, ' and ' ORDER BY old_ncr_id) AS ids
-            FROM "Legacy_NCR_Resolved"
-           GROUP BY ncr_reference HAVING count(*) > 1) d;
+    FROM (SELECT ncr_reference, ids, count(*) OVER () AS total
+            FROM (SELECT ncr_reference,
+                         string_agg(old_ncr_id::text, ' and ' ORDER BY old_ncr_id) AS ids
+                    FROM "Legacy_NCR_Resolved"
+                   GROUP BY ncr_reference HAVING count(*) > 1) g
+           ORDER BY ncr_reference LIMIT 5) d;
   IF dup IS NOT NULL THEN
     RAISE EXCEPTION
-      'NCR_Reference is unique and this export repeats: %. For NCR11444 the UPDATE in 3.0 settles it (1342 becomes NCR11445); for anything else, decide which report keeps the reference first.', dup;
+      'NCR_Reference is unique and this export repeats: %. For NCR11444 the UPDATE in 3.0 settles it (1342 becomes NCR11445); for anything else, decide which report keeps the reference first. A great many pairs usually means the CSV was loaded twice — part 1 section 1.0 says so.', dup;
   END IF;
 
   IF EXISTS (SELECT 1 FROM "Legacy_NCR_Resolved" WHERE state <> 'ok') THEN

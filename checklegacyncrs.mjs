@@ -342,6 +342,20 @@ const m62 = code(mig0262);
         + "running it against an export that is already correct "
         + "overwrites whatever 1342 says now");
     }
+    /* ── One line ──
+
+       It was four, laid out to read nicely, and the editor was handed
+       a selection that began at the WHERE: "syntax error at or near
+       WHERE". The script was correct and ran fine as a whole; the
+       statement was simply splittable, and it is the one statement
+       here that somebody is invited to run on its own.
+
+       So: no newline between UPDATE and its semicolon. */
+    if (/\n/.test(fix[0].trim())) {
+      fail("the reference fix spans more than one line, and it is the "
+        + "one statement meant to be run on its own — a selection that "
+        + "starts at the WHERE is a syntax error");
+    }
   }
 }
 

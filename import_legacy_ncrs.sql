@@ -236,17 +236,22 @@ SELECT count(*) AS "people from the old system now here"
 --
 --      A fresh export already says so, and part 1's 1.2 comes back
 --      empty. If the CSV in legacy_ncr_import was taken before 13 Oct
---      it still repeats NCR11444, and this is the line:
+--      it still repeats NCR11444, and this is the line that settles
+--      it.
+--
+--      One line, deliberately. It was four, laid out to read nicely,
+--      and the editor was handed a selection that started at the
+--      WHERE — "syntax error at or near WHERE". A statement somebody
+--      is invited to run on its own should not be splittable by where
+--      they happen to start dragging.
 
-UPDATE legacy_ncr_import
-   SET "NCR_Reference" = 'NCR11445'
- WHERE btrim("NCR_ID") = '1342'
-   AND btrim("NCR_Reference") = 'NCR11444';
+UPDATE legacy_ncr_import SET "NCR_Reference" = 'NCR11445' WHERE btrim("NCR_ID") = '1342' AND btrim("NCR_Reference") = 'NCR11444';
 
 --      Guarded on the old reference as well as the id, so running it
 --      against an export that is already right changes nothing rather
---      than overwriting whatever 1342 says now. 0 rows is the answer
---      to hope for.
+--      than overwriting whatever 1342 says now. UPDATE 0 is the
+--      answer to hope for; UPDATE 1 means it was needed. Either way
+--      carry on to 3.1.
 
 DO $$
 DECLARE dup text;

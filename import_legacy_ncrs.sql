@@ -18,7 +18,12 @@
 --      the columns map one-to-one by header, so nothing needs
 --      renaming and the order in the file does not matter.
 --
---   2. Run PART 1. Nothing is written. Read it.
+--   2. Run PART 1 section 1.0. Nothing is written. It is one
+--      statement and it ends by naming the next step.
+--
+--      The Supabase editor shows only the LAST result set, so run the
+--      sections ONE AT A TIME. 1.1 to 1.6 are the detail behind 1.0,
+--      for when something in it reads wrong.
 --
 --   3. Run PART 2 — the 35 people. Then PART 1 again: every
 --      "waiting on part 2" should have become "ok".
@@ -54,72 +59,96 @@
 --  PART 1 — what will land, and what will not
 -- ════════════════════════════════════════════════════════════════════
 
--- 1.0 ── Did the CSV arrive whole? ──
+-- 1.0 ── One query: the CSV, the resolution and what to run next ──
+--
+--      The Supabase editor shows only the LAST result set, and this
+--      part is eight statements. Run whole, it would hide everything
+--      but the attachment counts — which is how the plot import's
+--      checklist was lost once already. So run the sections ONE AT A
+--      TIME, and run this one first: it answers all of it in a single
+--      result and ends by naming the next step.
+--
+--      ── What it is looking for ──
 --
 --      255 of the 1,797 descriptions contain a line break — "FH needs
---      a clear-out to the base" sits on its own second line — so an
---      importer that does not honour the quotes around those fields
---      splits one report into two rows.
+--      a clear-out to the base" sits on its own second line — so a
+--      CSV importer that does not honour the quotes around those
+--      fields splits one report into two rows.
 --
---      ── What happens if it does ──
---
---      It fails during the import, not here. 0262 indexes
---      NULLIF(btrim("NCR_ID"), '')::bigint, and that index refuses a
---      row with prose in that column, so the importer stops with
+--      Mostly that fails during the import rather than here: 0262
+--      indexes NULLIF(btrim("NCR_ID"), '')::bigint, and that index
+--      refuses a row with prose in that column, so the importer stops
+--      with
 --
 --        invalid input syntax for type bigint: "FH needs a clear-out…"
 --
 --      which is a true statement about the wrong thing. If you see it
---      while loading the CSV, that is what it means: the quotes were
---      not honoured. Empty the table (DELETE FROM legacy_ncr_import)
---      and load the file again.
+--      while loading the CSV, that is what it means.
 --
---      So what is left to check here is what the index cannot refuse:
---      a load that stopped part way, one done twice, and a split whose
---      continuation line began with the comma, leaving the id empty
---      rather than wrong.
+--      What the index cannot refuse is a load that stopped part way,
+--      one done twice, or a split whose continuation line began with
+--      the comma — leaving the id empty rather than wrong. Those are
+--      the three this counts.
 
-SELECT 'rows staged'                         AS item,
-       count(*)::text                        AS detail,
-       /* No guess at the cause when there are too many. It said
-          "loaded more than once?" for a single extra row left by a
-          split description, with the line that named the real cause
-          directly underneath. */
-       CASE WHEN count(*) = 1797 THEN 'ok - matches the export'
-            WHEN count(*) = 0    THEN 'nothing loaded yet'
-            WHEN count(*) < 1797 THEN 'the export has 1797 - the load stopped part way'
-            ELSE 'the export has 1797 - see the lines below' END AS state
-  FROM legacy_ncr_import
-UNION ALL
-SELECT 'attachment rows staged',
+WITH csv AS (
+  SELECT count(*) AS rows_,
+         count(*) FILTER (WHERE COALESCE(btrim("NCR_ID"), '') = '')        AS no_id,
+         count(*) FILTER (WHERE COALESCE(btrim("NCR_Reference"), '') = '') AS no_ref,
+         count(DISTINCT NULLIF(btrim("NCR_ID"), ''))                       AS ids
+    FROM legacy_ncr_import
+),
+att AS (SELECT count(*) AS rows_ FROM legacy_ncr_attachment_import),
+dups AS (
+  SELECT ncr_reference,
+         string_agg(old_ncr_id::text, ' and ' ORDER BY old_ncr_id) AS ids
+    FROM "Legacy_NCR_Resolved" GROUP BY ncr_reference HAVING count(*) > 1
+)
+SELECT '1 the CSV' AS section, 'NCR rows staged' AS item,
+       rows_::text AS detail,
+       CASE WHEN rows_ = 1797 THEN 'ok' ELSE 'the export has 1797' END AS state FROM csv
+UNION ALL SELECT '1 the CSV', 'attachment rows staged', rows_::text,
+       CASE WHEN rows_ = 98 THEN 'ok' ELSE 'the export has 98' END FROM att
+UNION ALL SELECT '1 the CSV', 'rows with no NCR_ID', no_id::text,
+       CASE WHEN no_id = 0 THEN 'ok' ELSE 'a split description' END FROM csv
+UNION ALL SELECT '1 the CSV', 'rows with no NCR_Reference', no_ref::text,
+       CASE WHEN no_ref = 0 THEN 'ok' ELSE 'a split description' END FROM csv
+/* Counted over the ids that are ids. Comparing a DISTINCT that
+   included the empty string against the row count read "ok - one row
+   each" with a split row flagged directly above it. */
+UNION ALL SELECT '1 the CSV', 'distinct NCR_IDs', ids::text,
+       CASE WHEN ids = rows_ - no_id THEN 'ok - one row each'
+            ELSE 'an id appears twice - loaded twice?' END FROM csv
+/* The 35 "waiting on part 2 creating <name>" states rolled into one.
+   Listed separately they were 35 near-identical lines saying the same
+   thing, which buried the two that matter. 1.1 still shows them one
+   by one. */
+UNION ALL SELECT '2 does every row resolve',
+       CASE WHEN state LIKE 'waiting on part 2%'
+            THEN 'waiting on PART 2 creating the people' ELSE state END,
        count(*)::text,
-       CASE WHEN count(*) = 98 THEN 'ok - matches the export'
-            WHEN count(*) = 0  THEN 'nothing loaded yet'
-            ELSE 'the export has 98' END
-  FROM legacy_ncr_attachment_import
-UNION ALL
-SELECT 'rows with no NCR_ID',
-       count(*)::text,
-       CASE WHEN count(*) = 0 THEN 'ok'
-            ELSE 'a split description - empty the table and load it again' END
-  FROM legacy_ncr_import
- WHERE COALESCE(btrim("NCR_ID"), '') = ''
-UNION ALL
-SELECT 'rows with no NCR_Reference',
-       count(*)::text,
-       CASE WHEN count(*) = 0 THEN 'ok' ELSE 'same cause' END
-  FROM legacy_ncr_import
- WHERE COALESCE(btrim("NCR_Reference"), '') = ''
-UNION ALL
-SELECT 'distinct NCR_IDs',
-       count(DISTINCT NULLIF(btrim("NCR_ID"), ''))::text,
-       /* Counted over the ids that are ids. Comparing a DISTINCT that
-          includes the empty string against count(*) read "ok - one
-          row each" with a split row sitting right above it. */
-       CASE WHEN count(DISTINCT NULLIF(btrim("NCR_ID"), ''))
-                 = count(NULLIF(btrim("NCR_ID"), '')) THEN 'ok - one row each'
-            ELSE 'some id appears twice - loaded more than once?' END
-  FROM legacy_ncr_import;
+       CASE WHEN state = 'ok' THEN 'these will import' ELSE 'these will not yet' END
+  FROM "Legacy_NCR_Resolved" GROUP BY 2, 4
+UNION ALL SELECT '3 repeated references', ncr_reference, 'NCR ' || ids,
+       CASE WHEN ncr_reference = 'NCR11444' THEN 'the 3.0 line in PART 3 settles this one'
+            ELSE 'needs a decision' END FROM dups
+UNION ALL SELECT '4 next', 'run this', '',
+       CASE
+         WHEN (SELECT rows_ FROM csv) <> 1797 THEN 'load NCR_rows.csv again - the count is wrong'
+         WHEN (SELECT no_id FROM csv) > 0 THEN 'load NCR_rows.csv again - a description was split'
+         WHEN EXISTS (SELECT 1 FROM "Legacy_NCR_Resolved"
+                       WHERE state LIKE 'waiting on part 2%') THEN 'PART 2 - the 35 people'
+         WHEN EXISTS (SELECT 1 FROM "Legacy_NCR_Resolved" WHERE state <> 'ok')
+           THEN 'nothing yet - section 2 above says what is unresolved'
+         /* Already imported, asked before PART 3 is suggested. Section
+            2 reads the STAGING, which still says every row resolves
+            once the reports are in — so this query cheerfully pointed
+            at PART 3 after PART 3 had run. */
+         WHEN NOT EXISTS (SELECT 1 FROM "Legacy_NCR_Resolved" v
+                           WHERE NOT EXISTS (SELECT 1 FROM "NCR" n
+                                              WHERE n."NCR_ID" = v.old_ncr_id))
+           THEN 'PART 4 - the reports are all in, drop the staging'
+         ELSE 'PART 3 - the reports' END
+ ORDER BY 1, 2;
 
 -- 1.1 Every staged row, and whether it resolves.
 --

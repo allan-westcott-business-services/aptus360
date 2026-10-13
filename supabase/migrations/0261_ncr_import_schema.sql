@@ -199,6 +199,51 @@ WHERE NOT EXISTS (
 );
 
 
+-- ── 6. The four foreign keys NCR never had ──
+--
+-- NCR carries Region_ID, Sub_Region_ID, Project_ID and
+-- Owner_Person_ID, and not one of them is a foreign key. Elsewhere in
+-- this database those same columns are: 61 tables point at Person, 23
+-- at Project, 7 at Region. NCR is the exception, and it is an
+-- oversight rather than a decision — there is nothing about an NCR
+-- that makes its region more free-form than a project's.
+--
+-- It matters most right now. The import renumbers every region (old
+-- Region 1 was Midlands, here Region 1 is North West) and renumbers
+-- every person (old Person 23 is Laura Cassidy, here Person 23 is Ben
+-- Mckay). With no foreign key, a mistake in either map writes a wrong
+-- id in silence and the screen simply shows the wrong name. With
+-- these, it stops.
+--
+-- NCR is empty, so this is the one moment they cost nothing to add.
+
+ALTER TABLE "NCR" DROP CONSTRAINT IF EXISTS ncr_region_fk;
+ALTER TABLE "NCR"
+  ADD CONSTRAINT ncr_region_fk
+  FOREIGN KEY ("Region_ID") REFERENCES "Region"("Region_ID");
+
+ALTER TABLE "NCR" DROP CONSTRAINT IF EXISTS ncr_sub_region_fk;
+ALTER TABLE "NCR"
+  ADD CONSTRAINT ncr_sub_region_fk
+  FOREIGN KEY ("Sub_Region_ID") REFERENCES "Sub_Region"("Sub_Region_ID");
+
+/* SET NULL, not CASCADE. 66 of the NCRs have no project at all, so an
+   NCR is not a child of one — and Address_Raw still says where it
+   happened. A project being deleted must not take the record of what
+   went wrong on it. */
+ALTER TABLE "NCR" DROP CONSTRAINT IF EXISTS ncr_project_fk;
+ALTER TABLE "NCR"
+  ADD CONSTRAINT ncr_project_fk
+  FOREIGN KEY ("Project_ID") REFERENCES "Project"("Project_ID") ON DELETE SET NULL;
+
+/* Same as NCR_Attachment.Uploaded_By: a person leaving must not delete
+   the NCRs they owned. */
+ALTER TABLE "NCR" DROP CONSTRAINT IF EXISTS ncr_owner_person_fk;
+ALTER TABLE "NCR"
+  ADD CONSTRAINT ncr_owner_person_fk
+  FOREIGN KEY ("Owner_Person_ID") REFERENCES "Person"("Person_ID") ON DELETE SET NULL;
+
+
 -- ════════════════════════════════════════════════════════════════
 -- For whoever writes the import that follows this
 --

@@ -17,16 +17,29 @@ import { UTILITIES, trimStr } from "./ncr.js";
    browser and retried up to five times on a collision; there is nothing
    to collide with now, and nothing for this form to do about it. */
 
+/* ── Three states, not two ──
+
+   This was DNO and IDNO, with blank meaning Aptus found it. 0261
+   replaced the two id columns with one organisation, because those two
+   words could not describe the operators: 889 of the imported reports
+   are Water with Auditor_Type 'DNO', and a DNO distributes
+   electricity. The old system meant "the incumbent" and "the
+   independent one", and here the thirteen operators involved hold five
+   different roles between them.
+
+   Blank now means nobody recorded an auditor, which 153 imported
+   reports genuinely are, and is no longer the same answer as Aptus
+   finding it themselves. */
 const AUDITOR_TYPES = [
-  { value: "", label: "Aptus Utilities (internal)" },
-  { value: "DNO", label: "DNO" },
-  { value: "IDNO", label: "IDNO" },
+  { value: "", label: "— not recorded —" },
+  { value: "Operator", label: "A network operator" },
+  { value: "Aptus", label: "Aptus Utilities (internal)" },
 ];
 
 const BLANK = {
   Description: "", Date_Received: "", Close_Date: "",
   Region_ID: "", Sub_Region_ID: "", Business_Unit_ID: "", Project_ID: "",
-  Auditor_Type: "", Auditor_DNO_ID: "", Auditor_IDNO_ID: "",
+  Auditor_Type: "", Auditor_Organisation_ID: "",
   Owner_Person_ID: "", Utility: "", NCR_Status_ID: "",
 };
 
@@ -72,6 +85,33 @@ export default function NcrModal({ ncr, lookups, onClose, onSaved }) {
     }
   }, [subRegions, form.Sub_Region_ID]);
 
+  /* Who can be named as the auditor.
+
+     Operator_Utility is the list: organisations holding a
+     network-operator role — dno, idno, gt, igt, wu or iwu — and still
+     active. The same list three other screens pick an operator from.
+
+     With one addition. The view drops an organisation once it is
+     deactivated or loses the role, and this report may already name
+     one. A select whose value matches no option renders blank, and
+     saving that form would write null over an auditor nobody meant to
+     remove. So the report's own organisation is put back on the end if
+     the list has lost it, named from the full Organisation lookup. */
+  const operators = useMemo(() => {
+    const list = [...(lookups.operators || [])]
+      .sort((a, b) => String(a.Name).localeCompare(String(b.Name), "en-GB"));
+    const mine = num(form.Auditor_Organisation_ID);
+    if (mine != null && !list.some((o) => Number(o.Organisation_ID) === mine)) {
+      const org = (lookups.organisations || [])
+        .find((o) => Number(o.Organisation_ID) === mine);
+      list.push({
+        Organisation_ID: mine,
+        Name: org?.Name ? `${org.Name} (no longer listed)` : `Organisation ${mine}`,
+      });
+    }
+    return list;
+  }, [lookups.operators, lookups.organisations, form.Auditor_Organisation_ID]);
+
   const statusName = (id) => (lookups.statuses || [])
     .find((s) => Number(s.NCR_Status_ID) === Number(id))?.NCR_Status ?? "";
   const closing = statusName(form.NCR_Status_ID) === "Closed";
@@ -79,16 +119,16 @@ export default function NcrModal({ ncr, lookups, onClose, onSaved }) {
   async function save() {
     if (!trimStr(form.Description)) { setMsg("Give the report a description."); return; }
     if (!form.NCR_Status_ID) { setMsg("Choose a status."); return; }
-    if (form.Auditor_Type === "DNO" && !form.Auditor_DNO_ID) {
-      setMsg("Choose which DNO raised it."); return;
-    }
-    if (form.Auditor_Type === "IDNO" && !form.Auditor_IDNO_ID) {
-      setMsg("Choose which IDNO raised it."); return;
+    if (form.Auditor_Type === "Operator" && !form.Auditor_Organisation_ID) {
+      setMsg("Choose which operator raised it."); return;
     }
 
-    /* The two auditor ids are cleared to match the type. The database
-       refuses a mismatched pair (0139), and sending one it will reject
-       turns a form mistake into an error about a constraint. */
+    /* The organisation is cleared unless the type is Operator. 0261
+       refuses the other pairings outright — an operator with nobody
+       named reads on screen as "audited by —", and Aptus naming an
+       outside operator contradicts itself — and sending one the
+       database will reject turns a form mistake into an error about a
+       check constraint. */
     const payload = {
       Description: trimStr(form.Description) || null,
       Date_Received: form.Date_Received || null,
@@ -98,8 +138,8 @@ export default function NcrModal({ ncr, lookups, onClose, onSaved }) {
       Business_Unit_ID: num(form.Business_Unit_ID),
       Project_ID: num(form.Project_ID),
       Auditor_Type: form.Auditor_Type || null,
-      Auditor_DNO_ID: form.Auditor_Type === "DNO" ? num(form.Auditor_DNO_ID) : null,
-      Auditor_IDNO_ID: form.Auditor_Type === "IDNO" ? num(form.Auditor_IDNO_ID) : null,
+      Auditor_Organisation_ID: form.Auditor_Type === "Operator"
+        ? num(form.Auditor_Organisation_ID) : null,
       Owner_Person_ID: num(form.Owner_Person_ID),
       Utility: form.Utility || null,
       NCR_Status_ID: num(form.NCR_Status_ID),
@@ -249,6 +289,20 @@ export default function NcrModal({ ncr, lookups, onClose, onSaved }) {
                 ))}
               </select>
             </label>
+            {/* The address as the original system recorded it, shown
+                only where there is one. Read-only: it is evidence
+                about this report rather than an address to maintain —
+                the project is where a current address is kept — and
+                for a report with no project it is the only location
+                there is. */}
+            {trimStr(ncr?.Address_Raw) !== "" && (
+              <label className="nm-fld nm-span2">
+                <span>Site, as recorded at the time</span>
+                <input value={ncr.Address_Raw} readOnly
+                  title={"Imported from the original system. Change the project "
+                    + "to change where this report is filed."} />
+              </label>
+            )}
             <label className="nm-fld">
               <span>Utility</span>
               <select value={form.Utility ?? ""} onChange={set("Utility")}>
@@ -265,24 +319,16 @@ export default function NcrModal({ ncr, lookups, onClose, onSaved }) {
                 ))}
               </select>
             </label>
-            {form.Auditor_Type === "DNO" && (
+            {form.Auditor_Type === "Operator" && (
               <label className="nm-fld">
-                <span>DNO *</span>
-                <select value={form.Auditor_DNO_ID ?? ""} onChange={set("Auditor_DNO_ID")}>
+                <span>Operator *</span>
+                <select value={form.Auditor_Organisation_ID ?? ""}
+                  onChange={set("Auditor_Organisation_ID")}>
                   <option value="">{"\u2014"}</option>
-                  {(lookups.dnos || []).map((d) => (
-                    <option key={d.DNO_ID} value={d.DNO_ID}>{d.DNO_Name}</option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {form.Auditor_Type === "IDNO" && (
-              <label className="nm-fld">
-                <span>IDNO *</span>
-                <select value={form.Auditor_IDNO_ID ?? ""} onChange={set("Auditor_IDNO_ID")}>
-                  <option value="">{"\u2014"}</option>
-                  {(lookups.idnos || []).map((i) => (
-                    <option key={i.IDNO_ID} value={i.IDNO_ID}>{i.IDNO_Name}</option>
+                  {operators.map((o) => (
+                    <option key={o.Organisation_ID} value={o.Organisation_ID}>
+                      {o.Name}
+                    </option>
                   ))}
                 </select>
               </label>

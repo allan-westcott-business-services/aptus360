@@ -46,18 +46,54 @@ const names = {
 }
 
 // ── Auditor ─────────────────────────────────────────────────────
+//
+// Three states since 0261, where there were two. The auditor was
+// Auditor_DNO_ID or Auditor_IDNO_ID and anything else read as Aptus
+// having found it; it is now one organisation, and "Aptus found it"
+// and "nobody recorded one" are separate answers.
+//
+// They have to be separate, because the import makes 149 reports the
+// second and only 4 the first. Treating a blank as Aptus would put 149
+// operator-raised findings down as internal ones.
 {
-  const l = { dnoName: (id) => (id === 5 ? "Northern Powergrid" : null),
-    idnoName: (id) => (id === 7 ? "ESP Electricity" : null) };
-  eq(N.auditorLabel({ Auditor_Type: "DNO", Auditor_DNO_ID: 5 }, l),
-    "Northern Powergrid", "DNO auditor");
-  eq(N.auditorLabel({ Auditor_Type: "IDNO", Auditor_IDNO_ID: 7 }, l),
-    "ESP Electricity", "IDNO auditor");
-  // No type means found internally, not missing.
-  eq(N.auditorLabel({ Auditor_Type: null }, l), "Aptus Utilities", "internal auditor");
-  // A type with an id nothing matches still says which kind it was.
-  eq(N.auditorLabel({ Auditor_Type: "DNO", Auditor_DNO_ID: 999 }, l), "DNO",
-    "DNO auditor whose name is unknown");
+  const l = { operatorName: (id) => (id === 18 ? "United Utilities" : null) };
+
+  eq(N.auditorLabel({ Auditor_Type: "Operator", Auditor_Organisation_ID: 18 }, l),
+    "United Utilities", "an operator, named");
+  eq(N.auditorLabel({ Auditor_Type: "Aptus" }, l),
+    "Aptus Utilities", "Aptus auditing Aptus");
+  eq(N.auditorLabel({ Auditor_Type: null }, l), "",
+    "no auditor recorded reads as blank, not as Aptus");
+
+  // An organisation the lookup has lost still says somebody outside
+  // raised it, rather than reading as an internal finding.
+  eq(N.auditorLabel({ Auditor_Type: "Operator", Auditor_Organisation_ID: 999 }, l),
+    "Operator", "an operator whose name is unknown");
+
+  /* The blanks-only filter in the register is the reason the third
+     state is "" and not a dash: it answers "which reports have no
+     auditor recorded", and it works by asking isBlank of the
+     displayed value. A dash would make that question unanswerable. */
+  if (!N.isBlank(N.auditorLabel({ Auditor_Type: null }, l))) {
+    fail("a report with no auditor does not read as blank, so the "
+      + "register's blanks-only filter cannot find it");
+  }
+  if (N.isBlank(N.auditorLabel({ Auditor_Type: "Aptus" }, l))) {
+    fail("an Aptus finding reads as blank, so the blanks-only filter "
+      + "returns it alongside the ones with nothing recorded");
+  }
+
+  /* The retired vocabulary. 0261's check constraint allows only
+     'Operator' and 'Aptus', so a row still saying DNO or IDNO cannot
+     exist — and if one somehow does, it must not read as an internal
+     finding. */
+  for (const old of ["DNO", "IDNO"]) {
+    const got = N.auditorLabel({ Auditor_Type: old, Auditor_Organisation_ID: 18 }, l);
+    if (got === "Aptus Utilities") {
+      fail(`a row still saying Auditor_Type '${old}' reads as an Aptus `
+        + "finding, which is the opposite of what it says");
+    }
+  }
 }
 
 // ── Drill-down ──────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Banner from "../../components/Banner.jsx";
 import { adminList } from "../../api/admin.js";
+import { listOrganisations } from "../../api/organisations.js";
 import { StatusPill } from "./NcrListPage.jsx";
 import {
   AGING, PALETTE, UNASSIGNED, agingCounts, auditorLabel,
@@ -95,7 +96,7 @@ function Donut({ slices, onSlice }) {
 export default function HsqeDashboardPage() {
   const [rows, setRows] = useState([]);
   const [lookups, setLookups] = useState({
-    statuses: [], regions: [], businessUnits: [], projects: [], dnos: [], idnos: [],
+    statuses: [], regions: [], businessUnits: [], projects: [], organisations: [],
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -105,14 +106,19 @@ export default function HsqeDashboardPage() {
   const load = useCallback(async () => {
     try {
       const soft = (t) => adminList(t).catch(() => ({ rows: [] }));
-      const [n, st, reg, bu, proj, dno, idno] = await Promise.all([
+      const [n, st, reg, bu, proj, org] = await Promise.all([
         adminList("NCR"), soft("NCR_Status"), soft("Region"),
-        soft("Business_Unit"), soft("Project"), soft("DNO"), soft("IDNO"),
+        soft("Business_Unit"), soft("Project"),
+        /* Names, not the picker: /organisations lists the inactive
+           ones too, and an auditor retired since the report was
+           raised still has to read as itself. The admin endpoint has
+           no Organisation entry, so adminList would be refused. */
+        listOrganisations().catch(() => ({ rows: [] })),
       ]);
       setRows(n.rows || []);
       setLookups({
         statuses: st.rows || [], regions: reg.rows || [], businessUnits: bu.rows || [],
-        projects: proj.rows || [], dnos: dno.rows || [], idnos: idno.rows || [],
+        projects: proj.rows || [], organisations: org.rows || [],
       });
       setError("");
     } catch (e) { setError(e.message); }
@@ -129,8 +135,7 @@ export default function HsqeDashboardPage() {
       status: by(lookups.statuses, "NCR_Status_ID", "NCR_Status"),
       region: by(lookups.regions, "Region_ID", "Region"),
       bu: by(lookups.businessUnits, "Business_Unit_ID", "Business_Unit"),
-      dno: by(lookups.dnos, "DNO_ID", "DNO_Name"),
-      idno: by(lookups.idnos, "IDNO_ID", "IDNO_Name"),
+      operator: by(lookups.organisations, "Organisation_ID", "Name"),
     };
   }, [lookups]);
 
@@ -355,7 +360,7 @@ export default function HsqeDashboardPage() {
                         <td><StatusPill status={names.status(r.NCR_Status_ID) ?? ""} /></td>
                         <td>{names.region(r.Region_ID) ?? dash()}</td>
                         <td>{names.bu(r.Business_Unit_ID) ?? dash()}</td>
-                        <td>{auditorLabel(r, { dnoName: names.dno, idnoName: names.idno })}</td>
+                        <td>{auditorLabel(r, { operatorName: names.operator })}</td>
                         <td>{trimStr(r.Date_Received) || dash()}</td>
                       </tr>
                     );

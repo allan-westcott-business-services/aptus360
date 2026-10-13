@@ -75,6 +75,26 @@ export function agingCounts(rows, statusName, today = new Date()) {
   return counts;
 }
 
+/* The AP number out of a site address.
+
+   The original system wrote the contract into the address it stamped
+   on each report — "[AP1696] Belle Vue Greyhound Track" or "AP1818 -
+   Marton Avenue" or "AP1986 Gib lane Phase 7" — and 1,581 of the
+   1,797 imported reports carry one.
+
+   It is a fallback, not a source. Where the report is linked to a
+   project, Project."AP_Number" is the answer and this is not
+   consulted: the project is maintained and the address is a note
+   somebody typed on the day. Where there is no project — 66 reports
+   have no contract at all — this is the only AP number there is.
+
+   Digits are kept as written rather than padded, because the string
+   is evidence rather than a key, and nothing joins on it. */
+export function apFromAddress(address) {
+  const m = /\bAP\s?(\d{3,6})\b/i.exec(trimStr(address));
+  return m ? `AP${m[1]}` : "";
+}
+
 /* Who raised it.
 
    ── Three states, where there used to be two ──

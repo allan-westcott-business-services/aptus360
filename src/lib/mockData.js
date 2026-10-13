@@ -368,6 +368,21 @@ export const adminMock = {
   Region: lookups.regions,
   Role: lookups.roles,
   IDNO: lookups.idnos,
+  /* The NCR register resolves a report's business unit and its
+     project through the admin endpoint. Both were missing here as
+     well as from the endpoint, so the mock register showed the same
+     three blank columns the live one did. */
+  Business_Unit: [
+    { Business_Unit_ID: 1, Business_Unit: "Operations", Sort_Order: 1, Is_Active: true },
+  ],
+  /* Three columns, as the endpoint now serves: a lookup needs a
+     reference, an AP number and a site name. The AP numbers are in
+     the original system's shape — AP1696 — because that is what the
+     imported reports carry in their addresses. */
+  Project: [
+    { Project_ID: 1, Project_Ref: "2607.001", AP_Number: "AP1696", Site_Name: "Willow Grange" },
+    { Project_ID: 2, Project_Ref: "2607.014", AP_Number: "AP1811", Site_Name: "Kestrel Rise" },
+  ],
   /* The NCR screens ask for both: Organisation names every auditor a
      report has ever had, Operator_Utility is the shorter list the
      modal offers. Here they are the same four. */

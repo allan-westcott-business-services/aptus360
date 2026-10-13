@@ -96,6 +96,38 @@ const names = {
   }
 }
 
+// ── The AP number ────────────────────────────────────────────────
+//
+// The original system wrote the contract into the address it stamped
+// on each report, in three different shapes, and 1,581 of the 1,797
+// carry one. The project is the source where there is one; this is
+// the fallback for the 66 that have no contract at all.
+{
+  eq(N.apFromAddress("[AP1696] Belle Vue Greyhound Track, Manchester"), "AP1696",
+    "the bracketed form");
+  /* The padding is kept. Project."AP_Number" holds AP0910, and a
+     verification query that stripped the leading zero while comparing
+     against the unpadded value reported 276 false disagreements — the
+     site names were identical on both sides. The app got this right;
+     the one-off SQL did not, which is why it is pinned here. */
+  eq(N.apFromAddress("[AP0910] Gib Lane, Blackburn - Story"), "AP0910",
+    "a leading zero, kept as the project holds it");
+  eq(N.apFromAddress("[AP0857] Waterlode Nantwich"), "AP0857",
+    "another padded one");
+  eq(N.apFromAddress("AP1818 - Marton Avenue, Middlesborough"), "AP1818",
+    "the dashed form");
+  eq(N.apFromAddress("AP1986 Gib lane Phase 7"), "AP1986", "no punctuation at all");
+  eq(N.apFromAddress("AP 2263 - Seaton Road, Seaton"), "AP2263", "a space after AP");
+  eq(N.apFromAddress("Well Bank Development, Bootle, Millom"), "",
+    "an address with no AP number");
+  eq(N.apFromAddress(null), "", "no address at all");
+
+  /* Not every capital A-P in a word is a contract. "APPLE" and
+     "AP12" (too short) must not be read as one. */
+  eq(N.apFromAddress("APPLEBY Road, Carlisle"), "", "a word beginning AP");
+  eq(N.apFromAddress("AP12 Road"), "", "too few digits to be a contract");
+}
+
 // ── Drill-down ──────────────────────────────────────────────────
 {
   eq(N.nextLevel([]), "status", "first level");
@@ -202,17 +234,39 @@ const names = {
   const dataRows = () => all("tbody tr").filter((r) => !r.querySelector(".ncr-empty"));
   if (dataRows().length !== 7) fail(`register shows ${dataRows().length} rows, expected 7`);
   if (!document.body.textContent.includes("NCR00001")) fail("register is missing NCR00001");
-  // Business Unit is absent until HR lands — the screen must say so, not break.
-  if (!/arrives with the HR section/i.test(document.body.textContent))
-    fail("no note explaining the missing Business Unit lookup");
-  // Every column has a blanks toggle.
+  /* Every column has a blanks toggle, counted against the columns
+     themselves rather than against a number.
+
+     It was `!== 13`, and adding an AP Number column broke it — along
+     with the line below, which reached for the Close Date toggle as
+     blanks[12]. A test that has to be edited every time a column is
+     added is a test that will eventually be edited without being
+     read. */
   const blanks = all(".ncr-blank");
-  if (blanks.length !== 13) fail(`expected 13 blanks toggles, got ${blanks.length}`);
-  // Blanks-only on Close Date finds the five that are still open.
-  await click(blanks[12]);
-  if (dataRows().length !== 5) fail(`blanks-only on Close Date gave ${dataRows().length}, expected 5`);
-  await click(blanks[12]);
-  if (dataRows().length !== 7) fail("turning the blanks toggle off did not restore the rows");
+  const headers = all("thead tr:first-child th").filter((h) => h.textContent.trim());
+  if (blanks.length !== headers.length) {
+    fail(`${headers.length} columns but ${blanks.length} blanks toggles`);
+  }
+
+  /* Found by what it says it does, not by where it sits. */
+  const blankToggleFor = (label) => blanks.find((b) =>
+    (b.getAttribute("title") || "").includes(`where ${label} is empty`));
+
+  const closeToggle = blankToggleFor("Close Date");
+  if (!closeToggle) {
+    fail("no blanks toggle on Close Date");
+  } else {
+    await click(closeToggle);
+    if (dataRows().length !== 5) {
+      fail(`blanks-only on Close Date gave ${dataRows().length}, expected 5`);
+    }
+  }
+  if (closeToggle) {
+    await click(closeToggle);
+    if (dataRows().length !== 7) {
+      fail("turning the blanks toggle off did not restore the rows");
+    }
+  }
   await act(async () => { root.unmount(); });
 
   // ── Dashboard ──

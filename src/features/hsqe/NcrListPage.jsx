@@ -4,7 +4,7 @@ import { adminList, adminDelete } from "../../api/admin.js";
 import { listOrganisations } from "../../api/organisations.js";
 import NcrModal from "./NcrModal.jsx";
 import {
-  auditorLabel, rowMatches, isBlank, trimStr, UTILITIES,
+  auditorLabel, apFromAddress, rowMatches, isBlank, trimStr, UTILITIES,
 } from "./ncr.js";
 
 /* The non-compliance register.
@@ -34,6 +34,7 @@ const COLUMNS = [
   { key: "subregion", label: "Sub Region", width: 130, filter: "select" },
   { key: "bu", label: "Business Unit", width: 120, filter: "select" },
   { key: "project", label: "Project", width: 110 },
+  { key: "ap", label: "AP Number", width: 100 },
   { key: "site", label: "Site Name", width: 200 },
   { key: "description", label: "Description", width: 260 },
   { key: "auditor", label: "Auditor", width: 150, filter: "select" },
@@ -140,6 +141,10 @@ export default function NcrListPage() {
       case "subregion": return names.subRegion(row.Sub_Region_ID) ?? "";
       case "bu": return names.bu(row.Business_Unit_ID) ?? "";
       case "project": return project?.Project_Ref ?? "";
+      /* The project's AP number, or the one the original system wrote
+         into the address. Same order as Site Name below: the project
+         is maintained, the address is what was typed on the day. */
+      case "ap": return project?.AP_Number || apFromAddress(row.Address_Raw) || "";
       /* Where it happened. The project is the authority; the address
          typed on the day is the fallback, and for the 66 imported
          reports that carry no contract it is the only location there
@@ -257,9 +262,10 @@ export default function NcrListPage() {
 
       {!lookups.businessUnits.length && (
         <Banner kind="muted">
-          Business Unit is not available yet &mdash; it arrives with the HR section.
-          The column and its filter are here and will fill in on their own once the
-          lookup exists.
+          Business Unit is not loading. The table arrives with migration 0261 and
+          is served to this screen by the admin endpoint &mdash; if the column is
+          empty, one of those two is missing. The column and its filter are here
+          and will fill in on their own once the lookup answers.
         </Banner>
       )}
 

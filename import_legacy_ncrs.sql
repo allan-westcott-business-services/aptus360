@@ -502,7 +502,7 @@ SELECT 'owner', p."Person_Name", count(*)
 -- written. Created_At falls back to now() rather than being left null:
 -- the column is NOT NULL.
 
--- 4.2 ── Drop the staging ──
+-- 4.2 ── Drop the reports' staging, as soon as parts 1 to 3 read right ──
 --
 --      Not optional, and not "once we get round to it". The NCR
 --      descriptions name members of staff — whose competency passport
@@ -510,13 +510,27 @@ SELECT 'owner', p."Person_Name", count(*)
 --      level security switched off so the CSV button could write to
 --      them.
 --
---      Run this once parts 1 to 3 read right. Everything they hold is
---      in the real tables by then, and the CSVs are still on disk if
---      any of it is needed again.
+--      Everything they hold is in the real tables by now, and
+--      NCR_rows.csv is still on disk if any of it is needed again.
+--
+--      The view goes first: it reads the tables below it.
 
--- DROP VIEW  IF EXISTS "Legacy_NCR_Resolved";
--- DROP TABLE IF EXISTS legacy_ncr_import;
+DROP VIEW  IF EXISTS "Legacy_NCR_Resolved";
+DROP TABLE IF EXISTS legacy_ncr_import;
+DROP TABLE IF EXISTS legacy_ncr_map_region;
+DROP TABLE IF EXISTS legacy_ncr_map_auditor;
+DROP TABLE IF EXISTS legacy_ncr_map_person;
+
+-- 4.3 ── The attachment staging, AFTER 4.1 ──
+--
+--      Deliberately not in 4.2, and this is why: 4.2 and 4.3 were one
+--      statement list, so working through part 4 in order dropped
+--      legacy_ncr_attachment_import before 4.1 had ever read it. The
+--      98 rows would have gone before their files arrived, and the
+--      only sign would have been an empty table weeks later.
+--
+--      It stays until 4.1 has run. Unlike the reports it holds no
+--      staff names — file names, paths and sizes — so there is no
+--      reason to hurry it.
+
 -- DROP TABLE IF EXISTS legacy_ncr_attachment_import;
--- DROP TABLE IF EXISTS legacy_ncr_map_region;
--- DROP TABLE IF EXISTS legacy_ncr_map_auditor;
--- DROP TABLE IF EXISTS legacy_ncr_map_person;

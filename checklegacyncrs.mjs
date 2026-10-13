@@ -373,6 +373,31 @@ const m62 = code(mig0262);
       fail(`the run script never drops ${t}`);
     }
   }
+
+  /* ── The attachment staging goes with its own insert, not before ──
+
+     These were one list of five DROPs, so working through part 4 in
+     order dropped legacy_ncr_attachment_import before 4.1 had ever
+     read it: the 98 rows gone before their files arrived, and the only
+     sign an empty table weeks later. Found by reaching that step.
+
+     So the attachment table's drop and the attachment insert have to
+     be live or commented TOGETHER — enabling the drop while the
+     insert waits is the bug, and enabling the insert while the drop
+     waits is merely untidy. */
+  const attInsertLive = /^(?!\s*--)[\s\S]*?INSERT INTO "NCR_Attachment"/m.test(runCode);
+  const attDropLive = /^\s*DROP TABLE IF EXISTS legacy_ncr_attachment_import/m
+    .test(runCode);
+  if (attDropLive && !attInsertLive) {
+    fail("the attachment staging is dropped while its insert is still "
+      + "commented out, so the 98 rows go before their files arrive");
+  }
+  /* And the reports' own staging must not be held back with it. It
+     holds the staff names; it is the one that has to go promptly. */
+  if (!/^\s*DROP TABLE IF EXISTS legacy_ncr_import;/m.test(runCode)) {
+    fail("the reports' staging is commented out rather than dropped, "
+      + "and it is the table that holds the staff names");
+  }
   if (!run.includes('DROP VIEW  IF EXISTS "Legacy_NCR_Resolved"')
     && !run.includes('DROP VIEW IF EXISTS "Legacy_NCR_Resolved"')) {
     fail("the run script never drops the Legacy_NCR_Resolved view, which "

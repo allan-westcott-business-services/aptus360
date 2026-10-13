@@ -105,6 +105,15 @@ const names = {
 {
   eq(N.apFromAddress("[AP1696] Belle Vue Greyhound Track, Manchester"), "AP1696",
     "the bracketed form");
+  /* The padding is kept. Project."AP_Number" holds AP0910, and a
+     verification query that stripped the leading zero while comparing
+     against the unpadded value reported 276 false disagreements — the
+     site names were identical on both sides. The app got this right;
+     the one-off SQL did not, which is why it is pinned here. */
+  eq(N.apFromAddress("[AP0910] Gib Lane, Blackburn - Story"), "AP0910",
+    "a leading zero, kept as the project holds it");
+  eq(N.apFromAddress("[AP0857] Waterlode Nantwich"), "AP0857",
+    "another padded one");
   eq(N.apFromAddress("AP1818 - Marton Avenue, Middlesborough"), "AP1818",
     "the dashed form");
   eq(N.apFromAddress("AP1986 Gib lane Phase 7"), "AP1986", "no punctuation at all");

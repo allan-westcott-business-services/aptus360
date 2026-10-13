@@ -349,18 +349,13 @@ const keyAdvice = "That key is not this project's. In the Supabase dashboard: "
   + "Giving the source project's key twice is the usual cause.";
 
 async function probeDestination() {
-  const head = await reach(obj(NEW_URL, NEW_BUCKET, PROBE), {
-    method: "HEAD", headers: { Authorization: `Bearer ${NEW_KEY}` },
-  }, "this Aptus360");
-  if (head.status === 400) {
-    fatal(`The destination bucket "${NEW_BUCKET}" does not exist on `
-      + `${new URL(NEW_URL).host}`,
-      "migration 0263 creates it — run that first");
-  }
-  if (head.status === 401 || head.status === 403) {
-    fatal("The destination key was refused", `HTTP ${head.status}`, keyAdvice);
-  }
+  /* No HEAD first. It was there, and it condemned a bucket that
+     existed: Supabase answers 400 for a HEAD on a path that is not
+     there, which is exactly what a probe path is, and the code read
+     400 as "no such bucket". A status with no body cannot tell a
+     missing object from a missing bucket from a refused key.
 
+     The write says all three, because it comes back with a body. */
   const put = await reach(obj(NEW_URL, NEW_BUCKET, PROBE), {
     method: "POST",
     headers: {

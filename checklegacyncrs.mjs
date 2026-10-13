@@ -523,6 +523,63 @@ const m62 = code(mig0262);
   }
 }
 
+/* ─── 9. The "where am I" query works before the staging exists ───
+
+   `ERROR: 42P01: relation "legacy_ncr_import" does not exist` is what
+   you get for running the right line at the wrong moment, and nothing
+   in the Supabase editor says which moment you are at. That is what
+   where_am_i_ncr.sql answers — so it has to run in the state where the
+   question arises, which is before 0262 has created anything.
+
+   A plain `(SELECT count(*) FROM legacy_ncr_import)` is resolved at
+   parse time, so the file would fail with the very error it explains.
+   Hence query_to_xml, which takes the query as a string.
+
+   And one statement, like where_am_i.sql: the editor shows only the
+   last result set, which is how the plot import's checklist was lost. */
+{
+  const wai = src("./where_am_i_ncr.sql");
+  /* Strings as well as comments — a semicolon inside a quoted string
+     counts as a second statement and makes this test lie, which is
+     exactly what checklegacyplots.mjs found. */
+  const waiCode = code(wai).replace(/'(?:[^']|'')*'/g, "''");
+
+  if ((waiCode.match(/;/g) || []).length !== 1) {
+    fail("where_am_i_ncr.sql is more than one statement, and the Supabase "
+      + "editor shows only the last result");
+  }
+  /* The staging tables referenced only through a string. Written as
+     "not referenced directly", because a direct reference is the
+     failure — it cannot be caught by reading the output, only by
+     running it in the state nobody runs it in twice. */
+  for (const t of ["legacy_ncr_import", "legacy_ncr_attachment_import",
+    "legacy_ncr_map_person"]) {
+    const direct = new RegExp(`FROM\\s+(public\\.)?${t}\\b`, "i");
+    if (direct.test(waiCode)) {
+      fail(`where_am_i_ncr.sql selects FROM ${t} directly, so it fails `
+        + "with the missing-relation error it was written to explain");
+    }
+  }
+  if (!/query_to_xml/.test(waiCode)) {
+    fail("where_am_i_ncr.sql does not count the staged rows at all, so "
+      + "it cannot tell \"not imported yet\" from \"CSV not loaded\"");
+  }
+  /* The finished state has to be read before the staging is asked
+     about: 0262's tables are MEANT to be gone at the end, and the
+     first version of this file read their absence as 0262 never
+     having run — so the step after the last one was the second one. */
+  const doneAt = waiCode.search(/ncrs = 1797 AND NOT stage/);
+  const missingAt = waiCode.search(/NOT stage OR NOT stage_att/);
+  if (doneAt < 0) {
+    fail("where_am_i_ncr.sql has no finished state, so once the staging "
+      + "is dropped it says to run 0262 again");
+  } else if (missingAt >= 0 && doneAt > missingAt) {
+    fail("where_am_i_ncr.sql asks whether the staging exists before "
+      + "whether the import is finished, so the last step loops back "
+      + "to the second");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The NCR import resolves every lookup by name, keeps the original "
     + "ids and moves the sequence past them, refuses to start on the "

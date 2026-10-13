@@ -17,22 +17,37 @@
    the bucket instead would copy whatever happens to be there, which
    is a different question from what the application will ask for.
 
-   ── Credentials ──
+   ── Running it ──
 
-   Both service role keys are read from the environment and never
-   printed. They bypass row level security entirely, so they belong in
-   a shell that closes, not in a file and not in a chat window.
-
-     export OLD_URL=https://<old-project>.supabase.co
-     export OLD_KEY=<old service role key>
-     export OLD_BUCKET=<the old bucket's name>
-     export NEW_URL=https://<this project>.supabase.co
-     export NEW_KEY=<this project's service role key>
-
+     cd <the folder with NCR_Attachment_rows.csv in it>
      node copy_ncr_attachments.mjs --check    # reads only, writes nothing
      node copy_ncr_attachments.mjs            # copies
 
-   NEW_BUCKET defaults to ncr-attachments, which 0263 creates.
+   That is the whole thing. It asks for what it needs: the two project
+   refs, the old bucket's name, and the two service role keys, which
+   are typed invisibly.
+
+   ── Why it asks rather than reading the environment ──
+
+   It did read the environment, and handing somebody five export lines
+   to paste cost three rounds of failure before a single file moved.
+   A space after an `=` gave "export: not valid in this context"; a
+   block paste ran the line holding a placeholder before it could be
+   edited, because every newline in a paste is an Enter; and a long
+   line arrived truncated mid-URL, leaving an open quote and a zsh
+   dquote> prompt that swallowed everything typed after it.
+
+   None of that is the shell being awkward. It is a script asking to
+   be configured in the one place a terminal is worst at editing.
+
+   The environment still works, for CI or a second run:
+
+     OLD_REF=<old project ref>  OLD_KEY=...  OLD_BUCKET=...
+     NEW_REF=<this project ref> NEW_KEY=...  [NEW_BUCKET=ncr-attachments]
+
+   Either way the keys are never printed and never written down. They
+   bypass row level security entirely, so they belong in a terminal
+   that closes — not in a file, and not in a chat window.
 
    ── What it checks ──
 
@@ -47,21 +62,87 @@ import { readFileSync, existsSync } from "node:fs";
 const args = new Set(process.argv.slice(2));
 const CHECK = args.has("--check") || args.has("--dry-run");
 
-const need = (name) => {
-  const v = process.env[name];
-  if (!v) {
-    console.error(`${name} is not set. See the header of this file.`);
+/* ── Asking, with the typing hidden where it should be ──
+
+   readline writes back whatever it reads, which is how a terminal
+   echoes. For a service role key that is 200-odd characters across
+   somebody's screen, so _writeToOutput is replaced for the duration:
+   the prompt is written once and everything after it is swallowed.
+
+   Not a TTY — a pipe, CI, a test — means no prompting at all. A
+   script that blocks on a question nobody can see is a script that
+   looks like it has hung. */
+async function ask(label, { hidden = false, fallback = "", name, env } = {}) {
+  if (!process.stdin.isTTY) {
+    /* A value with a default needs no terminal — asking for it when
+       there is nobody to answer turned a working environment-variable
+       run into a refusal over NEW_BUCKET, which already had its
+       answer. Only the things with no sensible default stop here. */
+    if (fallback) return fallback;
+    console.error(`No ${name || "value"} given, and there is nobody to ask: `
+      + `input is not a terminal. Set ${env || "it"} in the environment, or `
+      + "run this from a Terminal window.");
     process.exit(2);
   }
-  return v.replace(/\/+$/, "");
+  const { createInterface } = await import("node:readline");
+  const rl = createInterface({ input: process.stdin, output: process.stdout,
+    terminal: true });
+  if (hidden) {
+    let shown = false;
+    rl._writeToOutput = (chunk) => {
+      if (!shown) { rl.output.write(label); shown = true; }
+    };
+  }
+  const answer = await new Promise((done) => rl.question(label, done));
+  rl.close();
+  if (hidden) process.stdout.write("\n");
+  return (answer || "").trim() || fallback;
+}
+
+/* A project ref or a whole URL, because people have both to hand: the
+   dashboard URL carries the ref and the API settings page carries the
+   URL. "mkibzgmgbikptawkbhxu" and
+   "https://mkibzgmgbikptawkbhxu.supabase.co" both arrive here. */
+const toUrl = (v) => {
+  const t = String(v || "").trim().replace(/\/+$/, "");
+  if (!t) return "";
+  if (/^https?:\/\//i.test(t)) return t;
+  if (/^[a-z0-9]{16,}$/i.test(t)) return `https://${t}.supabase.co`;
+  return `https://${t}`;
 };
 
-const OLD_URL = need("OLD_URL");
-const OLD_KEY = need("OLD_KEY");
-const OLD_BUCKET = need("OLD_BUCKET");
-const NEW_URL = need("NEW_URL");
-const NEW_KEY = need("NEW_KEY");
-const NEW_BUCKET = (process.env.NEW_BUCKET || "ncr-attachments").replace(/\/+$/, "");
+const OLD_URL = toUrl(process.env.OLD_URL || process.env.OLD_REF
+  || await ask("The ORIGINAL system's project ref or URL: ",
+       { name: "project ref for the original system", env: "OLD_REF" }));
+const OLD_BUCKET = (process.env.OLD_BUCKET
+  || await ask("The bucket the files are in now (Storage, in that project): ",
+       { name: "source bucket name", env: "OLD_BUCKET" })).trim();
+const NEW_URL = toUrl(process.env.NEW_URL || process.env.NEW_REF
+  || await ask("THIS Aptus360 project's ref or URL: ",
+       { name: "project ref for this Aptus360", env: "NEW_REF" }));
+const NEW_BUCKET = (process.env.NEW_BUCKET
+  || await ask("The bucket to copy into [ncr-attachments]: ",
+       { fallback: "ncr-attachments", name: "destination bucket name",
+         env: "NEW_BUCKET" })).trim().replace(/\/+$/, "");
+const OLD_KEY = process.env.OLD_KEY
+  || await ask("The ORIGINAL system's service role key (hidden): ",
+       { hidden: true, name: "service role key for the original system",
+         env: "OLD_KEY" });
+const NEW_KEY = process.env.NEW_KEY
+  || await ask("THIS project's service role key (hidden): ",
+       { hidden: true, name: "service role key for this project",
+         env: "NEW_KEY" });
+
+for (const [name, v] of [["the original project", OLD_URL], ["the old bucket", OLD_BUCKET],
+  ["this project", NEW_URL], ["the destination bucket", NEW_BUCKET],
+  ["the original key", OLD_KEY], ["this project's key", NEW_KEY]]) {
+  if (!v) { console.error(`\nNothing given for ${name}. Nothing has been copied.`); process.exit(2); }
+}
+if (OLD_URL === NEW_URL && OLD_BUCKET === NEW_BUCKET) {
+  console.error("\nThe source and the destination are the same bucket in the "
+    + "same project. Nothing has been copied.");
+  process.exit(2);
+}
 
 const CSV = process.argv.find((a) => a.endsWith(".csv"))
   || "NCR_Attachment_rows.csv";
@@ -139,16 +220,52 @@ const obj = (url, bucket, path) => `${url}/storage/v1/object/${bucket}/${enc(pat
    typo in OLD_BUCKET print 98 lines of "NOT IN THE OLD BUCKET" and
    then advise against running 4.1 — true, and no help at all in
    finding the cause. A wrong bucket stops the run on the first file. */
-const fatal = (what, body) => {
-  console.error(`\n${what}: ${body.slice(0, 200)}`);
-  console.error("Nothing has been copied. Check the bucket names.");
+const fatal = (what, body, advice = "Check the bucket names.") => {
+  console.error(`\n${what}: ${String(body).slice(0, 200)}`);
+  console.error(`Nothing has been copied. ${advice}`);
   process.exit(2);
 };
 
+/* ── A host that cannot be reached is not a failed file ──
+
+   fetch throws rather than returning a status when DNS does not
+   resolve or nothing answers, and an uncaught throw here printed
+   thirty lines of Node internals ending in ENOTFOUND. A mistyped
+   project ref is the likeliest way somebody meets that, and the stack
+   trace says nothing about project refs.
+
+   Fatal rather than counted: if the host is wrong it is wrong for all
+   98, and grinding through them proves nothing. */
+async function reach(url, init, what) {
+  try {
+    return await fetch(url, init);
+  } catch (e) {
+    /* Node reports a refused connection as an AggregateError inside
+       `cause` when a host has both an A and an AAAA record — one
+       failure per address — so the code is a level deeper than
+       cause.code. Read both, or ECONNREFUSED falls through to the
+       catch-all and reads "fetch failed", which says nothing. */
+    const code = e?.cause?.code || e?.code
+      || e?.cause?.errors?.find((x) => x?.code)?.code || "";
+    const host = (() => { try { return new URL(url).host; } catch { return url; } })();
+    const net = "Check the project ref and that you are online.";
+    if (code === "ENOTFOUND" || code === "EAI_AGAIN") {
+      fatal(`Cannot find ${host} — check the ${what} project ref`, code, net);
+    }
+    if (code === "ECONNREFUSED" || code === "ECONNRESET"
+      || code === "UND_ERR_CONNECT_TIMEOUT" || code === "ETIMEDOUT") {
+      fatal(`Cannot reach ${host}`, `${code} — the address resolves but nothing `
+        + "is answering there", net);
+    }
+    fatal(`Could not talk to ${host}`, e?.message || String(e), net);
+  }
+  return undefined;
+}
+
 async function download(path) {
-  const r = await fetch(obj(OLD_URL, OLD_BUCKET, path), {
+  const r = await reach(obj(OLD_URL, OLD_BUCKET, path), {
     headers: { Authorization: `Bearer ${OLD_KEY}` },
-  });
+  }, "original system's");
   if (r.ok) return { bytes: Buffer.from(await r.arrayBuffer()) };
   const body = await r.text();
   if (/bucket not found/i.test(body)) {
@@ -163,7 +280,7 @@ async function download(path) {
 }
 
 async function upload(path, bytes, type) {
-  const r = await fetch(obj(NEW_URL, NEW_BUCKET, path), {
+  const r = await reach(obj(NEW_URL, NEW_BUCKET, path), {
     method: "POST",
     headers: {
       Authorization: `Bearer ${NEW_KEY}`,
@@ -171,7 +288,7 @@ async function upload(path, bytes, type) {
       "x-upsert": "true",
     },
     body: bytes,
-  });
+  }, "this Aptus360");
   if (r.ok) return {};
   const body = await r.text();
   if (/bucket not found/i.test(body)) {
@@ -187,10 +304,10 @@ async function upload(path, bytes, type) {
 /* Asked of the destination, not taken from the upload's reply. The
    reply says what the server accepted; this says what is now there. */
 async function sizeThere(path) {
-  const r = await fetch(obj(NEW_URL, NEW_BUCKET, path), {
+  const r = await reach(obj(NEW_URL, NEW_BUCKET, path), {
     method: "HEAD",
     headers: { Authorization: `Bearer ${NEW_KEY}` },
-  });
+  }, "this Aptus360");
   if (!r.ok) return null;
   const n = Number(r.headers.get("content-length"));
   return Number.isFinite(n) ? n : null;

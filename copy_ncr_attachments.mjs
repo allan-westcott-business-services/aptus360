@@ -295,8 +295,11 @@ async function upload(path, bytes, type) {
     fatal(`The destination bucket "${NEW_BUCKET}" does not exist on `
       + `${new URL(NEW_URL).host}. Migration 0263 creates it`, body);
   }
-  if (r.status === 401 || r.status === 403) {
-    fatal("The destination key was refused", body);
+  /* Fatal, not counted. An authorisation failure is the same for every
+     file, and the first run to hit it printed the same JSON 98 times
+     with the summary scrolled off the top. */
+  if (r.status === 401 || r.status === 403 || authFailed(body)) {
+    fatal("The destination project refused the key", body, keyAdvice);
   }
   return { error: `${r.status} ${body.slice(0, 160)}` };
 }
@@ -316,30 +319,79 @@ async function sizeThere(path) {
 /* ── Both ends, before the first file ──
 
    --check stops before uploading, so it never spoke to the
-   destination at all: it reported "98 would copy" into a bucket that
-   may not exist, and the first thing the real run would have said is
-   "Bucket not found" after the user had already been told everything
-   was fine.
+   destination at all: it reported "98 would copy" into a bucket it
+   had not asked about, and the first real run opened with 98 copies
+   of the same authorisation error.
 
-   A HEAD on a path that cannot exist answers the only question that
-   matters — is the bucket there and does the key work — and writes
-   nothing, so it is honest in check mode too. */
+   A HEAD is not enough on its own. A HEAD carries no body, and a
+   destination key signed by the wrong project comes back as a bare
+   404 — indistinguishable from "that path is not there", which is the
+   answer a probe path is supposed to get. The run that proved this
+   had a valid source key and a destination key from the other
+   project: --check said 98 would copy, and all 98 then failed with
+   "signature verification failed".
+
+   So the probe writes. One empty object under a probe path, removed
+   immediately. That is the only question worth asking — can this key
+   put a file in this bucket — and asking it 98 times is not better
+   than asking it once.
+
+   It writes in --check mode too, which is a small lie about "reads
+   only" and a much smaller one than telling somebody their copy will
+   work when it cannot. The line it prints says so. */
+const PROBE = `.aptus-copy-probe/${Date.now()}-${process.pid}`;
+
+const authFailed = (body) => /signature verification|invalid (jwt|claim|token)|unauthorized/i
+  .test(String(body));
+
+const keyAdvice = "That key is not this project's. In the Supabase dashboard: "
+  + "Project Settings > API Keys > service_role (the secret one, not anon). "
+  + "Giving the source project's key twice is the usual cause.";
+
 async function probeDestination() {
-  const r = await reach(obj(NEW_URL, NEW_BUCKET, ".probe-does-not-exist"), {
-    method: "HEAD",
-    headers: { Authorization: `Bearer ${NEW_KEY}` },
+  const head = await reach(obj(NEW_URL, NEW_BUCKET, PROBE), {
+    method: "HEAD", headers: { Authorization: `Bearer ${NEW_KEY}` },
   }, "this Aptus360");
-  /* 404 is the right answer: the bucket is there, the path is not.
-     400 is how a missing bucket comes back, and 401/403 is the key.
-     HEAD carries no body, so the status is all there is to read. */
-  if (r.status === 400) {
+  if (head.status === 400) {
     fatal(`The destination bucket "${NEW_BUCKET}" does not exist on `
       + `${new URL(NEW_URL).host}`,
       "migration 0263 creates it — run that first");
   }
-  if (r.status === 401 || r.status === 403) {
-    fatal("The destination key was refused", `HTTP ${r.status}`,
-      "Check it is the service role key for this project, not the anon key.");
+  if (head.status === 401 || head.status === 403) {
+    fatal("The destination key was refused", `HTTP ${head.status}`, keyAdvice);
+  }
+
+  const put = await reach(obj(NEW_URL, NEW_BUCKET, PROBE), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${NEW_KEY}`,
+      "Content-Type": "application/octet-stream",
+      "x-upsert": "true",
+    },
+    body: Buffer.alloc(0),
+  }, "this Aptus360");
+  if (!put.ok) {
+    const body = await put.text();
+    if (authFailed(body) || put.status === 401 || put.status === 403) {
+      fatal("The destination project refused the key", body, keyAdvice);
+    }
+    if (/bucket not found/i.test(body)) {
+      fatal(`The destination bucket "${NEW_BUCKET}" does not exist on `
+        + `${new URL(NEW_URL).host}`,
+        "migration 0263 creates it — run that first");
+    }
+    fatal(`Cannot write to ${NEW_BUCKET} on ${new URL(NEW_URL).host}`, body);
+  }
+
+  /* Tidied up, and said out loud if it cannot be. A stray empty file
+     under .aptus-copy-probe/ harms nothing, but a file nobody knows
+     about is how a bucket becomes a mystery. */
+  const gone = await reach(obj(NEW_URL, NEW_BUCKET, PROBE), {
+    method: "DELETE", headers: { Authorization: `Bearer ${NEW_KEY}` },
+  }, "this Aptus360");
+  if (!gone.ok) {
+    console.log(`  (could not remove the probe file ${PROBE} — delete it by `
+      + "hand if you like; it is empty)");
   }
 }
 await probeDestination();
@@ -349,7 +401,10 @@ const tally = { copied: 0, already: 0, missing: [], failed: [], wrongSize: [] };
 console.log(`${files.length} attachments listed in ${CSV}`);
 console.log(`  from  ${OLD_BUCKET} on ${new URL(OLD_URL).host}`);
 console.log(`  into  ${NEW_BUCKET} on ${new URL(NEW_URL).host}`);
-console.log(CHECK ? "  --check: reading only, nothing will be written\n" : "");
+console.log(CHECK
+  ? "  --check: no attachment will be written (one empty probe file is "
+    + "written and removed, to prove the key can write)\n"
+  : "");
 
 for (const [n, f] of files.entries()) {
   const label = `${String(n + 1).padStart(3)}/${files.length} ${f.path}`;

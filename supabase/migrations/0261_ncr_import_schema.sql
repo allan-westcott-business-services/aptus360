@@ -264,10 +264,13 @@ ALTER TABLE "NCR"
 --   reads as the app being broken rather than as an import that was
 --   not finished.
 --
---   NCR_Reference is UNIQUE (ncr_reference_once) and the export has
---   one collision: NCR11444 is used by NCR_ID 1341 and 1342, two
---   different NCRs on different sites. One needs a distinct
---   reference before the import will run at all.
+--   NCR_Reference is UNIQUE (ncr_reference_once) and the first export
+--   had one collision: NCR11444 on NCR_ID 1341 and 1342, two different
+--   reports on different sites. Settled on 13 Oct — 1342, the later of
+--   the two, is NCR11445 in the original system, which nothing else
+--   uses. A fresh export carries it; an older one needs the UPDATE in
+--   import_legacy_ncrs.sql 3.0, and the import refuses to start while
+--   any reference is repeated.
 --
 -- And the status must be matched by NAME. 'With Developer' takes
 -- whatever id the sequence gives it, which is only 4 by coincidence.

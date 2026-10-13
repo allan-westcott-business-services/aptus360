@@ -301,10 +301,47 @@ const m62 = code(mig0262);
       + "rather than a guard");
   }
   /* And it must name both rows. "There is a duplicate" is not enough
-     to act on; the user has to decide which site keeps the reference. */
+     to act on; somebody has to see which two sites are involved. */
   if (!/1341/.test(run) || !/1342/.test(run)) {
     fail("the run script does not say which two reports share NCR11444, "
       + "so there is nothing to decide between");
+  }
+
+  /* ── The settlement, as it was actually decided ──
+
+     NCR_ID 1342, the later of the two, is NCR11445 in the original
+     system — the gap between NCR11444 and NCR11446, which nothing
+     else uses. The script carries that rather than inventing a
+     suffix, because a reference the original system does not hold is
+     one nobody can look up. */
+  /* Asserted on the UPDATE itself, not on the file. A first attempt
+     tested the whole script for "NCR11445" and passed while the
+     statement said something else entirely — the string also appears
+     in the exception message, which is prose about the fix rather
+     than the fix. */
+  const fix = runCode.match(
+    /UPDATE legacy_ncr_import[\s\S]{0,300}?;/);
+  if (!fix) {
+    fail("the run script has no UPDATE to settle the repeated reference");
+  } else {
+    if (!/= 'NCR11445'/.test(fix[0])) {
+      fail("the UPDATE does not give NCR_ID 1342 the NCR11445 it was "
+        + "given in the original system, so the two systems would "
+        + "disagree about what that report is called");
+    }
+    if (!/"NCR_ID"\) = '1342'/.test(fix[0])) {
+      fail("the reference fix does not target NCR_ID 1342, which is the "
+        + "report that was renumbered");
+    }
+    /* Guarded on the OLD reference as well as the id. Without that,
+       running part 3 against a fresh export — where 1342 already says
+       NCR11445, or has been renumbered again since — overwrites
+       whatever it says now with a value from this file. */
+    if (!/"NCR_Reference"\) = 'NCR11444'/.test(fix[0])) {
+      fail("the reference fix is not guarded on the old NCR11444, so "
+        + "running it against an export that is already correct "
+        + "overwrites whatever 1342 says now");
+    }
   }
 }
 

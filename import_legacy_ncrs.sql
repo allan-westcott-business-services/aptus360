@@ -32,18 +32,23 @@
 -- already there, part 3 skips an NCR_ID that is already there. Take a
 -- backup first all the same.
 --
--- ── One thing has to be decided before part 3 will run ──
+-- ── The duplicate reference, and how it was settled ──
 --
--- NCR_Reference is unique, and the export uses NCR11444 twice:
+-- NCR_Reference is unique, and the first export used NCR11444 twice:
 --
 --   NCR_ID 1341  2025-12-01  Deacons Close, contract 1843
 --               "AC - 5614 The shower hoses can reach into the toilet."
 --   NCR_ID 1342  2025-12-04  Marton Avenue, Middlesbrough, no contract
 --               "AC-1093 - unable to locate FH Aptus suggest not installed."
 --
--- Two different NCRs on two different sites. Part 3 refuses to run
--- until one of them has a reference of its own, which is a one-line
--- UPDATE on the staging table — see 3.0.
+-- Two different reports on two different sites. The later of the two,
+-- NCR_ID 1342, has been given NCR11445 in the original system — a
+-- number nothing else uses, the gap between NCR11444 and NCR11446.
+--
+-- So a fresh export carries it and there is nothing to do. An export
+-- taken before 13 Oct still repeats NCR11444, and 3.0 is the one line
+-- that brings it into line. Either way part 3 refuses to start while a
+-- reference is repeated.
 --
 -- ════════════════════════════════════════════════════════════════════
 --  PART 1 — what will land, and what will not
@@ -225,15 +230,23 @@ SELECT count(*) AS "people from the old system now here"
 
 -- 3.0 ── The duplicate reference ──
 --
---      NCR11444 is used by NCR_ID 1341 and 1342. Decide which one
---      keeps it, give the other a reference of its own, and run this
---      line before 3.1:
+--      Settled: the later of the two reports, NCR_ID 1342 at Marton
+--      Avenue, is NCR11445 — unused, and the gap between NCR11444 and
+--      NCR11446. NCR_ID 1341 at Deacons Close keeps NCR11444.
 --
---        UPDATE legacy_ncr_import SET "NCR_Reference" = 'NCR11444A'
---         WHERE btrim("NCR_ID") = '1342';
---
---      Any reference will do as long as it is unique. The guard below
---      stops everything until it is.
+--      A fresh export already says so, and part 1's 1.2 comes back
+--      empty. If the CSV in legacy_ncr_import was taken before 13 Oct
+--      it still repeats NCR11444, and this is the line:
+
+UPDATE legacy_ncr_import
+   SET "NCR_Reference" = 'NCR11445'
+ WHERE btrim("NCR_ID") = '1342'
+   AND btrim("NCR_Reference") = 'NCR11444';
+
+--      Guarded on the old reference as well as the id, so running it
+--      against an export that is already right changes nothing rather
+--      than overwriting whatever 1342 says now. 0 rows is the answer
+--      to hope for.
 
 DO $$
 DECLARE dup text;
@@ -246,7 +259,7 @@ BEGIN
            GROUP BY ncr_reference HAVING count(*) > 1) d;
   IF dup IS NOT NULL THEN
     RAISE EXCEPTION
-      'NCR_Reference is unique and the export repeats: %. Give one of each pair a reference of its own first — see 3.0.', dup;
+      'NCR_Reference is unique and this export repeats: %. For NCR11444 the UPDATE in 3.0 settles it (1342 becomes NCR11445); for anything else, decide which report keeps the reference first.', dup;
   END IF;
 
   IF EXISTS (SELECT 1 FROM "Legacy_NCR_Resolved" WHERE state <> 'ok') THEN

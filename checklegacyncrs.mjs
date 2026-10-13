@@ -118,6 +118,21 @@ const m62 = code(mig0262);
       + "Address_Raw, so the 66 imported reports with no project show "
       + "no location at all");
   }
+  /* The AP number, the same way. 1,581 of the imported addresses carry
+     one — "[AP1696] Belle Vue Greyhound Track" — and the 66 reports
+     with no project have no other source for it. A fallback that
+     exists and is never called is the same fault as a column nothing
+     reads, one layer down: apFromAddress passed its own tests while
+     the register had stopped calling it. */
+  if (!/case "ap":[^;]*apFromAddress/.test(code(list))) {
+    fail("the register's AP Number column does not fall back to the AP "
+      + "number in the address, so the reports with no project show none");
+  }
+  if (!/AP_Number/.test(code(src("./netlify/functions/admin.js")))) {
+    fail("the admin endpoint does not serve Project.AP_Number, so the AP "
+      + "Number column can only ever show what the address carries");
+  }
+
   if (!/Address_Raw/.test(code(modal))) {
     fail("the report form never shows Address_Raw, so the address "
       + "written down on the day cannot be read anywhere");

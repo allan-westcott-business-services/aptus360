@@ -72,7 +72,7 @@ const TABLES = {
      needs a reference and a site name, not sixty columns of every
      project in the business. */
   Project:         { pk: "Project_ID",         order: "Project_Ref",
-    cols: "Project_ID,Project_Ref,Site_Name", readOnly: true },
+    cols: "Project_ID,Project_Ref,AP_Number,Site_Name", readOnly: true },
   Utility:         { pk: "Utility_ID",         order: "Sort_Order" },
   Role:            { pk: "Role_ID",            order: "Sort_Order" },
   Person:          { pk: "Person_ID",          order: "Person_Name" },

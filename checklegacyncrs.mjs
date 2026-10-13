@@ -605,6 +605,67 @@ const m62 = code(mig0262);
   }
 }
 
+/* ─── 10. Every lookup the register resolves is actually served ───
+
+   The import wrote Region_ID, Business_Unit_ID and Project_ID on all
+   1,797 reports, and three of the register's columns came up blank
+   anyway: the generic admin endpoint serves a fixed list of 158 named
+   tables, and Business_Unit and Project were not on it. The request is
+   refused, `soft()` turns the refusal into no rows, and the column
+   reads as empty.
+
+   Project had NEVER been on that list, so those columns have been
+   blank since the register was built. Nobody could see it while the
+   NCR table held nothing.
+
+   This is section 1 again — a column written and not read — one level
+   up: the column is read, by a lookup that cannot load. */
+{
+  const admin = code(src("./netlify/functions/admin.js"));
+  const served = (t) => new RegExp(`^\\s+${t}\\s*:\\s*\\{`, "m").test(admin);
+
+  /* The lookups NcrListPage asks adminList for, and the column each
+     one fills. Taken from the screen rather than from a list of
+     tables, so a lookup added later is covered by the same test. */
+  for (const [table, column] of [
+    ["NCR_Status", "Status"], ["Region", "Region"], ["Sub_Region", "Sub Region"],
+    ["Person", "Owner"], ["Business_Unit", "Business Unit"],
+    ["Project", "Project and Site Name"], ["Operator_Utility", "the modal's operators"],
+  ]) {
+    const asked = new RegExp(`(adminList|soft)\\("${table}"\\)`).test(code(list))
+      || new RegExp(`(adminList|soft)\\("${table}"\\)`).test(code(modal));
+    if (asked && !served(table)) {
+      fail(`the register asks the admin endpoint for "${table}" and it is `
+        + `not in that endpoint's table list, so the ${column} column `
+        + "reads as empty with no error shown");
+    }
+  }
+
+  /* Project is served read-only, and the flag has to bite. A project
+     is written through projects.js, which keeps the status transitions
+     and the cached developer that a generic PATCH would walk past. */
+  if (served("Project")) {
+    if (!/Project:[\s\S]{0,200}readOnly:\s*true/.test(admin)) {
+      fail("Project is served by the admin endpoint without readOnly, so a "
+        + "generic PATCH can write one, bypassing projects.js");
+    }
+    if (!/meta\.readOnly && req\.method !== "GET"/.test(admin)) {
+      fail("admin.js never enforces readOnly, so the flag only documents "
+        + "an intention somebody will trust");
+    }
+    /* And leanly: a lookup needs a reference and a site name, not
+       every column of every project. */
+    if (!/Project:[\s\S]{0,200}cols:/.test(admin)) {
+      fail("Project is served with every column, where the register needs "
+        + "three");
+    }
+    if (!/select\(meta\.cols \|\| "\*"\)/.test(admin)) {
+      fail("admin.js ignores meta.cols on the read, so a column list is "
+        + "decoration");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The NCR import resolves every lookup by name, keeps the original "
     + "ids and moves the sequence past them, refuses to start on the "

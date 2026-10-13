@@ -313,6 +313,37 @@ async function sizeThere(path) {
   return Number.isFinite(n) ? n : null;
 }
 
+/* ── Both ends, before the first file ──
+
+   --check stops before uploading, so it never spoke to the
+   destination at all: it reported "98 would copy" into a bucket that
+   may not exist, and the first thing the real run would have said is
+   "Bucket not found" after the user had already been told everything
+   was fine.
+
+   A HEAD on a path that cannot exist answers the only question that
+   matters — is the bucket there and does the key work — and writes
+   nothing, so it is honest in check mode too. */
+async function probeDestination() {
+  const r = await reach(obj(NEW_URL, NEW_BUCKET, ".probe-does-not-exist"), {
+    method: "HEAD",
+    headers: { Authorization: `Bearer ${NEW_KEY}` },
+  }, "this Aptus360");
+  /* 404 is the right answer: the bucket is there, the path is not.
+     400 is how a missing bucket comes back, and 401/403 is the key.
+     HEAD carries no body, so the status is all there is to read. */
+  if (r.status === 400) {
+    fatal(`The destination bucket "${NEW_BUCKET}" does not exist on `
+      + `${new URL(NEW_URL).host}`,
+      "migration 0263 creates it — run that first");
+  }
+  if (r.status === 401 || r.status === 403) {
+    fatal("The destination key was refused", `HTTP ${r.status}`,
+      "Check it is the service role key for this project, not the anon key.");
+  }
+}
+await probeDestination();
+
 const tally = { copied: 0, already: 0, missing: [], failed: [], wrongSize: [] };
 
 console.log(`${files.length} attachments listed in ${CSV}`);

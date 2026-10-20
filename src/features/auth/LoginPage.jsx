@@ -5,9 +5,15 @@ import { getSupabase, authEnabled } from "../../lib/supabaseClient.js";
 /* Sign in, forgot password, and the set-a-new-password step people land
    on from the reset email. One screen with three modes rather than three
    routes, since there's no router yet. */
-export default function LoginPage({ onBack = null }) {
-  const { signIn, resetPassword, updatePassword, idleOut, clearIdleNotice } = useAuth();
-  const [mode, setMode] = useState("signin");   // signin | forgot | reset
+export default function LoginPage({ onBack = null, recovery = false }) {
+  const { signIn, resetPassword, updatePassword, idleOut, clearIdleNotice,
+    endRecovery } = useAuth();
+  /* Opened in reset mode when App says this is a recovery, rather than
+     waiting for the effect below to notice. The effect still runs — it
+     is what catches a PASSWORD_RECOVERY that arrives after the client
+     loads — but a screen that renders as "sign in" and flips a moment
+     later shows a password field somebody may already be typing into. */
+  const [mode, setMode] = useState(recovery ? "reset" : "signin");   // signin | forgot | reset
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [reveal, setReveal] = useState(false);
@@ -64,7 +70,11 @@ export default function LoginPage({ onBack = null }) {
         const { error: err } = await updatePassword(password);
         if (err) throw err;
         setNotice("Password updated. You're signed in.");
-        window.history.replaceState({}, "", window.location.pathname);
+        /* The recovery ends here and nowhere else: until the password
+           has actually changed, this person still needs this form.
+           endRecovery also clears the link out of the address bar, so
+           a refresh does not reopen the reset screen. */
+        endRecovery?.();
       }
     } catch (e2) {
       setError(e2.message || "Something went wrong.");

@@ -12,6 +12,24 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [idleOut, setIdleOut] = useState(false);
+  /* ── Why recovery needs its own flag ──
+
+     A reset link does not take somebody to a signed-out page. Supabase
+     exchanges the link for a REAL session and then fires
+     PASSWORD_RECOVERY, so by the time anything renders, `session` is
+     set.
+
+     App shows the login screen only when there is no session. So the
+     person who clicked "reset my password" was signed straight into
+     the application and never saw a password field — the one screen
+     the email promised them was the one screen the session prevented.
+
+     Read from the hash as well as from the event, because the hash is
+     there on the first paint and the event arrives after the client
+     has loaded. Either is enough; both is the point. */
+  const [recovering, setRecovering] = useState(
+    () => typeof window !== "undefined"
+      && window.location.hash.includes("type=recovery"));
   const timer = useRef(null);
 
   const signOut = useCallback(async (wasIdle = false) => {
@@ -19,6 +37,7 @@ export function AuthProvider({ children }) {
     if (sb) await sb.auth.signOut();
     localStorage.removeItem(LAST_ACTIVE_KEY);
     setSession(null);
+    setRecovering(false);
     setIdleOut(wasIdle);
   }, []);
 
@@ -83,6 +102,7 @@ export function AuthProvider({ children }) {
          from here — the api client asks Supabase for it on each
          request — so there is nothing to go stale. */
       sub = sb.auth.onAuthStateChange((_e, s) => {
+        if (_e === "PASSWORD_RECOVERY") setRecovering(true);
         setSession((prev) => {
           const same = prev?.user?.id && s?.user?.id
             && prev.user.id === s.user.id;
@@ -126,6 +146,16 @@ export function AuthProvider({ children }) {
     loading,
     idleOut,
     authEnabled,
+    recovering,
+    /* Ended by the screen that set the new password, not by a timer or
+       a route change: until the password is actually changed, the
+       person still needs the form. */
+    endRecovery: () => {
+      setRecovering(false);
+      if (typeof window !== "undefined") {
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    },
     clearIdleNotice: () => setIdleOut(false),
     signIn: async (email, password) =>
       (await getSupabase()).auth.signInWithPassword({ email, password }),

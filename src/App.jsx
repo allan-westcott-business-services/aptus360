@@ -308,7 +308,7 @@ function isFieldApp() {
    security boundary anybody can walk around by editing a URL is not
    one. */
 function Gate() {
-  const { session, loading, authEnabled, signOut } = useAuth();
+  const { session, loading, authEnabled, signOut, recovering } = useAuth();
   const field = isFieldApp();
   /* NOT remembered across a reload.
 
@@ -371,6 +371,16 @@ function Gate() {
   }
   if (!authEnabled) return <Shell />;
   if (loading) return <div className="boot">Loading&hellip;</div>;
+
+  /* ── Before the session check, deliberately ──
+
+     A reset link signs the person in and THEN asks them to choose a
+     password, so `session` is set by the time this runs. Checking the
+     session first sent everybody who clicked "reset my password"
+     straight into the application, with no password field anywhere —
+     the one screen the email promised was the one screen the session
+     prevented. */
+  if (recovering) return <LoginPage recovery />;
 
   if (!session) {
     /* The door first, then the sign-in. The field app has its own way

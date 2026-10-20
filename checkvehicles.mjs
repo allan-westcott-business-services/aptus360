@@ -3,6 +3,7 @@
    Mounts against the mock admin API, so it exercises the real component
    with the real sample fleet: list and search, expiry urgency, expanding
    a row to the five histories, and the writes that leave the screen. */
+import { readFileSync } from "node:fs";
 import { build } from "esbuild";
 import { JSDOM } from "jsdom";
 
@@ -147,6 +148,71 @@ await settle();
 if (!confirms.some((m) => /insurance, MOT, service, maintenance and mileage/i.test(m)))
   fail("delete did not warn that the histories go too");
 if (rows().length !== 3) fail(`delete left ${rows().length} rows`);
+
+
+/* ── 10. The sample dates cannot rot ──
+
+   They did. Every fleet date was written out — "2026-09-03" — under a
+   comment promising they were relative to build time so the badges
+   would show all three states "without anyone having to edit them".
+   On 20 Oct 2026 the thirty-day warning aged out of existence: every
+   MOT and every policy had expired, section 2 went red, and the demo
+   fleet looked abandoned.
+
+   Nothing caught it, because nothing was looking. Section 2 asserts
+   the three levels exist TODAY, which is exactly the assertion that
+   passes for a year and then stops.
+
+   Two things here. No date literals left in the fleet, so the next
+   person who pastes one is told. And the levels proved at a date far
+   enough away that no fixed string could survive it. */
+{
+  const src = readFileSync("./src/lib/mockData.js", "utf8");
+  const fleet = src.slice(src.indexOf("  Vehicle: ["),
+    src.indexOf("Vehicle_Mileage_Log: [") + 400);
+  const literals = fleet.match(/"\d{4}-\d{2}-\d{2}"/g) || [];
+  if (literals.length) {
+    fail(`the fleet sample still has ${literals.length} written-out date(s) `
+      + `(${literals.slice(0, 3).join(", ")}) — they go stale, and the badges `
+      + "with them. Use on(days).");
+  }
+
+  /* Five years on, with the clock moved rather than the data.
+
+     Both halves of the clock have to move. The first attempt stubbed
+     Date.now only, which shifted the sample dates and left the
+     comparison where it was — dateUrgency reads `new Date()`, not
+     Date.now() — so everything came back five years away and "ok",
+     and the test failed on data that was perfectly fine. The test was
+     wrong, which is the sort of thing a test asserting a failure is
+     for. */
+  const RealDate = Date;
+  const FIVE_YEARS = 5 * 365 * 86400000;
+  const shifted = RealDate.now() + FIVE_YEARS;
+  class FakeDate extends RealDate {
+    constructor(...a) { super(...(a.length ? a : [shifted])); }
+    static now() { return shifted; }
+  }
+  globalThis.Date = FakeDate;
+  try {
+    const fresh = await import(`./src/lib/mockData.js?t=${shifted}`);
+    const { dateUrgency } = await import("./src/features/vehicles/vehicleMeta.js");
+    const m = fresh.adminMock;
+    const levels = new Set();
+    for (const [rows, key] of [[m.Vehicle_MOT, "Expiry_Date"],
+      [m.Vehicle_Insurance, "End_Date"]]) {
+      for (const r of rows) levels.add(dateUrgency(r[key]).level);
+    }
+    for (const want of ["expired", "warn", "ok"]) {
+      if (!levels.has(want)) {
+        fail(`five years from now there is no "${want}" vehicle, so the `
+          + "sample dates are not actually relative");
+      }
+    }
+  } finally {
+    globalThis.Date = RealDate;
+  }
+}
 
 console.log(bad ? `\n${bad} problem(s)` : "Vehicles behaves.");
 process.exit(bad ? 1 : 0);

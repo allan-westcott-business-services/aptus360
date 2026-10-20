@@ -182,6 +182,26 @@ export const mockList = [
 ];
 
 /* Mutable store backing the admin screens when running on sample data. */
+/* ── Fleet dates, relative to when this module loads ──
+
+   They used to be written out — "2026-09-03" — under a comment
+   promising they were relative to build time so the expiry badges
+   would show all three states "without anyone having to edit them".
+   They were not, and on 20 Oct 2026 the warning state aged out of
+   existence: every MOT and every policy had expired, checkvehicles
+   went red, and the demo fleet looked abandoned.
+
+   So now they really are relative. `on(-7)` is a week ago, `on(14)` a
+   fortnight away, and the three urgency levels hold on any day this
+   is ever run. The thresholds they are aimed at live in
+   vehicleMeta.js: past is expired, within thirty days is warn, beyond
+   that is ok. */
+const on = (days) => {
+  const d = new Date(Date.now() + days * 86400000);
+  const p = (v) => String(v).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+
 export const adminMock = {
   /* Tender is for the Design & Tendering team, so the other sections
      never see that stage. Mirrors the seed in 0140. */
@@ -275,79 +295,81 @@ export const adminMock = {
     { Project_Tab_Visibility_ID: 26, Area_Key: "finance", Tab_Key: "calloffs", Is_Visible: false },
     { Project_Tab_Visibility_ID: 27, Area_Key: "finance", Tab_Key: "plots", Is_Visible: false },
   ],
-  /* The fleet. Dates are relative to build time so the expiry badges
-     show all three states without anyone having to edit them: one
-     lapsed, one inside the thirty-day warning, one comfortable. */
+  /* The fleet. Three vehicles carrying the three urgency levels
+     between them, and every date written with on(), so they stay that
+     way: the Transit's insurance is nearly due, the Caddy's MOT is
+     nearly due, and the off-road D-Max has let both lapse — which is
+     the state its "awaiting clutch replacement" note describes. */
   Vehicle: [
     { Vehicle_ID: 1, Registration: "AB21 XYZ", Make: "Ford", Model: "Transit",
       Variant: "350 L3H3", Year_Of_Manufacture: 2021, Colour: "White",
       Fuel_Type: "Diesel", Vehicle_Type: "Van", VIN: "WF0XXXTTGXMA00001",
-      Current_Mileage: 84210, Mileage_Recorded_On: "2026-08-03",
+      Current_Mileage: 84210, Mileage_Recorded_On: on(-78),
       Assigned_To_Person_ID: 1, Status: "Active", Notes: null },
     { Vehicle_ID: 2, Registration: "CD70 MNO", Make: "Volkswagen", Model: "Caddy",
       Variant: "Maxi", Year_Of_Manufacture: 2020, Colour: "Blue",
       Fuel_Type: "Diesel", Vehicle_Type: "Van", VIN: "WV1ZZZ2KZLX000002",
-      Current_Mileage: 61340, Mileage_Recorded_On: "2026-07-20",
+      Current_Mileage: 61340, Mileage_Recorded_On: on(-92),
       Assigned_To_Person_ID: 2, Status: "Active", Notes: null },
     { Vehicle_ID: 3, Registration: "EF19 PQR", Make: "Isuzu", Model: "D-Max",
       Variant: "Utah", Year_Of_Manufacture: 2019, Colour: "Silver",
       Fuel_Type: "Diesel", Vehicle_Type: "Pickup", VIN: "MPATFS86JKT000003",
-      Current_Mileage: 112800, Mileage_Recorded_On: "2026-06-30",
+      Current_Mileage: 112800, Mileage_Recorded_On: on(-112),
       Assigned_To_Person_ID: null, Status: "Off-Road",
       Notes: "Awaiting clutch replacement." },
   ],
   Vehicle_Insurance: [
     { Insurance_ID: 1, Vehicle_ID: 1, Insurer: "Aviva", Policy_Number: "FLT-88213",
-      Cover_Type: "Comprehensive", Start_Date: "2025-10-13", End_Date: "2026-10-13",
+      Cover_Type: "Comprehensive", Start_Date: on(-353), End_Date: on(12),
       Premium: 1420.00, Excess: 500, Notes: null },
     { Insurance_ID: 2, Vehicle_ID: 2, Insurer: "Aviva", Policy_Number: "FLT-88214",
-      Cover_Type: "Comprehensive", Start_Date: "2025-08-24", End_Date: "2026-08-24",
+      Cover_Type: "Comprehensive", Start_Date: on(-270), End_Date: on(95),
       Premium: 1180.00, Excess: 500, Notes: "Renewal quote requested." },
     { Insurance_ID: 3, Vehicle_ID: 3, Insurer: "Zurich", Policy_Number: "ZR-40021",
-      Cover_Type: "Third Party Fire & Theft", Start_Date: "2025-07-05",
-      End_Date: "2026-07-05", Premium: 960.00, Excess: 750, Notes: null },
+      Cover_Type: "Third Party Fire & Theft", Start_Date: on(-412),
+      End_Date: on(-47), Premium: 960.00, Excess: 750, Notes: null },
   ],
   Vehicle_MOT: [
-    { MOT_ID: 1, Vehicle_ID: 1, Test_Date: "2026-02-10", Expiry_Date: "2027-02-10",
+    { MOT_ID: 1, Vehicle_ID: 1, Test_Date: on(-187), Expiry_Date: on(178),
       Result: "Pass", Mileage_At_Test: 71050, Test_Centre: "Bristol MOT Centre",
       Certificate_Number: "1122 3344 5566", Notes: null },
-    { MOT_ID: 2, Vehicle_ID: 2, Test_Date: "2025-09-03", Expiry_Date: "2026-09-03",
+    { MOT_ID: 2, Vehicle_ID: 2, Test_Date: on(-341), Expiry_Date: on(24),
       Result: "Pass with Advisory", Mileage_At_Test: 52110,
       Test_Centre: "Kwik Fit Bedminster", Certificate_Number: "2233 4455 6677",
       Notes: "Advisory: nearside front tyre close to limit." },
-    { MOT_ID: 3, Vehicle_ID: 3, Test_Date: "2025-07-10", Expiry_Date: "2026-07-10",
+    { MOT_ID: 3, Vehicle_ID: 3, Test_Date: on(-412), Expiry_Date: on(-47),
       Result: "Fail", Mileage_At_Test: 104200, Test_Centre: "Bristol MOT Centre",
       Certificate_Number: null, Notes: "Failed on brake imbalance." },
   ],
   Vehicle_Service: [
     { Service_ID: 1, Vehicle_ID: 1, Status: "Completed", Service_Type: "Full Service",
-      Scheduled_Date: "2026-05-06", Completed_Date: "2026-05-08",
+      Scheduled_Date: on(-167), Completed_Date: on(-165),
       Mileage_At_Service: 78400, Garage: "Ford Bristol", Cost: 480.00, Notes: null },
     { Service_ID: 2, Vehicle_ID: 1, Status: "Scheduled", Service_Type: "Interim",
-      Scheduled_Date: "2026-09-06", Completed_Date: null, Mileage_At_Service: null,
+      Scheduled_Date: on(47), Completed_Date: null, Mileage_At_Service: null,
       Garage: "Ford Bristol", Cost: null, Notes: null },
     { Service_ID: 3, Vehicle_ID: 3, Status: "Overdue", Service_Type: "Full Service",
-      Scheduled_Date: "2026-07-18", Completed_Date: null, Mileage_At_Service: null,
+      Scheduled_Date: on(-94), Completed_Date: null, Mileage_At_Service: null,
       Garage: "Isuzu Avonmouth", Cost: null, Notes: "Blocked by the clutch job." },
   ],
   Vehicle_Maintenance: [
-    { Maintenance_ID: 1, Vehicle_ID: 1, Maintenance_Date: "2026-06-22",
+    { Maintenance_ID: 1, Vehicle_ID: 1, Maintenance_Date: on(-120),
       Maintenance_Type: "Tyres", Garage: "Kwik Fit Bedminster",
       Mileage_At_Maintenance: 81900, Cost: 310.00,
       Description: "Two front tyres replaced.", Notes: null },
-    { Maintenance_ID: 2, Vehicle_ID: 3, Maintenance_Date: "2026-07-22",
+    { Maintenance_ID: 2, Vehicle_ID: 3, Maintenance_Date: on(-90),
       Maintenance_Type: "Brakes", Garage: "Isuzu Avonmouth",
       Mileage_At_Maintenance: 112500, Cost: 640.00,
       Description: "Discs and pads all round after MOT failure.", Notes: null },
   ],
   Vehicle_Mileage_Log: [
-    { Log_ID: 1, Vehicle_ID: 1, Reading_Date: "2026-07-04", Mileage: 81900,
+    { Log_ID: 1, Vehicle_ID: 1, Reading_Date: on(-108), Mileage: 81900,
       Recorded_By_Person_ID: 1, Notes: null },
-    { Log_ID: 2, Vehicle_ID: 1, Reading_Date: "2026-08-03", Mileage: 84210,
+    { Log_ID: 2, Vehicle_ID: 1, Reading_Date: on(-78), Mileage: 84210,
       Recorded_By_Person_ID: 1, Notes: null },
-    { Log_ID: 3, Vehicle_ID: 2, Reading_Date: "2026-07-20", Mileage: 61340,
+    { Log_ID: 3, Vehicle_ID: 2, Reading_Date: on(-92), Mileage: 61340,
       Recorded_By_Person_ID: 2, Notes: null },
-    { Log_ID: 4, Vehicle_ID: 3, Reading_Date: "2026-06-30", Mileage: 112800,
+    { Log_ID: 4, Vehicle_ID: 3, Reading_Date: on(-112), Mileage: 112800,
       Recorded_By_Person_ID: null, Notes: "Read off at the yard." },
   ],
   Property_Type: [

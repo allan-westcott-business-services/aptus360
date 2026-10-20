@@ -4,6 +4,7 @@
    agree on. A dashboard count that disagrees with the rows in the
    register reads as the data being wrong, which is the most expensive
    kind of bug to be told about. */
+import { readFileSync } from "node:fs";
 import * as N from "./src/features/hsqe/ncr.js";
 
 let bad = 0;
@@ -95,6 +96,61 @@ const names = {
     }
   }
 }
+
+/* ── The sample dates cannot rot ──
+
+   They did, in the fleet sample in the same file, and this one went
+   the same way without anybody noticing: by 20 Oct 2026 six of the
+   seven reports had drifted past ninety days, so the dashboard's
+   aging bar had one tall column and three empty ones. Nothing failed.
+   The chart simply stopped demonstrating the thing it exists to
+   demonstrate.
+
+   The unit tests above pin agingBucket against a FIXED today, which is
+   right — boundaries need a controlled date. This is about the sample
+   the screens are drawn from, which needs the opposite.
+
+   Note what is not asserted: which report is in which bucket. That
+   would be a second copy of the offsets, and a test that restates the
+   data cannot disagree with it. One per bucket, is all. */
+{
+  const src = readFileSync("./src/lib/mockData.js", "utf8");
+  const sample = src.slice(src.indexOf("  NCR: ["), src.indexOf("  NCR_Action: ["));
+  const literals = sample.match(/"\d{4}-\d{2}-\d{2}"/g) || [];
+  if (literals.length) {
+    fail(`the NCR sample still has ${literals.length} written-out date(s) `
+      + `(${literals.slice(0, 3).join(", ")}) — they drift, and the aging `
+      + "bar drifts with them. Use on(days).");
+  }
+
+  /* Five years out, with the whole clock moved: Date.now for the
+     sample, the constructor for the code that reads it. Stubbing only
+     one of them tests nothing, which the fleet version of this proved
+     by failing on data that was fine. */
+  const RealDate = Date;
+  const shifted = RealDate.now() + 5 * 365 * 86400000;
+  class FakeDate extends RealDate {
+    constructor(...a) { super(...(a.length ? a : [shifted])); }
+    static now() { return shifted; }
+  }
+  globalThis.Date = FakeDate;
+  try {
+    const fresh = await import(`./src/lib/mockData.js?aging=${shifted}`);
+    const rows = fresh.adminMock.NCR;
+    const statusName = (id) => (fresh.adminMock.NCR_Status
+      .find((x) => x.NCR_Status_ID === id) || {}).NCR_Status;
+    const counts = N.agingCounts(rows, statusName, new FakeDate());
+    for (const bucket of N.AGING.map((b) => b.key)) {
+      if (!counts[bucket]) {
+        fail(`five years from now the "${bucket}" aging bucket is empty, so `
+          + "the sample dates are not actually relative");
+      }
+    }
+  } finally {
+    globalThis.Date = RealDate;
+  }
+}
+
 
 // ── The AP number ────────────────────────────────────────────────
 //

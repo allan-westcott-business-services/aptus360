@@ -219,33 +219,41 @@ export const adminMock = {
     { NCR_Status_ID: 2, NCR_Status: "On Hold", Sort_Order: 20, Is_Active: true },
     { NCR_Status_ID: 3, NCR_Status: "Closed", Sort_Order: 30, Is_Active: true },
   ],
+  /* The non-compliance reports. Dates written with on(), so the four
+     open ones sit one per aging bucket — 0-30, 31-60, 61-90 and over
+     90 — on any day this is ever run.
+
+     They used to be written out, and by 20 Oct 2026 six of the seven
+     had drifted past ninety days: the dashboard's aging bar had one
+     tall column and three empty ones, demonstrating nothing. The same
+     fault the fleet had, in the same file, found while fixing it. */
   NCR: [
     { NCR_ID: 1, NCR_Reference: "NCR00001", Description: "Excavation left unfenced overnight on plot 14.",
-      Date_Received: "2026-07-31", Close_Date: null, Region_ID: 1, Sub_Region_ID: null,
+      Date_Received: on(-12), Close_Date: null, Region_ID: 1, Sub_Region_ID: null,
       Business_Unit_ID: null, Project_ID: 1, Auditor_Type: null, Auditor_Organisation_ID: null,
       Owner_Person_ID: 1, Utility: "Water", NCR_Status_ID: 1 },
     { NCR_ID: 2, NCR_Reference: "NCR00002", Description: "Incorrect backfill material used on the service trench.",
-      Date_Received: "2026-06-26", Close_Date: null, Region_ID: 2, Sub_Region_ID: null,
+      Date_Received: on(-45), Close_Date: null, Region_ID: 2, Sub_Region_ID: null,
       Business_Unit_ID: null, Project_ID: 1, Auditor_Type: "Operator", Auditor_Organisation_ID: 11,
       Owner_Person_ID: 2, Utility: "Electric", NCR_Status_ID: 1 },
     { NCR_ID: 3, NCR_Reference: "NCR00003", Description: "Gas purge record not returned with the pack.",
-      Date_Received: "2026-05-26", Close_Date: null, Region_ID: 1, Sub_Region_ID: null,
+      Date_Received: on(-75), Close_Date: null, Region_ID: 1, Sub_Region_ID: null,
       Business_Unit_ID: null, Project_ID: 2, Auditor_Type: "Operator", Auditor_Organisation_ID: 6,
       Owner_Person_ID: 1, Utility: "Gas", NCR_Status_ID: 1 },
     { NCR_ID: 4, NCR_Reference: "NCR00004", Description: "Signage missing at the site entrance.",
-      Date_Received: "2026-03-22", Close_Date: null, Region_ID: 2, Sub_Region_ID: null,
+      Date_Received: on(-140), Close_Date: null, Region_ID: 2, Sub_Region_ID: null,
       Business_Unit_ID: null, Project_ID: 2, Auditor_Type: "Aptus", Auditor_Organisation_ID: null,
       Owner_Person_ID: null, Utility: "Not Applicable", NCR_Status_ID: 1 },
     { NCR_ID: 5, NCR_Reference: "NCR00005", Description: "Meter box fitted below the minimum height.",
-      Date_Received: "2026-07-10", Close_Date: null, Region_ID: 1, Sub_Region_ID: null,
+      Date_Received: on(-20), Close_Date: null, Region_ID: 1, Sub_Region_ID: null,
       Business_Unit_ID: null, Project_ID: 1, Auditor_Type: null, Auditor_Organisation_ID: null,
       Owner_Person_ID: 2, Utility: "Gas", NCR_Status_ID: 2 },
     { NCR_ID: 6, NCR_Reference: "NCR00006", Description: "Spoil heap encroaching the footpath.",
-      Date_Received: "2026-04-11", Close_Date: "2026-05-05", Region_ID: 1, Sub_Region_ID: null,
+      Date_Received: on(-190), Close_Date: on(-165), Region_ID: 1, Sub_Region_ID: null,
       Business_Unit_ID: null, Project_ID: 1, Auditor_Type: null, Auditor_Organisation_ID: null,
       Owner_Person_ID: 1, Utility: "Water", NCR_Status_ID: 3 },
     { NCR_ID: 7, NCR_Reference: "NCR00007", Description: "Jointing bay left without a cover plate.",
-      Date_Received: "2026-01-21", Close_Date: "2026-02-10", Region_ID: 2, Sub_Region_ID: null,
+      Date_Received: on(-275), Close_Date: on(-250), Region_ID: 2, Sub_Region_ID: null,
       Business_Unit_ID: null, Project_ID: 2, Auditor_Type: "Operator", Auditor_Organisation_ID: 18,
       Owner_Person_ID: 2, Utility: "Electric", NCR_Status_ID: 3 },
   ],
